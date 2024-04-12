@@ -1,0 +1,13 @@
+encryptionsalt: v1:lzrGyEGeWb0=:v1:HFY42aBsAeHRV5md:/aJKVOM3+Dh7D+2LxIxS3nOWCHYz5g==
+config:
+  load-content-from-s3:command: /usr/local/bin/content
+  load-content-from-s3:image: dictybase/modware-import
+  load-content-from-s3:log-level: debug
+  load-content-from-s3:name: load-content
+  load-content-from-s3:namespace: dev
+  load-content-from-s3:s3-lexical-path:
+    - import/data/dsc-lexical
+    - import/data/frontpage-lexical
+  load-content-from-s3:secret: dictycr-secret-dev
+  load-content-from-s3:sub-command: content-data
+  load-content-from-s3:tag: develop-e79fca8

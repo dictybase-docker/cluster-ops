@@ -1,0 +1,7 @@
+name: load-content-from-s3
+runtime: go
+description: A minimal Go Pulumi program
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
