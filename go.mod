@@ -1,10 +1,11 @@
-module load-content-from-s3
+module github.com/dictybase-docker/cluster-ops
 
 go 1.21
 
 toolchain go1.21.8
 
 require (
+	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.9.1
 	github.com/pulumi/pulumi/sdk/v3 v3.109.0
 )
