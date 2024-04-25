@@ -4,11 +4,11 @@ config:
   load-content-from-s3:image: dictybase/modware-import
   load-content-from-s3:log-level: debug
   load-content-from-s3:name: load-content
-  load-content-from-s3:namespace: dev
+  load-content-from-s3:namespace: staging
   load-content-from-s3:s3-frontpage-path: import/data/frontpage-lexical
   load-content-from-s3:s3-lexical-path:
     - import/data/dsc-lexical
     - import/data/frontpage-lexical
-  load-content-from-s3:secret: dictycr-secret-dev
+  load-content-from-s3:secret: dictycr-secret-staging
   load-content-from-s3:sub-command: content-data
-  load-content-from-s3:tag: develop-e79fca8
+  load-content-from-s3:tag: staging-4806391
