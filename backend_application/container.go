@@ -40,7 +40,7 @@ func containerArgs(cfg *config.Config) pulumi.StringArrayInput {
 			cfg.Get("log-level"),
 			"start-server",
 			"--user",
-			"$(ARGANGODB_USER)",
+			"$(ARANGODB_USER)",
 			"--pass",
 			"$(ARANGODB_PASSWORD)",
 			"--port",
