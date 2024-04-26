@@ -31,9 +31,7 @@ func TemplateMetadata(name string) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name: pulumi.String(fmt.Sprintf("%s-template", name)),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(
-				fmt.Sprintf("%s-pulumi-template", name),
-			),
+			"app": pulumi.String(name),
 		},
 	}
 
