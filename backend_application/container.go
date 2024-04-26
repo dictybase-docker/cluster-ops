@@ -67,7 +67,7 @@ func createSecretKeySelector(
 	ctx *pulumi.Context,
 ) corev1.SecretKeySelectorArgs {
 	return corev1.SecretKeySelectorArgs{
-		Name: pulumi.StringPtr(config.Require(ctx, "secret")),
+		Name: pulumi.StringPtr(cfg.Require("secret")),
 		Key:  pulumi.String(key),
 	}
 }
