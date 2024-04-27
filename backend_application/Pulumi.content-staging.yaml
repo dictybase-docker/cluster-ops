@@ -1,0 +1,2 @@
+secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
+encryptedkey: CiQAEYtTei3AKvcRU6PPfvvqDPMKKT92XMhCtxb5mF9y7/8miYASSQCytYByX70c8H/0reyiqW+JM/yldEU1VPw3xYACeXT8U3gNlJKrQkLBaCXabCnNenovwuNG3fopIMnim8zwUWbCYTn7/k6lNfc=
