@@ -14,7 +14,7 @@ jobs:
       - name: check out code
         uses: actions/checkout@v4
       - name: run linter
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v5
         with: 
           version: v1.55.2
       - name: unit test
