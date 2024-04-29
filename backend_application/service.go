@@ -38,5 +38,4 @@ func servicePortSpec(serviceName string, port int) corev1.ServicePortArray {
 			TargetPort: pulumi.String(serviceName),
 		},
 	}
-
 }
