@@ -10,7 +10,7 @@ import (
 
 func deploymentSpec(args *specProperties) *appsv1.DeploymentArgs {
 	return &appsv1.DeploymentArgs{
-		Metadata: k8s.Metadata(args.cfg, args.deploymentName),
+		Metadata: k8s.Metadata(args.namespace, args.deploymentName),
 		Spec:     deploymentSpecArgs(args),
 	}
 
@@ -40,7 +40,7 @@ func deploymentPodTemplate(
 	return &corev1.PodTemplateSpecArgs{
 		Metadata: k8s.TemplateMetadata(args.deploymentName),
 		Spec: &corev1.PodSpecArgs{
-			Containers: containerSpec(args.cfg, args.ctx, args.serviceName),
+			Containers: containerSpec(args),
 		},
 	}
 
