@@ -8,11 +8,11 @@ import (
 
 func serviceSpecs(args *specProperties) *corev1.ServiceArgs {
 	return &corev1.ServiceArgs{
-		Metadata: k8s.Metadata(args.cfg, args.serviceName),
+		Metadata: k8s.Metadata(args.namespace, args.serviceName),
 		Spec: serviceSpecArgs(
 			args.deploymentName,
 			args.serviceName,
-			args.cfg.GetInt("port"),
+			args.app.Port,
 		),
 	}
 }
