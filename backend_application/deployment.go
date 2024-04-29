@@ -13,7 +13,6 @@ func deploymentSpec(args *specProperties) *appsv1.DeploymentArgs {
 		Metadata: k8s.Metadata(args.namespace, args.deploymentName),
 		Spec:     deploymentSpecArgs(args),
 	}
-
 }
 
 func deploymentSpecArgs(
@@ -24,7 +23,6 @@ func deploymentSpecArgs(
 		Template: deploymentPodTemplate(args),
 		Replicas: pulumi.Int(1),
 	}
-
 }
 
 func deploymentLabelSelector(deploymentName string) *metav1.LabelSelectorArgs {
@@ -43,5 +41,4 @@ func deploymentPodTemplate(
 			Containers: containerSpec(args),
 		},
 	}
-
 }
