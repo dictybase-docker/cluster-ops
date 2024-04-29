@@ -11,10 +11,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-func containerEnvSpec(
-	cfg *config.Config,
-	ctx *pulumi.Context,
-) corev1.EnvVarArray {
+func containerEnvSpec(ctx *pulumi.Context) corev1.EnvVarArray {
 	return corev1.EnvVarArray{
 		corev1.EnvVarArgs{
 			Name: pulumi.String("ACCESS_KEY"),
@@ -86,7 +83,7 @@ func containerSpec(
 					fmt.Sprintf(
 						"%s-container-%s",
 						cfg.Require("name"),
-						strings.ReplaceAll(bucket,"/","-"),
+						strings.ReplaceAll(bucket, "/", "-"),
 					),
 				),
 				Image: pulumi.String(
@@ -106,7 +103,7 @@ func containerSpec(
 					"--s3-bucket-path",
 					bucket,
 				}),
-				Env: containerEnvSpec(cfg, ctx),
+				Env: containerEnvSpec(ctx),
 			})
 	}
 	return containers
