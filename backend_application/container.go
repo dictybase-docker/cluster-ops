@@ -6,76 +6,60 @@ import (
 	"github.com/dictybase-docker/cluster-ops/k8s"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-func containerSpec(
-	cfg *config.Config,
-	ctx *pulumi.Context,
-	service string,
-) corev1.ContainerArray {
+func containerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{corev1.ContainerArgs{
-		Name:  k8s.Container(cfg),
-		Image: k8s.Image(cfg),
-		Args:  containerArgs(cfg),
-		Env:   containerEnvSpec(cfg, ctx),
-		Ports: containerPortSpec(cfg, service),
+		Name:  k8s.Container(args.appName),
+		Image: k8s.Image(args.app.Image, args.app.Tag),
+		Args:  containerArgs(args.cfg.Get("log-level"), args.app.Port),
+		Env:   containerEnvSpec(args.cfg.Require("secret")),
+		Ports: containerPortSpec(args.app.Port, args.serviceName),
 	}}
 }
 
-func containerEnvSpec(
-	cfg *config.Config,
-	ctx *pulumi.Context,
-) corev1.EnvVarArray {
+func containerEnvSpec(secret string) corev1.EnvVarArray {
 	return corev1.EnvVarArray{
-		createEnvVar("ARANGODB_PASSWORD", "arangodb.password", cfg, ctx),
-		createEnvVar("ARANGODB_USER", "arangodb.user", cfg, ctx),
+		createEnvVar("ARANGODB_PASSWORD", "arangodb.password", secret),
+		createEnvVar("ARANGODB_USER", "arangodb.user", secret),
 	}
 }
 
-func containerArgs(cfg *config.Config) pulumi.StringArrayInput {
+func createEnvVar(name, key, secret string) corev1.EnvVarArgs {
+	return corev1.EnvVarArgs{
+		Name: pulumi.String(name),
+		ValueFrom: corev1.EnvVarSourceArgs{
+			SecretKeyRef: createSecretKeySelector(key, secret),
+		},
+	}
+}
+
+func containerArgs(log string, port int) pulumi.StringArrayInput {
 	return pulumi.ToStringArray(
 		[]string{
 			"--log-level",
-			cfg.Get("log-level"),
+			log,
 			"start-server",
 			"--user",
 			"$(ARANGODB_USER)",
 			"--pass",
 			"$(ARANGODB_PASSWORD)",
 			"--port",
-			strconv.Itoa(cfg.RequireInt("port")),
+			strconv.Itoa(port),
 		})
 }
 
-func createEnvVar(
-	name, key string,
-	cfg *config.Config,
-	ctx *pulumi.Context,
-) corev1.EnvVarArgs {
-	return corev1.EnvVarArgs{
-		Name: pulumi.String(name),
-		ValueFrom: corev1.EnvVarSourceArgs{
-			SecretKeyRef: createSecretKeySelector(key, cfg, ctx),
-		},
-	}
-}
-
-func createSecretKeySelector(
-	key string,
-	cfg *config.Config,
-	ctx *pulumi.Context,
-) corev1.SecretKeySelectorArgs {
+func createSecretKeySelector(key, secret string) corev1.SecretKeySelectorArgs {
 	return corev1.SecretKeySelectorArgs{
-		Name: pulumi.StringPtr(cfg.Require("secret")),
+		Name: pulumi.StringPtr(secret),
 		Key:  pulumi.String(key),
 	}
 }
 
-func containerPortSpec(cfg *config.Config, service string) corev1.ContainerPortArray {
+func containerPortSpec(port int, service string) corev1.ContainerPortArray {
 	return corev1.ContainerPortArray{corev1.ContainerPortArgs{
 		Name:          pulumi.String(service),
 		Protocol:      pulumi.String("TCP"),
-		ContainerPort: pulumi.Int(cfg.RequireInt("port")),
+		ContainerPort: pulumi.Int(port),
 	}}
 }
