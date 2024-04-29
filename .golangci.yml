@@ -1,0 +1,67 @@
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+linters-settings:
+   funlen: 
+    lines: 80
+   revive:
+      rules:
+        - name: var-naming
+          arguments: [["ID"]]
+   gosec:
+      excludes:
+        - G404
+        - G402
+   wrapcheck:
+      ignoreSigs:
+        - .HandleMessagingError(
+        - .HandleGetError(
+        - .HandleError(
+        - .HandleGenericError(
+        - .HandleInsertError(
+        - .HandleNotFoundError(
+        - .HandleInvalidError(
+        - .HandleInvalidParamError(
+        - .HandleUpdateError(
+        - .Errorf(
+        - .Error(
+        - errors.New(
+linters:
+  # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
+  disable-all: true
+  enable:
+    - asciicheck
+    - bodyclose
+    - bidichk
+    - cyclop 
+    - decorder
+    - dogsled
+    # - dupl
+    - errcheck
+    - funlen
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - revive
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+  # don't enable:
+  # - godox
+  # - maligned,prealloc
+  # - gochecknoglobals
+  # - golint
+  #  - forcetypeassert
