@@ -22,7 +22,6 @@ func TemplateMetadata(name string) *metav1.ObjectMetaArgs {
 			"app": pulumi.String(name),
 		},
 	}
-
 }
 
 func Metadata(namespace, name string) *metav1.ObjectMetaArgs {
