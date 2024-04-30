@@ -1,0 +1,23 @@
+secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
+encryptedkey: CiQAEYtTegIIeSyd8oYWSzMeL3AYZoi3LODRtPX3/jmxf9OXNo0SSQCytYByPJcRBdlcFugLrFtgPDpJm+z/Ti6WU+NQTKhJRX2awq5NOQZoEhwsFzgaQwwvRBJg+V3t9qXoLS7wtBlacaoLLDb4mBQ=
+config:
+  backend_application:annotation:
+    image: dictybase/modware-annotation
+    port: 9250
+    tag: staging-4ac4801
+  backend_application:apps: '["content","annotation","stock","order"]'
+  backend_application:content:
+    image: dictybase/modware-content
+    port: 9560
+    tag: staging-c24c705
+  backend_application:log-level: info
+  backend_application:namespace: staging
+  backend_application:order:
+    image: dictybase/modware-order
+    port: 9250
+    tag: staging-1c90cc2
+  backend_application:secret: dictycr-secret-staging
+  backend_application:stock:
+    image: dictybase/modware-stock
+    port: 9345
+    tag: staging-21215f7
