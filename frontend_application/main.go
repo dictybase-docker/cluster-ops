@@ -20,8 +20,6 @@ type specProperties struct {
 	appName        string
 	namespace      string
 	port           int
-	cfg            *config.Config
-	ctx            *pulumi.Context
 	app            *appProperties
 }
 
@@ -55,8 +53,6 @@ func execute(ctx *pulumi.Context) error {
 		serviceName := fmt.Sprintf("%s-api", key)
 		deployment, err := appsv1.NewDeployment(
 			ctx, deploymentName, deploymentSpec(&specProperties{
-				cfg:            cfg,
-				ctx:            ctx,
 				deploymentName: deploymentName,
 				serviceName:    serviceName,
 				port:           port,
@@ -75,7 +71,6 @@ func execute(ctx *pulumi.Context) error {
 					deploymentName: deploymentName,
 					serviceName:    serviceName,
 					app:            app,
-					cfg:            cfg,
 					port:           port,
 					appName:        key,
 					namespace:      namespace,
