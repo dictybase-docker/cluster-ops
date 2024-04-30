@@ -1,8 +1,8 @@
 secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
 encryptedkey: CiQAEYtTevXiVOneoU4Vi+c2aRf2cZXykitBNpcdiHj7Pquf9w0SSQCytYBytacswbF/vCNlgnJJsr5BfccLZVOxlkXlWPtPWhRdEqzsaVN7ZMkZL/h7gmk8xmnTEfkW+v6cKAd1h7g7Vq2SDWHemeU=
 config:
-  frontend_application:apps: '["frontend","publication","stockcenter"]'
-  frontend_application:frontend:
+  frontend_application:apps: '["frontpage","publication","stockcenter"]'
+  frontend_application:frontpage:
     image: dictybase/dicty-frontpage
     tag: develop-fbd70ea
   frontend_application:log-level: debug
