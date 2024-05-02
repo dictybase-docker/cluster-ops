@@ -4,13 +4,13 @@ config:
   frontend_application:apps: '["frontpage","publication","stockcenter"]'
   frontend_application:frontpage:
     image: dictybase/dicty-frontpage
-    tag: develop-4f2cec1
+    tag: develop-52f7d14
   frontend_application:log-level: debug
   frontend_application:namespace: dev
   frontend_application:port: "3000"
   frontend_application:publication:
     image: dictybase/publication
-    tag: develop-4f2cec1
+    tag: develop-52f7d14
   frontend_application:stockcenter:
     image: dictybase/stock-center
-    tag: develop-4f2cec1
+    tag: develop-52f7d14

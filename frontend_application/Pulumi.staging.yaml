@@ -4,13 +4,13 @@ config:
   frontend_application:apps: '["frontpage","publication","stockcenter"]'
   frontend_application:frontpage:
     image: dictybase/dicty-frontpage
-    tag: staging-fbd70ea
+    tag: staging-52f7d14
   frontend_application:log-level: info
   frontend_application:namespace: staging
   frontend_application:port: "3000"
   frontend_application:publication:
     image: dictybase/publication
-    tag: staging-fbd70ea
+    tag: staging-52f7d14
   frontend_application:stockcenter:
     image: dictybase/stock-center
-    tag: staging-fbd70ea
+    tag: staging-52f7d14
