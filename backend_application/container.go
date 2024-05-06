@@ -12,26 +12,10 @@ func containerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{corev1.ContainerArgs{
 		Name:  k8s.Container(args.appName),
 		Image: k8s.Image(args.app.Image, args.app.Tag),
+		Env:   k8s.ContainerEnvSpec(args.cfg.Require("secret")),
+		Ports: k8s.ContainerPortSpec(args.app.Port, args.serviceName),
 		Args:  containerArgs(args.cfg.Get("log-level"), args.app.Port),
-		Env:   containerEnvSpec(args.cfg.Require("secret")),
-		Ports: containerPortSpec(args.app.Port, args.serviceName),
 	}}
-}
-
-func containerEnvSpec(secret string) corev1.EnvVarArray {
-	return corev1.EnvVarArray{
-		createEnvVar("ARANGODB_PASSWORD", "arangodb.password", secret),
-		createEnvVar("ARANGODB_USER", "arangodb.user", secret),
-	}
-}
-
-func createEnvVar(name, key, secret string) corev1.EnvVarArgs {
-	return corev1.EnvVarArgs{
-		Name: pulumi.String(name),
-		ValueFrom: corev1.EnvVarSourceArgs{
-			SecretKeyRef: createSecretKeySelector(key, secret),
-		},
-	}
 }
 
 func containerArgs(log string, port int) pulumi.StringArrayInput {
@@ -47,19 +31,4 @@ func containerArgs(log string, port int) pulumi.StringArrayInput {
 			"--port",
 			strconv.Itoa(port),
 		})
-}
-
-func createSecretKeySelector(key, secret string) corev1.SecretKeySelectorArgs {
-	return corev1.SecretKeySelectorArgs{
-		Name: pulumi.StringPtr(secret),
-		Key:  pulumi.String(key),
-	}
-}
-
-func containerPortSpec(port int, service string) corev1.ContainerPortArray {
-	return corev1.ContainerPortArray{corev1.ContainerPortArgs{
-		Name:          pulumi.String(service),
-		Protocol:      pulumi.String("TCP"),
-		ContainerPort: pulumi.Int(port),
-	}}
 }
