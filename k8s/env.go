@@ -5,6 +5,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+func CreateEnvVarWithSecret(name, key, secret string) corev1.EnvVarArgs {
 	return corev1.EnvVarArgs{
 		Name: pulumi.String(name),
 		ValueFrom: corev1.EnvVarSourceArgs{
