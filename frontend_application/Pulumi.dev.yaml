@@ -4,7 +4,7 @@ config:
   frontend_application:apps: '["frontpage","publication","stockcenter"]'
   frontend_application:frontpage:
     image: dictybase/dicty-frontpage
-    tag: develop-52f7d14
+    tag: develop-213c026
   frontend_application:log-level: debug
   frontend_application:namespace: dev
   frontend_application:port: "3000"

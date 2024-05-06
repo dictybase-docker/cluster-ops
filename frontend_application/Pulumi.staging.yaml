@@ -4,7 +4,7 @@ config:
   frontend_application:apps: '["frontpage","publication","stockcenter"]'
   frontend_application:frontpage:
     image: dictybase/dicty-frontpage
-    tag: staging-52f7d14
+    tag: staging-213c026
   frontend_application:log-level: info
   frontend_application:namespace: staging
   frontend_application:port: "3000"
