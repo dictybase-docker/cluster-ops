@@ -5,7 +5,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func CreateEnvVar(name, key, secret string) corev1.EnvVarArgs {
 	return corev1.EnvVarArgs{
 		Name: pulumi.String(name),
 		ValueFrom: corev1.EnvVarSourceArgs{
@@ -14,10 +13,10 @@ func CreateEnvVar(name, key, secret string) corev1.EnvVarArgs {
 	}
 }
 
-func ContainerEnvSpec(secret string) corev1.EnvVarArray {
-	return corev1.EnvVarArray{
-		CreateEnvVar("ARANGODB_PASSWORD", "arangodb.password", secret),
-		CreateEnvVar("ARANGODB_USER", "arangodb.user", secret),
+func CreateEnvVar(name, value string) corev1.EnvVarArgs {
+	return corev1.EnvVarArgs{
+		Name:  pulumi.String(name),
+		Value: pulumi.String(value),
 	}
 }
 
