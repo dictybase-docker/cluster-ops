@@ -33,3 +33,10 @@ func Metadata(namespace, name string) *metav1.ObjectMetaArgs {
 		},
 	}
 }
+
+func SpecLabelSelector(name string) *metav1.LabelSelectorArgs {
+	return &metav1.LabelSelectorArgs{
+		MatchLabels: pulumi.StringMap{
+			"app": pulumi.String(name),
+		}}
+}
