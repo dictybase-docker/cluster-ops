@@ -4,7 +4,6 @@ import (
 	"github.com/dictybase-docker/cluster-ops/k8s"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -19,17 +18,10 @@ func deploymentSpecArgs(
 	args *specProperties,
 ) *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
-		Selector: deploymentLabelSelector(args.deploymentName),
+		Selector: k8s.SpecLabelSelector(args.deploymentName),
 		Template: deploymentPodTemplate(args),
 		Replicas: pulumi.Int(1),
 	}
-}
-
-func deploymentLabelSelector(deploymentName string) *metav1.LabelSelectorArgs {
-	return &metav1.LabelSelectorArgs{
-		MatchLabels: pulumi.StringMap{
-			"app": pulumi.String(deploymentName),
-		}}
 }
 
 func deploymentPodTemplate(
