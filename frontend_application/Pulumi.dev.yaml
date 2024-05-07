@@ -10,7 +10,7 @@ config:
   frontend_application:port: "3000"
   frontend_application:publication:
     image: dictybase/publication
-    tag: develop-52f7d14
+    tag: develop-213c026
   frontend_application:stockcenter:
     image: dictybase/stock-center
-    tag: develop-52f7d14
+    tag: develop-213c026
