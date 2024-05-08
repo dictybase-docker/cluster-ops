@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/batch/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -42,6 +44,10 @@ func execute(ctx *pulumi.Context) error {
 			"apps attribute is required in the configuration %s",
 			err,
 		)
+	}
+	if !slices.Contains(appNames, "arangodb") ||
+		!slices.Contains(appNames, "postgresql") {
+		return errors.New("need either of arangodb or postgresql as app names")
 	}
 	jobMap := make(map[string]*batchv1.Job)
 	for _, name := range appNames {
