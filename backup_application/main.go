@@ -9,16 +9,20 @@ import (
 )
 
 type appProperties struct {
-	Image string
-	Tag   string
+	jobName    string
+	appName    string
+	volumeName string
+	bucket     string
+	schedule   string
+	secret     string
+	databases  []string
 }
 
 type specProperties struct {
-	jobName    string
-	appName    string
 	namespace  string
 	secretName string
-	volumeName string
+	image      string
+	tag        string
 	app        *appProperties
 }
 
@@ -27,19 +31,43 @@ func main() {
 }
 
 func execute(ctx *pulumi.Context) error {
-	props, err := getConfig(ctx)
+	cfg := config.New(ctx, "")
+	props, err := configProps(cfg)
 	if err != nil {
 		return err
 	}
-	_, err = batchv1.NewJob(ctx, props.jobName, createJobSpec(props))
-	if err != nil {
-		return fmt.Errorf("error in running create repository job %s", err)
+	appNames := make([]string, 0)
+	if err := cfg.TryObject("apps", &appNames); err != nil {
+		return fmt.Errorf(
+			"apps attribute is required in the configuration %s",
+			err,
+		)
+	}
+	jobMap := make(map[string]*batchv1.Job)
+	for _, name := range appNames {
+		app := &appProperties{}
+		if err := cfg.TryObject(name, app); err != nil {
+			return fmt.Errorf("app name %s is required %s", name, err)
+		}
+		app.appName = name
+		app.jobName = fmt.Sprintf("%s-create-repository", name)
+		app.volumeName = fmt.Sprintf("%s-create-repo-volume", name)
+		app.bucket = fmt.Sprintf("%s-%s", props.namespace, app.bucket)
+		props.app = app
+		createJob, err := batchv1.NewJob(
+			ctx,
+			props.app.jobName,
+			createJobSpec(props),
+		)
+		if err != nil {
+			return fmt.Errorf("error in running create repository job %s", err)
+		}
+		jobMap[name] = createJob
 	}
 	return nil
 }
 
-func getConfig(ctx *pulumi.Context) (*specProperties, error) {
-	cfg := config.New(ctx, "")
+func configProps(cfg *config.Config) (*specProperties, error) {
 	namespace, err := cfg.Try("namespace")
 	if err != nil {
 		return nil, fmt.Errorf("attribute namespace is missing %s", err)
@@ -56,18 +84,11 @@ func getConfig(ctx *pulumi.Context) (*specProperties, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attribute secret is missing %s", err)
 	}
-	appName, err := cfg.Try("name")
-	if err != nil {
-		return nil, fmt.Errorf("attribute name is missing %s", err)
-	}
-	jobName := fmt.Sprintf("%s-create-repo", appName)
 
 	return &specProperties{
-		jobName:    jobName,
-		appName:    appName,
 		namespace:  namespace,
 		secretName: secret,
-		volumeName: fmt.Sprintf("%s-volume", jobName),
-		app:        &appProperties{Image: image, Tag: tag},
+		image:      image,
+		tag:        tag,
 	}, nil
 }
