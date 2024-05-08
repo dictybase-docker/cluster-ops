@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/dictybase-docker/cluster-ops/k8s"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -37,7 +39,6 @@ func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 		Image:        k8s.Image(args.image, args.tag),
 		VolumeMounts: containerVolumeSpec(args.app.volumeName, "/var/secret"),
 		Env:          containerEnvSpec(args.secretName, args.app.bucket),
-		Args:         createRepoCommand(),
 		Command:      containerCommand(),
 		Args:         createRepoArgs(),
 	}}
@@ -53,3 +54,14 @@ func createRepoArgs() pulumi.StringArrayInput {
 	)
 }
 
+func postgresBackupArgs(database string) pulumi.StringArrayInput {
+	return pulumi.ToStringArray(
+		[]string{
+			fmt.Sprintf(
+				"pg_dump -Fc %s | restic --stdin --stdin-filename %s.dump",
+				database,
+				database,
+			),
+		},
+	)
+}
