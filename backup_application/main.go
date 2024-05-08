@@ -38,22 +38,15 @@ func execute(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	appNames := make([]string, 0)
-	if err := cfg.TryObject("apps", &appNames); err != nil {
-		return fmt.Errorf(
-			"apps attribute is required in the configuration %s",
-			err,
-		)
-	}
-	if !slices.Contains(appNames, "arangodb") ||
-		!slices.Contains(appNames, "postgresql") {
-		return errors.New("need either of arangodb or postgresql as app names")
+	appNames, err := validateAppNames(cfg)
+	if err != nil {
+		return err
 	}
 	jobMap := make(map[string]*batchv1.Job)
 	for _, name := range appNames {
 		app := &appProperties{}
 		if err := cfg.TryObject(name, app); err != nil {
-			return fmt.Errorf("app name %s is required %s", name, err)
+			return fmt.Errorf("app name %s is required: %w", name, err)
 		}
 		app.appName = name
 		app.jobName = fmt.Sprintf("%s-create-repository", name)
@@ -66,11 +59,29 @@ func execute(ctx *pulumi.Context) error {
 			createJobSpec(props),
 		)
 		if err != nil {
-			return fmt.Errorf("error in running create repository job %s", err)
+			return fmt.Errorf("error in running create repository job: %w", err)
 		}
 		jobMap[name] = createJob
 	}
 	return nil
+}
+
+func validateAppNames(cfg *config.Config) ([]string, error) {
+	appNames := make([]string, 0)
+	if err := cfg.TryObject("apps", &appNames); err != nil {
+		return nil, fmt.Errorf(
+			"apps attribute is required in the configuration: %s",
+			err,
+		)
+	}
+	for _, vname := range []string{"postgresql", "arangodb"} {
+		if !slices.Contains(appNames, vname) {
+			return nil, errors.New(
+				"need either of arangodb or postgresql as app names",
+			)
+		}
+	}
+	return appNames, nil
 }
 
 func configProps(cfg *config.Config) (*specProperties, error) {
