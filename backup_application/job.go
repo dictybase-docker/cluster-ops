@@ -9,7 +9,7 @@ import (
 
 func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 	return &corev1.PodTemplateSpecArgs{
-		Metadata: k8s.TemplateMetadata(args.jobName),
+		Metadata: k8s.TemplateMetadata(args.app.jobName),
 		Spec: &corev1.PodSpecArgs{
 			RestartPolicy: pulumi.String("Never"),
 			Containers:    containerSpec(args),
@@ -20,13 +20,13 @@ func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 func jobSpecArgs(args *specProperties) *batchv1.JobSpecArgs {
 	return &batchv1.JobSpecArgs{
 		Template: jobPodTemplate(args),
-		Selector: k8s.SpecLabelSelector(args.jobName),
+		Selector: k8s.SpecLabelSelector(args.app.jobName),
 	}
 }
 
 func createJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
-		Metadata: k8s.Metadata(args.namespace, args.jobName),
+		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
 		Spec:     jobSpecArgs(args),
 	}
 }
