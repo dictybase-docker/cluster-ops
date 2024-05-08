@@ -38,15 +38,31 @@ func execute(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+
 	appNames, err := validateAppNames(cfg)
 	if err != nil {
 		return err
 	}
+
+	jobMap, err := createRepoJobs(ctx, cfg, appNames, props)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func createRepoJobs(
+	ctx *pulumi.Context,
+	cfg *config.Config,
+	appNames []string,
+	props *specProperties,
+) (map[string]*batchv1.Job, error) {
 	jobMap := make(map[string]*batchv1.Job)
 	for _, name := range appNames {
 		app := &appProperties{}
 		if err := cfg.TryObject(name, app); err != nil {
-			return fmt.Errorf("app name %s is required: %w", name, err)
+			return nil, fmt.Errorf("app name %s is required: %w", name, err)
 		}
 		app.appName = name
 		app.jobName = fmt.Sprintf("%s-create-repository", name)
@@ -59,11 +75,14 @@ func execute(ctx *pulumi.Context) error {
 			createJobSpec(props),
 		)
 		if err != nil {
-			return fmt.Errorf("error in running create repository job: %w", err)
+			return nil, fmt.Errorf(
+				"error in running create repository job: %w",
+				err,
+			)
 		}
 		jobMap[name] = createJob
 	}
-	return nil
+	return jobMap, nil
 }
 
 func validateAppNames(cfg *config.Config) ([]string, error) {
