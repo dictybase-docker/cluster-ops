@@ -12,7 +12,7 @@ func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 		Metadata: k8s.TemplateMetadata(args.app.jobName),
 		Spec: &corev1.PodSpecArgs{
 			RestartPolicy: pulumi.String("Never"),
-			Containers:    containerSpec(args),
+			Containers:    createRepoContainerSpec(args),
 		},
 	}
 }
