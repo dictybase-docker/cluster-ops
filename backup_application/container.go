@@ -38,11 +38,18 @@ func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 		VolumeMounts: containerVolumeSpec(args.app.volumeName, "/var/secret"),
 		Env:          containerEnvSpec(args.secretName, args.app.bucket),
 		Args:         createRepoCommand(),
+		Command:      containerCommand(),
+		Args:         createRepoArgs(),
 	}}
 }
 
-func createRepoCommand() pulumi.StringArrayInput {
+func containerCommand() pulumi.StringArrayInput {
+	return pulumi.ToStringArray([]string{"/bin/sh", "-c"})
+}
+
+func createRepoArgs() pulumi.StringArrayInput {
 	return pulumi.ToStringArray(
-		[]string{"restic", "snapshots", "||", "restic", "init"},
+		[]string{"restic snapshots || restic init"},
 	)
 }
+
