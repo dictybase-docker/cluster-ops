@@ -15,7 +15,7 @@ func containerVolumeSpec(
 	}
 }
 
-func containerEnvSpec(secret string) corev1.EnvVarArray {
+func containerEnvSpec(secret, bucket string) corev1.EnvVarArray {
 	return corev1.EnvVarArray{
 		k8s.CreateEnvVarWithSecret(
 			"RESTIC_PASSWORD",
@@ -27,15 +27,16 @@ func containerEnvSpec(secret string) corev1.EnvVarArray {
 			"GOOGLE_APPLICATION_CREDENTIALS",
 			"/var/secret/credentials.json",
 		),
+		k8s.CreateEnvVar("RESTIC_REPOSITORY", bucket),
 	}
 }
 
 func containerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{corev1.ContainerArgs{
-		Name:         k8s.Container(args.jobName),
-		Image:        k8s.Image(args.app.Image, args.app.Tag),
-		VolumeMounts: containerVolumeSpec(args.volumeName, "/var/secret"),
-		Env:          containerEnvSpec(args.secretName),
+		Name:         k8s.Container(args.app.jobName),
+		Image:        k8s.Image(args.image, args.tag),
+		VolumeMounts: containerVolumeSpec(args.app.volumeName, "/var/secret"),
+		Env:          containerEnvSpec(args.secretName, args.app.bucket),
 		Args:         containerCommand(),
 	}}
 }
