@@ -10,6 +10,7 @@ config:
   backup_application:namespace: dev
   backup_application:postgresql:
     bucket: gs:restic-pg-backup:/
+    databases: '["contentl","authl","logto","dictycr_auth"]'
     schedule: 30 2 * * *
     secret: postgres-pguser-dictycr
   backup_application:secret: dictycr-secret-dev
