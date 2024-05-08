@@ -31,17 +31,17 @@ func containerEnvSpec(secret, bucket string) corev1.EnvVarArray {
 	}
 }
 
-func containerSpec(args *specProperties) corev1.ContainerArray {
+func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{corev1.ContainerArgs{
 		Name:         k8s.Container(args.app.jobName),
 		Image:        k8s.Image(args.image, args.tag),
 		VolumeMounts: containerVolumeSpec(args.app.volumeName, "/var/secret"),
 		Env:          containerEnvSpec(args.secretName, args.app.bucket),
-		Args:         containerCommand(),
+		Args:         createRepoCommand(),
 	}}
 }
 
-func containerCommand() pulumi.StringArrayInput {
+func createRepoCommand() pulumi.StringArrayInput {
 	return pulumi.ToStringArray(
 		[]string{"restic", "snapshots", "||", "restic", "init"},
 	)
