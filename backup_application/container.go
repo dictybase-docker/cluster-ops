@@ -42,6 +42,12 @@ func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 		Command:      containerCommand(),
 		Args:         createRepoArgs(),
 	}}
+func baseContainerSpec(args *specProperties) corev1.ContainerArgs {
+	return corev1.ContainerArgs{
+		Name:    k8s.Container(args.app.jobName),
+		Image:   k8s.Image(args.image, args.tag),
+		Command: containerCommand(),
+	}
 }
 
 func containerCommand() pulumi.StringArrayInput {
