@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dictybase-docker/cluster-ops/k8s"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
@@ -17,6 +18,22 @@ func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 	baseArgs.Env = containerEnvSpec(args.secretName, args.app.bucket)
 	baseArgs.Args = createRepoArgs()
 	return []corev1.ContainerInput{baseArgs}
+}
+
+func postgresBackupEnvSpec(secret, pgsecret, bucket string) corev1.EnvVarArray {
+	envArr := make([]corev1.EnvVarInput, 0)
+	for _, key := range []string{"host", "port", "user", "password"} {
+		envArr = append(
+			envArr,
+			k8s.CreateEnvVarWithSecret(
+				fmt.Sprintf("PG%s", strings.ToUpper(key)),
+				key,
+				pgsecret,
+			),
+		)
+
+	}
+	return append(envArr, containerEnvSpec(secret, bucket)...)
 }
 
 func containerVolumeSpec(
