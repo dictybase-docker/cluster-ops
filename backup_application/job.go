@@ -24,16 +24,12 @@ func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 	}
 }
 
-func jobSpecArgs(args *specProperties) *batchv1.JobSpecArgs {
-	return &batchv1.JobSpecArgs{
-		Template: jobPodTemplate(args),
-		Selector: k8s.SpecLabelSelector(args.app.jobName),
-	}
-}
-
 func createJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
 		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
-		Spec:     jobSpecArgs(args),
+		Spec: batchv1.JobSpecArgs{
+			Template: jobPodTemplate(args),
+			Selector: k8s.SpecLabelSelector(args.app.jobName),
+		},
 	}
 }
