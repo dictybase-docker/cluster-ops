@@ -28,7 +28,6 @@ func postgresBackupContainerSpec(
 	)
 	baseArgs.Args = postgresBackupArgs(database)
 	return []corev1.ContainerInput{baseArgs}
-
 }
 
 func postgresBackupEnvSpec(secret, pgsecret, bucket string) corev1.EnvVarArray {
@@ -98,7 +97,8 @@ func postgresBackupArgs(database string) pulumi.StringArrayInput {
 	return pulumi.ToStringArray(
 		[]string{
 			fmt.Sprintf(
-				"pg_dump -Fc %s | restic --stdin --stdin-filename %s.dump",
+				"pg_dump -Fc %s | restic backup --stdin --tag %s --stdin-filename %s.dump",
+				database,
 				database,
 				database,
 			),
