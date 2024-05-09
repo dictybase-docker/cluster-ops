@@ -16,6 +16,21 @@ func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{baseArgs}
 }
 
+func postgresBackupContainerSpec(
+	args *specProperties,
+	database string,
+) corev1.ContainerArray {
+	baseArgs := baseContainerSpec(args)
+	baseArgs.Env = postgresBackupEnvSpec(
+		args.secretName,
+		args.app.secret,
+		args.app.bucket,
+	)
+	baseArgs.Args = postgresBackupArgs(database)
+	return []corev1.ContainerInput{baseArgs}
+
+}
+
 func postgresBackupEnvSpec(secret, pgsecret, bucket string) corev1.EnvVarArray {
 	envArr := make([]corev1.EnvVarInput, 0)
 	for _, key := range []string{"host", "port", "user", "password"} {
