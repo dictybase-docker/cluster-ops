@@ -13,6 +13,13 @@ func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 		Spec: &corev1.PodSpecArgs{
 			RestartPolicy: pulumi.String("Never"),
 			Containers:    createRepoContainerSpec(args),
+			Volumes: k8s.CreateVolumeSpec(
+				args.secretName,
+				args.app.volumeName,
+				[]*k8s.VolumeItemsProperties{
+					{Key: "gcsbucket.credentials", Value: "credentials.json"},
+				},
+			),
 		},
 	}
 }
