@@ -11,10 +11,6 @@ import (
 
 func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
 	baseArgs := baseContainerSpec(args)
-	baseArgs.VolumeMounts = containerVolumeSpec(
-		args.app.volumeName,
-		"/var/secret",
-	)
 	baseArgs.Env = containerEnvSpec(args.secretName, args.app.bucket)
 	baseArgs.Args = createRepoArgs()
 	return []corev1.ContainerInput{baseArgs}
@@ -66,6 +62,10 @@ func baseContainerSpec(args *specProperties) corev1.ContainerArgs {
 		Name:    k8s.Container(args.app.jobName),
 		Image:   k8s.Image(args.image, args.tag),
 		Command: containerCommand(),
+		VolumeMounts: containerVolumeSpec(
+			args.app.volumeName,
+			"/var/secret",
+		),
 	}
 }
 
