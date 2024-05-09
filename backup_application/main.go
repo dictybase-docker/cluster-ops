@@ -20,6 +20,11 @@ type appProperties struct {
 	databases  []string
 }
 
+type jobProperties struct {
+	job *batchv1.Job
+	app *appProperties
+}
+
 type specProperties struct {
 	namespace  string
 	secretName string
@@ -57,12 +62,12 @@ func createRepoJobs(
 	cfg *config.Config,
 	appNames []string,
 	props *specProperties,
-) (map[string]*batchv1.Job, error) {
-	jobMap := make(map[string]*batchv1.Job)
+) (map[string]*jobProperties, error) {
+	jobMap := make(map[string]*jobProperties)
 	for _, name := range appNames {
 		app := &appProperties{}
 		if err := cfg.TryObject(name, app); err != nil {
-			return nil, fmt.Errorf("app name %s is required: %w", name, err)
+			return nil, fmt.Errorf("could not resolve app propties %s", err)
 		}
 		app.appName = name
 		app.jobName = fmt.Sprintf("%s-create-repository", name)
@@ -80,7 +85,7 @@ func createRepoJobs(
 				err,
 			)
 		}
-		jobMap[name] = createJob
+		jobMap[name] = &jobProperties{job: createJob, app: app}
 	}
 	return jobMap, nil
 }
