@@ -8,6 +8,17 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
+	baseArgs := baseContainerSpec(args)
+	baseArgs.VolumeMounts = containerVolumeSpec(
+		args.app.volumeName,
+		"/var/secret",
+	)
+	baseArgs.Env = containerEnvSpec(args.secretName, args.app.bucket)
+	baseArgs.Args = createRepoArgs()
+	return []corev1.ContainerInput{baseArgs}
+}
+
 func containerVolumeSpec(
 	volumeName string,
 	mountPath string,
@@ -33,15 +44,6 @@ func containerEnvSpec(secret, bucket string) corev1.EnvVarArray {
 	}
 }
 
-func createRepoContainerSpec(args *specProperties) corev1.ContainerArray {
-	return []corev1.ContainerInput{corev1.ContainerArgs{
-		Name:         k8s.Container(args.app.jobName),
-		Image:        k8s.Image(args.image, args.tag),
-		VolumeMounts: containerVolumeSpec(args.app.volumeName, "/var/secret"),
-		Env:          containerEnvSpec(args.secretName, args.app.bucket),
-		Command:      containerCommand(),
-		Args:         createRepoArgs(),
-	}}
 func baseContainerSpec(args *specProperties) corev1.ContainerArgs {
 	return corev1.ContainerArgs{
 		Name:    k8s.Container(args.app.jobName),
