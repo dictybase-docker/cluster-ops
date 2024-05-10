@@ -53,10 +53,19 @@ func execute(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := setupAndCreatePostgresBackupCronJob(ctx, jobMap["postgresql"]); err != nil {
+		return err
+	}
+	return nil
+}
 
+func setupAndCreatePostgresBackupCronJob(
+	ctx *pulumi.Context,
+	props *jobProperties,
+) error {
 	// setup postgres backup cronjob
-	pgProps, pgCreateJob := setupCronSpecs(jobMap["postgresql"])
-	_, err = batchv1.NewCronJob(
+	pgProps, pgCreateJob := setupCronSpecs(props)
+	_, err := batchv1.NewCronJob(
 		ctx,
 		pgProps.app.jobName,
 		createPostgresJobSpec(pgProps),
