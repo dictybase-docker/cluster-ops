@@ -30,7 +30,8 @@ func createPostgresPodTemplateSpecArgs(
 	return &corev1.PodTemplateSpecArgs{
 		Metadata: k8s.TemplateMetadata(args.app.jobName),
 		Spec: &corev1.PodSpecArgs{
-			Containers: postgresBackupContainerSpec(args),
+			RestartPolicy: pulumi.String("Never"),
+			Containers:    postgresBackupContainerSpec(args),
 			Volumes: k8s.CreateVolumeSpec(
 				args.secretName,
 				args.app.volumeName,
