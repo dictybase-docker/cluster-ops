@@ -127,10 +127,15 @@ func createAndSetupJob(
 	app.bucket = fmt.Sprintf("%s-%s", props.namespace, app.bucket)
 	props.app = app
 
+	bucketResource, err := createGcpBucket(app.bucket, ctx)
+	if err != nil {
+		return nil, err
+	}
 	createJob, err := batchv1.NewJob(
 		ctx,
 		props.app.jobName,
 		createRepoJobSpec(props),
+		pulumi.DependsOn([]pulumi.Resource{bucketResource}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
