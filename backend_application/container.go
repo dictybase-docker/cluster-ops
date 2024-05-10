@@ -20,8 +20,12 @@ func containerSpec(args *specProperties) corev1.ContainerArray {
 
 func containerEnvSpec(secret string) corev1.EnvVarArray {
 	return corev1.EnvVarArray{
-		k8s.CreateEnvVar("ARANGODB_PASSWORD", "arangodb.password", secret),
-		k8s.CreateEnvVar("ARANGODB_USER", "arangodb.user", secret),
+		k8s.CreateEnvVarWithSecret(
+			"ARANGODB_PASSWORD",
+			"arangodb.password",
+			secret,
+		),
+		k8s.CreateEnvVarWithSecret("ARANGODB_USER", "arangodb.user", secret),
 	}
 }
 

@@ -38,7 +38,6 @@ func postgresBackupEnvSpec(secret, pgsecret, bucket string) corev1.EnvVarArray {
 				pgsecret,
 			),
 		)
-
 	}
 	return append(envArr, containerEnvSpec(secret, bucket)...)
 }
@@ -50,7 +49,6 @@ func postgresBackupArgs(databases []string) pulumi.StringArrayInput {
 		commands = append(commands,
 			fmt.Sprintf(dumpCmdTmpl, dbname, dbname, dbname),
 		)
-
 	}
 	return pulumi.StringArray{pulumi.String(strings.Join(commands, ";"))}
 }
