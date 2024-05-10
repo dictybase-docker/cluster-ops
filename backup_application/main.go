@@ -21,8 +21,8 @@ type appProperties struct {
 }
 
 type jobProperties struct {
-	job *batchv1.Job
-	app *appProperties
+	job  *batchv1.Job
+	spec *specProperties
 }
 
 type specProperties struct {
@@ -54,7 +54,30 @@ func execute(ctx *pulumi.Context) error {
 		return err
 	}
 
+	// setup postgres backup cronjob
+	pgProps, pgCreateJob := setupCronSpecs(jobMap["postgresql"])
+	_, err = batchv1.NewCronJob(
+		ctx,
+		pgProps.app.jobName,
+		createPostgresJobSpec(pgProps),
+		pulumi.DependsOn([]pulumi.Resource{pgCreateJob}),
+	)
+	if err != nil {
+		return fmt.Errorf("error in running postgres backup cron job %s", err)
+	}
 	return nil
+}
+
+func setupCronSpecs(props *jobProperties) (*specProperties, *batchv1.Job) {
+	props.spec.app.jobName = fmt.Sprintf(
+		"%s-backup",
+		props.spec.app.appName,
+	)
+	props.spec.app.volumeName = fmt.Sprintf(
+		"%s-backup-volume",
+		props.spec.app.appName,
+	)
+	return props.spec, props.job
 }
 
 func createRepoJobs(
@@ -97,7 +120,7 @@ func createAndSetupJob(
 	createJob, err := batchv1.NewJob(
 		ctx,
 		props.app.jobName,
-		createJobSpec(props),
+		createRepoJobSpec(props),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -106,7 +129,7 @@ func createAndSetupJob(
 		)
 	}
 
-	return &jobProperties{job: createJob, app: app}, nil
+	return &jobProperties{job: createJob, spec: props}, nil
 }
 
 func validateAppNames(cfg *config.Config) ([]string, error) {
