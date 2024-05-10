@@ -7,12 +7,17 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
+type containerSpecFn func(*specProperties) corev1.ContainerArray
+
+func createPodTemplateSpec(
+	args *specProperties,
+	fn containerSpecFn,
+) *corev1.PodTemplateSpecArgs {
 	return &corev1.PodTemplateSpecArgs{
 		Metadata: k8s.TemplateMetadata(args.app.jobName),
 		Spec: &corev1.PodSpecArgs{
 			RestartPolicy: pulumi.String("Never"),
-			Containers:    createRepoContainerSpec(args),
+			Containers:    fn(args),
 			Volumes: k8s.CreateVolumeSpec(
 				args.secretName,
 				args.app.volumeName,
@@ -24,33 +29,11 @@ func jobPodTemplate(args *specProperties) *corev1.PodTemplateSpecArgs {
 	}
 }
 
-func createPostgresPodTemplateSpecArgs(
-	args *specProperties,
-) *corev1.PodTemplateSpecArgs {
-	return &corev1.PodTemplateSpecArgs{
-		Metadata: k8s.TemplateMetadata(args.app.jobName),
-		Spec: &corev1.PodSpecArgs{
-			RestartPolicy: pulumi.String("Never"),
-			Containers:    postgresBackupContainerSpec(args),
-			Volumes: k8s.CreateVolumeSpec(
-				args.secretName,
-				args.app.volumeName,
-				[]*k8s.VolumeItemsProperties{
-					{
-						Key:   "gcsbucket.credentials",
-						Value: "credentials.json",
-					},
-				},
-			),
-		},
-	}
-}
-
 func createJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
 		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
 		Spec: batchv1.JobSpecArgs{
-			Template: jobPodTemplate(args),
+			Template: createPodTemplateSpec(args, createRepoContainerSpec),
 			Selector: k8s.SpecLabelSelector(args.app.jobName),
 		},
 	}
@@ -63,7 +46,10 @@ func createPostgresCronJobSpec(args *specProperties) *batchv1.CronJobArgs {
 			Schedule: pulumi.String(args.app.schedule),
 			JobTemplate: &batchv1.JobTemplateSpecArgs{
 				Spec: &batchv1.JobSpecArgs{
-					Template: createPostgresPodTemplateSpecArgs(args),
+					Template: createPodTemplateSpec(
+						args,
+						postgresBackupContainerSpec,
+					),
 				},
 			},
 		},
