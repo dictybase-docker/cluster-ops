@@ -65,29 +65,48 @@ func createRepoJobs(
 ) (map[string]*jobProperties, error) {
 	jobMap := make(map[string]*jobProperties)
 	for _, name := range appNames {
-		app := &appProperties{}
-		if err := cfg.TryObject(name, app); err != nil {
-			return nil, fmt.Errorf("could not resolve app propties %s", err)
-		}
-		app.appName = name
-		app.jobName = fmt.Sprintf("%s-create-repository", name)
-		app.volumeName = fmt.Sprintf("%s-create-repo-volume", name)
-		app.bucket = fmt.Sprintf("%s-%s", props.namespace, app.bucket)
-		props.app = app
-		createJob, err := batchv1.NewJob(
-			ctx,
-			props.app.jobName,
-			createJobSpec(props),
-		)
+		jobprop, err := createAndSetupJob(ctx, cfg, name, props)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"error in running create repository job: %w",
-				err,
-			)
+			return nil, err
 		}
-		jobMap[name] = &jobProperties{job: createJob, app: app}
+		jobMap[name] = jobprop
 	}
 	return jobMap, nil
+}
+
+func createAndSetupJob(
+	ctx *pulumi.Context,
+	cfg *config.Config,
+	appName string,
+	props *specProperties,
+) (*jobProperties, error) {
+	app := &appProperties{}
+	if err := cfg.TryObject(appName, app); err != nil {
+		return nil, fmt.Errorf(
+			"could not resolve app properties for %s: %w",
+			appName,
+			err,
+		)
+	}
+	app.appName = appName
+	app.jobName = fmt.Sprintf("%s-create-repository", appName)
+	app.volumeName = fmt.Sprintf("%s-create-repo-volume", appName)
+	app.bucket = fmt.Sprintf("%s-%s", props.namespace, app.bucket)
+	props.app = app
+
+	createJob, err := batchv1.NewJob(
+		ctx,
+		props.app.jobName,
+		createJobSpec(props),
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"error in running create repository job for %s: %w",
+			appName, err,
+		)
+	}
+
+	return &jobProperties{job: createJob, app: app}, nil
 }
 
 func validateAppNames(cfg *config.Config) ([]string, error) {
