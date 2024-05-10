@@ -47,15 +47,15 @@ func postgresBackupEnvSpec(secret, pgsecret, bucket string) corev1.EnvVarArray {
 }
 
 func postgresBackupArgs(databases []string) pulumi.StringArrayInput {
-	dumpCmd := "pg_dump -Fc %s | restic backup --stdin --tag %s --stdin-filename %s.dump"
+	dumpCmdTmpl := "pg_dump -Fc %s | restic backup --stdin --tag %s --stdin-filename %s.dump"
 	commands := make([]string, 0)
 	for _, dbname := range databases {
 		commands = append(commands,
-			fmt.Sprintf(dumpCmd, dbname, dbname, dbname),
+			fmt.Sprintf(dumpCmdTmpl, dbname, dbname, dbname),
 		)
 
 	}
-	return pulumi.ToStringArray([]string{strings.Join(commands, ";")})
+	return pulumi.StringArray{pulumi.String(strings.Join(commands, ";"))}
 }
 
 func containerVolumeSpec(
@@ -96,11 +96,11 @@ func baseContainerSpec(args *specProperties) corev1.ContainerArgs {
 }
 
 func containerCommand() pulumi.StringArrayInput {
-	return pulumi.ToStringArray([]string{"/bin/sh", "-c"})
+	return pulumi.StringArray{pulumi.String("/bin/sh"), pulumi.String("-c")}
 }
 
 func createRepoArgs() pulumi.StringArrayInput {
-	return pulumi.ToStringArray(
-		[]string{"restic snapshots || restic init"},
-	)
+	return pulumi.StringArray{
+		pulumi.String("restic snapshots || restic init"),
+	}
 }
