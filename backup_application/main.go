@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/batch/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -183,4 +184,28 @@ func configProps(cfg *config.Config) (*specProperties, error) {
 		image:      image,
 		tag:        tag,
 	}, nil
+}
+
+func createGcpBucket(
+	bucket string,
+	ctx *pulumi.Context,
+) (*storage.Bucket, error) {
+	bucketResource, err := storage.NewBucket(
+		ctx,
+		bucket,
+		&storage.BucketArgs{
+			Location: pulumi.String("US-CENTRAL1"),
+			Versioning: &storage.BucketVersioningArgs{
+				Enabled: pulumi.Bool(true),
+			},
+		},
+	)
+	if err != nil {
+		return bucketResource, fmt.Errorf(
+			"error in creating bucket %s %q",
+			bucket,
+			err,
+		)
+	}
+	return bucketResource, nil
 }
