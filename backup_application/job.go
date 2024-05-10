@@ -29,7 +29,7 @@ func createPodTemplateSpec(
 	}
 }
 
-func createJobSpec(args *specProperties) *batchv1.JobArgs {
+func createRepoJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
 		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
 		Spec: batchv1.JobSpecArgs{
@@ -39,7 +39,7 @@ func createJobSpec(args *specProperties) *batchv1.JobArgs {
 	}
 }
 
-func createPostgresCronJobSpec(args *specProperties) *batchv1.CronJobArgs {
+func createPostgresJobSpec(args *specProperties) *batchv1.CronJobArgs {
 	return &batchv1.CronJobArgs{
 		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
 		Spec: batchv1.CronJobSpecArgs{
