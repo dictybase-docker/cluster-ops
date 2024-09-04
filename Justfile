@@ -6,17 +6,17 @@ extract-roles-custom project_id sa_email output_file:
     echo "Output will be saved to: {{output_file}}"
     
     # Create directory for output file if it doesn't exist
-    mkdir -p "$(dirname "{{output_file}}")"
+    mkdir -p $(dirname {{output_file}})
     
-    # Extract roles and save to output file
-    gcloud projects get-iam-policy "{{project_id}}" --format=json | \
-    jq -r '.bindings[] | select(.members[] | \ 
-      contains("serviceAccount:{{sa_email}}")) | \
-      .role' > "{{output_file}}"
+    # Extract predefined roles and save to output file
+    gcloud projects get-iam-policy {{project_id}} --format=json | \
+    jq -r '.bindings[] | 
+    select(.members[] | contains("serviceAccount:{{sa_email}}")) | 
+    select(.role | startswith("roles/")) | 
+    .role' > {{output_file}}
+
     
     echo "Roles have been extracted and saved to {{output_file}}"
-    echo "Summary of extracted roles:"
-    cat "{{output_file}}"
 
 # Target to output service account details in JSON format
 sa-details project_id sa_email output_file:
@@ -34,6 +34,4 @@ sa-details project_id sa_email output_file:
     --format=json > "{{output_file}}"
     
     echo "Service account details have been saved to {{output_file}}"
-    echo "Summary of service account details:"
-    jq '.' "{{output_file}}"
 
