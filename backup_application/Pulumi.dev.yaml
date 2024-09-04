@@ -1,17 +1,30 @@
 secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
 encryptedkey: CiQAEYtTetJfSB56Pa9G2DNqyhGeoxxSRQ7hMLcYG2YTiqG0JM8SSQCytYByeEyGxNhMSk5KBRUPhdylDUfy6UvBWGKVE+xF8dVwuC7L55YS3j1O5k3HrgO3cda4dH//xsFIxTyVbqC17s1Gc1gibDo=
 config:
-  backup_application:apps: '["arangodb","postgresql"]'
-  backup_application:arangodb:
-    bucket: gs:restic-arango-backup:/
-    databases: '["content","order","stock","annotation"]'
-    schedule: 30 1 * * *
-  backup_application:image: dictybase/restic-arango-pg
-  backup_application:namespace: dev
-  backup_application:postgresql:
-    bucket: gs:restic-pg-backup:/
-    databases: '["contentl","authl","logto","dictycr_auth"]'
-    schedule: 30 2 * * *
-    secret: postgres-pguser-dictycr
-  backup_application:secret: dictycr-secret-dev
-  backup_application:tag: develop-c3f5df2
+  backup_application:properties:
+    apps:
+      - arangodb
+      - postgresql
+    arangodb:
+      bucket: pulumi-dev-restic-arango-backup
+      databases:
+        - order
+        - content
+        - annotation
+        - stock
+      schedule: 30 1 * * *
+    image: dictybase/arangorespg
+    namespace: dev
+    postgresql:
+      bucket: pulumi-dev-restic-pg-backup
+      databases:
+        - content
+        - authl
+        - logto
+        - dictycr_auth
+      schedule: 30 2 * * *
+      secret: postgres-pguser-dictycr
+    secret: dictycr-secret-dev
+    tag: 86327aa
+  gcp:project:
+    secure: v1:iejsChwv3baYH9W3:2TiwQQ1aoNlaOS7vpQoru2WPB5quPnp/Qp6bIoO5z3BU
