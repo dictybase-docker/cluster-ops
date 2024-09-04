@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -131,7 +132,7 @@ func analyzeRoles(cltx *cli.Context) error {
 		return err
 	}
 
-	fmt.Printf("Analysis complete. Results written to %s\n", outputFile)
+	slog.Info("Analysis complete", "output_file", outputFile)
 
 	return nil
 }
@@ -146,16 +147,12 @@ func writeResultsToFile(
 	}
 	defer file.Close()
 
-	if _, err := fmt.Fprintf(file, "Predefined Roles: %v\n", result.PredefinedRoles); err != nil {
-		return fmt.Errorf("failed to write to output file: %v", err)
-	}
-
-	if _, err := fmt.Fprintf(file, "Custom Roles: %v\n", result.CustomRoles); err != nil {
-		return fmt.Errorf("failed to write to output file: %v", err)
-	}
-
-	if _, err := fmt.Fprintf(file, "Unique Permissions in Custom Roles: %v\n", result.UniquePermissions); err != nil {
-		return fmt.Errorf("failed to write to output file: %v", err)
+	// Write unique permissions to file
+	for _, permission := range result.UniquePermissions {
+		_, err := fmt.Fprintln(file, permission)
+		if err != nil {
+			return fmt.Errorf("failed to write permission to file: %v", err)
+		}
 	}
 
 	return nil
