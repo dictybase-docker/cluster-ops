@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/batch/v1"
@@ -11,27 +9,102 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type appProperties struct {
-	jobName    string
-	appName    string
-	volumeName string
-	bucket     string
-	schedule   string
-	secret     string
-	databases  []string
+type SpecProperties struct {
+	Apps       []string
+	Arangodb   *AppProperties
+	Postgresql *AppProperties
+	Image      string
+	Namespace  string
+	Secret     string
+	Tag        string
+}
+
+func (spec *SpecProperties) GetApps() []string {
+	return spec.Apps
+}
+
+func (spec *SpecProperties) GetArangodb() *AppProperties {
+	return spec.Arangodb
+}
+
+func (spec *SpecProperties) GetPostgresql() *AppProperties {
+	return spec.Postgresql
+}
+
+func (spec *SpecProperties) GetImage() string {
+	return spec.Image
+}
+
+func (spec *SpecProperties) GetNamespace() string {
+	return spec.Namespace
+}
+
+func (spec *SpecProperties) GetSecret() string {
+	return spec.Secret
+}
+
+func (spec *SpecProperties) GetTag() string {
+	return spec.Tag
+}
+
+func (spec *SpecProperties) createGcpBucket(
+	ctx *pulumi.Context,
+	resource, bucket string,
+) (*storage.Bucket, error) {
+	bucketResource, err := storage.NewBucket(
+		ctx,
+		resource,
+		&storage.BucketArgs{
+			Name:                  pulumi.String(bucket),
+			Location:              pulumi.String("US-CENTRAL1"),
+			EnableObjectRetention: pulumi.Bool(true),
+			Versioning: &storage.BucketVersioningArgs{
+				Enabled: pulumi.Bool(true),
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"error in creating bucket %s: %w",
+			bucket,
+			err,
+		)
+	}
+	return bucketResource, nil
+}
+
+func (spec *SpecProperties) setupPostgresBackupCronJob(
+	ctx *pulumi.Context,
+) error {
+	spec.Postgresql.JobName = jobName(spec.Postgresql.AppName)
+	spec.Postgresql.VolumeName = volumeName(spec.Postgresql.AppName)
+
+	_, err := batchv1.NewCronJob(
+		ctx,
+		spec.Postgresql.JobName,
+		createPostgresJobSpec(spec),
+		pulumi.DependsOn([]pulumi.Resource{spec.Postgresql.BucketInstance}),
+	)
+	if err != nil {
+		return fmt.Errorf("error in running postgres backup cron job %s", err)
+	}
+	return nil
+}
+
+type AppProperties struct {
+	JobName        string
+	AppName        string
+	VolumeName     string
+	Bucket         string
+	Schedule       string
+	Secret         string
+	Databases      []string
+	BucketInstance *storage.Bucket
 }
 
 type jobProperties struct {
-	job  *batchv1.Job
-	spec *specProperties
-}
-
-type specProperties struct {
-	namespace  string
-	secretName string
-	image      string
-	tag        string
-	app        *appProperties
+	Job  *batchv1.Job
+	Spec *SpecProperties
 }
 
 func main() {
@@ -40,78 +113,82 @@ func main() {
 
 func execute(ctx *pulumi.Context) error {
 	cfg := config.New(ctx, "")
-	props, err := configProps(cfg)
+	props, err := setPropsFromConfig(cfg)
 	if err != nil {
 		return err
 	}
 
-	appNames, err := validateAppNames(cfg)
-	if err != nil {
-		return err
-	}
+	props.Arangodb.AppName = "arangodb"
+	props.Postgresql.AppName = "postgresql"
 
-	jobMap, err := createRepoJobs(ctx, cfg, appNames, props)
-	if err != nil {
-		return err
-	}
-	if err := setupAndCreatePostgresBackupCronJob(ctx, jobMap["postgresql"]); err != nil {
-		return err
-	}
-	return nil
-}
-
-func setupAndCreatePostgresBackupCronJob(
-	ctx *pulumi.Context,
-	props *jobProperties,
-) error {
-	// setup postgres backup cronjob
-	pgProps, pgCreateJob := setupCronSpecs(props)
-	_, err := batchv1.NewCronJob(
+	arangoBucket, err := props.createGcpBucket(
 		ctx,
-		pgProps.app.jobName,
-		createPostgresJobSpec(pgProps),
-		pulumi.DependsOn([]pulumi.Resource{pgCreateJob}),
+		fmt.Sprintf("%s-%s", props.Arangodb.Bucket, props.Namespace),
+		props.Arangodb.Bucket,
 	)
 	if err != nil {
-		return fmt.Errorf("error in running postgres backup cron job %s", err)
+		return err
 	}
+	props.Arangodb.BucketInstance = arangoBucket
+
+	pgBucket, err := props.createGcpBucket(
+		ctx,
+		fmt.Sprintf("%s-%s", props.Postgresql.Bucket, props.Namespace),
+		props.Postgresql.Bucket,
+	)
+	if err != nil {
+		return err
+	}
+	props.Postgresql.BucketInstance = pgBucket
+
+	err = props.setupPostgresBackupCronJob(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func setupCronSpecs(props *jobProperties) (*specProperties, *batchv1.Job) {
-	props.spec.app.jobName = fmt.Sprintf(
-		"%s-backup",
-		props.spec.app.appName,
-	)
-	props.spec.app.volumeName = fmt.Sprintf(
-		"%s-backup-volume",
-		props.spec.app.appName,
-	)
-	return props.spec, props.job
+func setPropsFromConfig(cfg *config.Config) (*SpecProperties, error) {
+	specs := &SpecProperties{}
+	if err := cfg.TryObject("properties", specs); err != nil {
+		return nil, fmt.Errorf("error in mapping specs %s", err)
+	}
+	return specs, nil
 }
 
-func createRepoJobs(
+func jobName(name string) string {
+	return fmt.Sprintf("%s-backup", name)
+}
+
+func volumeName(name string) string {
+	return fmt.Sprintf("%-backup-volume", name)
+}
+
+/* func createRepoJobs(
 	ctx *pulumi.Context,
 	cfg *config.Config,
 	appNames []string,
 	props *specProperties,
+	bucket *storage.Bucket,
 ) (map[string]*jobProperties, error) {
 	jobMap := make(map[string]*jobProperties)
 	for _, name := range appNames {
-		jobprop, err := createAndSetupJob(ctx, cfg, name, props)
+		jobprop, err := createAndSetupJob(ctx, cfg, name, props, bucket)
 		if err != nil {
 			return nil, err
 		}
 		jobMap[name] = jobprop
 	}
 	return jobMap, nil
-}
+} */
 
-func createAndSetupJob(
+/* func createAndSetupJob(
 	ctx *pulumi.Context,
 	cfg *config.Config,
 	appName string,
 	props *specProperties,
+	bucket *storage.Bucket,
 ) (*jobProperties, error) {
 	app := &appProperties{}
 	if err := cfg.TryObject(appName, app); err != nil {
@@ -124,18 +201,16 @@ func createAndSetupJob(
 	app.appName = appName
 	app.jobName = fmt.Sprintf("%s-create-repository", appName)
 	app.volumeName = fmt.Sprintf("%s-create-repo-volume", appName)
-	app.bucket = fmt.Sprintf("%s-%s", props.namespace, app.bucket)
+	app.bucket = bucket.Name.ToStringOutput().ApplyT(func(name string) string {
+		return fmt.Sprintf("gs://%s", name)
+	}).(pulumi.StringOutput)
 	props.app = app
 
-	bucketResource, err := createGcpBucket(app.bucket, ctx)
-	if err != nil {
-		return nil, err
-	}
 	createJob, err := batchv1.NewJob(
 		ctx,
 		props.app.jobName,
 		createRepoJobSpec(props),
-		pulumi.DependsOn([]pulumi.Resource{bucketResource}),
+		pulumi.DependsOn([]pulumi.Resource{bucket}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -145,72 +220,4 @@ func createAndSetupJob(
 	}
 
 	return &jobProperties{job: createJob, spec: props}, nil
-}
-
-func validateAppNames(cfg *config.Config) ([]string, error) {
-	appNames := make([]string, 0)
-	if err := cfg.TryObject("apps", &appNames); err != nil {
-		return nil, fmt.Errorf(
-			"apps attribute is required in the configuration: %s",
-			err,
-		)
-	}
-	for _, vname := range []string{"postgresql", "arangodb"} {
-		if !slices.Contains(appNames, vname) {
-			return nil, errors.New(
-				"need either of arangodb or postgresql as app names",
-			)
-		}
-	}
-	return appNames, nil
-}
-
-func configProps(cfg *config.Config) (*specProperties, error) {
-	namespace, err := cfg.Try("namespace")
-	if err != nil {
-		return nil, fmt.Errorf("attribute namespace is missing %s", err)
-	}
-	tag, err := cfg.Try("tag")
-	if err != nil {
-		return nil, fmt.Errorf("attribute tag is missing %s", err)
-	}
-	image, err := cfg.Try("image")
-	if err != nil {
-		return nil, fmt.Errorf("attribute image is missing %s", err)
-	}
-	secret, err := cfg.Try("secret")
-	if err != nil {
-		return nil, fmt.Errorf("attribute secret is missing %s", err)
-	}
-
-	return &specProperties{
-		namespace:  namespace,
-		secretName: secret,
-		image:      image,
-		tag:        tag,
-	}, nil
-}
-
-func createGcpBucket(
-	bucket string,
-	ctx *pulumi.Context,
-) (*storage.Bucket, error) {
-	bucketResource, err := storage.NewBucket(
-		ctx,
-		bucket,
-		&storage.BucketArgs{
-			Location: pulumi.String("US-CENTRAL1"),
-			Versioning: &storage.BucketVersioningArgs{
-				Enabled: pulumi.Bool(true),
-			},
-		},
-	)
-	if err != nil {
-		return bucketResource, fmt.Errorf(
-			"error in creating bucket %s %q",
-			bucket,
-			err,
-		)
-	}
-	return bucketResource, nil
-}
+} */
