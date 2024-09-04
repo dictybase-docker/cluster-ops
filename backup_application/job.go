@@ -29,21 +29,23 @@ func createPodTemplateSpec(
 	}
 }
 
-func createRepoJobSpec(args *specProperties) *batchv1.JobArgs {
+/* func createRepoJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
 		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
 		Spec: batchv1.JobSpecArgs{
 			Template: createPodTemplateSpec(args, createRepoContainerSpec),
-			Selector: k8s.SpecLabelSelector(args.app.jobName),
+			Selector: k8s.SpecLabelSelector(a
+rgs.app.jobName),
 		},
 	}
-}
+} */
 
 func createPostgresJobSpec(args *specProperties) *batchv1.CronJobArgs {
+	pgProps := args.Postgresql
 	return &batchv1.CronJobArgs{
-		Metadata: k8s.Metadata(args.namespace, args.app.jobName),
+		Metadata: k8s.Metadata(args.Namespace, pgProps.JobName),
 		Spec: batchv1.CronJobSpecArgs{
-			Schedule: pulumi.String(args.app.schedule),
+			Schedule: pulumi.String(pgProps.Schedule),
 			JobTemplate: &batchv1.JobTemplateSpecArgs{
 				Spec: &batchv1.JobSpecArgs{
 					Template: createPodTemplateSpec(
