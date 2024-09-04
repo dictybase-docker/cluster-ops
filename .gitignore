@@ -27,3 +27,6 @@ session/
 share/
 certs/
 config.json
+.aider*
+service-accounts
+kops/kops-cluster-creator
