@@ -11,6 +11,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iam/v1"
+	"google.golang.org/api/option"
 )
 
 type AnalysisResult struct {
@@ -110,10 +111,11 @@ func analyzeRoles(cltx *cli.Context) error {
 	projectID := cltx.String("project-id")
 	serviceAccount := cltx.String("service-account")
 	outputFile := cltx.String("output")
+	credentialsFile := cltx.String("credentials")
 
 	ctx := context.Background()
 
-	iamService, rmService, err := initializeServices(ctx)
+	iamService, rmService, err := initializeServices(ctx, credentialsFile)
 	if err != nil {
 		return err
 	}
@@ -208,8 +210,11 @@ func performAnalysis(
 
 func initializeServices(
 	ctx context.Context,
+	credentialsFile string,
 ) (*iam.Service, *cloudresourcemanager.Service, error) {
-	iamService, err := iam.NewService(ctx)
+	opts := option.WithCredentialsFile(credentialsFile)
+
+	iamService, err := iam.NewService(ctx, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"failed to create IAM service client: %v",
@@ -217,7 +222,7 @@ func initializeServices(
 		)
 	}
 
-	rmService, err := cloudresourcemanager.NewService(ctx)
+	rmService, err := cloudresourcemanager.NewService(ctx, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"failed to create Resource Manager service client: %v",

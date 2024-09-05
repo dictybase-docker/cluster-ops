@@ -34,6 +34,12 @@ func main() {
 				Usage:   "Output file name",
 				Value:   "role_analysis_output.txt",
 			},
+			&cli.StringFlag{
+				Name:     "credentials",
+				Aliases:  []string{"c"},
+				Usage:    "Path to the GCP credentials file",
+				Required: true,
+			},
 		},
 		Action: analyzeRoles,
 	}
