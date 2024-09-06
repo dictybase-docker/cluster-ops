@@ -76,10 +76,10 @@ create-sa-manager project_id sa_name sa_display_name:
 
     echo "Service account creation and role assignment completed."
 
-# Create a JSON-formatted key for a service account
 # project: The Google Cloud project ID
 # service_account: The name of the service account (without @project.iam.gserviceaccount.com)
 # key_file: The filename to save the JSON key to
+# Target to create a JSON-formatted key for a service account
 create-sa-key project service_account key_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -89,3 +89,27 @@ create-sa-key project service_account key_file:
         --project={{project}} \
         --key-file-type=json
     echo "Service account key created and saved to {{key_file}}"
+
+# key_file: Path to the service account JSON key file
+# config_name: Name for the gcloud configuration to create or update
+# Target to authenticate with gcloud using a service account JSON key file and set up a named configuration
+gcloud-auth-sa key_file config_name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Authenticating with gcloud using service account key from {{key_file}}"
+    
+    # Create a new configuration or activate an existing one
+    gcloud config configurations create {{config_name}} --no-activate || gcloud config configurations activate {{config_name}}
+    
+    # Authenticate using the service account key
+    gcloud auth activate-service-account --key-file={{key_file}}
+    
+    # Set the project from the service account key
+    project=$(jq -r '.project_id' {{key_file}})
+    gcloud config set project $project
+    
+    echo "Authentication complete. Configuration '{{config_name}}' is now active and set to project $project"
+    
+    # Display the current configuration
+    gcloud config list
+
