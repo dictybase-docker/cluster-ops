@@ -75,3 +75,17 @@ create-sa-manager project_id sa_name sa_display_name:
     done
 
     echo "Service account creation and role assignment completed."
+
+# Create a JSON-formatted key for a service account
+# project: The Google Cloud project ID
+# service_account: The name of the service account (without @project.iam.gserviceaccount.com)
+# key_file: The filename to save the JSON key to
+create-sa-key project service_account key_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Creating service account key for {{service_account}} in project {{project}}"
+    gcloud iam service-accounts keys create {{key_file}} \
+        --iam-account={{service_account}}@{{project}}.iam.gserviceaccount.com \
+        --project={{project}} \
+        --key-file-type=json
+    echo "Service account key created and saved to {{key_file}}"
