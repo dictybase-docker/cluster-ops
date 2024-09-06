@@ -136,3 +136,39 @@ add-role-to-sa project service_account role:
         --flatten="bindings[].members" \
         --format='table(bindings.role,bindings.members)' \
         --filter="bindings.members:$sa_email AND bindings.role:{{role}}"
+
+# project: The Google Cloud project ID
+# api_file: Path to the file containing API names, one per line
+# Target to enable multiple Google Cloud API services from a file
+enable-apis project api_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Enabling APIs for project {{project}} from file {{api_file}}"
+    
+    # Check if the file exists
+    if [ ! -f "{{api_file}}" ]; then
+        echo "Error: File {{api_file}} not found"
+        exit 1
+    fi
+    
+    # Read the file and enable each API
+    while IFS= read -r api || [ -n "$api" ]; do
+        # Trim whitespace
+        api=$(echo "$api" | xargs)
+        
+        # Skip empty lines
+        [ -z "$api" ] && continue
+        
+        echo "Enabling API: $api"
+        gcloud services enable "$api" --project="{{project}}" --async
+    done < "{{api_file}}"
+    
+    echo "Finished enabling APIs"
+    
+    # List enabled APIs
+    echo "Ran commands enabled APIs in project {{project}}:"
+
+# Target to list enabled apis for a google cloud project
+available-apis project:
+    gcloud services list --project="{{project}}" --enabled --format="table(config.name,config.title)"
