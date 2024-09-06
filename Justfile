@@ -53,3 +53,25 @@ analyze-roles project_id sa_email credentials output_file="role_analysis_output.
     
     echo "Analysis complete. Results saved to {{output_file}}"
 
+# Target to create service account and assign roles
+create-sa-manager project_id sa_name sa_display_name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Creating service account: {{sa_name}}"
+    gcloud iam service-accounts create {{sa_name}} \
+        --project={{project_id}} \
+        --display-name="{{sa_display_name}}"
+
+    echo "Assigning roles to {{sa_name}}"
+    for role in roles/iam.serviceAccountAdmin \
+                roles/iam.serviceAccountCreator \
+                roles/iam.roleAdmin \
+                roles/resourcemanager.projectIamAdmin
+    do
+        gcloud projects add-iam-policy-binding {{project_id}} \
+            --member="serviceAccount:{{sa_name}}@{{project_id}}.iam.gserviceaccount.com" \
+            --role="$role"
+    done
+
+    echo "Service account creation and role assignment completed."
