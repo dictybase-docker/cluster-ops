@@ -196,3 +196,39 @@ list-enabled-apis project output_file:
         echo "... (and $(($api_count - 5)) more)"
     fi
 
+# project: The Google Cloud project ID
+# api_file: Path to the file containing API names to disable, one per line
+# Target to disable multiple Google Cloud API services from a file
+disable-apis project api_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Disabling APIs for project {{project}} from file {{api_file}}"
+    
+    # Check if the file exists
+    if [ ! -f "{{api_file}}" ]; then
+        echo "Error: File {{api_file}} not found"
+        exit 1
+    fi
+    
+    # Read the file and disable each API
+    while IFS= read -r api || [ -n "$api" ]; do
+        # Trim whitespace
+        api=$(echo "$api" | xargs)
+        
+        # Skip empty lines
+        [ -z "$api" ] && continue
+        
+        echo "Disabling API: $api"
+        if gcloud services disable "$api" --project="{{project}}" --force; then
+            echo "Successfully disabled $api"
+        else
+            echo "Failed to disable $api"
+        fi
+    done < "{{api_file}}"
+    
+    echo "Finished disabling APIs"
+    
+    # List remaining enabled APIs
+    echo "Currently enabled APIs in project {{project}}:"
+    gcloud services list --project="{{project}}" --enabled --format="table(config.name,config.title)"
