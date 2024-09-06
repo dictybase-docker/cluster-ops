@@ -169,6 +169,30 @@ enable-apis project api_file:
     # List enabled APIs
     echo "Ran commands enabled APIs in project {{project}}:"
 
-# Target to list enabled apis for a google cloud project
-available-apis project:
-    gcloud services list --project="{{project}}" --enabled --format="table(config.name,config.title)"
+# project: The Google Cloud project ID
+# output_file: Path to the file where API names will be written
+# Target to list enabled APIs in a Google Cloud project and write their names to a file
+list-enabled-apis project output_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Listing enabled APIs for project {{project}}"
+    
+    # Fetch enabled APIs and write their names to the output file
+    gcloud services list --project="{{project}}" \
+        --enabled \
+        --format="value(config.name)" > "{{output_file}}"
+    
+    # Count the number of enabled APIs
+    api_count=$(wc -l < "{{output_file}}" | tr -d ' ')
+    
+    echo "Wrote $api_count enabled API names to {{output_file}}"
+    
+    # Display the first few lines of the file
+    echo "First few enabled APIs:"
+    head -n 5 "{{output_file}}"
+    
+    if [ "$api_count" -gt 5 ]; then
+        echo "... (and $(($api_count - 5)) more)"
+    fi
+
