@@ -113,3 +113,26 @@ gcloud-auth-sa key_file config_name:
     # Display the current configuration
     gcloud config list
 
+# project: The Google Cloud project ID
+# service_account: The service account name (without @project.iam.gserviceaccount.com)
+# role: The role to add (e.g., roles/serviceusage.serviceUsageAdmin)
+# Add a role to a service account
+add-role-to-sa project service_account role:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Construct the full service account email
+    sa_email="{{service_account}}@{{project}}.iam.gserviceaccount.com"
+    
+    echo "Adding role {{role}} to service account {{service_account}} in project {{project}}"
+    gcloud projects add-iam-policy-binding {{project}} \
+        --member="serviceAccount:$sa_email" \
+        --role="{{role}}"
+    echo "Role {{role}} successfully added to {{service_account}}"
+
+    # Verify the role was added
+    echo "Verifying role assignment..."
+    gcloud projects get-iam-policy {{project}} \
+        --flatten="bindings[].members" \
+        --format='table(bindings.role,bindings.members)' \
+        --filter="bindings.members:$sa_email AND bindings.role:{{role}}"
