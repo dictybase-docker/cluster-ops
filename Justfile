@@ -35,3 +35,21 @@ sa-details project_id sa_email output_file:
     
     echo "Service account details have been saved to {{output_file}}"
 
+# Target to build and run the analyze-roles subcommand
+analyze-roles project_id sa_email credentials output_file="role_analysis_output.txt":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building and running analyze-roles for service account: {{sa_email}} in project: {{project_id}}"
+    
+    # Build the binary
+    go build -o ./bin/gcp-tools ./cmd/gcp
+    
+    # Run the analyze-roles subcommand
+    ./bin/gcp-tools analyze-roles \
+        --project-id={{project_id}} \
+        --service-account={{sa_email}} \
+        --credentials={{credentials}} \
+        --output={{output_file}}
+    
+    echo "Analysis complete. Results saved to {{output_file}}"
+
