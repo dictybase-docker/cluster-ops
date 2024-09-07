@@ -56,7 +56,7 @@ analyze-roles project_id sa_name credentials output_file="role_analysis_output.t
     
     echo "Analysis complete. Results saved to {{output_file}}"
 
-# Target to create service account and assign roles
+# Target to create service account manager service account and assign predefined roles
 create-sa-manager project_id sa_name sa_display_name:
     #!/usr/bin/env bash
     set -euo pipefail
