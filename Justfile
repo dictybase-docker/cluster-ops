@@ -237,3 +237,24 @@ disable-apis project api_file:
     # List remaining enabled APIs
     echo "Currently enabled APIs in project {{project}}:"
     gcloud services list --project="{{project}}" --enabled --format="table(config.name,config.title)"
+# Target to print the properties of the currently active gcloud configuration
+gcloud-active-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Current gcloud configuration:"
+    echo "-----------------------------"
+    
+    # Get the active configuration name
+    active_config=$(gcloud config configurations list --filter="IS_ACTIVE=true" --format="value(name)")
+    echo "Active Configuration: $active_config"
+    echo ""
+    
+    # Print active service account (if any)
+    active_sa=$(gcloud auth list --filter="status:ACTIVE AND account~@.*\.iam\.gserviceaccount\.com" --format="value(account)")
+    if [ -n "$active_sa" ]; then
+        echo "Active Service Account: $active_sa"
+    else
+        echo "No active service account"
+    fi
+
