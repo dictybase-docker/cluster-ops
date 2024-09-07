@@ -31,6 +31,7 @@ create-sa-manager project_id sa_name sa_display_name:
     for role in roles/iam.serviceAccountAdmin \
                 roles/iam.serviceAccountCreator \
                 roles/iam.roleAdmin \
+                roles/iam.serviceAccountKeyAdmin \
                 roles/resourcemanager.projectIamAdmin \
                 roles/serviceusage.serviceUsageAdmin
     do
