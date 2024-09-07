@@ -253,22 +253,25 @@ disable-apis project api_file:
 
 # Authenticate with gcloud using a service account JSON key file and set up a named configuration
 [group('authentication-and-configuration')]
-gcloud-auth-sa key_file config_name:
+gcloud-auth-sa key_file config_name zone="us-central1-c":
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Authenticating with gcloud using service account key from {{key_file}}"
     
-    # Create a new configuration or activate an existing one
-    gcloud config configurations create {{config_name}} --no-activate || gcloud config configurations activate {{config_name}}
+    # Create a new configuration
+    gcloud config configurations create {{config_name}}
     
     # Authenticate using the service account key
     gcloud auth activate-service-account --key-file={{key_file}}
     
-    # Set the project from the service account key
+    # Set the project, account, and zone from the service account key and parameters
     project=$(jq -r '.project_id' {{key_file}})
+    account=$(jq -r '.client_email' {{key_file}})
+    gcloud config set account $account
     gcloud config set project $project
+    gcloud config set compute/zone {{zone}}
     
-    echo "Authentication complete. Configuration '{{config_name}}' is now active and set to project $project"
+    echo "Authentication complete. Configuration '{{config_name}}' is set to project $project with account $account and zone {{zone}}"
     
     # Display the current configuration
     gcloud config list
