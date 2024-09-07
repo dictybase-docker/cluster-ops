@@ -31,3 +31,4 @@ config.json
 service-accounts
 kops/kops-cluster-creator
 bin
+iam-files
