@@ -1,0 +1,2 @@
+roles/cloudkms.cryptoOperator
+roles/compute.admin
