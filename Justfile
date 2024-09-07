@@ -280,6 +280,26 @@ assign-roles-to-sa project sa_name roles_file:
         --format='table(bindings.role)' \
         --filter="bindings.members:$sa_email"
 
+# project: The Google Cloud project ID
+# sa_name: The name of the service account to create
+# sa_description: The description for the service account
+# Target to create a new service account
+create-sa project sa_name sa_description:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Creating service account '{{sa_name}}' in project {{project}}"
+    gcloud iam service-accounts create {{sa_name}} \
+        --project={{project}} \
+        --display-name="{{sa_name}}" \
+        --description="{{sa_description}}"
+    
+    # Verify the service account was created
+    echo "Verifying service account creation..."
+    gcloud iam service-accounts describe {{sa_name}}@{{project}}.iam.gserviceaccount.com \
+        --project={{project}} \
+        --format="table(displayName,email,description)"
+
 # Target to print the properties of the currently active gcloud configuration
 gcloud-active-config:
     #!/usr/bin/env bash
