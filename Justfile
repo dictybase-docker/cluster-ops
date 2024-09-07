@@ -1,8 +1,9 @@
-# Target to extract roles with custom project ID, service account email, and output file
-extract-roles-custom project_id sa_email output_file:
+# Target to extract roles with custom project ID, service account name, and output file
+extract-roles-custom project_id sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Extracting roles for service account: {{sa_email}} in project: {{project_id}}"
+    sa_email="{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
+    echo "Extracting roles for service account: $sa_email in project: {{project_id}}"
     echo "Output will be saved to: {{output_file}}"
     
     # Create directory for output file if it doesn't exist
@@ -11,7 +12,7 @@ extract-roles-custom project_id sa_email output_file:
     # Extract predefined roles and save to output file
     gcloud projects get-iam-policy {{project_id}} --format=json | \
     jq -r '.bindings[] | 
-    select(.members[] | contains("serviceAccount:{{sa_email}}")) | 
+    select(.members[] | contains("serviceAccount:'"$sa_email"'")) | 
     select(.role | startswith("roles/")) | 
     .role' > {{output_file}}
 
@@ -19,27 +20,29 @@ extract-roles-custom project_id sa_email output_file:
     echo "Roles have been extracted and saved to {{output_file}}"
 
 # Target to output service account details in JSON format
-sa-details project_id sa_email output_file:
+sa-details project_id sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Fetching details for service account: {{sa_email}} in project: {{project_id}}"
+    sa_email="{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
+    echo "Fetching details for service account: $sa_email in project: {{project_id}}"
     echo "Output will be saved to: {{output_file}}"
     
     # Create directory for output file if it doesn't exist
     mkdir -p "$(dirname "{{output_file}}")"
     
     # Fetch service account details and save to output file
-    gcloud iam service-accounts describe "{{sa_email}}" \
+    gcloud iam service-accounts describe "$sa_email" \
     --project="{{project_id}}" \
     --format=json > "{{output_file}}"
     
     echo "Service account details have been saved to {{output_file}}"
 
 # Target to build and run the analyze-roles subcommand
-analyze-roles project_id sa_email credentials output_file="role_analysis_output.txt":
+analyze-roles project_id sa_name credentials output_file="role_analysis_output.txt":
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Building and running analyze-roles for service account: {{sa_email}} in project: {{project_id}}"
+    sa_email="{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
+    echo "Building and running analyze-roles for service account: $sa_email in project: {{project_id}}"
     
     # Build the binary
     go build -o ./bin/gcp-tools ./cmd/gcp
@@ -47,7 +50,7 @@ analyze-roles project_id sa_email credentials output_file="role_analysis_output.
     # Run the analyze-roles subcommand
     ./bin/gcp-tools analyze-roles \
         --project-id={{project_id}} \
-        --service-account={{sa_email}} \
+        --service-account="$sa_email" \
         --credentials={{credentials}} \
         --output={{output_file}}
     
@@ -78,15 +81,16 @@ create-sa-manager project_id sa_name sa_display_name:
     echo "Service account creation and role assignment completed."
 
 # project: The Google Cloud project ID
-# service_account: The name of the service account (without @project.iam.gserviceaccount.com)
+# sa_name: The name of the service account (without @project.iam.gserviceaccount.com)
 # key_file: The filename to save the JSON key to
 # Target to create a JSON-formatted key for a service account
-create-sa-key project service_account key_file:
+create-sa-key project sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Creating service account key for {{service_account}} in project {{project}}"
+    sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
+    echo "Creating service account key for $sa_email in project {{project}}"
     gcloud iam service-accounts keys create {{key_file}} \
-        --iam-account={{service_account}}@{{project}}.iam.gserviceaccount.com \
+        --iam-account="$sa_email" \
         --project={{project}} \
         --key-file-type=json
     echo "Service account key created and saved to {{key_file}}"
@@ -115,21 +119,21 @@ gcloud-auth-sa key_file config_name:
     gcloud config list
 
 # project: The Google Cloud project ID
-# service_account: The service account name (without @project.iam.gserviceaccount.com)
+# sa_name: The service account name (without @project.iam.gserviceaccount.com)
 # role: The role to add (e.g., roles/serviceusage.serviceUsageAdmin)
 # Add a role to a service account
-add-role-to-sa project service_account role:
+add-role-to-sa project sa_name role:
     #!/usr/bin/env bash
     set -euo pipefail
     
     # Construct the full service account email
-    sa_email="{{service_account}}@{{project}}.iam.gserviceaccount.com"
+    sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
     
-    echo "Adding role {{role}} to service account {{service_account}} in project {{project}}"
+    echo "Adding role {{role}} to service account $sa_email in project {{project}}"
     gcloud projects add-iam-policy-binding {{project}} \
         --member="serviceAccount:$sa_email" \
         --role="{{role}}"
-    echo "Role {{role}} successfully added to {{service_account}}"
+    echo "Role {{role}} successfully added to $sa_email"
 
     # Verify the role was added
     echo "Verifying role assignment..."
