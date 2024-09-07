@@ -28,7 +28,6 @@ share/
 certs/
 config.json
 .aider*
-service-accounts
 kops/kops-cluster-creator
 bin
-iam-files
+iam-files/service-accounts
