@@ -1,0 +1,8 @@
+roles/compute.admin
+roles/compute.networkAdmin
+roles/compute.storageAdmin
+roles/iam.serviceAccountAdmin
+roles/iam.serviceAccountUser
+roles/resourcemanager.projectIamAdmin
+roles/logging.admin
+roles/storage.admin
