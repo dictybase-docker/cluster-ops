@@ -1,0 +1,8 @@
+artifactregistry.googleapis.com
+bigquery.googleapis.com
+bigquerystorage.googleapis.com
+datastore.googleapis.com
+deploymentmanager.googleapis.com
+domains.googleapis.com
+gkebackup.googleapis.com
+sql-component.googleapis.com
