@@ -321,3 +321,28 @@ analyze-roles project_id sa_name credentials output_file="role_analysis_output.t
         --output={{output_file}}
     
     echo "Analysis complete. Results saved to {{output_file}}"
+
+# Create an HMAC key for a service account
+[group('service-account-management')]
+create-hmac-key project sa_name output_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
+    echo "Creating HMAC key for service account: $sa_email in project: {{project}}"
+    
+    # Create HMAC key and save full response to a temporary file
+    temp_file=$(mktemp)
+    gcloud storage hmac create --project={{project}} --service-account="$sa_email" --format=json > $temp_file
+    
+    # Extract accessId and secret, and create JSON output
+    jq '{accessId: .metadata.accessId, secret: .secret}' "$temp_file" > "{{output_file}}"
+    
+    # Remove temporary file
+    rm $temp_file
+    
+    echo "HMAC key created. Access ID and secret saved to {{output_file}}"
+    
+    # Display the access ID (but not the secret)
+    echo "Access ID: $(jq -r .accessId {{output_file}})"
+    echo "Secret: [HIDDEN]"
