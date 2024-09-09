@@ -1,0 +1,5 @@
+encryptionsalt: v1:SYGgsEz93Fo=:v1:3oMz+W6dcLdArvB6:CgFRqhxce5vDQeszBzgv2nJ9SU4I/g==
+config:
+  storage-class:diskType: pd-balanced
+  storage-class:name: dictycr-balanced
+  storage-class:provisioner: pd.csi.storage.gke.io
