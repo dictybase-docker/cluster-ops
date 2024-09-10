@@ -19,17 +19,16 @@ create-machine-image project instance backup_for="k8s-node":
     gcloud compute machine-images create $image_name \
         --project={{project}} \
         --source-instance={{instance}} \
-        --source-instance-zone=$source_zone \
-        --labels="created-by=justfile,source-instance={{instance}},backup_for={{backup_for}}"
+        --source-instance-zone=$source_zone 
     
     echo "Machine image creation initiated. Waiting for completion..."
-    gcloud compute machine-images describe {{image_name}} \
+    gcloud compute machine-images describe $image_name \
         --project={{project}} \
         --format="value(status)" \
         --verbosity=none | \
     while read status; do
         if [ "$status" = "READY" ]; then
-            echo "Machine image '{{image_name}}' created successfully."
+            echo "Machine image $image_name created successfully."
             break
         elif [ "$status" = "FAILED" ]; then
             echo "Machine image creation failed."
@@ -42,6 +41,6 @@ create-machine-image project instance backup_for="k8s-node":
 
     # Display the details of the created machine image
     echo "Machine image details:"
-    gcloud compute machine-images describe {{image_name}} \
+    gcloud compute machine-images describe $image_name \
         --project={{project}} \
         --format="table(name,family,sourceDisk,sourceInstance,status,storageLocations,labels)"
