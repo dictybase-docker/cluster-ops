@@ -1,12 +1,7 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
-	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/batch/v1"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type SpecProperties struct {
@@ -19,7 +14,7 @@ type SpecProperties struct {
 	Tag        string
 }
 
-func (spec *SpecProperties) GetApps() []string {
+/* func (spec *SpecProperties) GetApps() []string {
 	return spec.Apps
 }
 
@@ -45,9 +40,9 @@ func (spec *SpecProperties) GetSecret() string {
 
 func (spec *SpecProperties) GetTag() string {
 	return spec.Tag
-}
+} */
 
-func (spec *SpecProperties) createGcpBucket(
+/* func (spec *SpecProperties) createGcpBucket(
 	ctx *pulumi.Context,
 	resource, bucket string,
 ) (*storage.Bucket, error) {
@@ -71,9 +66,9 @@ func (spec *SpecProperties) createGcpBucket(
 		)
 	}
 	return bucketResource, nil
-}
+} */
 
-func (spec *SpecProperties) setupPostgresBackupCronJob(
+/* func (spec *SpecProperties) setupPostgresBackupCronJob(
 	ctx *pulumi.Context,
 ) error {
 	spec.Postgresql.JobName = jobName(spec.Postgresql.AppName)
@@ -89,7 +84,7 @@ func (spec *SpecProperties) setupPostgresBackupCronJob(
 		return fmt.Errorf("error in running postgres backup cron job %s", err)
 	}
 	return nil
-}
+} */
 
 type AppProperties struct {
 	JobName        string
@@ -102,16 +97,16 @@ type AppProperties struct {
 	BucketInstance *storage.Bucket
 }
 
-type jobProperties struct {
+/* type jobProperties struct {
 	Job  *batchv1.Job
 	Spec *SpecProperties
-}
+} */
 
 func main() {
-	pulumi.Run(execute)
+	// pulumi.Run(execute)
 }
 
-func execute(ctx *pulumi.Context) error {
+/* func execute(ctx *pulumi.Context) error {
 	cfg := config.New(ctx, "")
 	props, err := setPropsFromConfig(cfg)
 	if err != nil {
@@ -147,23 +142,23 @@ func execute(ctx *pulumi.Context) error {
 	}
 
 	return nil
-}
+} */
 
-func setPropsFromConfig(cfg *config.Config) (*SpecProperties, error) {
+/* func setPropsFromConfig(cfg *config.Config) (*SpecProperties, error) {
 	specs := &SpecProperties{}
 	if err := cfg.TryObject("properties", specs); err != nil {
 		return nil, fmt.Errorf("error in mapping specs %s", err)
 	}
 	return specs, nil
-}
+} */
 
-func jobName(name string) string {
+/* func jobName(name string) string {
 	return fmt.Sprintf("%s-backup", name)
-}
+} */
 
-func volumeName(name string) string {
+/* func volumeName(name string) string {
 	return fmt.Sprintf("%-backup-volume", name)
-}
+} */
 
 /* func createRepoJobs(
 	ctx *pulumi.Context,

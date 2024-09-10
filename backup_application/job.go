@@ -1,15 +1,8 @@
 package main
 
-import (
-	"github.com/dictybase-docker/cluster-ops/k8s"
-	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/batch/v1"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-)
+// type containerSpecFn func(*specProperties) corev1.ContainerArray
 
-type containerSpecFn func(*specProperties) corev1.ContainerArray
-
-func createPodTemplateSpec(
+/* func createPodTemplateSpec(
 	args *specProperties,
 	fn containerSpecFn,
 ) *corev1.PodTemplateSpecArgs {
@@ -27,7 +20,7 @@ func createPodTemplateSpec(
 			),
 		},
 	}
-}
+} */
 
 /* func createRepoJobSpec(args *specProperties) *batchv1.JobArgs {
 	return &batchv1.JobArgs{
@@ -40,7 +33,7 @@ rgs.app.jobName),
 	}
 } */
 
-func createPostgresJobSpec(args *specProperties) *batchv1.CronJobArgs {
+/* func createPostgresJobSpec(args *specProperties) *batchv1.CronJobArgs {
 	pgProps := args.Postgresql
 	return &batchv1.CronJobArgs{
 		Metadata: k8s.Metadata(args.Namespace, pgProps.JobName),
@@ -56,4 +49,4 @@ func createPostgresJobSpec(args *specProperties) *batchv1.CronJobArgs {
 			},
 		},
 	}
-}
+} */
