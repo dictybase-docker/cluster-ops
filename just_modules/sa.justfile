@@ -36,6 +36,7 @@ create-sa-manager project_id sa_name sa_display_name:
                 roles/storage.hmacKeyAdmin \
                 roles/storage.admin \
                 roles/compute.instanceAdmin.v1 \
+                roles/cloudkms.cryptoOperator \
                 roles/serviceusage.serviceUsageAdmin
     do
         gcloud projects add-iam-policy-binding {{project_id}} \
