@@ -1,0 +1,10 @@
+encryptionsalt: v1:9gxv3qelLt8=:v1:HF951GfFHhd/JPv0:/WG256OgIOOVlg2E2Ll0hHIo/Uz3ag==
+config:
+  pg-operator:properties:
+    chart:
+      name: cnpg/cloudnative-pg
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.22.0
+    image:
+      tag: 1.24.0
+    namespace: dev
