@@ -3,6 +3,7 @@ mod gcp-sa 'just_modules/sa.justfile'
 mod gcp-role 'just_modules/role.justfile'
 mod gcp-api 'just_modules/api.justfile'
 mod gcp-image 'just_modules/image.justfile'
+mod gcp-kms 'just_modules/kms.justfile'
 
 # Run Golang tests using Dagger
 test:
