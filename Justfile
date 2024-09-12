@@ -4,6 +4,7 @@ mod gcp-role 'just_modules/role.justfile'
 mod gcp-api 'just_modules/api.justfile'
 mod gcp-image 'just_modules/image.justfile'
 mod gcp-kms 'just_modules/kms.justfile'
+mod gcp-pulumi 'just_modules/pulumi.justfile'
 
 # Run Golang tests using Dagger
 test:
