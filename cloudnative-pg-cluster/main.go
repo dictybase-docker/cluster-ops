@@ -28,21 +28,23 @@ func NewProperties(ctx *pulumi.Context) (*Properties, error) {
 	return &props, nil
 }
 
-func (p *Properties) CreateSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
+func (prop *Properties) CreateSecret(
+	ctx *pulumi.Context,
+) (*corev1.Secret, error) {
 	// Read the file content
-	fileContent, err := os.ReadFile(p.Secret.Filepath)
+	fileContent, err := os.ReadFile(prop.Secret.Filepath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	// Create the secret
-	secret, err := corev1.NewSecret(ctx, "my-secret", &corev1.SecretArgs{
+	secret, err := corev1.NewSecret(ctx, prop.Secret.Name, &corev1.SecretArgs{
 		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(p.Secret.Name),
-			Namespace: pulumi.String(p.Namespace),
+			Name:      pulumi.String(prop.Secret.Name),
+			Namespace: pulumi.String(prop.Namespace),
 		},
 		StringData: pulumi.StringMap{
-			p.Secret.Key: pulumi.String(string(fileContent)),
+			prop.Secret.Key: pulumi.String(string(fileContent)),
 		},
 	})
 	if err != nil {
