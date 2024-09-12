@@ -2,6 +2,15 @@ secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/
 encryptedkey: CiQA3xuh3KrIgPRC22CEyXv0KBhNWZq0Vwi/WZB+jeNi1GBnW4USSAAbtemJh+8T4m3HCCXqCh33kbc004v3uN893KQP/qi3hamZAA1odztwoAOdLk80UK4P0WnrbXfuBzhtz7cDygh01/G5CPDIwA==
 config:
   cloudnative-pg-cluster:properties:
+    cluster:
+      image:
+        name: ghcr.io/cloudnative-pg/postgresql
+        tag: 14.13-8
+      instances: 1
+      name: dictycr
+      storage:
+        class: dictycr-balanced
+        size: 50Gi
     namespace: dev
     secret:
       filepath:
