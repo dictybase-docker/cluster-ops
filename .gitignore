@@ -30,5 +30,5 @@ config.json
 .aider*
 kops/kops-cluster-creator
 bin
-iam-files/service-accounts
+gcs-files/service-accounts
 config.json.old
