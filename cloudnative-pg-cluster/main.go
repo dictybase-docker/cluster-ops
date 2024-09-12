@@ -23,10 +23,16 @@ type Storage struct {
 }
 
 type Cluster struct {
-	Image     Image   `pulumi:"image"`
-	Instances int     `pulumi:"instances"`
-	Name      string  `pulumi:"name"`
-	Storage   Storage `pulumi:"storage"`
+	Image     Image            `pulumi:"image"`
+	Instances int              `pulumi:"instances"`
+	Name      string           `pulumi:"name"`
+	Storage   Storage          `pulumi:"storage"`
+	PgConfig  PostgresqlConfig `pulumi:"pgconfig"`
+}
+
+type PostgresqlConfig struct {
+	MaxConnections string `pulumi:"max_connections"`
+	SharedBuffer   string `pulumi:"shared_buffer"`
 }
 
 type Secret struct {
@@ -144,7 +150,69 @@ func (prop *Properties) buildClusterSpec() *v1.ClusterSpecArgs {
 				prop.Cluster.Image.Tag,
 			),
 		),
-		Storage: prop.buildStorageArgs(),
+		Storage:    prop.buildStorageArgs(),
+		Postgresql: prop.buildPostgresqlArgs(),
+	}
+}
+
+func (prop *Properties) buildPostgresqlArgs() *v1.ClusterSpecPostgresqlArgs {
+	return &v1.ClusterSpecPostgresqlArgs{
+		Parameters: pulumi.StringMap{
+			"max_connections": pulumi.String(
+				prop.Cluster.PgConfig.MaxConnections,
+			),
+			"shared_buffers": pulumi.String(
+				prop.Cluster.PgConfig.SharedBuffer,
+			),
+			"max_locks_per_transaction":      pulumi.String("640"),
+			"max_pred_locks_per_transaction": pulumi.String("640"),
+			"work_mem":                       pulumi.String("200MB"),
+			"maintenance_work_mem":           pulumi.String("200MB"),
+			"temp_buffers":                   pulumi.String("30MB"),
+			"wal_buffers":                    pulumi.String("15MB"),
+			"wal_level":                      pulumi.String("logical"),
+			"min_wal_size":                   pulumi.String("200MB"),
+			"max_wal_size":                   pulumi.String("2GB"),
+			"checkpoint_timeout":             pulumi.String("10min"),
+			"checkpoint_completion_target":   pulumi.String("0.9"),
+			"cpu_tuple_cost":                 pulumi.String("0.003"),
+			"cpu_index_tuple_cost":           pulumi.String("0.01"),
+			"cpu_operator_cost":              pulumi.String("0.0005"),
+			"random_page_cost":               pulumi.String("2.5"),
+			"default_statistics_target":      pulumi.String("250"),
+			"effective_cache_size":           pulumi.String("1GB"),
+			"geqo_threshold":                 pulumi.String("14"),
+			"from_collapse_limit":            pulumi.String("14"),
+			"join_collapse_limit":            pulumi.String("14"),
+			"log_destination":                pulumi.String("stderr"),
+			"logging_collector":              pulumi.String("on"),
+			"log_min_messages":               pulumi.String("warning"),
+			"log_min_error_statement":        pulumi.String("warning"),
+			"log_min_duration_statement":     pulumi.String("250"),
+			"log_checkpoints":                pulumi.String("on"),
+			"log_connections":                pulumi.String("on"),
+			"log_disconnections":             pulumi.String("on"),
+			"log_line_prefix": pulumi.String(
+				"[%m] [%u@%d] [%p] %r >",
+			),
+			"log_lock_waits":                 pulumi.String("on"),
+			"log_statement":                  pulumi.String("mod"),
+			"log_temp_files":                 pulumi.String("0"),
+			"log_error_verbosity":            pulumi.String("default"),
+			"log_timezone":                   pulumi.String("America/Chicago"),
+			"autovacuum":                     pulumi.String("on"),
+			"autovacuum_vacuum_scale_factor": pulumi.String("0.1"),
+			"autovacuum_max_workers":         pulumi.String("4"),
+			"datestyle":                      pulumi.String("iso mdy"),
+			"timezone":                       pulumi.String("US/Central"),
+			"lc_messages":                    pulumi.String("C"),
+			"lc_monetary":                    pulumi.String("C"),
+			"lc_numeric":                     pulumi.String("C"),
+			"lc_time":                        pulumi.String("C"),
+			"default_text_search_config": pulumi.String(
+				"pg_catalog.english",
+			),
+		},
 	}
 }
 
