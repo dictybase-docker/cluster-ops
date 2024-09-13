@@ -32,6 +32,19 @@ type Cluster struct {
 	PgConfig   PostgresqlConfig `pulumi:"pgconfig"`
 	Bootstrap  Bootstrap        `pulumi:"bootstrap"`
 	Superuser  bool             `pulumi:"superuser"`
+	Backup     Backup           `pulumi:"backup"`
+}
+
+type Backup struct {
+	Bucket     string `pulumi:"bucket"`
+	BucketPath string `pulumi:"bucketPath"`
+	Retention  string `pulumi:"retention"`
+}
+
+type BackupSecret struct {
+	Name     string `pulumi:"name"`
+	Key      string `pulumi:"key"`
+	Filepath string `pulumi:"filepath"`
 }
 
 type Bootstrap struct {
@@ -50,15 +63,9 @@ type PostgresqlConfig struct {
 	SharedBuffer   string `pulumi:"shared_buffer"`
 }
 
-type Secret struct {
-	Filepath string `pulumi:"filepath"`
-	Key      string `pulumi:"key"`
-	Name     string `pulumi:"name"`
-}
-
 type Properties struct {
-	Cluster Cluster `pulumi:"cluster"`
-	Secret  Secret  `pulumi:"secret"`
+	Cluster      Cluster      `pulumi:"cluster"`
+	BackupSecret BackupSecret `pulumi:"backupSecret"`
 }
 
 func NewProperties(ctx *pulumi.Context) (*Properties, error) {
@@ -74,21 +81,25 @@ func (prop *Properties) CreateSecret(
 	ctx *pulumi.Context,
 ) (*corev1.Secret, error) {
 	// Read the file content
-	fileContent, err := os.ReadFile(prop.Secret.Filepath)
+	fileContent, err := os.ReadFile(prop.BackupSecret.Filepath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	// Create the secret
-	secret, err := corev1.NewSecret(ctx, prop.Secret.Name, &corev1.SecretArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(prop.Secret.Name),
-			Namespace: pulumi.String(prop.Cluster.Namespace),
+	secret, err := corev1.NewSecret(
+		ctx,
+		prop.BackupSecret.Name,
+		&corev1.SecretArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name:      pulumi.String(prop.BackupSecret.Name),
+				Namespace: pulumi.String(prop.Cluster.Namespace),
+			},
+			StringData: pulumi.StringMap{
+				prop.BackupSecret.Key: pulumi.String(string(fileContent)),
+			},
 		},
-		StringData: pulumi.StringMap{
-			prop.Secret.Key: pulumi.String(string(fileContent)),
-		},
-	})
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +215,28 @@ func (prop *Properties) buildClusterSpec() *cnpgv1.ClusterSpecArgs {
 		Postgresql:            prop.buildPostgresqlArgs(),
 		Bootstrap:             prop.buildBootstrapArgs(),
 		EnableSuperuserAccess: pulumi.Bool(prop.Cluster.Superuser),
+		Backup:                prop.buildBackupArgs(),
+	}
+}
+
+func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
+	return &cnpgv1.ClusterSpecBackupArgs{
+		BarmanObjectStore: &cnpgv1.ClusterSpecBackupBarmanObjectStoreArgs{
+			DestinationPath: pulumi.String(
+				fmt.Sprintf(
+					"%s/%s",
+					prop.Cluster.Backup.Bucket,
+					prop.Cluster.Backup.BucketPath,
+				),
+			),
+			GoogleCredentials: &cnpgv1.ClusterSpecBackupBarmanObjectStoreGoogleCredentialsArgs{
+				ApplicationCredentials: &cnpgv1.ClusterSpecBackupBarmanObjectStoreGoogleCredentialsApplicationCredentialsArgs{
+					Name: pulumi.String(prop.BackupSecret.Name),
+					Key:  pulumi.String(prop.BackupSecret.Key),
+				},
+			},
+		},
+		RetentionPolicy: pulumi.String(prop.Cluster.Backup.Retention),
 	}
 }
 
