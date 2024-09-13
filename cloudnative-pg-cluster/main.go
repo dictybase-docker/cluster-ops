@@ -23,13 +23,15 @@ type Storage struct {
 }
 
 type Cluster struct {
-	Image     Image            `pulumi:"image"`
-	Instances int              `pulumi:"instances"`
-	Name      string           `pulumi:"name"`
-	Namespace string           `pulumi:"namespace"`
-	Storage   Storage          `pulumi:"storage"`
-	PgConfig  PostgresqlConfig `pulumi:"pgconfig"`
-	Bootstrap Bootstrap        `pulumi:"bootstrap"`
+	Image      Image            `pulumi:"image"`
+	Instances  int              `pulumi:"instances"`
+	Name       string           `pulumi:"name"`
+	Namespace  string           `pulumi:"namespace"`
+	Storage    Storage          `pulumi:"storage"`
+	WalStorage Storage          `pulumi:"walStorage"`
+	PgConfig   PostgresqlConfig `pulumi:"pgconfig"`
+	Bootstrap  Bootstrap        `pulumi:"bootstrap"`
+	Superuser  bool             `pulumi:"superuser"`
 }
 
 type Bootstrap struct {
@@ -197,9 +199,11 @@ func (prop *Properties) buildClusterSpec() *cnpgv1.ClusterSpecArgs {
 				prop.Cluster.Image.Tag,
 			),
 		),
-		Storage:    prop.buildStorageArgs(),
-		Postgresql: prop.buildPostgresqlArgs(),
-		Bootstrap:  prop.buildBootstrapArgs(),
+		Storage:               prop.buildStorageArgs(),
+		WalStorage:            prop.buildWalStorageArgs(),
+		Postgresql:            prop.buildPostgresqlArgs(),
+		Bootstrap:             prop.buildBootstrapArgs(),
+		EnableSuperuserAccess: pulumi.Bool(prop.Cluster.Superuser),
 	}
 }
 
@@ -280,6 +284,13 @@ func (prop *Properties) buildStorageArgs() *cnpgv1.ClusterSpecStorageArgs {
 	return &cnpgv1.ClusterSpecStorageArgs{
 		StorageClass: pulumi.String(prop.Cluster.Storage.Class),
 		Size:         pulumi.String(prop.Cluster.Storage.Size),
+	}
+}
+
+func (prop *Properties) buildWalStorageArgs() *cnpgv1.ClusterSpecWalStorageArgs {
+	return &cnpgv1.ClusterSpecWalStorageArgs{
+		StorageClass: pulumi.String(prop.Cluster.WalStorage.Class),
+		Size:         pulumi.String(prop.Cluster.WalStorage.Size),
 	}
 }
 
