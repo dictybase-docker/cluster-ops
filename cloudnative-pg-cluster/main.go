@@ -9,7 +9,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	v1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
+	cnpgv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
 )
 
 type Image struct {
@@ -28,6 +28,18 @@ type Cluster struct {
 	Name      string           `pulumi:"name"`
 	Storage   Storage          `pulumi:"storage"`
 	PgConfig  PostgresqlConfig `pulumi:"pgconfig"`
+	Bootstrap Bootstrap        `pulumi:"bootstrap"`
+}
+
+type Bootstrap struct {
+	Database   string          `pulumi:"database"`
+	Owner      string          `pulumi:"owner"`
+	UserSecret BootstrapSecret `pulumi:"userSecret"`
+}
+
+type BootstrapSecret struct {
+	Name     string `pulumi:"name"`
+	Password string `pulumi:"password"`
 }
 
 type PostgresqlConfig struct {
@@ -111,9 +123,9 @@ func createResources(ctx *pulumi.Context) error {
 func (prop *Properties) CreatePostgresCluster(
 	ctx *pulumi.Context,
 	secret *corev1.Secret,
-) (*v1.Cluster, error) {
+) (*cnpgv1.Cluster, error) {
 	clusterArgs := prop.buildClusterArgs()
-	cluster, err := v1.NewCluster(
+	cluster, err := cnpgv1.NewCluster(
 		ctx, prop.Cluster.Name,
 		clusterArgs,
 		pulumi.DependsOn([]pulumi.Resource{secret}),
@@ -124,8 +136,8 @@ func (prop *Properties) CreatePostgresCluster(
 	return cluster, nil
 }
 
-func (prop *Properties) buildClusterArgs() *v1.ClusterArgs {
-	return &v1.ClusterArgs{
+func (prop *Properties) buildClusterArgs() *cnpgv1.ClusterArgs {
+	return &cnpgv1.ClusterArgs{
 		ApiVersion: pulumi.String("postgresql.cnpg.io/v1"),
 		Kind:       pulumi.String("Cluster"),
 		Metadata:   prop.buildMetadata(),
@@ -140,8 +152,8 @@ func (prop *Properties) buildMetadata() *metav1.ObjectMetaArgs {
 	}
 }
 
-func (prop *Properties) buildClusterSpec() *v1.ClusterSpecArgs {
-	return &v1.ClusterSpecArgs{
+func (prop *Properties) buildClusterSpec() *cnpgv1.ClusterSpecArgs {
+	return &cnpgv1.ClusterSpecArgs{
 		Instances: pulumi.Int(prop.Cluster.Instances),
 		ImageName: pulumi.String(
 			fmt.Sprintf(
@@ -152,11 +164,24 @@ func (prop *Properties) buildClusterSpec() *v1.ClusterSpecArgs {
 		),
 		Storage:    prop.buildStorageArgs(),
 		Postgresql: prop.buildPostgresqlArgs(),
+		Bootstrap:  prop.buildBootstrapArgs(),
 	}
 }
 
-func (prop *Properties) buildPostgresqlArgs() *v1.ClusterSpecPostgresqlArgs {
-	return &v1.ClusterSpecPostgresqlArgs{
+func (prop *Properties) buildBootstrapArgs() *cnpgv1.ClusterSpecBootstrapArgs {
+	return &cnpgv1.ClusterSpecBootstrapArgs{
+		Initdb: &cnpgv1.ClusterSpecBootstrapInitdbArgs{
+			Database: pulumi.String(prop.Cluster.Bootstrap.Database),
+			Owner:    pulumi.String(prop.Cluster.Bootstrap.Owner),
+			Secret: &cnpgv1.ClusterSpecBootstrapInitdbSecretArgs{
+				Name: pulumi.String(prop.Cluster.Bootstrap.UserSecret.Name),
+			},
+		},
+	}
+}
+
+func (prop *Properties) buildPostgresqlArgs() *cnpgv1.ClusterSpecPostgresqlArgs {
+	return &cnpgv1.ClusterSpecPostgresqlArgs{
 		Parameters: pulumi.StringMap{
 			"max_connections": pulumi.String(
 				prop.Cluster.PgConfig.MaxConnections,
@@ -216,8 +241,8 @@ func (prop *Properties) buildPostgresqlArgs() *v1.ClusterSpecPostgresqlArgs {
 	}
 }
 
-func (prop *Properties) buildStorageArgs() *v1.ClusterSpecStorageArgs {
-	return &v1.ClusterSpecStorageArgs{
+func (prop *Properties) buildStorageArgs() *cnpgv1.ClusterSpecStorageArgs {
+	return &cnpgv1.ClusterSpecStorageArgs{
 		StorageClass: pulumi.String(prop.Cluster.Storage.Class),
 		Size:         pulumi.String(prop.Cluster.Storage.Size),
 	}
