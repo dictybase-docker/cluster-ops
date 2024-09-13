@@ -26,6 +26,7 @@ type Cluster struct {
 	Image     Image            `pulumi:"image"`
 	Instances int              `pulumi:"instances"`
 	Name      string           `pulumi:"name"`
+	Namespace string           `pulumi:"namespace"`
 	Storage   Storage          `pulumi:"storage"`
 	PgConfig  PostgresqlConfig `pulumi:"pgconfig"`
 	Bootstrap Bootstrap        `pulumi:"bootstrap"`
@@ -54,9 +55,8 @@ type Secret struct {
 }
 
 type Properties struct {
-	Namespace string  `pulumi:"namespace"`
-	Cluster   Cluster `pulumi:"cluster"`
-	Secret    Secret  `pulumi:"secret"`
+	Cluster Cluster `pulumi:"cluster"`
+	Secret  Secret  `pulumi:"secret"`
 }
 
 func NewProperties(ctx *pulumi.Context) (*Properties, error) {
@@ -81,7 +81,7 @@ func (prop *Properties) CreateSecret(
 	secret, err := corev1.NewSecret(ctx, prop.Secret.Name, &corev1.SecretArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(prop.Secret.Name),
-			Namespace: pulumi.String(prop.Namespace),
+			Namespace: pulumi.String(prop.Cluster.Namespace),
 		},
 		StringData: pulumi.StringMap{
 			prop.Secret.Key: pulumi.String(string(fileContent)),
@@ -89,6 +89,33 @@ func (prop *Properties) CreateSecret(
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	return secret, nil
+}
+
+func (prop *Properties) CreateBasicAuthSecret(
+	ctx *pulumi.Context,
+) (*corev1.Secret, error) {
+	secret, err := corev1.NewSecret(ctx,
+		prop.Cluster.Bootstrap.UserSecret.Name,
+		&corev1.SecretArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String(
+					prop.Cluster.Bootstrap.UserSecret.Name,
+				),
+				Namespace: pulumi.String(prop.Cluster.Namespace),
+			},
+			Type: pulumi.String("kubernetes.io/basic-auth"),
+			StringData: pulumi.StringMap{
+				"username": pulumi.String(prop.Cluster.Bootstrap.Owner),
+				"password": pulumi.String(
+					prop.Cluster.Bootstrap.UserSecret.Password,
+				),
+			},
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create basic auth secret: %w", err)
 	}
 
 	return secret, nil
@@ -107,14 +134,21 @@ func createResources(ctx *pulumi.Context) error {
 		return err
 	}
 
-	// Create the PostgreSQL Cluster, passing the secret as a dependency
-	cluster, err := props.CreatePostgresCluster(ctx, secret)
+	// Create the basic auth secret
+	basicAuthSecret, err := props.CreateBasicAuthSecret(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Export the secret name and cluster name
+	// Create the PostgreSQL Cluster, passing both secrets as dependencies
+	cluster, err := props.CreatePostgresCluster(ctx, secret, basicAuthSecret)
+	if err != nil {
+		return err
+	}
+
+	// Export the secret names and cluster name
 	ctx.Export("secretName", secret.Metadata.Name())
+	ctx.Export("basicAuthSecretName", basicAuthSecret.Metadata.Name())
 	ctx.Export("clusterName", cluster.Metadata.Name())
 
 	return nil
@@ -123,12 +157,13 @@ func createResources(ctx *pulumi.Context) error {
 func (prop *Properties) CreatePostgresCluster(
 	ctx *pulumi.Context,
 	secret *corev1.Secret,
+	basicAuthSecret *corev1.Secret,
 ) (*cnpgv1.Cluster, error) {
 	clusterArgs := prop.buildClusterArgs()
 	cluster, err := cnpgv1.NewCluster(
 		ctx, prop.Cluster.Name,
 		clusterArgs,
-		pulumi.DependsOn([]pulumi.Resource{secret}),
+		pulumi.DependsOn([]pulumi.Resource{secret, basicAuthSecret}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
@@ -148,7 +183,7 @@ func (prop *Properties) buildClusterArgs() *cnpgv1.ClusterArgs {
 func (prop *Properties) buildMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(prop.Cluster.Name),
-		Namespace: pulumi.String(prop.Namespace),
+		Namespace: pulumi.String(prop.Cluster.Namespace),
 	}
 }
 
