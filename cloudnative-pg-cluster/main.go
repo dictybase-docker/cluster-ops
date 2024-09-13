@@ -33,6 +33,12 @@ type Cluster struct {
 	Bootstrap  Bootstrap        `pulumi:"bootstrap"`
 	Superuser  bool             `pulumi:"superuser"`
 	Backup     Backup           `pulumi:"backup"`
+	WalBackup  WalBackup        `pulumi:"walBackup"`
+}
+
+type WalBackup struct {
+	Compression string `pulumi:"compression"`
+	MaxParallel int    `pulumi:"maxParallel"`
 }
 
 type Backup struct {
@@ -219,6 +225,13 @@ func (prop *Properties) buildClusterSpec() *cnpgv1.ClusterSpecArgs {
 	}
 }
 
+func (prop *Properties) buildWalBackupConfigurationArgs() *cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs {
+	return &cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs{
+		Compression: pulumi.String(prop.Cluster.WalBackup.Compression),
+		MaxParallel: pulumi.Int(prop.Cluster.WalBackup.MaxParallel),
+	}
+}
+
 func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
 	return &cnpgv1.ClusterSpecBackupArgs{
 		BarmanObjectStore: &cnpgv1.ClusterSpecBackupBarmanObjectStoreArgs{
@@ -235,6 +248,7 @@ func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
 					Key:  pulumi.String(prop.BackupSecret.Key),
 				},
 			},
+			Wal: prop.buildWalBackupConfigurationArgs(),
 		},
 		RetentionPolicy: pulumi.String(prop.Cluster.Backup.Retention),
 	}
