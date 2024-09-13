@@ -2,7 +2,18 @@ secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/
 encryptedkey: CiQA3xuh3KrIgPRC22CEyXv0KBhNWZq0Vwi/WZB+jeNi1GBnW4USSAAbtemJh+8T4m3HCCXqCh33kbc004v3uN893KQP/qi3hamZAA1odztwoAOdLk80UK4P0WnrbXfuBzhtz7cDygh01/G5CPDIwA==
 config:
   cloudnative-pg-cluster:properties:
+    backupSecret:
+      filepath:
+        secure: v1:SgufXqT51S0rOo66:uvx9sPQNYGn4c9GE36bqzzYNk6XqrntKos/jPxh484JWOkXqL/tNa3S1K6soiud1E8Qgq3a/uhkz0taoenIF5CE=
+      key:
+        secure: v1:Mu698tgn7doWiZrc:YZoyID/CG6eYQ1R19aoR/2y32fQgFbLpdqAMlbp5lQ==
+      name:
+        secure: v1:7/3rZquQvAPqQKK+:SKmLmRNM2CPJdWmBQkUqDKuh77vdjVQWuU8Jy0ysdoo=
     cluster:
+      bootstrap:
+        database:
+          name: logto
+          owner: logto
       image:
         name: ghcr.io/cloudnative-pg/postgresql
         tag: 14.13-8
@@ -15,10 +26,3 @@ config:
         class: dictycr-balanced
         size: 50Gi
     namespace: dev
-    secret:
-      filepath:
-        secure: v1:Q5jDfnHEWTn4cy7r:HWX5EEvmjCCIYNwUdob8K4CTmwepq7FI8ScqQ2VTUuPlhQglnjXcBTdIxaZiAi+QSKniYv75x2uKyaKnQzW3jI4=
-      key:
-        secure: v1:WjrYQZdl2tW3fTZg:hT+A3+VAzQ60RLx/0phBhk6vAeFVJb+KnZBUSWHfHg==
-      name:
-        secure: v1:LO2DcndinyqCX7fW:RgsF4MSv5pkAKkuBXCDqBQAR6z7U03xcy4EFn6ZZqvU=
