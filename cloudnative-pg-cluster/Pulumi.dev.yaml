@@ -24,10 +24,10 @@ config:
         tag: 14.13-8
       instances: 1
       name: dictycr
+      namespace: dev
       pgconfig:
         max_connections: "100"
         shared_buffers: "128MB"
       storage:
         class: dictycr-balanced
         size: 50Gi
-    namespace: dev
