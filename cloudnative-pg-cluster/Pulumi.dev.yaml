@@ -3,18 +3,15 @@ encryptedkey: CiQA3xuh3KrIgPRC22CEyXv0KBhNWZq0Vwi/WZB+jeNi1GBnW4USSAAbtemJh+8T4m
 config:
   cloudnative-pg-cluster:properties:
     backupSecret:
-      name:
-        secure: v1:7/3rZquQvAPqQKK+:SKmLmRNM2CPJdWmBQkUqDKuh77vdjVQWuU8Jy0ysdoo=
       key:
         secure: v1:Mu698tgn7doWiZrc:YZoyID/CG6eYQ1R19aoR/2y32fQgFbLpdqAMlbp5lQ==
+      name:
+        secure: v1:7/3rZquQvAPqQKK+:SKmLmRNM2CPJdWmBQkUqDKuh77vdjVQWuU8Jy0ysdoo=
     cluster:
       backup:
         bucket: gs://pgbackup-devenv
         bucketPath: logto
         retention: 60d
-        backupSecret:
-          name: ${backupSecret.name}
-          key: ${backupSecret.key}
       bootstrap:
         database:
           name: logto
@@ -37,10 +34,9 @@ config:
         class: dictycr-balanced
         size: 50Gi
       superuser: true
+      walBackup:
+        compression: gzip
+        maxParallel: 3
       walStorage:
         class: dictycr-balanced
         size: 75Gi
-      backup:
-        bucket: gs://pgbackup-devenv
-        bucketPath: logto
-        retention: 60d
