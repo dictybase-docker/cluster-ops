@@ -31,3 +31,7 @@ config:
       storage:
         class: dictycr-balanced
         size: 50Gi
+      superuser: true
+      walStorage:
+        class: dictycr-balanced
+        size: 75Gi
