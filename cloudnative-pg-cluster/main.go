@@ -45,6 +45,9 @@ type Backup struct {
 	Bucket     string `pulumi:"bucket"`
 	BucketPath string `pulumi:"bucketPath"`
 	Retention  string `pulumi:"retention"`
+	Name       string `pulumi:"name"`
+	Schedule   string `pulumi:"schedule"`
+	Target     string `pulumi:"target"`
 }
 
 type BackupSecret struct {
@@ -187,7 +190,40 @@ func (prop *Properties) CreatePostgresCluster(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
 	}
+
+	// Create ScheduledBackup
+	scheduledBackupArgs := prop.buildScheduledBackupArgs()
+	_, err = cnpgv1.NewScheduledBackup(
+		ctx,
+		fmt.Sprintf("%s-scheduled-backup", prop.Cluster.Name),
+		scheduledBackupArgs,
+		pulumi.DependsOn([]pulumi.Resource{cluster}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ScheduledBackup: %w", err)
+	}
+
 	return cluster, nil
+}
+
+func (prop *Properties) buildScheduledBackupArgs() *cnpgv1.ScheduledBackupArgs {
+	return &cnpgv1.ScheduledBackupArgs{
+		ApiVersion: pulumi.String("postgresql.cnpg.io/v1"),
+		Kind:       pulumi.String("ScheduledBackup"),
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String(prop.Cluster.Backup.Name),
+			Namespace: pulumi.String(prop.Cluster.Namespace),
+		},
+		Spec: &cnpgv1.ScheduledBackupSpecArgs{
+			Schedule: pulumi.String(prop.Cluster.Backup.Schedule),
+			Cluster: &cnpgv1.ScheduledBackupSpecClusterArgs{
+				Name: pulumi.String(prop.Cluster.Name),
+			},
+			Target:               pulumi.String(prop.Cluster.Backup.Target),
+			BackupOwnerReference: pulumi.String("self"),
+			Immediate:            pulumi.Bool(true),
+		},
+	}
 }
 
 func (prop *Properties) buildClusterArgs() *cnpgv1.ClusterArgs {
