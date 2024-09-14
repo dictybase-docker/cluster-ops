@@ -249,6 +249,9 @@ func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
 				},
 			},
 			Wal: prop.buildWalBackupConfigurationArgs(),
+			Data: &cnpgv1.ClusterSpecBackupBarmanObjectStoreDataArgs{
+				Compression: pulumi.String(prop.Cluster.WalBackup.Compression),
+			},
 		},
 		RetentionPolicy: pulumi.String(prop.Cluster.Backup.Retention),
 	}
