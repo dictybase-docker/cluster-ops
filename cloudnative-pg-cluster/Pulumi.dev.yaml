@@ -11,7 +11,10 @@ config:
       backup:
         bucket: gs://pgbackup-devenv
         bucketPath: logto
+        name: logto
         retention: 60d
+        schedule: 0 0 0 * * *
+        target: primary
       bootstrap:
         database:
           name: logto
