@@ -2,6 +2,8 @@ run:
   timeout: 5m
   allow-parallel-runners: true
 linters-settings:
+   errcheck:
+     ignore: ""
    funlen: 
     lines: 80
    revive:
@@ -12,20 +14,6 @@ linters-settings:
       excludes:
         - G404
         - G402
-   wrapcheck:
-      ignoreSigs:
-        - .HandleMessagingError(
-        - .HandleGetError(
-        - .HandleError(
-        - .HandleGenericError(
-        - .HandleInsertError(
-        - .HandleNotFoundError(
-        - .HandleInvalidError(
-        - .HandleInvalidParamError(
-        - .HandleUpdateError(
-        - .Errorf(
-        - .Error(
-        - errors.New(
 linters:
   # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
   disable-all: true
