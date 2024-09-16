@@ -3,43 +3,47 @@ encryptedkey: CiQA3xuh3KrIgPRC22CEyXv0KBhNWZq0Vwi/WZB+jeNi1GBnW4USSAAbtemJh+8T4m
 config:
   cloudnative-pg-cluster:properties:
     backupSecret:
+      filepath:
+        secure: v1:wZ94vunr28bknfmw:6FZzEcbX3StMymKF4ujTxDiCljKnmldChP4OJMCoCrnPqfvR3FKHL8t4QyE=
       key:
         secure: v1:Mu698tgn7doWiZrc:YZoyID/CG6eYQ1R19aoR/2y32fQgFbLpdqAMlbp5lQ==
       name:
         secure: v1:7/3rZquQvAPqQKK+:SKmLmRNM2CPJdWmBQkUqDKuh77vdjVQWuU8Jy0ysdoo=
-    cluster:
-      backup:
-        bucket: gs://pgbackup-devenv
-        bucketPath: logto
-        name: logto
-        retention: 60d
-        schedule: 0 0 0 * * *
-        target: primary
-      bootstrap:
-        database:
+    clusters:
+      - cluster:
+          backup:
+            bucket: gs://pgbackup-devenv
+            bucketLocation: us-central1
+            bucketPath: logto
+            name: logto
+            retention: 60d
+            schedule: 0 0 0 * * *
+            target: primary
+          bootstrap:
+            database:
+              name: logto
+              owner: logto
+              userSecret:
+                name:
+                  secure: v1:8FArkInvpfhXrXnk:julCABifFgNdH+NB4vxMH6kNv4366qfG1vw=
+                password:
+                  secure: v1:hrzKQ6umr5GKbEyH:QtSv67easAPDFplS0eBB8v3GJ6jVNEqMLmOUPeME2kfPzKdB3w==
+          image:
+            name: ghcr.io/cloudnative-pg/postgresql
+            tag: 14.13-8
+          instances: 1
           name: logto
-          owner: logto
-          userSecret:
-            name:
-              secure: v1:8FArkInvpfhXrXnk:julCABifFgNdH+NB4vxMH6kNv4366qfG1vw=
-            password:
-              secure: v1:hrzKQ6umr5GKbEyH:QtSv67easAPDFplS0eBB8v3GJ6jVNEqMLmOUPeME2kfPzKdB3w==
-      image:
-        name: ghcr.io/cloudnative-pg/postgresql
-        tag: 14.13-8
-      instances: 1
-      name: logto
-      namespace: dev
-      pgconfig:
-        max_connections: "100"
-        shared_buffers: "128MB"
-      storage:
-        class: dictycr-balanced
-        size: 50Gi
-      superuser: true
-      walBackup:
-        compression: gzip
-        maxParallel: 3
-      walStorage:
-        class: dictycr-balanced
-        size: 75Gi
+          namespace: dev
+          pgconfig:
+            max_connections: "100"
+            shared_buffers: "128MB"
+          storage:
+            class: dictycr-balanced
+            size: 50Gi
+          superuser: true
+          walBackup:
+            compression: gzip
+            maxParallel: 3
+          walStorage:
+            class: dictycr-balanced
+            size: 75Gi
