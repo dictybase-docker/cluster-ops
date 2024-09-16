@@ -19,9 +19,10 @@ type ImageConfig struct {
 }
 
 type RedisOperatorConfig struct {
-	Chart     ChartConfig
-	Image     ImageConfig
-	Namespace string
+	Chart          ChartConfig
+	Image          ImageConfig
+	Namespace      string
+	WatchNamespace string `json:"watchNamespace"`
 }
 
 type RedisOperator struct {
@@ -55,6 +56,11 @@ func (rds *RedisOperator) Install(ctx *pulumi.Context) error {
 		Values: pulumi.Map{
 			"image": pulumi.Map{
 				"tag": pulumi.String(rds.Config.Image.Tag),
+			},
+			"redisOperator": pulumi.Map{
+				"watchNamespace": pulumi.String(
+					rds.Config.WatchNamespace,
+				),
 			},
 		},
 	})
