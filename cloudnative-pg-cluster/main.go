@@ -22,6 +22,10 @@ type Storage struct {
 	Size  string `pulumi:"size"`
 }
 
+type ClusterWrapper struct {
+	Cluster Cluster `json:"cluster"`
+}
+
 type Cluster struct {
 	Image      Image            `pulumi:"image"`
 	Instances  int              `pulumi:"instances"`
@@ -73,8 +77,8 @@ type PostgresqlConfig struct {
 }
 
 type Properties struct {
-	Cluster      Cluster      `pulumi:"cluster"`
-	BackupSecret BackupSecret `pulumi:"backupSecret"`
+	Clusters     []ClusterWrapper `pulumi:"clusters"`
+	BackupSecret BackupSecret     `pulumi:"backupSecret"`
 }
 
 func NewProperties(ctx *pulumi.Context) (*Properties, error) {
@@ -88,6 +92,7 @@ func NewProperties(ctx *pulumi.Context) (*Properties, error) {
 
 func (prop *Properties) CreateSecret(
 	ctx *pulumi.Context,
+	cluster Cluster,
 ) (*corev1.Secret, error) {
 	// Read the file content
 	fileContent, err := os.ReadFile(prop.BackupSecret.Filepath)
@@ -102,7 +107,7 @@ func (prop *Properties) CreateSecret(
 		&corev1.SecretArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String(prop.BackupSecret.Name),
-				Namespace: pulumi.String(prop.Cluster.Namespace),
+				Namespace: pulumi.String(cluster.Namespace),
 			},
 			StringData: pulumi.StringMap{
 				prop.BackupSecret.Key: pulumi.String(string(fileContent)),
@@ -116,23 +121,24 @@ func (prop *Properties) CreateSecret(
 	return secret, nil
 }
 
-func (prop *Properties) CreateBasicAuthSecret(
+func (prop *Properties) CreateUserSecret(
 	ctx *pulumi.Context,
+	cluster Cluster,
 ) (*corev1.Secret, error) {
 	secret, err := corev1.NewSecret(ctx,
-		prop.Cluster.Bootstrap.UserSecret.Name,
+		cluster.Bootstrap.UserSecret.Name,
 		&corev1.SecretArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Name: pulumi.String(
-					prop.Cluster.Bootstrap.UserSecret.Name,
+					cluster.Bootstrap.UserSecret.Name,
 				),
-				Namespace: pulumi.String(prop.Cluster.Namespace),
+				Namespace: pulumi.String(cluster.Namespace),
 			},
 			Type: pulumi.String("kubernetes.io/basic-auth"),
 			StringData: pulumi.StringMap{
-				"username": pulumi.String(prop.Cluster.Bootstrap.Owner),
+				"username": pulumi.String(cluster.Bootstrap.Owner),
 				"password": pulumi.String(
-					prop.Cluster.Bootstrap.UserSecret.Password,
+					cluster.Bootstrap.UserSecret.Password,
 				),
 			},
 		})
@@ -150,40 +156,53 @@ func createResources(ctx *pulumi.Context) error {
 		return err
 	}
 
-	// Create the secret using the receiver method
-	secret, err := props.CreateSecret(ctx)
-	if err != nil {
-		return err
-	}
+	for i, clusterWrapper := range props.Clusters {
+		cluster := clusterWrapper.Cluster
 
-	// Create the basic auth secret
-	basicAuthSecret, err := props.CreateBasicAuthSecret(ctx)
-	if err != nil {
-		return err
-	}
+		// Create the secret using the receiver method
+		secret, err := props.CreateSecret(ctx, cluster)
+		if err != nil {
+			return err
+		}
 
-	// Create the PostgreSQL Cluster, passing both secrets as dependencies
-	cluster, err := props.CreatePostgresCluster(ctx, secret, basicAuthSecret)
-	if err != nil {
-		return err
-	}
+		// Create the basic auth secret for each cluster
+		basicAuthSecret, err := props.CreateUserSecret(ctx, cluster)
+		if err != nil {
+			return err
+		}
 
-	// Export the secret names and cluster name
-	ctx.Export("secretName", secret.Metadata.Name())
-	ctx.Export("basicAuthSecretName", basicAuthSecret.Metadata.Name())
-	ctx.Export("clusterName", cluster.Metadata.Name())
+		// Create the PostgreSQL Cluster, passing both secrets as dependencies
+		pgCluster, err := props.CreatePostgresCluster(
+			ctx,
+			cluster,
+			secret,
+			basicAuthSecret,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Export the secret names and cluster name for each cluster
+		ctx.Export(fmt.Sprintf("secretName_%d", i), secret.Metadata.Name())
+		ctx.Export(
+			fmt.Sprintf("basicAuthSecretName_%d", i),
+			basicAuthSecret.Metadata.Name(),
+		)
+		ctx.Export(fmt.Sprintf("clusterName_%d", i), pgCluster.Metadata.Name())
+	}
 
 	return nil
 }
 
 func (prop *Properties) CreatePostgresCluster(
 	ctx *pulumi.Context,
+	cluster Cluster,
 	secret *corev1.Secret,
 	basicAuthSecret *corev1.Secret,
 ) (*cnpgv1.Cluster, error) {
-	clusterArgs := prop.buildClusterArgs()
-	cluster, err := cnpgv1.NewCluster(
-		ctx, prop.Cluster.Name,
+	clusterArgs := prop.buildClusterArgs(cluster)
+	pgCluster, err := cnpgv1.NewCluster(
+		ctx, cluster.Name,
 		clusterArgs,
 		pulumi.DependsOn([]pulumi.Resource{secret, basicAuthSecret}),
 	)
@@ -192,90 +211,98 @@ func (prop *Properties) CreatePostgresCluster(
 	}
 
 	// Create ScheduledBackup
-	scheduledBackupArgs := prop.buildScheduledBackupArgs()
+	scheduledBackupArgs := prop.buildScheduledBackupArgs(cluster)
 	_, err = cnpgv1.NewScheduledBackup(
 		ctx,
-		fmt.Sprintf("%s-scheduled-backup", prop.Cluster.Name),
+		fmt.Sprintf("%s-scheduled-backup", cluster.Name),
 		scheduledBackupArgs,
-		pulumi.DependsOn([]pulumi.Resource{cluster}),
+		pulumi.DependsOn([]pulumi.Resource{pgCluster}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ScheduledBackup: %w", err)
 	}
 
-	return cluster, nil
+	return pgCluster, nil
 }
 
-func (prop *Properties) buildScheduledBackupArgs() *cnpgv1.ScheduledBackupArgs {
+func (prop *Properties) buildScheduledBackupArgs(
+	cluster Cluster,
+) *cnpgv1.ScheduledBackupArgs {
 	return &cnpgv1.ScheduledBackupArgs{
 		ApiVersion: pulumi.String("postgresql.cnpg.io/v1"),
 		Kind:       pulumi.String("ScheduledBackup"),
 		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(prop.Cluster.Backup.Name),
-			Namespace: pulumi.String(prop.Cluster.Namespace),
+			Name:      pulumi.String(cluster.Backup.Name),
+			Namespace: pulumi.String(cluster.Namespace),
 		},
 		Spec: &cnpgv1.ScheduledBackupSpecArgs{
-			Schedule: pulumi.String(prop.Cluster.Backup.Schedule),
+			Schedule: pulumi.String(cluster.Backup.Schedule),
 			Cluster: &cnpgv1.ScheduledBackupSpecClusterArgs{
-				Name: pulumi.String(prop.Cluster.Name),
+				Name: pulumi.String(cluster.Name),
 			},
-			Target:               pulumi.String(prop.Cluster.Backup.Target),
+			Target:               pulumi.String(cluster.Backup.Target),
 			BackupOwnerReference: pulumi.String("self"),
 			Immediate:            pulumi.Bool(true),
 		},
 	}
 }
 
-func (prop *Properties) buildClusterArgs() *cnpgv1.ClusterArgs {
+func (prop *Properties) buildClusterArgs(cluster Cluster) *cnpgv1.ClusterArgs {
 	return &cnpgv1.ClusterArgs{
 		ApiVersion: pulumi.String("postgresql.cnpg.io/v1"),
 		Kind:       pulumi.String("Cluster"),
-		Metadata:   prop.buildMetadata(),
-		Spec:       prop.buildClusterSpec(),
+		Metadata:   prop.buildMetadata(cluster),
+		Spec:       prop.buildClusterSpec(cluster),
 	}
 }
 
-func (prop *Properties) buildMetadata() *metav1.ObjectMetaArgs {
+func (prop *Properties) buildMetadata(cluster Cluster) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String(prop.Cluster.Name),
-		Namespace: pulumi.String(prop.Cluster.Namespace),
+		Name:      pulumi.String(cluster.Name),
+		Namespace: pulumi.String(cluster.Namespace),
 	}
 }
 
-func (prop *Properties) buildClusterSpec() *cnpgv1.ClusterSpecArgs {
+func (prop *Properties) buildClusterSpec(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecArgs {
 	return &cnpgv1.ClusterSpecArgs{
-		Instances: pulumi.Int(prop.Cluster.Instances),
+		Instances: pulumi.Int(cluster.Instances),
 		ImageName: pulumi.String(
 			fmt.Sprintf(
 				"%s:%s",
-				prop.Cluster.Image.Name,
-				prop.Cluster.Image.Tag,
+				cluster.Image.Name,
+				cluster.Image.Tag,
 			),
 		),
-		Storage:               prop.buildStorageArgs(),
-		WalStorage:            prop.buildWalStorageArgs(),
-		Postgresql:            prop.buildPostgresqlArgs(),
-		Bootstrap:             prop.buildBootstrapArgs(),
-		EnableSuperuserAccess: pulumi.Bool(prop.Cluster.Superuser),
-		Backup:                prop.buildBackupArgs(),
+		Storage:               prop.buildStorageArgs(cluster),
+		WalStorage:            prop.buildWalStorageArgs(cluster),
+		Postgresql:            prop.buildPostgresqlArgs(cluster),
+		Bootstrap:             prop.buildBootstrapArgs(cluster),
+		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
+		Backup:                prop.buildBackupArgs(cluster),
 	}
 }
 
-func (prop *Properties) buildWalBackupConfigurationArgs() *cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs {
+func (prop *Properties) buildWalBackupConfigurationArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs {
 	return &cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs{
-		Compression: pulumi.String(prop.Cluster.WalBackup.Compression),
-		MaxParallel: pulumi.Int(prop.Cluster.WalBackup.MaxParallel),
+		Compression: pulumi.String(cluster.WalBackup.Compression),
+		MaxParallel: pulumi.Int(cluster.WalBackup.MaxParallel),
 	}
 }
 
-func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
+func (prop *Properties) buildBackupArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecBackupArgs {
 	return &cnpgv1.ClusterSpecBackupArgs{
 		BarmanObjectStore: &cnpgv1.ClusterSpecBackupBarmanObjectStoreArgs{
 			DestinationPath: pulumi.String(
 				fmt.Sprintf(
 					"%s/%s",
-					prop.Cluster.Backup.Bucket,
-					prop.Cluster.Backup.BucketPath,
+					cluster.Backup.Bucket,
+					cluster.Backup.BucketPath,
 				),
 			),
 			GoogleCredentials: &cnpgv1.ClusterSpecBackupBarmanObjectStoreGoogleCredentialsArgs{
@@ -284,35 +311,39 @@ func (prop *Properties) buildBackupArgs() *cnpgv1.ClusterSpecBackupArgs {
 					Key:  pulumi.String(prop.BackupSecret.Key),
 				},
 			},
-			Wal: prop.buildWalBackupConfigurationArgs(),
+			Wal: prop.buildWalBackupConfigurationArgs(cluster),
 			Data: &cnpgv1.ClusterSpecBackupBarmanObjectStoreDataArgs{
-				Compression: pulumi.String(prop.Cluster.WalBackup.Compression),
+				Compression: pulumi.String(cluster.WalBackup.Compression),
 			},
 		},
-		RetentionPolicy: pulumi.String(prop.Cluster.Backup.Retention),
+		RetentionPolicy: pulumi.String(cluster.Backup.Retention),
 	}
 }
 
-func (prop *Properties) buildBootstrapArgs() *cnpgv1.ClusterSpecBootstrapArgs {
+func (prop *Properties) buildBootstrapArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecBootstrapArgs {
 	return &cnpgv1.ClusterSpecBootstrapArgs{
 		Initdb: &cnpgv1.ClusterSpecBootstrapInitdbArgs{
-			Database: pulumi.String(prop.Cluster.Bootstrap.Database),
-			Owner:    pulumi.String(prop.Cluster.Bootstrap.Owner),
+			Database: pulumi.String(cluster.Bootstrap.Database),
+			Owner:    pulumi.String(cluster.Bootstrap.Owner),
 			Secret: &cnpgv1.ClusterSpecBootstrapInitdbSecretArgs{
-				Name: pulumi.String(prop.Cluster.Bootstrap.UserSecret.Name),
+				Name: pulumi.String(cluster.Bootstrap.UserSecret.Name),
 			},
 		},
 	}
 }
 
-func (prop *Properties) buildPostgresqlArgs() *cnpgv1.ClusterSpecPostgresqlArgs {
+func (prop *Properties) buildPostgresqlArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecPostgresqlArgs {
 	return &cnpgv1.ClusterSpecPostgresqlArgs{
 		Parameters: pulumi.StringMap{
 			"max_connections": pulumi.String(
-				prop.Cluster.PgConfig.MaxConnections,
+				cluster.PgConfig.MaxConnections,
 			),
 			"shared_buffers": pulumi.String(
-				prop.Cluster.PgConfig.SharedBuffer,
+				cluster.PgConfig.SharedBuffer,
 			),
 			"max_locks_per_transaction":      pulumi.String("640"),
 			"max_pred_locks_per_transaction": pulumi.String("640"),
@@ -366,17 +397,21 @@ func (prop *Properties) buildPostgresqlArgs() *cnpgv1.ClusterSpecPostgresqlArgs 
 	}
 }
 
-func (prop *Properties) buildStorageArgs() *cnpgv1.ClusterSpecStorageArgs {
+func (prop *Properties) buildStorageArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecStorageArgs {
 	return &cnpgv1.ClusterSpecStorageArgs{
-		StorageClass: pulumi.String(prop.Cluster.Storage.Class),
-		Size:         pulumi.String(prop.Cluster.Storage.Size),
+		StorageClass: pulumi.String(cluster.Storage.Class),
+		Size:         pulumi.String(cluster.Storage.Size),
 	}
 }
 
-func (prop *Properties) buildWalStorageArgs() *cnpgv1.ClusterSpecWalStorageArgs {
+func (prop *Properties) buildWalStorageArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecWalStorageArgs {
 	return &cnpgv1.ClusterSpecWalStorageArgs{
-		StorageClass: pulumi.String(prop.Cluster.WalStorage.Class),
-		Size:         pulumi.String(prop.Cluster.WalStorage.Size),
+		StorageClass: pulumi.String(cluster.WalStorage.Class),
+		Size:         pulumi.String(cluster.WalStorage.Size),
 	}
 }
 
