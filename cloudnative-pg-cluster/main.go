@@ -10,6 +10,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
 	cnpgv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
+	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
 )
 
 type Image struct {
@@ -46,12 +47,13 @@ type WalBackup struct {
 }
 
 type Backup struct {
-	Bucket     string `pulumi:"bucket"`
-	BucketPath string `pulumi:"bucketPath"`
-	Retention  string `pulumi:"retention"`
-	Name       string `pulumi:"name"`
-	Schedule   string `pulumi:"schedule"`
-	Target     string `pulumi:"target"`
+	Bucket         string `pulumi:"bucket"`
+	BucketLocation string `pulumi:"bucketLocation"`
+	BucketPath     string `pulumi:"bucketPath"`
+	Retention      string `pulumi:"retention"`
+	Name           string `pulumi:"name"`
+	Schedule       string `pulumi:"schedule"`
+	Target         string `pulumi:"target"`
 }
 
 type BackupSecret struct {
@@ -90,7 +92,7 @@ func NewProperties(ctx *pulumi.Context) (*Properties, error) {
 	return props, nil
 }
 
-func (prop *Properties) CreateSecret(
+func (prop *Properties) CreateBackupSecret(
 	ctx *pulumi.Context,
 	cluster Cluster,
 ) (*corev1.Secret, error) {
@@ -159,8 +161,19 @@ func createResources(ctx *pulumi.Context) error {
 	for i, clusterWrapper := range props.Clusters {
 		cluster := clusterWrapper.Cluster
 
+		// Create GCS bucket for each cluster
+		bucket, err := createBackupGCSBucket(
+			ctx,
+			cluster.Backup.Bucket,
+			cluster.Backup.BucketLocation,
+		)
+		if err != nil {
+			return err
+		}
+		ctx.Export(fmt.Sprintf("bucketName_%d", i), bucket.Name)
+
 		// Create the secret using the receiver method
-		secret, err := props.CreateSecret(ctx, cluster)
+		secret, err := props.CreateBackupSecret(ctx, cluster)
 		if err != nil {
 			return err
 		}
@@ -171,12 +184,13 @@ func createResources(ctx *pulumi.Context) error {
 			return err
 		}
 
-		// Create the PostgreSQL Cluster, passing both secrets as dependencies
+		// Create the PostgreSQL Cluster, passing both secrets and the bucket as dependencies
 		pgCluster, err := props.CreatePostgresCluster(
 			ctx,
 			cluster,
 			secret,
 			basicAuthSecret,
+			bucket,
 		)
 		if err != nil {
 			return err
@@ -199,12 +213,13 @@ func (prop *Properties) CreatePostgresCluster(
 	cluster Cluster,
 	secret *corev1.Secret,
 	basicAuthSecret *corev1.Secret,
+	bucket *storage.Bucket,
 ) (*cnpgv1.Cluster, error) {
 	clusterArgs := prop.buildClusterArgs(cluster)
 	pgCluster, err := cnpgv1.NewCluster(
 		ctx, cluster.Name,
 		clusterArgs,
-		pulumi.DependsOn([]pulumi.Resource{secret, basicAuthSecret}),
+		pulumi.DependsOn([]pulumi.Resource{secret, basicAuthSecret, bucket}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
@@ -413,6 +428,41 @@ func (prop *Properties) buildWalStorageArgs(
 		StorageClass: pulumi.String(cluster.WalStorage.Class),
 		Size:         pulumi.String(cluster.WalStorage.Size),
 	}
+}
+
+func createBackupGCSBucket(
+	ctx *pulumi.Context,
+	name string,
+	location string,
+) (*storage.Bucket, error) {
+	bucket, err := storage.NewBucket(ctx, name, &storage.BucketArgs{
+		Name:     pulumi.String(name),
+		Location: pulumi.String(location),
+		Versioning: &storage.BucketVersioningArgs{
+			Enabled: pulumi.Bool(true),
+		},
+		LifecycleRules: storage.BucketLifecycleRuleArray{
+			&storage.BucketLifecycleRuleArgs{
+				Action: &storage.BucketLifecycleRuleActionArgs{
+					Type: pulumi.String("Delete"),
+				},
+				Condition: &storage.BucketLifecycleRuleConditionArgs{
+					Age:              pulumi.Int(90),
+					NumNewerVersions: pulumi.Int(1),
+				},
+			},
+		},
+		SoftDeletePolicy: &storage.BucketSoftDeletePolicyArgs{
+			RetentionDurationSeconds: pulumi.Int(
+				30 * 24 * 60 * 60,
+			), // 30 days in seconds
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating GCS bucket: %v", err)
+	}
+
+	return bucket, nil
 }
 
 func main() {
