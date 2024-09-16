@@ -9,3 +9,4 @@ config:
     image:
       tag: v0.18.0
     namespace: operators
+    watchNamespace: dev
