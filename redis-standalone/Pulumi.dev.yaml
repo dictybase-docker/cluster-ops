@@ -1,0 +1,11 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3IZOtHqobkhB9mgjpWSnhX3aEPMiSvMz01WisuvGRXsSSQAbtemJLzWrNNiNDrjX3W80e/BHeHYAfdN+3AFm0aX8CJGtvLjwuaq+AdWPP55VgcGNkngObIT/JHOOezX81hjb2nO7569Nx4o=
+config:
+  redis-standalone:properties:
+    image:
+      name: quay.io/opstree/redis
+      tag: v7.0.12
+    namespace: dev
+    storage:
+      class: dictycr-balanced
+      size: 50Gi
