@@ -1,0 +1,26 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3LKUH9froFuL62zhQRIT+QTV4HOpnP1SbZmeF/5DjNYSSQAbtemJ5Dx6tACmOxz4NlGF+0ypw3xUEdFN8rf3bP/tjrQPxEU+ZYw7LlkHAHEx1D7sGxhdc/zo7/JNM5r3gQYCwVz+/sffF+0=
+config:
+  minio:properties:
+    chart:
+      name: bitnami/minio
+      repository: https://charts.bitnami.com/bitnami
+      version: 14.7.10
+    image:
+      tag: 2024.8.3
+    namespace: dev
+    secret:
+      name:
+        secure: v1:N8CrwzAItV8hDqbk:A/qaSh1wvLpona7HRoye4Zo5n4Ad
+      passKey:
+        secure: v1:2uI55tu3+qSYiFjz:rbGQ+WL/G9bSBeYzCPJxlpeEaQ0=
+      password:
+        secure: v1:5P3sUtCNqFVbzxlc:+KJ+qTDUMqCESkpE8st3pf+QtMaQwNPp4UtFXH2hLazk0wwu3t3yYwJGaojuHXYj1SSc1jc=
+      userKey:
+        secure: v1:1MT0KHCiGLMZaHo1:I54WA+hlWpzSpCEOJffWLirgYSE=
+      userName:
+        secure: v1:0kW5fF5Pu7JPqlxz:brhdu8p8WYZBLGi3/TyP9MMhMdS/p1U=
+    storage:
+      class: dictycr-balanced
+      size: 80Gi
+    webui: false
