@@ -75,6 +75,13 @@ func (rds *RedisStandalone) createRedisSpec() *redisv1beta2.RedisSpecArgs {
 		KubernetesConfig: rds.createKubernetesConfig(),
 		LivenessProbe:    rds.createLivenessProbe(),
 		ReadinessProbe:   rds.createReadinessProbe(),
+		SecurityContext:  rds.createSecurityContext(),
+	}
+}
+
+func (rds *RedisStandalone) createSecurityContext() *redisv1beta2.RedisSpecSecurityContextArgs {
+	return &redisv1beta2.RedisSpecSecurityContextArgs{
+		RunAsUser: pulumi.Int(1000),
 	}
 }
 
