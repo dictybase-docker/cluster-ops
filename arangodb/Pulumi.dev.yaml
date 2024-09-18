@@ -1,0 +1,10 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3Lp4hmfZcR9/9m8hAGR30c0QsSAhDQ/tPKtnz4mWZ7ISSQAbtemJR2ojcgVJVuJtl5ORGHiUTi3ZtpiSfGtQP6obOpHL1oKwAd1Pblp7MQVWOY9h8Ib/ZnWyeyFHGySGPPzrOMqYVmXEk/o=
+config:
+  arangodb:properties:
+    chart:
+      name: kube-arangodb/kube-arangodb
+      repository: https://arangodb.github.io/kube-arangodb
+      version: 1.2.42
+    deploymentReplication: false
+    namespace: operators
