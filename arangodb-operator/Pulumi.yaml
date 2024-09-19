@@ -1,4 +1,4 @@
-name: arangodb
+name: arangodb-operator
 runtime: go
 description: A minimal Go Pulumi program
 config:
