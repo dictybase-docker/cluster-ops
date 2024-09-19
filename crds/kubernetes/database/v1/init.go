@@ -21,14 +21,8 @@ func (m *module) Version() semver.Version {
 
 func (m *module) Construct(ctx *pulumi.Context, name, typ, urn string) (r pulumi.Resource, err error) {
 	switch typ {
-	case "kubernetes:database.arangodb.com/v1:ArangoClusterSynchronization":
-		r = &ArangoClusterSynchronization{}
 	case "kubernetes:database.arangodb.com/v1:ArangoDeployment":
 		r = &ArangoDeployment{}
-	case "kubernetes:database.arangodb.com/v1:ArangoMember":
-		r = &ArangoMember{}
-	case "kubernetes:database.arangodb.com/v1:ArangoTask":
-		r = &ArangoTask{}
 	default:
 		return nil, fmt.Errorf("unknown resource type: %s", typ)
 	}

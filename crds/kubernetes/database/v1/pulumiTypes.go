@@ -4,35 +4,9204 @@
 package v1
 
 import (
+	"context"
+	"reflect"
+
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/utilities"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 var _ = utilities.GetEnvOrDefault
 
-type ArangoClusterSynchronizationType struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-}
-
 type ArangoDeploymentType struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
+	ApiVersion *string               `pulumi:"apiVersion"`
+	Kind       *string               `pulumi:"kind"`
+	Metadata   *metav1.ObjectMeta    `pulumi:"metadata"`
+	Spec       *ArangoDeploymentSpec `pulumi:"spec"`
 }
 
-type ArangoMemberType struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
+type ArangoDeploymentMetadata struct {
+	Annotations map[string]interface{} `pulumi:"annotations"`
+	Labels      map[string]interface{} `pulumi:"labels"`
+	Name        *string                `pulumi:"name"`
+	Namespace   *string                `pulumi:"namespace"`
 }
 
-type ArangoTaskType struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
+type ArangoDeploymentMetadataAnnotations struct {
+}
+
+type ArangoDeploymentMetadataLabels struct {
+}
+
+type ArangoDeploymentSpec struct {
+	AllowUnsafeUpgrade      *bool                               `pulumi:"allowUnsafeUpgrade"`
+	Annotations             map[string]interface{}              `pulumi:"annotations"`
+	AnnotationsIgnoreList   []string                            `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode         *string                             `pulumi:"annotationsMode"`
+	Architecture            []string                            `pulumi:"architecture"`
+	Auth                    *ArangoDeploymentSpecAuth           `pulumi:"auth"`
+	Bootstrap               *ArangoDeploymentSpecBootstrap      `pulumi:"bootstrap"`
+	Chaos                   *ArangoDeploymentSpecChaos          `pulumi:"chaos"`
+	CommunicationMethod     *string                             `pulumi:"communicationMethod"`
+	Coordinators            *ArangoDeploymentSpecCoordinators   `pulumi:"coordinators"`
+	Dbservers               *ArangoDeploymentSpecDbservers      `pulumi:"dbservers"`
+	Environment             *string                             `pulumi:"environment"`
+	ExternalAccess          *ArangoDeploymentSpecExternalAccess `pulumi:"externalAccess"`
+	Image                   *string                             `pulumi:"image"`
+	ImageDiscoveryMode      *string                             `pulumi:"imageDiscoveryMode"`
+	ImagePullPolicy         *string                             `pulumi:"imagePullPolicy"`
+	ImagePullSecrets        []string                            `pulumi:"imagePullSecrets"`
+	Labels                  map[string]string                   `pulumi:"labels"`
+	LabelsIgnoreList        []string                            `pulumi:"labelsIgnoreList"`
+	LabelsMode              *string                             `pulumi:"labelsMode"`
+	License                 *ArangoDeploymentSpecLicense        `pulumi:"license"`
+	Lifecycle               *ArangoDeploymentSpecLifecycle      `pulumi:"lifecycle"`
+	MemberPropagationMode   *string                             `pulumi:"memberPropagationMode"`
+	Metrics                 *ArangoDeploymentSpecMetrics        `pulumi:"metrics"`
+	Mode                    *string                             `pulumi:"mode"`
+	NetworkAttachedVolumes  *bool                               `pulumi:"networkAttachedVolumes"`
+	Rebalancer              *ArangoDeploymentSpecRebalancer     `pulumi:"rebalancer"`
+	Recovery                *ArangoDeploymentSpecRecovery       `pulumi:"recovery"`
+	RestoreEncryptionSecret *string                             `pulumi:"restoreEncryptionSecret"`
+	RestoreFrom             *string                             `pulumi:"restoreFrom"`
+	Rocksdb                 *ArangoDeploymentSpecRocksdb        `pulumi:"rocksdb"`
+	Single                  *ArangoDeploymentSpecSingle         `pulumi:"single"`
+	Sync                    *ArangoDeploymentSpecSync           `pulumi:"sync"`
+	Timeouts                *ArangoDeploymentSpecTimeouts       `pulumi:"timeouts"`
+	Upgrade                 *ArangoDeploymentSpecUpgrade        `pulumi:"upgrade"`
+	Version                 *string                             `pulumi:"version"`
+	Volumes                 []ArangoDeploymentSpecVolumes       `pulumi:"volumes"`
+}
+
+// ArangoDeploymentSpecInput is an input type that accepts ArangoDeploymentSpecArgs and ArangoDeploymentSpecOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecInput` via:
+//
+//	ArangoDeploymentSpecArgs{...}
+type ArangoDeploymentSpecInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecOutput() ArangoDeploymentSpecOutput
+	ToArangoDeploymentSpecOutputWithContext(context.Context) ArangoDeploymentSpecOutput
+}
+
+type ArangoDeploymentSpecArgs struct {
+	AllowUnsafeUpgrade      pulumi.BoolPtrInput                        `pulumi:"allowUnsafeUpgrade"`
+	Annotations             pulumi.MapInput                            `pulumi:"annotations"`
+	AnnotationsIgnoreList   pulumi.StringArrayInput                    `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode         pulumi.StringPtrInput                      `pulumi:"annotationsMode"`
+	Architecture            pulumi.StringArrayInput                    `pulumi:"architecture"`
+	Auth                    ArangoDeploymentSpecAuthPtrInput           `pulumi:"auth"`
+	Bootstrap               ArangoDeploymentSpecBootstrapPtrInput      `pulumi:"bootstrap"`
+	Chaos                   ArangoDeploymentSpecChaosPtrInput          `pulumi:"chaos"`
+	CommunicationMethod     pulumi.StringPtrInput                      `pulumi:"communicationMethod"`
+	Coordinators            ArangoDeploymentSpecCoordinatorsPtrInput   `pulumi:"coordinators"`
+	Dbservers               ArangoDeploymentSpecDbserversPtrInput      `pulumi:"dbservers"`
+	Environment             pulumi.StringPtrInput                      `pulumi:"environment"`
+	ExternalAccess          ArangoDeploymentSpecExternalAccessPtrInput `pulumi:"externalAccess"`
+	Image                   pulumi.StringPtrInput                      `pulumi:"image"`
+	ImageDiscoveryMode      pulumi.StringPtrInput                      `pulumi:"imageDiscoveryMode"`
+	ImagePullPolicy         pulumi.StringPtrInput                      `pulumi:"imagePullPolicy"`
+	ImagePullSecrets        pulumi.StringArrayInput                    `pulumi:"imagePullSecrets"`
+	Labels                  pulumi.StringMapInput                      `pulumi:"labels"`
+	LabelsIgnoreList        pulumi.StringArrayInput                    `pulumi:"labelsIgnoreList"`
+	LabelsMode              pulumi.StringPtrInput                      `pulumi:"labelsMode"`
+	License                 ArangoDeploymentSpecLicensePtrInput        `pulumi:"license"`
+	Lifecycle               ArangoDeploymentSpecLifecyclePtrInput      `pulumi:"lifecycle"`
+	MemberPropagationMode   pulumi.StringPtrInput                      `pulumi:"memberPropagationMode"`
+	Metrics                 ArangoDeploymentSpecMetricsPtrInput        `pulumi:"metrics"`
+	Mode                    pulumi.StringPtrInput                      `pulumi:"mode"`
+	NetworkAttachedVolumes  pulumi.BoolPtrInput                        `pulumi:"networkAttachedVolumes"`
+	Rebalancer              ArangoDeploymentSpecRebalancerPtrInput     `pulumi:"rebalancer"`
+	Recovery                ArangoDeploymentSpecRecoveryPtrInput       `pulumi:"recovery"`
+	RestoreEncryptionSecret pulumi.StringPtrInput                      `pulumi:"restoreEncryptionSecret"`
+	RestoreFrom             pulumi.StringPtrInput                      `pulumi:"restoreFrom"`
+	Rocksdb                 ArangoDeploymentSpecRocksdbPtrInput        `pulumi:"rocksdb"`
+	Single                  ArangoDeploymentSpecSinglePtrInput         `pulumi:"single"`
+	Sync                    ArangoDeploymentSpecSyncPtrInput           `pulumi:"sync"`
+	Timeouts                ArangoDeploymentSpecTimeoutsPtrInput       `pulumi:"timeouts"`
+	Upgrade                 ArangoDeploymentSpecUpgradePtrInput        `pulumi:"upgrade"`
+	Version                 pulumi.StringPtrInput                      `pulumi:"version"`
+	Volumes                 ArangoDeploymentSpecVolumesArrayInput      `pulumi:"volumes"`
+}
+
+func (ArangoDeploymentSpecArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpec)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecArgs) ToArangoDeploymentSpecOutput() ArangoDeploymentSpecOutput {
+	return i.ToArangoDeploymentSpecOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecArgs) ToArangoDeploymentSpecOutputWithContext(ctx context.Context) ArangoDeploymentSpecOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecOutput)
+}
+
+func (i ArangoDeploymentSpecArgs) ToArangoDeploymentSpecPtrOutput() ArangoDeploymentSpecPtrOutput {
+	return i.ToArangoDeploymentSpecPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecArgs) ToArangoDeploymentSpecPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecOutput).ToArangoDeploymentSpecPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecPtrInput is an input type that accepts ArangoDeploymentSpecArgs, ArangoDeploymentSpecPtr and ArangoDeploymentSpecPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecPtrInput` via:
+//
+//	        ArangoDeploymentSpecArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecPtrOutput() ArangoDeploymentSpecPtrOutput
+	ToArangoDeploymentSpecPtrOutputWithContext(context.Context) ArangoDeploymentSpecPtrOutput
+}
+
+type arangoDeploymentSpecPtrType ArangoDeploymentSpecArgs
+
+func ArangoDeploymentSpecPtr(v *ArangoDeploymentSpecArgs) ArangoDeploymentSpecPtrInput {
+	return (*arangoDeploymentSpecPtrType)(v)
+}
+
+func (*arangoDeploymentSpecPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpec)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecPtrType) ToArangoDeploymentSpecPtrOutput() ArangoDeploymentSpecPtrOutput {
+	return i.ToArangoDeploymentSpecPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecPtrType) ToArangoDeploymentSpecPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecPtrOutput)
+}
+
+type ArangoDeploymentSpecOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpec)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecOutput) ToArangoDeploymentSpecOutput() ArangoDeploymentSpecOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecOutput) ToArangoDeploymentSpecOutputWithContext(ctx context.Context) ArangoDeploymentSpecOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecOutput) ToArangoDeploymentSpecPtrOutput() ArangoDeploymentSpecPtrOutput {
+	return o.ToArangoDeploymentSpecPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecOutput) ToArangoDeploymentSpecPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpec) *ArangoDeploymentSpec {
+		return &v
+	}).(ArangoDeploymentSpecPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) AllowUnsafeUpgrade() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *bool { return v.AllowUnsafeUpgrade }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) map[string]interface{} { return v.Annotations }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) []string { return v.AnnotationsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.AnnotationsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Architecture() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) []string { return v.Architecture }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Auth() ArangoDeploymentSpecAuthPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecAuth { return v.Auth }).(ArangoDeploymentSpecAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Bootstrap() ArangoDeploymentSpecBootstrapPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecBootstrap { return v.Bootstrap }).(ArangoDeploymentSpecBootstrapPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Chaos() ArangoDeploymentSpecChaosPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecChaos { return v.Chaos }).(ArangoDeploymentSpecChaosPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) CommunicationMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.CommunicationMethod }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Coordinators() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecCoordinators { return v.Coordinators }).(ArangoDeploymentSpecCoordinatorsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Dbservers() ArangoDeploymentSpecDbserversPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecDbservers { return v.Dbservers }).(ArangoDeploymentSpecDbserversPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Environment() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.Environment }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) ExternalAccess() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecExternalAccess { return v.ExternalAccess }).(ArangoDeploymentSpecExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.Image }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) ImageDiscoveryMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.ImageDiscoveryMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) ImagePullPolicy() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.ImagePullPolicy }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) ImagePullSecrets() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) []string { return v.ImagePullSecrets }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Labels() pulumi.StringMapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) map[string]string { return v.Labels }).(pulumi.StringMapOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) []string { return v.LabelsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.LabelsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) License() ArangoDeploymentSpecLicensePtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecLicense { return v.License }).(ArangoDeploymentSpecLicensePtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Lifecycle() ArangoDeploymentSpecLifecyclePtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecLifecycle { return v.Lifecycle }).(ArangoDeploymentSpecLifecyclePtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) MemberPropagationMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.MemberPropagationMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Metrics() ArangoDeploymentSpecMetricsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecMetrics { return v.Metrics }).(ArangoDeploymentSpecMetricsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.Mode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) NetworkAttachedVolumes() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *bool { return v.NetworkAttachedVolumes }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Rebalancer() ArangoDeploymentSpecRebalancerPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecRebalancer { return v.Rebalancer }).(ArangoDeploymentSpecRebalancerPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Recovery() ArangoDeploymentSpecRecoveryPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecRecovery { return v.Recovery }).(ArangoDeploymentSpecRecoveryPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) RestoreEncryptionSecret() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.RestoreEncryptionSecret }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) RestoreFrom() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.RestoreFrom }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Rocksdb() ArangoDeploymentSpecRocksdbPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecRocksdb { return v.Rocksdb }).(ArangoDeploymentSpecRocksdbPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Single() ArangoDeploymentSpecSinglePtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecSingle { return v.Single }).(ArangoDeploymentSpecSinglePtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Sync() ArangoDeploymentSpecSyncPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecSync { return v.Sync }).(ArangoDeploymentSpecSyncPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Timeouts() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecTimeouts { return v.Timeouts }).(ArangoDeploymentSpecTimeoutsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Upgrade() ArangoDeploymentSpecUpgradePtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *ArangoDeploymentSpecUpgrade { return v.Upgrade }).(ArangoDeploymentSpecUpgradePtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Version() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) *string { return v.Version }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecOutput) Volumes() ArangoDeploymentSpecVolumesArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpec) []ArangoDeploymentSpecVolumes { return v.Volumes }).(ArangoDeploymentSpecVolumesArrayOutput)
+}
+
+type ArangoDeploymentSpecPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpec)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ToArangoDeploymentSpecPtrOutput() ArangoDeploymentSpecPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ToArangoDeploymentSpecPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Elem() ArangoDeploymentSpecOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) ArangoDeploymentSpec {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpec
+		return ret
+	}).(ArangoDeploymentSpecOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) AllowUnsafeUpgrade() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowUnsafeUpgrade
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Annotations
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Architecture() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) []string {
+		if v == nil {
+			return nil
+		}
+		return v.Architecture
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Auth() ArangoDeploymentSpecAuthPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecAuth {
+		if v == nil {
+			return nil
+		}
+		return v.Auth
+	}).(ArangoDeploymentSpecAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Bootstrap() ArangoDeploymentSpecBootstrapPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecBootstrap {
+		if v == nil {
+			return nil
+		}
+		return v.Bootstrap
+	}).(ArangoDeploymentSpecBootstrapPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Chaos() ArangoDeploymentSpecChaosPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecChaos {
+		if v == nil {
+			return nil
+		}
+		return v.Chaos
+	}).(ArangoDeploymentSpecChaosPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) CommunicationMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.CommunicationMethod
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Coordinators() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecCoordinators {
+		if v == nil {
+			return nil
+		}
+		return v.Coordinators
+	}).(ArangoDeploymentSpecCoordinatorsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Dbservers() ArangoDeploymentSpecDbserversPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecDbservers {
+		if v == nil {
+			return nil
+		}
+		return v.Dbservers
+	}).(ArangoDeploymentSpecDbserversPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Environment() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Environment
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ExternalAccess() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecExternalAccess {
+		if v == nil {
+			return nil
+		}
+		return v.ExternalAccess
+	}).(ArangoDeploymentSpecExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Image
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ImageDiscoveryMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.ImageDiscoveryMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ImagePullPolicy() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.ImagePullPolicy
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) ImagePullSecrets() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) []string {
+		if v == nil {
+			return nil
+		}
+		return v.ImagePullSecrets
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Labels() pulumi.StringMapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) map[string]string {
+		if v == nil {
+			return nil
+		}
+		return v.Labels
+	}).(pulumi.StringMapOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) License() ArangoDeploymentSpecLicensePtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecLicense {
+		if v == nil {
+			return nil
+		}
+		return v.License
+	}).(ArangoDeploymentSpecLicensePtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Lifecycle() ArangoDeploymentSpecLifecyclePtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecLifecycle {
+		if v == nil {
+			return nil
+		}
+		return v.Lifecycle
+	}).(ArangoDeploymentSpecLifecyclePtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) MemberPropagationMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.MemberPropagationMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Metrics() ArangoDeploymentSpecMetricsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecMetrics {
+		if v == nil {
+			return nil
+		}
+		return v.Metrics
+	}).(ArangoDeploymentSpecMetricsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Mode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) NetworkAttachedVolumes() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.NetworkAttachedVolumes
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Rebalancer() ArangoDeploymentSpecRebalancerPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecRebalancer {
+		if v == nil {
+			return nil
+		}
+		return v.Rebalancer
+	}).(ArangoDeploymentSpecRebalancerPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Recovery() ArangoDeploymentSpecRecoveryPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecRecovery {
+		if v == nil {
+			return nil
+		}
+		return v.Recovery
+	}).(ArangoDeploymentSpecRecoveryPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) RestoreEncryptionSecret() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.RestoreEncryptionSecret
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) RestoreFrom() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.RestoreFrom
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Rocksdb() ArangoDeploymentSpecRocksdbPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecRocksdb {
+		if v == nil {
+			return nil
+		}
+		return v.Rocksdb
+	}).(ArangoDeploymentSpecRocksdbPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Single() ArangoDeploymentSpecSinglePtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecSingle {
+		if v == nil {
+			return nil
+		}
+		return v.Single
+	}).(ArangoDeploymentSpecSinglePtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Sync() ArangoDeploymentSpecSyncPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecSync {
+		if v == nil {
+			return nil
+		}
+		return v.Sync
+	}).(ArangoDeploymentSpecSyncPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Timeouts() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecTimeouts {
+		if v == nil {
+			return nil
+		}
+		return v.Timeouts
+	}).(ArangoDeploymentSpecTimeoutsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Upgrade() ArangoDeploymentSpecUpgradePtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *ArangoDeploymentSpecUpgrade {
+		if v == nil {
+			return nil
+		}
+		return v.Upgrade
+	}).(ArangoDeploymentSpecUpgradePtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Version() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Version
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecPtrOutput) Volumes() ArangoDeploymentSpecVolumesArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpec) []ArangoDeploymentSpecVolumes {
+		if v == nil {
+			return nil
+		}
+		return v.Volumes
+	}).(ArangoDeploymentSpecVolumesArrayOutput)
+}
+
+type ArangoDeploymentSpecAnnotations struct {
+}
+
+type ArangoDeploymentSpecAuth struct {
+	JwtSecretName *string `pulumi:"jwtSecretName"`
+}
+
+// ArangoDeploymentSpecAuthInput is an input type that accepts ArangoDeploymentSpecAuthArgs and ArangoDeploymentSpecAuthOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecAuthInput` via:
+//
+//	ArangoDeploymentSpecAuthArgs{...}
+type ArangoDeploymentSpecAuthInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecAuthOutput() ArangoDeploymentSpecAuthOutput
+	ToArangoDeploymentSpecAuthOutputWithContext(context.Context) ArangoDeploymentSpecAuthOutput
+}
+
+type ArangoDeploymentSpecAuthArgs struct {
+	JwtSecretName pulumi.StringPtrInput `pulumi:"jwtSecretName"`
+}
+
+func (ArangoDeploymentSpecAuthArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecAuth)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecAuthArgs) ToArangoDeploymentSpecAuthOutput() ArangoDeploymentSpecAuthOutput {
+	return i.ToArangoDeploymentSpecAuthOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecAuthArgs) ToArangoDeploymentSpecAuthOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecAuthOutput)
+}
+
+func (i ArangoDeploymentSpecAuthArgs) ToArangoDeploymentSpecAuthPtrOutput() ArangoDeploymentSpecAuthPtrOutput {
+	return i.ToArangoDeploymentSpecAuthPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecAuthArgs) ToArangoDeploymentSpecAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecAuthOutput).ToArangoDeploymentSpecAuthPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecAuthPtrInput is an input type that accepts ArangoDeploymentSpecAuthArgs, ArangoDeploymentSpecAuthPtr and ArangoDeploymentSpecAuthPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecAuthPtrInput` via:
+//
+//	        ArangoDeploymentSpecAuthArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecAuthPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecAuthPtrOutput() ArangoDeploymentSpecAuthPtrOutput
+	ToArangoDeploymentSpecAuthPtrOutputWithContext(context.Context) ArangoDeploymentSpecAuthPtrOutput
+}
+
+type arangoDeploymentSpecAuthPtrType ArangoDeploymentSpecAuthArgs
+
+func ArangoDeploymentSpecAuthPtr(v *ArangoDeploymentSpecAuthArgs) ArangoDeploymentSpecAuthPtrInput {
+	return (*arangoDeploymentSpecAuthPtrType)(v)
+}
+
+func (*arangoDeploymentSpecAuthPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecAuth)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecAuthPtrType) ToArangoDeploymentSpecAuthPtrOutput() ArangoDeploymentSpecAuthPtrOutput {
+	return i.ToArangoDeploymentSpecAuthPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecAuthPtrType) ToArangoDeploymentSpecAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecAuthPtrOutput)
+}
+
+type ArangoDeploymentSpecAuthOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecAuthOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecAuth)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecAuthOutput) ToArangoDeploymentSpecAuthOutput() ArangoDeploymentSpecAuthOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecAuthOutput) ToArangoDeploymentSpecAuthOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecAuthOutput) ToArangoDeploymentSpecAuthPtrOutput() ArangoDeploymentSpecAuthPtrOutput {
+	return o.ToArangoDeploymentSpecAuthPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecAuthOutput) ToArangoDeploymentSpecAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecAuth) *ArangoDeploymentSpecAuth {
+		return &v
+	}).(ArangoDeploymentSpecAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecAuthOutput) JwtSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecAuth) *string { return v.JwtSecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecAuthPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecAuthPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecAuth)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecAuthPtrOutput) ToArangoDeploymentSpecAuthPtrOutput() ArangoDeploymentSpecAuthPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecAuthPtrOutput) ToArangoDeploymentSpecAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecAuthPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecAuthPtrOutput) Elem() ArangoDeploymentSpecAuthOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecAuth) ArangoDeploymentSpecAuth {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecAuth
+		return ret
+	}).(ArangoDeploymentSpecAuthOutput)
+}
+
+func (o ArangoDeploymentSpecAuthPtrOutput) JwtSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecAuth) *string {
+		if v == nil {
+			return nil
+		}
+		return v.JwtSecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecBootstrap struct {
+	PasswordSecretNames map[string]string `pulumi:"passwordSecretNames"`
+}
+
+// ArangoDeploymentSpecBootstrapInput is an input type that accepts ArangoDeploymentSpecBootstrapArgs and ArangoDeploymentSpecBootstrapOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecBootstrapInput` via:
+//
+//	ArangoDeploymentSpecBootstrapArgs{...}
+type ArangoDeploymentSpecBootstrapInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecBootstrapOutput() ArangoDeploymentSpecBootstrapOutput
+	ToArangoDeploymentSpecBootstrapOutputWithContext(context.Context) ArangoDeploymentSpecBootstrapOutput
+}
+
+type ArangoDeploymentSpecBootstrapArgs struct {
+	PasswordSecretNames pulumi.StringMapInput `pulumi:"passwordSecretNames"`
+}
+
+func (ArangoDeploymentSpecBootstrapArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecBootstrap)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecBootstrapArgs) ToArangoDeploymentSpecBootstrapOutput() ArangoDeploymentSpecBootstrapOutput {
+	return i.ToArangoDeploymentSpecBootstrapOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecBootstrapArgs) ToArangoDeploymentSpecBootstrapOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecBootstrapOutput)
+}
+
+func (i ArangoDeploymentSpecBootstrapArgs) ToArangoDeploymentSpecBootstrapPtrOutput() ArangoDeploymentSpecBootstrapPtrOutput {
+	return i.ToArangoDeploymentSpecBootstrapPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecBootstrapArgs) ToArangoDeploymentSpecBootstrapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecBootstrapOutput).ToArangoDeploymentSpecBootstrapPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecBootstrapPtrInput is an input type that accepts ArangoDeploymentSpecBootstrapArgs, ArangoDeploymentSpecBootstrapPtr and ArangoDeploymentSpecBootstrapPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecBootstrapPtrInput` via:
+//
+//	        ArangoDeploymentSpecBootstrapArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecBootstrapPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecBootstrapPtrOutput() ArangoDeploymentSpecBootstrapPtrOutput
+	ToArangoDeploymentSpecBootstrapPtrOutputWithContext(context.Context) ArangoDeploymentSpecBootstrapPtrOutput
+}
+
+type arangoDeploymentSpecBootstrapPtrType ArangoDeploymentSpecBootstrapArgs
+
+func ArangoDeploymentSpecBootstrapPtr(v *ArangoDeploymentSpecBootstrapArgs) ArangoDeploymentSpecBootstrapPtrInput {
+	return (*arangoDeploymentSpecBootstrapPtrType)(v)
+}
+
+func (*arangoDeploymentSpecBootstrapPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecBootstrap)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecBootstrapPtrType) ToArangoDeploymentSpecBootstrapPtrOutput() ArangoDeploymentSpecBootstrapPtrOutput {
+	return i.ToArangoDeploymentSpecBootstrapPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecBootstrapPtrType) ToArangoDeploymentSpecBootstrapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecBootstrapPtrOutput)
+}
+
+type ArangoDeploymentSpecBootstrapOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecBootstrapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecBootstrap)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecBootstrapOutput) ToArangoDeploymentSpecBootstrapOutput() ArangoDeploymentSpecBootstrapOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecBootstrapOutput) ToArangoDeploymentSpecBootstrapOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecBootstrapOutput) ToArangoDeploymentSpecBootstrapPtrOutput() ArangoDeploymentSpecBootstrapPtrOutput {
+	return o.ToArangoDeploymentSpecBootstrapPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecBootstrapOutput) ToArangoDeploymentSpecBootstrapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecBootstrap) *ArangoDeploymentSpecBootstrap {
+		return &v
+	}).(ArangoDeploymentSpecBootstrapPtrOutput)
+}
+
+func (o ArangoDeploymentSpecBootstrapOutput) PasswordSecretNames() pulumi.StringMapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecBootstrap) map[string]string { return v.PasswordSecretNames }).(pulumi.StringMapOutput)
+}
+
+type ArangoDeploymentSpecBootstrapPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecBootstrapPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecBootstrap)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecBootstrapPtrOutput) ToArangoDeploymentSpecBootstrapPtrOutput() ArangoDeploymentSpecBootstrapPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecBootstrapPtrOutput) ToArangoDeploymentSpecBootstrapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecBootstrapPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecBootstrapPtrOutput) Elem() ArangoDeploymentSpecBootstrapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecBootstrap) ArangoDeploymentSpecBootstrap {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecBootstrap
+		return ret
+	}).(ArangoDeploymentSpecBootstrapOutput)
+}
+
+func (o ArangoDeploymentSpecBootstrapPtrOutput) PasswordSecretNames() pulumi.StringMapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecBootstrap) map[string]string {
+		if v == nil {
+			return nil
+		}
+		return v.PasswordSecretNames
+	}).(pulumi.StringMapOutput)
+}
+
+type ArangoDeploymentSpecBootstrapPasswordSecretNames struct {
+}
+
+type ArangoDeploymentSpecChaos struct {
+	Enabled            *bool `pulumi:"enabled"`
+	Interval           *int  `pulumi:"interval"`
+	KillPodProbability *int  `pulumi:"kill-pod-probability"`
+}
+
+// ArangoDeploymentSpecChaosInput is an input type that accepts ArangoDeploymentSpecChaosArgs and ArangoDeploymentSpecChaosOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecChaosInput` via:
+//
+//	ArangoDeploymentSpecChaosArgs{...}
+type ArangoDeploymentSpecChaosInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecChaosOutput() ArangoDeploymentSpecChaosOutput
+	ToArangoDeploymentSpecChaosOutputWithContext(context.Context) ArangoDeploymentSpecChaosOutput
+}
+
+type ArangoDeploymentSpecChaosArgs struct {
+	Enabled            pulumi.BoolPtrInput `pulumi:"enabled"`
+	Interval           pulumi.IntPtrInput  `pulumi:"interval"`
+	KillPodProbability pulumi.IntPtrInput  `pulumi:"kill-pod-probability"`
+}
+
+func (ArangoDeploymentSpecChaosArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecChaos)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecChaosArgs) ToArangoDeploymentSpecChaosOutput() ArangoDeploymentSpecChaosOutput {
+	return i.ToArangoDeploymentSpecChaosOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecChaosArgs) ToArangoDeploymentSpecChaosOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecChaosOutput)
+}
+
+func (i ArangoDeploymentSpecChaosArgs) ToArangoDeploymentSpecChaosPtrOutput() ArangoDeploymentSpecChaosPtrOutput {
+	return i.ToArangoDeploymentSpecChaosPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecChaosArgs) ToArangoDeploymentSpecChaosPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecChaosOutput).ToArangoDeploymentSpecChaosPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecChaosPtrInput is an input type that accepts ArangoDeploymentSpecChaosArgs, ArangoDeploymentSpecChaosPtr and ArangoDeploymentSpecChaosPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecChaosPtrInput` via:
+//
+//	        ArangoDeploymentSpecChaosArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecChaosPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecChaosPtrOutput() ArangoDeploymentSpecChaosPtrOutput
+	ToArangoDeploymentSpecChaosPtrOutputWithContext(context.Context) ArangoDeploymentSpecChaosPtrOutput
+}
+
+type arangoDeploymentSpecChaosPtrType ArangoDeploymentSpecChaosArgs
+
+func ArangoDeploymentSpecChaosPtr(v *ArangoDeploymentSpecChaosArgs) ArangoDeploymentSpecChaosPtrInput {
+	return (*arangoDeploymentSpecChaosPtrType)(v)
+}
+
+func (*arangoDeploymentSpecChaosPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecChaos)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecChaosPtrType) ToArangoDeploymentSpecChaosPtrOutput() ArangoDeploymentSpecChaosPtrOutput {
+	return i.ToArangoDeploymentSpecChaosPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecChaosPtrType) ToArangoDeploymentSpecChaosPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecChaosPtrOutput)
+}
+
+type ArangoDeploymentSpecChaosOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecChaosOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecChaos)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecChaosOutput) ToArangoDeploymentSpecChaosOutput() ArangoDeploymentSpecChaosOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecChaosOutput) ToArangoDeploymentSpecChaosOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecChaosOutput) ToArangoDeploymentSpecChaosPtrOutput() ArangoDeploymentSpecChaosPtrOutput {
+	return o.ToArangoDeploymentSpecChaosPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecChaosOutput) ToArangoDeploymentSpecChaosPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecChaos) *ArangoDeploymentSpecChaos {
+		return &v
+	}).(ArangoDeploymentSpecChaosPtrOutput)
+}
+
+func (o ArangoDeploymentSpecChaosOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecChaos) *bool { return v.Enabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecChaosOutput) Interval() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecChaos) *int { return v.Interval }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecChaosOutput) KillPodProbability() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecChaos) *int { return v.KillPodProbability }).(pulumi.IntPtrOutput)
+}
+
+type ArangoDeploymentSpecChaosPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecChaosPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecChaos)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) ToArangoDeploymentSpecChaosPtrOutput() ArangoDeploymentSpecChaosPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) ToArangoDeploymentSpecChaosPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecChaosPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) Elem() ArangoDeploymentSpecChaosOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecChaos) ArangoDeploymentSpecChaos {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecChaos
+		return ret
+	}).(ArangoDeploymentSpecChaosOutput)
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecChaos) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Enabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) Interval() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecChaos) *int {
+		if v == nil {
+			return nil
+		}
+		return v.Interval
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecChaosPtrOutput) KillPodProbability() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecChaos) *int {
+		if v == nil {
+			return nil
+		}
+		return v.KillPodProbability
+	}).(pulumi.IntPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinators struct {
+	Affinity              map[string]interface{}                           `pulumi:"affinity"`
+	AllowMemberRecreation *bool                                            `pulumi:"allowMemberRecreation"`
+	Annotations           map[string]interface{}                           `pulumi:"annotations"`
+	AnnotationsIgnoreList []string                                         `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       *string                                          `pulumi:"annotationsMode"`
+	AntiAffinity          map[string]interface{}                           `pulumi:"antiAffinity"`
+	Args                  []string                                         `pulumi:"args"`
+	Count                 *int                                             `pulumi:"count"`
+	Entrypoint            *string                                          `pulumi:"entrypoint"`
+	Envs                  []ArangoDeploymentSpecCoordinatorsEnvs           `pulumi:"envs"`
+	ExporterPort          *int                                             `pulumi:"exporterPort"`
+	ExternalPortEnabled   *bool                                            `pulumi:"externalPortEnabled"`
+	IndexMethod           *string                                          `pulumi:"indexMethod"`
+	Labels                map[string]interface{}                           `pulumi:"labels"`
+	LabelsIgnoreList      []string                                         `pulumi:"labelsIgnoreList"`
+	LabelsMode            *string                                          `pulumi:"labelsMode"`
+	MaxCount              *int                                             `pulumi:"maxCount"`
+	MemoryReservation     *int                                             `pulumi:"memoryReservation"`
+	MinCount              *int                                             `pulumi:"minCount"`
+	NodeAffinity          map[string]interface{}                           `pulumi:"nodeAffinity"`
+	NodeSelector          map[string]interface{}                           `pulumi:"nodeSelector"`
+	Resources             *ArangoDeploymentSpecCoordinatorsResources       `pulumi:"resources"`
+	SecurityContext       *ArangoDeploymentSpecCoordinatorsSecurityContext `pulumi:"securityContext"`
+}
+
+// ArangoDeploymentSpecCoordinatorsInput is an input type that accepts ArangoDeploymentSpecCoordinatorsArgs and ArangoDeploymentSpecCoordinatorsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsArgs{...}
+type ArangoDeploymentSpecCoordinatorsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsOutput() ArangoDeploymentSpecCoordinatorsOutput
+	ToArangoDeploymentSpecCoordinatorsOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsArgs struct {
+	Affinity              pulumi.MapInput                                         `pulumi:"affinity"`
+	AllowMemberRecreation pulumi.BoolPtrInput                                     `pulumi:"allowMemberRecreation"`
+	Annotations           pulumi.MapInput                                         `pulumi:"annotations"`
+	AnnotationsIgnoreList pulumi.StringArrayInput                                 `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       pulumi.StringPtrInput                                   `pulumi:"annotationsMode"`
+	AntiAffinity          pulumi.MapInput                                         `pulumi:"antiAffinity"`
+	Args                  pulumi.StringArrayInput                                 `pulumi:"args"`
+	Count                 pulumi.IntPtrInput                                      `pulumi:"count"`
+	Entrypoint            pulumi.StringPtrInput                                   `pulumi:"entrypoint"`
+	Envs                  ArangoDeploymentSpecCoordinatorsEnvsArrayInput          `pulumi:"envs"`
+	ExporterPort          pulumi.IntPtrInput                                      `pulumi:"exporterPort"`
+	ExternalPortEnabled   pulumi.BoolPtrInput                                     `pulumi:"externalPortEnabled"`
+	IndexMethod           pulumi.StringPtrInput                                   `pulumi:"indexMethod"`
+	Labels                pulumi.MapInput                                         `pulumi:"labels"`
+	LabelsIgnoreList      pulumi.StringArrayInput                                 `pulumi:"labelsIgnoreList"`
+	LabelsMode            pulumi.StringPtrInput                                   `pulumi:"labelsMode"`
+	MaxCount              pulumi.IntPtrInput                                      `pulumi:"maxCount"`
+	MemoryReservation     pulumi.IntPtrInput                                      `pulumi:"memoryReservation"`
+	MinCount              pulumi.IntPtrInput                                      `pulumi:"minCount"`
+	NodeAffinity          pulumi.MapInput                                         `pulumi:"nodeAffinity"`
+	NodeSelector          pulumi.MapInput                                         `pulumi:"nodeSelector"`
+	Resources             ArangoDeploymentSpecCoordinatorsResourcesPtrInput       `pulumi:"resources"`
+	SecurityContext       ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput `pulumi:"securityContext"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinators)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsArgs) ToArangoDeploymentSpecCoordinatorsOutput() ArangoDeploymentSpecCoordinatorsOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsArgs) ToArangoDeploymentSpecCoordinatorsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsOutput)
+}
+
+func (i ArangoDeploymentSpecCoordinatorsArgs) ToArangoDeploymentSpecCoordinatorsPtrOutput() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsArgs) ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsOutput).ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecCoordinatorsPtrInput is an input type that accepts ArangoDeploymentSpecCoordinatorsArgs, ArangoDeploymentSpecCoordinatorsPtr and ArangoDeploymentSpecCoordinatorsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsPtrInput` via:
+//
+//	        ArangoDeploymentSpecCoordinatorsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecCoordinatorsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsPtrOutput() ArangoDeploymentSpecCoordinatorsPtrOutput
+	ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsPtrOutput
+}
+
+type arangoDeploymentSpecCoordinatorsPtrType ArangoDeploymentSpecCoordinatorsArgs
+
+func ArangoDeploymentSpecCoordinatorsPtr(v *ArangoDeploymentSpecCoordinatorsArgs) ArangoDeploymentSpecCoordinatorsPtrInput {
+	return (*arangoDeploymentSpecCoordinatorsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecCoordinatorsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinators)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecCoordinatorsPtrType) ToArangoDeploymentSpecCoordinatorsPtrOutput() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecCoordinatorsPtrType) ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinators)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ToArangoDeploymentSpecCoordinatorsOutput() ArangoDeploymentSpecCoordinatorsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ToArangoDeploymentSpecCoordinatorsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ToArangoDeploymentSpecCoordinatorsPtrOutput() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o.ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecCoordinators) *ArangoDeploymentSpecCoordinators {
+		return &v
+	}).(ArangoDeploymentSpecCoordinatorsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.Affinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *bool { return v.AllowMemberRecreation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.Annotations }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) []string { return v.AnnotationsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *string { return v.AnnotationsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.AntiAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) []string { return v.Args }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *int { return v.Count }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *string { return v.Entrypoint }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Envs() ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) []ArangoDeploymentSpecCoordinatorsEnvs { return v.Envs }).(ArangoDeploymentSpecCoordinatorsEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *int { return v.ExporterPort }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *bool { return v.ExternalPortEnabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *string { return v.IndexMethod }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.Labels }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) []string { return v.LabelsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *string { return v.LabelsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *int { return v.MaxCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *int { return v.MemoryReservation }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *int { return v.MinCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.NodeAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) map[string]interface{} { return v.NodeSelector }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) Resources() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *ArangoDeploymentSpecCoordinatorsResources {
+		return v.Resources
+	}).(ArangoDeploymentSpecCoordinatorsResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsOutput) SecurityContext() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinators) *ArangoDeploymentSpecCoordinatorsSecurityContext {
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinators)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) ToArangoDeploymentSpecCoordinatorsPtrOutput() ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) ToArangoDeploymentSpecCoordinatorsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Elem() ArangoDeploymentSpecCoordinatorsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) ArangoDeploymentSpecCoordinators {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecCoordinators
+		return ret
+	}).(ArangoDeploymentSpecCoordinatorsOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Affinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowMemberRecreation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Annotations
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.AntiAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) []string {
+		if v == nil {
+			return nil
+		}
+		return v.Args
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *int {
+		if v == nil {
+			return nil
+		}
+		return v.Count
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Entrypoint
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Envs() ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) []ArangoDeploymentSpecCoordinatorsEnvs {
+		if v == nil {
+			return nil
+		}
+		return v.Envs
+	}).(ArangoDeploymentSpecCoordinatorsEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *int {
+		if v == nil {
+			return nil
+		}
+		return v.ExporterPort
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ExternalPortEnabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *string {
+		if v == nil {
+			return nil
+		}
+		return v.IndexMethod
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Labels
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MaxCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MemoryReservation
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MinCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeSelector
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) Resources() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *ArangoDeploymentSpecCoordinatorsResources {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(ArangoDeploymentSpecCoordinatorsResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsPtrOutput) SecurityContext() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinators) *ArangoDeploymentSpecCoordinatorsSecurityContext {
+		if v == nil {
+			return nil
+		}
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsAffinity struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsAnnotations struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsAntiAffinity struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsEnvs struct {
+	Name  *string `pulumi:"name"`
+	Value *string `pulumi:"value"`
+}
+
+// ArangoDeploymentSpecCoordinatorsEnvsInput is an input type that accepts ArangoDeploymentSpecCoordinatorsEnvsArgs and ArangoDeploymentSpecCoordinatorsEnvsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsEnvsInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsEnvsArgs{...}
+type ArangoDeploymentSpecCoordinatorsEnvsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsEnvsOutput() ArangoDeploymentSpecCoordinatorsEnvsOutput
+	ToArangoDeploymentSpecCoordinatorsEnvsOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsEnvsOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsEnvsArgs struct {
+	Name  pulumi.StringPtrInput `pulumi:"name"`
+	Value pulumi.StringPtrInput `pulumi:"value"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsEnvsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsEnvsArgs) ToArangoDeploymentSpecCoordinatorsEnvsOutput() ArangoDeploymentSpecCoordinatorsEnvsOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsEnvsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsEnvsArgs) ToArangoDeploymentSpecCoordinatorsEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsEnvsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsEnvsOutput)
+}
+
+// ArangoDeploymentSpecCoordinatorsEnvsArrayInput is an input type that accepts ArangoDeploymentSpecCoordinatorsEnvsArray and ArangoDeploymentSpecCoordinatorsEnvsArrayOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsEnvsArrayInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsEnvsArray{ ArangoDeploymentSpecCoordinatorsEnvsArgs{...} }
+type ArangoDeploymentSpecCoordinatorsEnvsArrayInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsEnvsArrayOutput() ArangoDeploymentSpecCoordinatorsEnvsArrayOutput
+	ToArangoDeploymentSpecCoordinatorsEnvsArrayOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsEnvsArrayOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsEnvsArray []ArangoDeploymentSpecCoordinatorsEnvsInput
+
+func (ArangoDeploymentSpecCoordinatorsEnvsArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecCoordinatorsEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsEnvsArray) ToArangoDeploymentSpecCoordinatorsEnvsArrayOutput() ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsEnvsArrayOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsEnvsArray) ToArangoDeploymentSpecCoordinatorsEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsEnvsArrayOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsEnvsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsEnvsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsOutput) ToArangoDeploymentSpecCoordinatorsEnvsOutput() ArangoDeploymentSpecCoordinatorsEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsOutput) ToArangoDeploymentSpecCoordinatorsEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsEnvs) *string { return v.Name }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsOutput) Value() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsEnvs) *string { return v.Value }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsEnvsArrayOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsEnvsArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecCoordinatorsEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsArrayOutput) ToArangoDeploymentSpecCoordinatorsEnvsArrayOutput() ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsArrayOutput) ToArangoDeploymentSpecCoordinatorsEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsEnvsArrayOutput) Index(i pulumi.IntInput) ArangoDeploymentSpecCoordinatorsEnvsOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) ArangoDeploymentSpecCoordinatorsEnvs {
+		return vs[0].([]ArangoDeploymentSpecCoordinatorsEnvs)[vs[1].(int)]
+	}).(ArangoDeploymentSpecCoordinatorsEnvsOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsLabels struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsNodeAffinity struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsNodeSelector struct {
+}
+
+type ArangoDeploymentSpecCoordinatorsResources struct {
+	Limits   *ArangoDeploymentSpecCoordinatorsResourcesLimits   `pulumi:"limits"`
+	Requests *ArangoDeploymentSpecCoordinatorsResourcesRequests `pulumi:"requests"`
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesArgs and ArangoDeploymentSpecCoordinatorsResourcesOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsResourcesArgs{...}
+type ArangoDeploymentSpecCoordinatorsResourcesInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesOutput() ArangoDeploymentSpecCoordinatorsResourcesOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesArgs struct {
+	Limits   ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput   `pulumi:"limits"`
+	Requests ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput `pulumi:"requests"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsResourcesArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResources)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesArgs) ToArangoDeploymentSpecCoordinatorsResourcesOutput() ArangoDeploymentSpecCoordinatorsResourcesOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesArgs) ToArangoDeploymentSpecCoordinatorsResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesOutput)
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesArgs) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesArgs) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesOutput).ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesPtrInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesArgs, ArangoDeploymentSpecCoordinatorsResourcesPtr and ArangoDeploymentSpecCoordinatorsResourcesPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesPtrInput` via:
+//
+//	        ArangoDeploymentSpecCoordinatorsResourcesArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecCoordinatorsResourcesPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesPtrOutput
+}
+
+type arangoDeploymentSpecCoordinatorsResourcesPtrType ArangoDeploymentSpecCoordinatorsResourcesArgs
+
+func ArangoDeploymentSpecCoordinatorsResourcesPtr(v *ArangoDeploymentSpecCoordinatorsResourcesArgs) ArangoDeploymentSpecCoordinatorsResourcesPtrInput {
+	return (*arangoDeploymentSpecCoordinatorsResourcesPtrType)(v)
+}
+
+func (*arangoDeploymentSpecCoordinatorsResourcesPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResources)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesPtrType) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesPtrType) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) ToArangoDeploymentSpecCoordinatorsResourcesOutput() ArangoDeploymentSpecCoordinatorsResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) ToArangoDeploymentSpecCoordinatorsResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o.ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecCoordinatorsResources) *ArangoDeploymentSpecCoordinatorsResources {
+		return &v
+	}).(ArangoDeploymentSpecCoordinatorsResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) Limits() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResources) *ArangoDeploymentSpecCoordinatorsResourcesLimits {
+		return v.Limits
+	}).(ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesOutput) Requests() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResources) *ArangoDeploymentSpecCoordinatorsResourcesRequests {
+		return v.Requests
+	}).(ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) Elem() ArangoDeploymentSpecCoordinatorsResourcesOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResources) ArangoDeploymentSpecCoordinatorsResources {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecCoordinatorsResources
+		return ret
+	}).(ArangoDeploymentSpecCoordinatorsResourcesOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) Limits() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResources) *ArangoDeploymentSpecCoordinatorsResourcesLimits {
+		if v == nil {
+			return nil
+		}
+		return v.Limits
+	}).(ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesPtrOutput) Requests() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResources) *ArangoDeploymentSpecCoordinatorsResourcesRequests {
+		if v == nil {
+			return nil
+		}
+		return v.Requests
+	}).(ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesLimits struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesLimitsInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs and ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesLimitsInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs{...}
+type ArangoDeploymentSpecCoordinatorsResourcesLimitsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesLimits)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput)
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput).ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs, ArangoDeploymentSpecCoordinatorsResourcesLimitsPtr and ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput` via:
+//
+//	        ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput
+}
+
+type arangoDeploymentSpecCoordinatorsResourcesLimitsPtrType ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs
+
+func ArangoDeploymentSpecCoordinatorsResourcesLimitsPtr(v *ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput {
+	return (*arangoDeploymentSpecCoordinatorsResourcesLimitsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecCoordinatorsResourcesLimitsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResourcesLimits)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesLimitsPtrType) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesLimitsPtrType) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o.ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecCoordinatorsResourcesLimits) *ArangoDeploymentSpecCoordinatorsResourcesLimits {
+		return &v
+	}).(ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResourcesLimits) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResourcesLimits) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) Elem() ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesLimits) ArangoDeploymentSpecCoordinatorsResourcesLimits {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecCoordinatorsResourcesLimits
+		return ret
+	}).(ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesRequests struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesRequestsInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs and ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesRequestsInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs{...}
+type ArangoDeploymentSpecCoordinatorsResourcesRequestsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesRequests)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput)
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput).ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput is an input type that accepts ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs, ArangoDeploymentSpecCoordinatorsResourcesRequestsPtr and ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput` via:
+//
+//	        ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput
+	ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput
+}
+
+type arangoDeploymentSpecCoordinatorsResourcesRequestsPtrType ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs
+
+func ArangoDeploymentSpecCoordinatorsResourcesRequestsPtr(v *ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput {
+	return (*arangoDeploymentSpecCoordinatorsResourcesRequestsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecCoordinatorsResourcesRequestsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResourcesRequests)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesRequestsPtrType) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecCoordinatorsResourcesRequestsPtrType) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o.ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecCoordinatorsResourcesRequests) *ArangoDeploymentSpecCoordinatorsResourcesRequests {
+		return &v
+	}).(ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResourcesRequests) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsResourcesRequests) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput() ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) ToArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) Elem() ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesRequests) ArangoDeploymentSpecCoordinatorsResourcesRequests {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecCoordinatorsResourcesRequests
+		return ret
+	}).(ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsSecurityContext struct {
+	AllowPrivilegeEscalation *bool `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  *int  `pulumi:"fsGroup"`
+	Privileged               *bool `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   *bool `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               *int  `pulumi:"runAsGroup"`
+	RunAsUser                *int  `pulumi:"runAsUser"`
+	SupplementalGroups       []int `pulumi:"supplementalGroups"`
+}
+
+// ArangoDeploymentSpecCoordinatorsSecurityContextInput is an input type that accepts ArangoDeploymentSpecCoordinatorsSecurityContextArgs and ArangoDeploymentSpecCoordinatorsSecurityContextOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsSecurityContextInput` via:
+//
+//	ArangoDeploymentSpecCoordinatorsSecurityContextArgs{...}
+type ArangoDeploymentSpecCoordinatorsSecurityContextInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsSecurityContextOutput() ArangoDeploymentSpecCoordinatorsSecurityContextOutput
+	ToArangoDeploymentSpecCoordinatorsSecurityContextOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextOutput
+}
+
+type ArangoDeploymentSpecCoordinatorsSecurityContextArgs struct {
+	AllowPrivilegeEscalation pulumi.BoolPtrInput  `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  pulumi.IntPtrInput   `pulumi:"fsGroup"`
+	Privileged               pulumi.BoolPtrInput  `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   pulumi.BoolPtrInput  `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               pulumi.IntPtrInput   `pulumi:"runAsGroup"`
+	RunAsUser                pulumi.IntPtrInput   `pulumi:"runAsUser"`
+	SupplementalGroups       pulumi.IntArrayInput `pulumi:"supplementalGroups"`
+}
+
+func (ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsSecurityContext)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ToArangoDeploymentSpecCoordinatorsSecurityContextOutput() ArangoDeploymentSpecCoordinatorsSecurityContextOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsSecurityContextOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ToArangoDeploymentSpecCoordinatorsSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsSecurityContextOutput)
+}
+
+func (i ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsSecurityContextOutput).ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput is an input type that accepts ArangoDeploymentSpecCoordinatorsSecurityContextArgs, ArangoDeploymentSpecCoordinatorsSecurityContextPtr and ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput` via:
+//
+//	        ArangoDeploymentSpecCoordinatorsSecurityContextArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput
+	ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput
+}
+
+type arangoDeploymentSpecCoordinatorsSecurityContextPtrType ArangoDeploymentSpecCoordinatorsSecurityContextArgs
+
+func ArangoDeploymentSpecCoordinatorsSecurityContextPtr(v *ArangoDeploymentSpecCoordinatorsSecurityContextArgs) ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput {
+	return (*arangoDeploymentSpecCoordinatorsSecurityContextPtrType)(v)
+}
+
+func (*arangoDeploymentSpecCoordinatorsSecurityContextPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsSecurityContext)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecCoordinatorsSecurityContextPtrType) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecCoordinatorsSecurityContextPtrType) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsSecurityContextOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextOutput() ArangoDeploymentSpecCoordinatorsSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o.ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecCoordinatorsSecurityContext) *ArangoDeploymentSpecCoordinatorsSecurityContext {
+		return &v
+	}).(ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *bool { return v.AllowPrivilegeEscalation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *int { return v.FsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *bool { return v.Privileged }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *bool { return v.ReadOnlyRootFilesystem }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *int { return v.RunAsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) *int { return v.RunAsUser }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecCoordinatorsSecurityContext) []int { return v.SupplementalGroups }).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecCoordinatorsSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput() ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) ToArangoDeploymentSpecCoordinatorsSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) Elem() ArangoDeploymentSpecCoordinatorsSecurityContextOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) ArangoDeploymentSpecCoordinatorsSecurityContext {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecCoordinatorsSecurityContext
+		return ret
+	}).(ArangoDeploymentSpecCoordinatorsSecurityContextOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowPrivilegeEscalation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.FsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Privileged
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ReadOnlyRootFilesystem
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsUser
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecCoordinatorsSecurityContext) []int {
+		if v == nil {
+			return nil
+		}
+		return v.SupplementalGroups
+	}).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecDbservers struct {
+	Affinity              map[string]interface{}                        `pulumi:"affinity"`
+	AllowMemberRecreation *bool                                         `pulumi:"allowMemberRecreation"`
+	Annotations           map[string]interface{}                        `pulumi:"annotations"`
+	AnnotationsIgnoreList []string                                      `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       *string                                       `pulumi:"annotationsMode"`
+	AntiAffinity          map[string]interface{}                        `pulumi:"antiAffinity"`
+	Args                  []string                                      `pulumi:"args"`
+	Count                 *int                                          `pulumi:"count"`
+	Entrypoint            *string                                       `pulumi:"entrypoint"`
+	Envs                  []ArangoDeploymentSpecDbserversEnvs           `pulumi:"envs"`
+	ExporterPort          *int                                          `pulumi:"exporterPort"`
+	ExternalPortEnabled   *bool                                         `pulumi:"externalPortEnabled"`
+	IndexMethod           *string                                       `pulumi:"indexMethod"`
+	Labels                map[string]interface{}                        `pulumi:"labels"`
+	LabelsIgnoreList      []string                                      `pulumi:"labelsIgnoreList"`
+	LabelsMode            *string                                       `pulumi:"labelsMode"`
+	MaxCount              *int                                          `pulumi:"maxCount"`
+	MemoryReservation     *int                                          `pulumi:"memoryReservation"`
+	MinCount              *int                                          `pulumi:"minCount"`
+	NodeAffinity          map[string]interface{}                        `pulumi:"nodeAffinity"`
+	NodeSelector          map[string]interface{}                        `pulumi:"nodeSelector"`
+	Resources             *ArangoDeploymentSpecDbserversResources       `pulumi:"resources"`
+	SecurityContext       *ArangoDeploymentSpecDbserversSecurityContext `pulumi:"securityContext"`
+}
+
+// ArangoDeploymentSpecDbserversInput is an input type that accepts ArangoDeploymentSpecDbserversArgs and ArangoDeploymentSpecDbserversOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversInput` via:
+//
+//	ArangoDeploymentSpecDbserversArgs{...}
+type ArangoDeploymentSpecDbserversInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversOutput() ArangoDeploymentSpecDbserversOutput
+	ToArangoDeploymentSpecDbserversOutputWithContext(context.Context) ArangoDeploymentSpecDbserversOutput
+}
+
+type ArangoDeploymentSpecDbserversArgs struct {
+	Affinity              pulumi.MapInput                                      `pulumi:"affinity"`
+	AllowMemberRecreation pulumi.BoolPtrInput                                  `pulumi:"allowMemberRecreation"`
+	Annotations           pulumi.MapInput                                      `pulumi:"annotations"`
+	AnnotationsIgnoreList pulumi.StringArrayInput                              `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       pulumi.StringPtrInput                                `pulumi:"annotationsMode"`
+	AntiAffinity          pulumi.MapInput                                      `pulumi:"antiAffinity"`
+	Args                  pulumi.StringArrayInput                              `pulumi:"args"`
+	Count                 pulumi.IntPtrInput                                   `pulumi:"count"`
+	Entrypoint            pulumi.StringPtrInput                                `pulumi:"entrypoint"`
+	Envs                  ArangoDeploymentSpecDbserversEnvsArrayInput          `pulumi:"envs"`
+	ExporterPort          pulumi.IntPtrInput                                   `pulumi:"exporterPort"`
+	ExternalPortEnabled   pulumi.BoolPtrInput                                  `pulumi:"externalPortEnabled"`
+	IndexMethod           pulumi.StringPtrInput                                `pulumi:"indexMethod"`
+	Labels                pulumi.MapInput                                      `pulumi:"labels"`
+	LabelsIgnoreList      pulumi.StringArrayInput                              `pulumi:"labelsIgnoreList"`
+	LabelsMode            pulumi.StringPtrInput                                `pulumi:"labelsMode"`
+	MaxCount              pulumi.IntPtrInput                                   `pulumi:"maxCount"`
+	MemoryReservation     pulumi.IntPtrInput                                   `pulumi:"memoryReservation"`
+	MinCount              pulumi.IntPtrInput                                   `pulumi:"minCount"`
+	NodeAffinity          pulumi.MapInput                                      `pulumi:"nodeAffinity"`
+	NodeSelector          pulumi.MapInput                                      `pulumi:"nodeSelector"`
+	Resources             ArangoDeploymentSpecDbserversResourcesPtrInput       `pulumi:"resources"`
+	SecurityContext       ArangoDeploymentSpecDbserversSecurityContextPtrInput `pulumi:"securityContext"`
+}
+
+func (ArangoDeploymentSpecDbserversArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbservers)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversArgs) ToArangoDeploymentSpecDbserversOutput() ArangoDeploymentSpecDbserversOutput {
+	return i.ToArangoDeploymentSpecDbserversOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversArgs) ToArangoDeploymentSpecDbserversOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversOutput)
+}
+
+func (i ArangoDeploymentSpecDbserversArgs) ToArangoDeploymentSpecDbserversPtrOutput() ArangoDeploymentSpecDbserversPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversArgs) ToArangoDeploymentSpecDbserversPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversOutput).ToArangoDeploymentSpecDbserversPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecDbserversPtrInput is an input type that accepts ArangoDeploymentSpecDbserversArgs, ArangoDeploymentSpecDbserversPtr and ArangoDeploymentSpecDbserversPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversPtrInput` via:
+//
+//	        ArangoDeploymentSpecDbserversArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecDbserversPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversPtrOutput() ArangoDeploymentSpecDbserversPtrOutput
+	ToArangoDeploymentSpecDbserversPtrOutputWithContext(context.Context) ArangoDeploymentSpecDbserversPtrOutput
+}
+
+type arangoDeploymentSpecDbserversPtrType ArangoDeploymentSpecDbserversArgs
+
+func ArangoDeploymentSpecDbserversPtr(v *ArangoDeploymentSpecDbserversArgs) ArangoDeploymentSpecDbserversPtrInput {
+	return (*arangoDeploymentSpecDbserversPtrType)(v)
+}
+
+func (*arangoDeploymentSpecDbserversPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbservers)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecDbserversPtrType) ToArangoDeploymentSpecDbserversPtrOutput() ArangoDeploymentSpecDbserversPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecDbserversPtrType) ToArangoDeploymentSpecDbserversPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbservers)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ToArangoDeploymentSpecDbserversOutput() ArangoDeploymentSpecDbserversOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ToArangoDeploymentSpecDbserversOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ToArangoDeploymentSpecDbserversPtrOutput() ArangoDeploymentSpecDbserversPtrOutput {
+	return o.ToArangoDeploymentSpecDbserversPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ToArangoDeploymentSpecDbserversPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecDbservers) *ArangoDeploymentSpecDbservers {
+		return &v
+	}).(ArangoDeploymentSpecDbserversPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.Affinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *bool { return v.AllowMemberRecreation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.Annotations }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) []string { return v.AnnotationsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *string { return v.AnnotationsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.AntiAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) []string { return v.Args }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *int { return v.Count }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *string { return v.Entrypoint }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Envs() ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) []ArangoDeploymentSpecDbserversEnvs { return v.Envs }).(ArangoDeploymentSpecDbserversEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *int { return v.ExporterPort }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *bool { return v.ExternalPortEnabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *string { return v.IndexMethod }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.Labels }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) []string { return v.LabelsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *string { return v.LabelsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *int { return v.MaxCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *int { return v.MemoryReservation }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *int { return v.MinCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.NodeAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) map[string]interface{} { return v.NodeSelector }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) Resources() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *ArangoDeploymentSpecDbserversResources { return v.Resources }).(ArangoDeploymentSpecDbserversResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversOutput) SecurityContext() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbservers) *ArangoDeploymentSpecDbserversSecurityContext {
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecDbserversSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbservers)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) ToArangoDeploymentSpecDbserversPtrOutput() ArangoDeploymentSpecDbserversPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) ToArangoDeploymentSpecDbserversPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Elem() ArangoDeploymentSpecDbserversOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) ArangoDeploymentSpecDbservers {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecDbservers
+		return ret
+	}).(ArangoDeploymentSpecDbserversOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Affinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowMemberRecreation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Annotations
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.AntiAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) []string {
+		if v == nil {
+			return nil
+		}
+		return v.Args
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *int {
+		if v == nil {
+			return nil
+		}
+		return v.Count
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Entrypoint
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Envs() ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) []ArangoDeploymentSpecDbserversEnvs {
+		if v == nil {
+			return nil
+		}
+		return v.Envs
+	}).(ArangoDeploymentSpecDbserversEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *int {
+		if v == nil {
+			return nil
+		}
+		return v.ExporterPort
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ExternalPortEnabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *string {
+		if v == nil {
+			return nil
+		}
+		return v.IndexMethod
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Labels
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MaxCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MemoryReservation
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MinCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeSelector
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) Resources() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *ArangoDeploymentSpecDbserversResources {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(ArangoDeploymentSpecDbserversResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversPtrOutput) SecurityContext() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbservers) *ArangoDeploymentSpecDbserversSecurityContext {
+		if v == nil {
+			return nil
+		}
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecDbserversSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversAffinity struct {
+}
+
+type ArangoDeploymentSpecDbserversAnnotations struct {
+}
+
+type ArangoDeploymentSpecDbserversAntiAffinity struct {
+}
+
+type ArangoDeploymentSpecDbserversEnvs struct {
+	Name  *string `pulumi:"name"`
+	Value *string `pulumi:"value"`
+}
+
+// ArangoDeploymentSpecDbserversEnvsInput is an input type that accepts ArangoDeploymentSpecDbserversEnvsArgs and ArangoDeploymentSpecDbserversEnvsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversEnvsInput` via:
+//
+//	ArangoDeploymentSpecDbserversEnvsArgs{...}
+type ArangoDeploymentSpecDbserversEnvsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversEnvsOutput() ArangoDeploymentSpecDbserversEnvsOutput
+	ToArangoDeploymentSpecDbserversEnvsOutputWithContext(context.Context) ArangoDeploymentSpecDbserversEnvsOutput
+}
+
+type ArangoDeploymentSpecDbserversEnvsArgs struct {
+	Name  pulumi.StringPtrInput `pulumi:"name"`
+	Value pulumi.StringPtrInput `pulumi:"value"`
+}
+
+func (ArangoDeploymentSpecDbserversEnvsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversEnvsArgs) ToArangoDeploymentSpecDbserversEnvsOutput() ArangoDeploymentSpecDbserversEnvsOutput {
+	return i.ToArangoDeploymentSpecDbserversEnvsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversEnvsArgs) ToArangoDeploymentSpecDbserversEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversEnvsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversEnvsOutput)
+}
+
+// ArangoDeploymentSpecDbserversEnvsArrayInput is an input type that accepts ArangoDeploymentSpecDbserversEnvsArray and ArangoDeploymentSpecDbserversEnvsArrayOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversEnvsArrayInput` via:
+//
+//	ArangoDeploymentSpecDbserversEnvsArray{ ArangoDeploymentSpecDbserversEnvsArgs{...} }
+type ArangoDeploymentSpecDbserversEnvsArrayInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversEnvsArrayOutput() ArangoDeploymentSpecDbserversEnvsArrayOutput
+	ToArangoDeploymentSpecDbserversEnvsArrayOutputWithContext(context.Context) ArangoDeploymentSpecDbserversEnvsArrayOutput
+}
+
+type ArangoDeploymentSpecDbserversEnvsArray []ArangoDeploymentSpecDbserversEnvsInput
+
+func (ArangoDeploymentSpecDbserversEnvsArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecDbserversEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversEnvsArray) ToArangoDeploymentSpecDbserversEnvsArrayOutput() ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return i.ToArangoDeploymentSpecDbserversEnvsArrayOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversEnvsArray) ToArangoDeploymentSpecDbserversEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversEnvsArrayOutput)
+}
+
+type ArangoDeploymentSpecDbserversEnvsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversEnvsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsOutput) ToArangoDeploymentSpecDbserversEnvsOutput() ArangoDeploymentSpecDbserversEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsOutput) ToArangoDeploymentSpecDbserversEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversEnvs) *string { return v.Name }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsOutput) Value() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversEnvs) *string { return v.Value }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversEnvsArrayOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversEnvsArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecDbserversEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsArrayOutput) ToArangoDeploymentSpecDbserversEnvsArrayOutput() ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsArrayOutput) ToArangoDeploymentSpecDbserversEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversEnvsArrayOutput) Index(i pulumi.IntInput) ArangoDeploymentSpecDbserversEnvsOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) ArangoDeploymentSpecDbserversEnvs {
+		return vs[0].([]ArangoDeploymentSpecDbserversEnvs)[vs[1].(int)]
+	}).(ArangoDeploymentSpecDbserversEnvsOutput)
+}
+
+type ArangoDeploymentSpecDbserversLabels struct {
+}
+
+type ArangoDeploymentSpecDbserversNodeAffinity struct {
+}
+
+type ArangoDeploymentSpecDbserversNodeSelector struct {
+}
+
+type ArangoDeploymentSpecDbserversResources struct {
+	Limits   *ArangoDeploymentSpecDbserversResourcesLimits   `pulumi:"limits"`
+	Requests *ArangoDeploymentSpecDbserversResourcesRequests `pulumi:"requests"`
+}
+
+// ArangoDeploymentSpecDbserversResourcesInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesArgs and ArangoDeploymentSpecDbserversResourcesOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesInput` via:
+//
+//	ArangoDeploymentSpecDbserversResourcesArgs{...}
+type ArangoDeploymentSpecDbserversResourcesInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesOutput() ArangoDeploymentSpecDbserversResourcesOutput
+	ToArangoDeploymentSpecDbserversResourcesOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesOutput
+}
+
+type ArangoDeploymentSpecDbserversResourcesArgs struct {
+	Limits   ArangoDeploymentSpecDbserversResourcesLimitsPtrInput   `pulumi:"limits"`
+	Requests ArangoDeploymentSpecDbserversResourcesRequestsPtrInput `pulumi:"requests"`
+}
+
+func (ArangoDeploymentSpecDbserversResourcesArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResources)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesArgs) ToArangoDeploymentSpecDbserversResourcesOutput() ArangoDeploymentSpecDbserversResourcesOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesArgs) ToArangoDeploymentSpecDbserversResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesOutput)
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesArgs) ToArangoDeploymentSpecDbserversResourcesPtrOutput() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesArgs) ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesOutput).ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecDbserversResourcesPtrInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesArgs, ArangoDeploymentSpecDbserversResourcesPtr and ArangoDeploymentSpecDbserversResourcesPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesPtrInput` via:
+//
+//	        ArangoDeploymentSpecDbserversResourcesArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecDbserversResourcesPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesPtrOutput() ArangoDeploymentSpecDbserversResourcesPtrOutput
+	ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesPtrOutput
+}
+
+type arangoDeploymentSpecDbserversResourcesPtrType ArangoDeploymentSpecDbserversResourcesArgs
+
+func ArangoDeploymentSpecDbserversResourcesPtr(v *ArangoDeploymentSpecDbserversResourcesArgs) ArangoDeploymentSpecDbserversResourcesPtrInput {
+	return (*arangoDeploymentSpecDbserversResourcesPtrType)(v)
+}
+
+func (*arangoDeploymentSpecDbserversResourcesPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResources)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesPtrType) ToArangoDeploymentSpecDbserversResourcesPtrOutput() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesPtrType) ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) ToArangoDeploymentSpecDbserversResourcesOutput() ArangoDeploymentSpecDbserversResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) ToArangoDeploymentSpecDbserversResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) ToArangoDeploymentSpecDbserversResourcesPtrOutput() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o.ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecDbserversResources) *ArangoDeploymentSpecDbserversResources {
+		return &v
+	}).(ArangoDeploymentSpecDbserversResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) Limits() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResources) *ArangoDeploymentSpecDbserversResourcesLimits {
+		return v.Limits
+	}).(ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesOutput) Requests() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResources) *ArangoDeploymentSpecDbserversResourcesRequests {
+		return v.Requests
+	}).(ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesPtrOutput) ToArangoDeploymentSpecDbserversResourcesPtrOutput() ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesPtrOutput) ToArangoDeploymentSpecDbserversResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesPtrOutput) Elem() ArangoDeploymentSpecDbserversResourcesOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResources) ArangoDeploymentSpecDbserversResources {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecDbserversResources
+		return ret
+	}).(ArangoDeploymentSpecDbserversResourcesOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesPtrOutput) Limits() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResources) *ArangoDeploymentSpecDbserversResourcesLimits {
+		if v == nil {
+			return nil
+		}
+		return v.Limits
+	}).(ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesPtrOutput) Requests() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResources) *ArangoDeploymentSpecDbserversResourcesRequests {
+		if v == nil {
+			return nil
+		}
+		return v.Requests
+	}).(ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesLimits struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecDbserversResourcesLimitsInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesLimitsArgs and ArangoDeploymentSpecDbserversResourcesLimitsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesLimitsInput` via:
+//
+//	ArangoDeploymentSpecDbserversResourcesLimitsArgs{...}
+type ArangoDeploymentSpecDbserversResourcesLimitsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesLimitsOutput() ArangoDeploymentSpecDbserversResourcesLimitsOutput
+	ToArangoDeploymentSpecDbserversResourcesLimitsOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesLimitsOutput
+}
+
+type ArangoDeploymentSpecDbserversResourcesLimitsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecDbserversResourcesLimitsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesLimits)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesLimitsArgs) ToArangoDeploymentSpecDbserversResourcesLimitsOutput() ArangoDeploymentSpecDbserversResourcesLimitsOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesLimitsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesLimitsArgs) ToArangoDeploymentSpecDbserversResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesLimitsOutput)
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesLimitsArgs) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutput() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesLimitsArgs) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesLimitsOutput).ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecDbserversResourcesLimitsPtrInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesLimitsArgs, ArangoDeploymentSpecDbserversResourcesLimitsPtr and ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesLimitsPtrInput` via:
+//
+//	        ArangoDeploymentSpecDbserversResourcesLimitsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecDbserversResourcesLimitsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutput() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput
+	ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput
+}
+
+type arangoDeploymentSpecDbserversResourcesLimitsPtrType ArangoDeploymentSpecDbserversResourcesLimitsArgs
+
+func ArangoDeploymentSpecDbserversResourcesLimitsPtr(v *ArangoDeploymentSpecDbserversResourcesLimitsArgs) ArangoDeploymentSpecDbserversResourcesLimitsPtrInput {
+	return (*arangoDeploymentSpecDbserversResourcesLimitsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecDbserversResourcesLimitsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResourcesLimits)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesLimitsPtrType) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutput() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesLimitsPtrType) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesLimitsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesLimitsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) ToArangoDeploymentSpecDbserversResourcesLimitsOutput() ArangoDeploymentSpecDbserversResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) ToArangoDeploymentSpecDbserversResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutput() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o.ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecDbserversResourcesLimits) *ArangoDeploymentSpecDbserversResourcesLimits {
+		return &v
+	}).(ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResourcesLimits) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResourcesLimits) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutput() ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) ToArangoDeploymentSpecDbserversResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) Elem() ArangoDeploymentSpecDbserversResourcesLimitsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesLimits) ArangoDeploymentSpecDbserversResourcesLimits {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecDbserversResourcesLimits
+		return ret
+	}).(ArangoDeploymentSpecDbserversResourcesLimitsOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesRequests struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecDbserversResourcesRequestsInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesRequestsArgs and ArangoDeploymentSpecDbserversResourcesRequestsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesRequestsInput` via:
+//
+//	ArangoDeploymentSpecDbserversResourcesRequestsArgs{...}
+type ArangoDeploymentSpecDbserversResourcesRequestsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesRequestsOutput() ArangoDeploymentSpecDbserversResourcesRequestsOutput
+	ToArangoDeploymentSpecDbserversResourcesRequestsOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesRequestsOutput
+}
+
+type ArangoDeploymentSpecDbserversResourcesRequestsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecDbserversResourcesRequestsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesRequests)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesRequestsArgs) ToArangoDeploymentSpecDbserversResourcesRequestsOutput() ArangoDeploymentSpecDbserversResourcesRequestsOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesRequestsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesRequestsArgs) ToArangoDeploymentSpecDbserversResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesRequestsOutput)
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesRequestsArgs) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutput() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversResourcesRequestsArgs) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesRequestsOutput).ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecDbserversResourcesRequestsPtrInput is an input type that accepts ArangoDeploymentSpecDbserversResourcesRequestsArgs, ArangoDeploymentSpecDbserversResourcesRequestsPtr and ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversResourcesRequestsPtrInput` via:
+//
+//	        ArangoDeploymentSpecDbserversResourcesRequestsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecDbserversResourcesRequestsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutput() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput
+	ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(context.Context) ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput
+}
+
+type arangoDeploymentSpecDbserversResourcesRequestsPtrType ArangoDeploymentSpecDbserversResourcesRequestsArgs
+
+func ArangoDeploymentSpecDbserversResourcesRequestsPtr(v *ArangoDeploymentSpecDbserversResourcesRequestsArgs) ArangoDeploymentSpecDbserversResourcesRequestsPtrInput {
+	return (*arangoDeploymentSpecDbserversResourcesRequestsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecDbserversResourcesRequestsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResourcesRequests)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesRequestsPtrType) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutput() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecDbserversResourcesRequestsPtrType) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesRequestsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesRequestsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) ToArangoDeploymentSpecDbserversResourcesRequestsOutput() ArangoDeploymentSpecDbserversResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) ToArangoDeploymentSpecDbserversResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutput() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o.ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecDbserversResourcesRequests) *ArangoDeploymentSpecDbserversResourcesRequests {
+		return &v
+	}).(ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResourcesRequests) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversResourcesRequests) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutput() ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) ToArangoDeploymentSpecDbserversResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) Elem() ArangoDeploymentSpecDbserversResourcesRequestsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesRequests) ArangoDeploymentSpecDbserversResourcesRequests {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecDbserversResourcesRequests
+		return ret
+	}).(ArangoDeploymentSpecDbserversResourcesRequestsOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversSecurityContext struct {
+	AllowPrivilegeEscalation *bool `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  *int  `pulumi:"fsGroup"`
+	Privileged               *bool `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   *bool `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               *int  `pulumi:"runAsGroup"`
+	RunAsUser                *int  `pulumi:"runAsUser"`
+	SupplementalGroups       []int `pulumi:"supplementalGroups"`
+}
+
+// ArangoDeploymentSpecDbserversSecurityContextInput is an input type that accepts ArangoDeploymentSpecDbserversSecurityContextArgs and ArangoDeploymentSpecDbserversSecurityContextOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversSecurityContextInput` via:
+//
+//	ArangoDeploymentSpecDbserversSecurityContextArgs{...}
+type ArangoDeploymentSpecDbserversSecurityContextInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversSecurityContextOutput() ArangoDeploymentSpecDbserversSecurityContextOutput
+	ToArangoDeploymentSpecDbserversSecurityContextOutputWithContext(context.Context) ArangoDeploymentSpecDbserversSecurityContextOutput
+}
+
+type ArangoDeploymentSpecDbserversSecurityContextArgs struct {
+	AllowPrivilegeEscalation pulumi.BoolPtrInput  `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  pulumi.IntPtrInput   `pulumi:"fsGroup"`
+	Privileged               pulumi.BoolPtrInput  `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   pulumi.BoolPtrInput  `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               pulumi.IntPtrInput   `pulumi:"runAsGroup"`
+	RunAsUser                pulumi.IntPtrInput   `pulumi:"runAsUser"`
+	SupplementalGroups       pulumi.IntArrayInput `pulumi:"supplementalGroups"`
+}
+
+func (ArangoDeploymentSpecDbserversSecurityContextArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversSecurityContext)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecDbserversSecurityContextArgs) ToArangoDeploymentSpecDbserversSecurityContextOutput() ArangoDeploymentSpecDbserversSecurityContextOutput {
+	return i.ToArangoDeploymentSpecDbserversSecurityContextOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversSecurityContextArgs) ToArangoDeploymentSpecDbserversSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversSecurityContextOutput)
+}
+
+func (i ArangoDeploymentSpecDbserversSecurityContextArgs) ToArangoDeploymentSpecDbserversSecurityContextPtrOutput() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecDbserversSecurityContextArgs) ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversSecurityContextOutput).ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecDbserversSecurityContextPtrInput is an input type that accepts ArangoDeploymentSpecDbserversSecurityContextArgs, ArangoDeploymentSpecDbserversSecurityContextPtr and ArangoDeploymentSpecDbserversSecurityContextPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecDbserversSecurityContextPtrInput` via:
+//
+//	        ArangoDeploymentSpecDbserversSecurityContextArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecDbserversSecurityContextPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecDbserversSecurityContextPtrOutput() ArangoDeploymentSpecDbserversSecurityContextPtrOutput
+	ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(context.Context) ArangoDeploymentSpecDbserversSecurityContextPtrOutput
+}
+
+type arangoDeploymentSpecDbserversSecurityContextPtrType ArangoDeploymentSpecDbserversSecurityContextArgs
+
+func ArangoDeploymentSpecDbserversSecurityContextPtr(v *ArangoDeploymentSpecDbserversSecurityContextArgs) ArangoDeploymentSpecDbserversSecurityContextPtrInput {
+	return (*arangoDeploymentSpecDbserversSecurityContextPtrType)(v)
+}
+
+func (*arangoDeploymentSpecDbserversSecurityContextPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversSecurityContext)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecDbserversSecurityContextPtrType) ToArangoDeploymentSpecDbserversSecurityContextPtrOutput() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecDbserversSecurityContextPtrType) ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecDbserversSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecDbserversSecurityContextOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversSecurityContextOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecDbserversSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) ToArangoDeploymentSpecDbserversSecurityContextOutput() ArangoDeploymentSpecDbserversSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) ToArangoDeploymentSpecDbserversSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) ToArangoDeploymentSpecDbserversSecurityContextPtrOutput() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o.ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecDbserversSecurityContext) *ArangoDeploymentSpecDbserversSecurityContext {
+		return &v
+	}).(ArangoDeploymentSpecDbserversSecurityContextPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *bool { return v.AllowPrivilegeEscalation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *int { return v.FsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *bool { return v.Privileged }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *bool { return v.ReadOnlyRootFilesystem }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *int { return v.RunAsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) *int { return v.RunAsUser }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecDbserversSecurityContext) []int { return v.SupplementalGroups }).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecDbserversSecurityContextPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecDbserversSecurityContextPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecDbserversSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) ToArangoDeploymentSpecDbserversSecurityContextPtrOutput() ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) ToArangoDeploymentSpecDbserversSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecDbserversSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) Elem() ArangoDeploymentSpecDbserversSecurityContextOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) ArangoDeploymentSpecDbserversSecurityContext {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecDbserversSecurityContext
+		return ret
+	}).(ArangoDeploymentSpecDbserversSecurityContextOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowPrivilegeEscalation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.FsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Privileged
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ReadOnlyRootFilesystem
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsUser
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecDbserversSecurityContextPtrOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecDbserversSecurityContext) []int {
+		if v == nil {
+			return nil
+		}
+		return v.SupplementalGroups
+	}).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecExternalAccess struct {
+	AdvertisedEndpoint       *string  `pulumi:"advertisedEndpoint"`
+	LoadBalancerIP           *string  `pulumi:"loadBalancerIP"`
+	LoadBalancerSourceRanges []string `pulumi:"loadBalancerSourceRanges"`
+	ManagedServiceNames      []string `pulumi:"managedServiceNames"`
+	NodePort                 *int     `pulumi:"nodePort"`
+	Type                     *string  `pulumi:"type"`
+}
+
+// ArangoDeploymentSpecExternalAccessInput is an input type that accepts ArangoDeploymentSpecExternalAccessArgs and ArangoDeploymentSpecExternalAccessOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecExternalAccessInput` via:
+//
+//	ArangoDeploymentSpecExternalAccessArgs{...}
+type ArangoDeploymentSpecExternalAccessInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecExternalAccessOutput() ArangoDeploymentSpecExternalAccessOutput
+	ToArangoDeploymentSpecExternalAccessOutputWithContext(context.Context) ArangoDeploymentSpecExternalAccessOutput
+}
+
+type ArangoDeploymentSpecExternalAccessArgs struct {
+	AdvertisedEndpoint       pulumi.StringPtrInput   `pulumi:"advertisedEndpoint"`
+	LoadBalancerIP           pulumi.StringPtrInput   `pulumi:"loadBalancerIP"`
+	LoadBalancerSourceRanges pulumi.StringArrayInput `pulumi:"loadBalancerSourceRanges"`
+	ManagedServiceNames      pulumi.StringArrayInput `pulumi:"managedServiceNames"`
+	NodePort                 pulumi.IntPtrInput      `pulumi:"nodePort"`
+	Type                     pulumi.StringPtrInput   `pulumi:"type"`
+}
+
+func (ArangoDeploymentSpecExternalAccessArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecExternalAccess)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecExternalAccessArgs) ToArangoDeploymentSpecExternalAccessOutput() ArangoDeploymentSpecExternalAccessOutput {
+	return i.ToArangoDeploymentSpecExternalAccessOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecExternalAccessArgs) ToArangoDeploymentSpecExternalAccessOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecExternalAccessOutput)
+}
+
+func (i ArangoDeploymentSpecExternalAccessArgs) ToArangoDeploymentSpecExternalAccessPtrOutput() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return i.ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecExternalAccessArgs) ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecExternalAccessOutput).ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecExternalAccessPtrInput is an input type that accepts ArangoDeploymentSpecExternalAccessArgs, ArangoDeploymentSpecExternalAccessPtr and ArangoDeploymentSpecExternalAccessPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecExternalAccessPtrInput` via:
+//
+//	        ArangoDeploymentSpecExternalAccessArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecExternalAccessPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecExternalAccessPtrOutput() ArangoDeploymentSpecExternalAccessPtrOutput
+	ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(context.Context) ArangoDeploymentSpecExternalAccessPtrOutput
+}
+
+type arangoDeploymentSpecExternalAccessPtrType ArangoDeploymentSpecExternalAccessArgs
+
+func ArangoDeploymentSpecExternalAccessPtr(v *ArangoDeploymentSpecExternalAccessArgs) ArangoDeploymentSpecExternalAccessPtrInput {
+	return (*arangoDeploymentSpecExternalAccessPtrType)(v)
+}
+
+func (*arangoDeploymentSpecExternalAccessPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecExternalAccess)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecExternalAccessPtrType) ToArangoDeploymentSpecExternalAccessPtrOutput() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return i.ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecExternalAccessPtrType) ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecExternalAccessPtrOutput)
+}
+
+type ArangoDeploymentSpecExternalAccessOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecExternalAccessOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecExternalAccess)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) ToArangoDeploymentSpecExternalAccessOutput() ArangoDeploymentSpecExternalAccessOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) ToArangoDeploymentSpecExternalAccessOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) ToArangoDeploymentSpecExternalAccessPtrOutput() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o.ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecExternalAccess) *ArangoDeploymentSpecExternalAccess {
+		return &v
+	}).(ArangoDeploymentSpecExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) AdvertisedEndpoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) *string { return v.AdvertisedEndpoint }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) LoadBalancerIP() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) *string { return v.LoadBalancerIP }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) LoadBalancerSourceRanges() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) []string { return v.LoadBalancerSourceRanges }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) ManagedServiceNames() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) []string { return v.ManagedServiceNames }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) NodePort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) *int { return v.NodePort }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessOutput) Type() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecExternalAccess) *string { return v.Type }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecExternalAccessPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecExternalAccessPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecExternalAccess)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) ToArangoDeploymentSpecExternalAccessPtrOutput() ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) ToArangoDeploymentSpecExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecExternalAccessPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) Elem() ArangoDeploymentSpecExternalAccessOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) ArangoDeploymentSpecExternalAccess {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecExternalAccess
+		return ret
+	}).(ArangoDeploymentSpecExternalAccessOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) AdvertisedEndpoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) *string {
+		if v == nil {
+			return nil
+		}
+		return v.AdvertisedEndpoint
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) LoadBalancerIP() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LoadBalancerIP
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) LoadBalancerSourceRanges() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LoadBalancerSourceRanges
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) ManagedServiceNames() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) []string {
+		if v == nil {
+			return nil
+		}
+		return v.ManagedServiceNames
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) NodePort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) *int {
+		if v == nil {
+			return nil
+		}
+		return v.NodePort
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecExternalAccessPtrOutput) Type() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecExternalAccess) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Type
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecLabels struct {
+}
+
+type ArangoDeploymentSpecLicense struct {
+	SecretName *string `pulumi:"secretName"`
+}
+
+// ArangoDeploymentSpecLicenseInput is an input type that accepts ArangoDeploymentSpecLicenseArgs and ArangoDeploymentSpecLicenseOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecLicenseInput` via:
+//
+//	ArangoDeploymentSpecLicenseArgs{...}
+type ArangoDeploymentSpecLicenseInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecLicenseOutput() ArangoDeploymentSpecLicenseOutput
+	ToArangoDeploymentSpecLicenseOutputWithContext(context.Context) ArangoDeploymentSpecLicenseOutput
+}
+
+type ArangoDeploymentSpecLicenseArgs struct {
+	SecretName pulumi.StringPtrInput `pulumi:"secretName"`
+}
+
+func (ArangoDeploymentSpecLicenseArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecLicense)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecLicenseArgs) ToArangoDeploymentSpecLicenseOutput() ArangoDeploymentSpecLicenseOutput {
+	return i.ToArangoDeploymentSpecLicenseOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecLicenseArgs) ToArangoDeploymentSpecLicenseOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicenseOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLicenseOutput)
+}
+
+func (i ArangoDeploymentSpecLicenseArgs) ToArangoDeploymentSpecLicensePtrOutput() ArangoDeploymentSpecLicensePtrOutput {
+	return i.ToArangoDeploymentSpecLicensePtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecLicenseArgs) ToArangoDeploymentSpecLicensePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicensePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLicenseOutput).ToArangoDeploymentSpecLicensePtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecLicensePtrInput is an input type that accepts ArangoDeploymentSpecLicenseArgs, ArangoDeploymentSpecLicensePtr and ArangoDeploymentSpecLicensePtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecLicensePtrInput` via:
+//
+//	        ArangoDeploymentSpecLicenseArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecLicensePtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecLicensePtrOutput() ArangoDeploymentSpecLicensePtrOutput
+	ToArangoDeploymentSpecLicensePtrOutputWithContext(context.Context) ArangoDeploymentSpecLicensePtrOutput
+}
+
+type arangoDeploymentSpecLicensePtrType ArangoDeploymentSpecLicenseArgs
+
+func ArangoDeploymentSpecLicensePtr(v *ArangoDeploymentSpecLicenseArgs) ArangoDeploymentSpecLicensePtrInput {
+	return (*arangoDeploymentSpecLicensePtrType)(v)
+}
+
+func (*arangoDeploymentSpecLicensePtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecLicense)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecLicensePtrType) ToArangoDeploymentSpecLicensePtrOutput() ArangoDeploymentSpecLicensePtrOutput {
+	return i.ToArangoDeploymentSpecLicensePtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecLicensePtrType) ToArangoDeploymentSpecLicensePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicensePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLicensePtrOutput)
+}
+
+type ArangoDeploymentSpecLicenseOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecLicenseOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecLicense)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecLicenseOutput) ToArangoDeploymentSpecLicenseOutput() ArangoDeploymentSpecLicenseOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLicenseOutput) ToArangoDeploymentSpecLicenseOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicenseOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLicenseOutput) ToArangoDeploymentSpecLicensePtrOutput() ArangoDeploymentSpecLicensePtrOutput {
+	return o.ToArangoDeploymentSpecLicensePtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecLicenseOutput) ToArangoDeploymentSpecLicensePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicensePtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecLicense) *ArangoDeploymentSpecLicense {
+		return &v
+	}).(ArangoDeploymentSpecLicensePtrOutput)
+}
+
+func (o ArangoDeploymentSpecLicenseOutput) SecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecLicense) *string { return v.SecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecLicensePtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecLicensePtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecLicense)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecLicensePtrOutput) ToArangoDeploymentSpecLicensePtrOutput() ArangoDeploymentSpecLicensePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLicensePtrOutput) ToArangoDeploymentSpecLicensePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLicensePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLicensePtrOutput) Elem() ArangoDeploymentSpecLicenseOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecLicense) ArangoDeploymentSpecLicense {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecLicense
+		return ret
+	}).(ArangoDeploymentSpecLicenseOutput)
+}
+
+func (o ArangoDeploymentSpecLicensePtrOutput) SecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecLicense) *string {
+		if v == nil {
+			return nil
+		}
+		return v.SecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecLifecycle struct {
+	Resources map[string]interface{} `pulumi:"resources"`
+}
+
+// ArangoDeploymentSpecLifecycleInput is an input type that accepts ArangoDeploymentSpecLifecycleArgs and ArangoDeploymentSpecLifecycleOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecLifecycleInput` via:
+//
+//	ArangoDeploymentSpecLifecycleArgs{...}
+type ArangoDeploymentSpecLifecycleInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecLifecycleOutput() ArangoDeploymentSpecLifecycleOutput
+	ToArangoDeploymentSpecLifecycleOutputWithContext(context.Context) ArangoDeploymentSpecLifecycleOutput
+}
+
+type ArangoDeploymentSpecLifecycleArgs struct {
+	Resources pulumi.MapInput `pulumi:"resources"`
+}
+
+func (ArangoDeploymentSpecLifecycleArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecLifecycle)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecLifecycleArgs) ToArangoDeploymentSpecLifecycleOutput() ArangoDeploymentSpecLifecycleOutput {
+	return i.ToArangoDeploymentSpecLifecycleOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecLifecycleArgs) ToArangoDeploymentSpecLifecycleOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecycleOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLifecycleOutput)
+}
+
+func (i ArangoDeploymentSpecLifecycleArgs) ToArangoDeploymentSpecLifecyclePtrOutput() ArangoDeploymentSpecLifecyclePtrOutput {
+	return i.ToArangoDeploymentSpecLifecyclePtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecLifecycleArgs) ToArangoDeploymentSpecLifecyclePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecyclePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLifecycleOutput).ToArangoDeploymentSpecLifecyclePtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecLifecyclePtrInput is an input type that accepts ArangoDeploymentSpecLifecycleArgs, ArangoDeploymentSpecLifecyclePtr and ArangoDeploymentSpecLifecyclePtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecLifecyclePtrInput` via:
+//
+//	        ArangoDeploymentSpecLifecycleArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecLifecyclePtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecLifecyclePtrOutput() ArangoDeploymentSpecLifecyclePtrOutput
+	ToArangoDeploymentSpecLifecyclePtrOutputWithContext(context.Context) ArangoDeploymentSpecLifecyclePtrOutput
+}
+
+type arangoDeploymentSpecLifecyclePtrType ArangoDeploymentSpecLifecycleArgs
+
+func ArangoDeploymentSpecLifecyclePtr(v *ArangoDeploymentSpecLifecycleArgs) ArangoDeploymentSpecLifecyclePtrInput {
+	return (*arangoDeploymentSpecLifecyclePtrType)(v)
+}
+
+func (*arangoDeploymentSpecLifecyclePtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecLifecycle)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecLifecyclePtrType) ToArangoDeploymentSpecLifecyclePtrOutput() ArangoDeploymentSpecLifecyclePtrOutput {
+	return i.ToArangoDeploymentSpecLifecyclePtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecLifecyclePtrType) ToArangoDeploymentSpecLifecyclePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecyclePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecLifecyclePtrOutput)
+}
+
+type ArangoDeploymentSpecLifecycleOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecLifecycleOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecLifecycle)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecLifecycleOutput) ToArangoDeploymentSpecLifecycleOutput() ArangoDeploymentSpecLifecycleOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLifecycleOutput) ToArangoDeploymentSpecLifecycleOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecycleOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLifecycleOutput) ToArangoDeploymentSpecLifecyclePtrOutput() ArangoDeploymentSpecLifecyclePtrOutput {
+	return o.ToArangoDeploymentSpecLifecyclePtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecLifecycleOutput) ToArangoDeploymentSpecLifecyclePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecyclePtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecLifecycle) *ArangoDeploymentSpecLifecycle {
+		return &v
+	}).(ArangoDeploymentSpecLifecyclePtrOutput)
+}
+
+func (o ArangoDeploymentSpecLifecycleOutput) Resources() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecLifecycle) map[string]interface{} { return v.Resources }).(pulumi.MapOutput)
+}
+
+type ArangoDeploymentSpecLifecyclePtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecLifecyclePtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecLifecycle)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecLifecyclePtrOutput) ToArangoDeploymentSpecLifecyclePtrOutput() ArangoDeploymentSpecLifecyclePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLifecyclePtrOutput) ToArangoDeploymentSpecLifecyclePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecLifecyclePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecLifecyclePtrOutput) Elem() ArangoDeploymentSpecLifecycleOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecLifecycle) ArangoDeploymentSpecLifecycle {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecLifecycle
+		return ret
+	}).(ArangoDeploymentSpecLifecycleOutput)
+}
+
+func (o ArangoDeploymentSpecLifecyclePtrOutput) Resources() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecLifecycle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(pulumi.MapOutput)
+}
+
+type ArangoDeploymentSpecMetrics struct {
+	Authentication *ArangoDeploymentSpecMetricsAuthentication `pulumi:"authentication"`
+	Enabled        *bool                                      `pulumi:"enabled"`
+	Extensions     *ArangoDeploymentSpecMetricsExtensions     `pulumi:"extensions"`
+	Image          *string                                    `pulumi:"image"`
+	Mode           *string                                    `pulumi:"mode"`
+	Port           *int                                       `pulumi:"port"`
+	Resources      map[string]interface{}                     `pulumi:"resources"`
+	ServiceMonitor *ArangoDeploymentSpecMetricsServiceMonitor `pulumi:"serviceMonitor"`
+	Tls            *bool                                      `pulumi:"tls"`
+}
+
+// ArangoDeploymentSpecMetricsInput is an input type that accepts ArangoDeploymentSpecMetricsArgs and ArangoDeploymentSpecMetricsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsInput` via:
+//
+//	ArangoDeploymentSpecMetricsArgs{...}
+type ArangoDeploymentSpecMetricsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsOutput() ArangoDeploymentSpecMetricsOutput
+	ToArangoDeploymentSpecMetricsOutputWithContext(context.Context) ArangoDeploymentSpecMetricsOutput
+}
+
+type ArangoDeploymentSpecMetricsArgs struct {
+	Authentication ArangoDeploymentSpecMetricsAuthenticationPtrInput `pulumi:"authentication"`
+	Enabled        pulumi.BoolPtrInput                               `pulumi:"enabled"`
+	Extensions     ArangoDeploymentSpecMetricsExtensionsPtrInput     `pulumi:"extensions"`
+	Image          pulumi.StringPtrInput                             `pulumi:"image"`
+	Mode           pulumi.StringPtrInput                             `pulumi:"mode"`
+	Port           pulumi.IntPtrInput                                `pulumi:"port"`
+	Resources      pulumi.MapInput                                   `pulumi:"resources"`
+	ServiceMonitor ArangoDeploymentSpecMetricsServiceMonitorPtrInput `pulumi:"serviceMonitor"`
+	Tls            pulumi.BoolPtrInput                               `pulumi:"tls"`
+}
+
+func (ArangoDeploymentSpecMetricsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetrics)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecMetricsArgs) ToArangoDeploymentSpecMetricsOutput() ArangoDeploymentSpecMetricsOutput {
+	return i.ToArangoDeploymentSpecMetricsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsArgs) ToArangoDeploymentSpecMetricsOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsOutput)
+}
+
+func (i ArangoDeploymentSpecMetricsArgs) ToArangoDeploymentSpecMetricsPtrOutput() ArangoDeploymentSpecMetricsPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsArgs) ToArangoDeploymentSpecMetricsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsOutput).ToArangoDeploymentSpecMetricsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecMetricsPtrInput is an input type that accepts ArangoDeploymentSpecMetricsArgs, ArangoDeploymentSpecMetricsPtr and ArangoDeploymentSpecMetricsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsPtrInput` via:
+//
+//	        ArangoDeploymentSpecMetricsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecMetricsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsPtrOutput() ArangoDeploymentSpecMetricsPtrOutput
+	ToArangoDeploymentSpecMetricsPtrOutputWithContext(context.Context) ArangoDeploymentSpecMetricsPtrOutput
+}
+
+type arangoDeploymentSpecMetricsPtrType ArangoDeploymentSpecMetricsArgs
+
+func ArangoDeploymentSpecMetricsPtr(v *ArangoDeploymentSpecMetricsArgs) ArangoDeploymentSpecMetricsPtrInput {
+	return (*arangoDeploymentSpecMetricsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecMetricsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetrics)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecMetricsPtrType) ToArangoDeploymentSpecMetricsPtrOutput() ArangoDeploymentSpecMetricsPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecMetricsPtrType) ToArangoDeploymentSpecMetricsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetrics)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) ToArangoDeploymentSpecMetricsOutput() ArangoDeploymentSpecMetricsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) ToArangoDeploymentSpecMetricsOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) ToArangoDeploymentSpecMetricsPtrOutput() ArangoDeploymentSpecMetricsPtrOutput {
+	return o.ToArangoDeploymentSpecMetricsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) ToArangoDeploymentSpecMetricsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetrics {
+		return &v
+	}).(ArangoDeploymentSpecMetricsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Authentication() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsAuthentication {
+		return v.Authentication
+	}).(ArangoDeploymentSpecMetricsAuthenticationPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *bool { return v.Enabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Extensions() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsExtensions { return v.Extensions }).(ArangoDeploymentSpecMetricsExtensionsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *string { return v.Image }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *string { return v.Mode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Port() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *int { return v.Port }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Resources() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) map[string]interface{} { return v.Resources }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) ServiceMonitor() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsServiceMonitor {
+		return v.ServiceMonitor
+	}).(ArangoDeploymentSpecMetricsServiceMonitorPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsOutput) Tls() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetrics) *bool { return v.Tls }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetrics)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) ToArangoDeploymentSpecMetricsPtrOutput() ArangoDeploymentSpecMetricsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) ToArangoDeploymentSpecMetricsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Elem() ArangoDeploymentSpecMetricsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) ArangoDeploymentSpecMetrics {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecMetrics
+		return ret
+	}).(ArangoDeploymentSpecMetricsOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Authentication() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsAuthentication {
+		if v == nil {
+			return nil
+		}
+		return v.Authentication
+	}).(ArangoDeploymentSpecMetricsAuthenticationPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Enabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Extensions() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsExtensions {
+		if v == nil {
+			return nil
+		}
+		return v.Extensions
+	}).(ArangoDeploymentSpecMetricsExtensionsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Image
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Mode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Port() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *int {
+		if v == nil {
+			return nil
+		}
+		return v.Port
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Resources() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) ServiceMonitor() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *ArangoDeploymentSpecMetricsServiceMonitor {
+		if v == nil {
+			return nil
+		}
+		return v.ServiceMonitor
+	}).(ArangoDeploymentSpecMetricsServiceMonitorPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsPtrOutput) Tls() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetrics) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Tls
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsAuthentication struct {
+	JwtTokenSecretName *string `pulumi:"jwtTokenSecretName"`
+}
+
+// ArangoDeploymentSpecMetricsAuthenticationInput is an input type that accepts ArangoDeploymentSpecMetricsAuthenticationArgs and ArangoDeploymentSpecMetricsAuthenticationOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsAuthenticationInput` via:
+//
+//	ArangoDeploymentSpecMetricsAuthenticationArgs{...}
+type ArangoDeploymentSpecMetricsAuthenticationInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsAuthenticationOutput() ArangoDeploymentSpecMetricsAuthenticationOutput
+	ToArangoDeploymentSpecMetricsAuthenticationOutputWithContext(context.Context) ArangoDeploymentSpecMetricsAuthenticationOutput
+}
+
+type ArangoDeploymentSpecMetricsAuthenticationArgs struct {
+	JwtTokenSecretName pulumi.StringPtrInput `pulumi:"jwtTokenSecretName"`
+}
+
+func (ArangoDeploymentSpecMetricsAuthenticationArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsAuthentication)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecMetricsAuthenticationArgs) ToArangoDeploymentSpecMetricsAuthenticationOutput() ArangoDeploymentSpecMetricsAuthenticationOutput {
+	return i.ToArangoDeploymentSpecMetricsAuthenticationOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsAuthenticationArgs) ToArangoDeploymentSpecMetricsAuthenticationOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsAuthenticationOutput)
+}
+
+func (i ArangoDeploymentSpecMetricsAuthenticationArgs) ToArangoDeploymentSpecMetricsAuthenticationPtrOutput() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsAuthenticationArgs) ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsAuthenticationOutput).ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecMetricsAuthenticationPtrInput is an input type that accepts ArangoDeploymentSpecMetricsAuthenticationArgs, ArangoDeploymentSpecMetricsAuthenticationPtr and ArangoDeploymentSpecMetricsAuthenticationPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsAuthenticationPtrInput` via:
+//
+//	        ArangoDeploymentSpecMetricsAuthenticationArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecMetricsAuthenticationPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsAuthenticationPtrOutput() ArangoDeploymentSpecMetricsAuthenticationPtrOutput
+	ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(context.Context) ArangoDeploymentSpecMetricsAuthenticationPtrOutput
+}
+
+type arangoDeploymentSpecMetricsAuthenticationPtrType ArangoDeploymentSpecMetricsAuthenticationArgs
+
+func ArangoDeploymentSpecMetricsAuthenticationPtr(v *ArangoDeploymentSpecMetricsAuthenticationArgs) ArangoDeploymentSpecMetricsAuthenticationPtrInput {
+	return (*arangoDeploymentSpecMetricsAuthenticationPtrType)(v)
+}
+
+func (*arangoDeploymentSpecMetricsAuthenticationPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsAuthentication)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecMetricsAuthenticationPtrType) ToArangoDeploymentSpecMetricsAuthenticationPtrOutput() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecMetricsAuthenticationPtrType) ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsAuthenticationPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsAuthenticationOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsAuthenticationOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsAuthentication)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationOutput) ToArangoDeploymentSpecMetricsAuthenticationOutput() ArangoDeploymentSpecMetricsAuthenticationOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationOutput) ToArangoDeploymentSpecMetricsAuthenticationOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationOutput) ToArangoDeploymentSpecMetricsAuthenticationPtrOutput() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o.ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationOutput) ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecMetricsAuthentication) *ArangoDeploymentSpecMetricsAuthentication {
+		return &v
+	}).(ArangoDeploymentSpecMetricsAuthenticationPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationOutput) JwtTokenSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetricsAuthentication) *string { return v.JwtTokenSecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsAuthenticationPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsAuthenticationPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsAuthentication)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationPtrOutput) ToArangoDeploymentSpecMetricsAuthenticationPtrOutput() ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationPtrOutput) ToArangoDeploymentSpecMetricsAuthenticationPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsAuthenticationPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationPtrOutput) Elem() ArangoDeploymentSpecMetricsAuthenticationOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsAuthentication) ArangoDeploymentSpecMetricsAuthentication {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecMetricsAuthentication
+		return ret
+	}).(ArangoDeploymentSpecMetricsAuthenticationOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsAuthenticationPtrOutput) JwtTokenSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsAuthentication) *string {
+		if v == nil {
+			return nil
+		}
+		return v.JwtTokenSecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsExtensions struct {
+	UsageMetrics *bool `pulumi:"usageMetrics"`
+}
+
+// ArangoDeploymentSpecMetricsExtensionsInput is an input type that accepts ArangoDeploymentSpecMetricsExtensionsArgs and ArangoDeploymentSpecMetricsExtensionsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsExtensionsInput` via:
+//
+//	ArangoDeploymentSpecMetricsExtensionsArgs{...}
+type ArangoDeploymentSpecMetricsExtensionsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsExtensionsOutput() ArangoDeploymentSpecMetricsExtensionsOutput
+	ToArangoDeploymentSpecMetricsExtensionsOutputWithContext(context.Context) ArangoDeploymentSpecMetricsExtensionsOutput
+}
+
+type ArangoDeploymentSpecMetricsExtensionsArgs struct {
+	UsageMetrics pulumi.BoolPtrInput `pulumi:"usageMetrics"`
+}
+
+func (ArangoDeploymentSpecMetricsExtensionsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsExtensions)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecMetricsExtensionsArgs) ToArangoDeploymentSpecMetricsExtensionsOutput() ArangoDeploymentSpecMetricsExtensionsOutput {
+	return i.ToArangoDeploymentSpecMetricsExtensionsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsExtensionsArgs) ToArangoDeploymentSpecMetricsExtensionsOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsExtensionsOutput)
+}
+
+func (i ArangoDeploymentSpecMetricsExtensionsArgs) ToArangoDeploymentSpecMetricsExtensionsPtrOutput() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsExtensionsArgs) ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsExtensionsOutput).ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecMetricsExtensionsPtrInput is an input type that accepts ArangoDeploymentSpecMetricsExtensionsArgs, ArangoDeploymentSpecMetricsExtensionsPtr and ArangoDeploymentSpecMetricsExtensionsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsExtensionsPtrInput` via:
+//
+//	        ArangoDeploymentSpecMetricsExtensionsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecMetricsExtensionsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsExtensionsPtrOutput() ArangoDeploymentSpecMetricsExtensionsPtrOutput
+	ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(context.Context) ArangoDeploymentSpecMetricsExtensionsPtrOutput
+}
+
+type arangoDeploymentSpecMetricsExtensionsPtrType ArangoDeploymentSpecMetricsExtensionsArgs
+
+func ArangoDeploymentSpecMetricsExtensionsPtr(v *ArangoDeploymentSpecMetricsExtensionsArgs) ArangoDeploymentSpecMetricsExtensionsPtrInput {
+	return (*arangoDeploymentSpecMetricsExtensionsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecMetricsExtensionsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsExtensions)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecMetricsExtensionsPtrType) ToArangoDeploymentSpecMetricsExtensionsPtrOutput() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecMetricsExtensionsPtrType) ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsExtensionsPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsExtensionsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsExtensionsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsExtensions)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsOutput) ToArangoDeploymentSpecMetricsExtensionsOutput() ArangoDeploymentSpecMetricsExtensionsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsOutput) ToArangoDeploymentSpecMetricsExtensionsOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsOutput) ToArangoDeploymentSpecMetricsExtensionsPtrOutput() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o.ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsOutput) ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecMetricsExtensions) *ArangoDeploymentSpecMetricsExtensions {
+		return &v
+	}).(ArangoDeploymentSpecMetricsExtensionsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsOutput) UsageMetrics() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetricsExtensions) *bool { return v.UsageMetrics }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsExtensionsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsExtensionsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsExtensions)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsPtrOutput) ToArangoDeploymentSpecMetricsExtensionsPtrOutput() ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsPtrOutput) ToArangoDeploymentSpecMetricsExtensionsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsExtensionsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsPtrOutput) Elem() ArangoDeploymentSpecMetricsExtensionsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsExtensions) ArangoDeploymentSpecMetricsExtensions {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecMetricsExtensions
+		return ret
+	}).(ArangoDeploymentSpecMetricsExtensionsOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsExtensionsPtrOutput) UsageMetrics() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsExtensions) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.UsageMetrics
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsServiceMonitor struct {
+	Enabled *bool             `pulumi:"enabled"`
+	Labels  map[string]string `pulumi:"labels"`
+}
+
+// ArangoDeploymentSpecMetricsServiceMonitorInput is an input type that accepts ArangoDeploymentSpecMetricsServiceMonitorArgs and ArangoDeploymentSpecMetricsServiceMonitorOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsServiceMonitorInput` via:
+//
+//	ArangoDeploymentSpecMetricsServiceMonitorArgs{...}
+type ArangoDeploymentSpecMetricsServiceMonitorInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsServiceMonitorOutput() ArangoDeploymentSpecMetricsServiceMonitorOutput
+	ToArangoDeploymentSpecMetricsServiceMonitorOutputWithContext(context.Context) ArangoDeploymentSpecMetricsServiceMonitorOutput
+}
+
+type ArangoDeploymentSpecMetricsServiceMonitorArgs struct {
+	Enabled pulumi.BoolPtrInput   `pulumi:"enabled"`
+	Labels  pulumi.StringMapInput `pulumi:"labels"`
+}
+
+func (ArangoDeploymentSpecMetricsServiceMonitorArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsServiceMonitor)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecMetricsServiceMonitorArgs) ToArangoDeploymentSpecMetricsServiceMonitorOutput() ArangoDeploymentSpecMetricsServiceMonitorOutput {
+	return i.ToArangoDeploymentSpecMetricsServiceMonitorOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsServiceMonitorArgs) ToArangoDeploymentSpecMetricsServiceMonitorOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsServiceMonitorOutput)
+}
+
+func (i ArangoDeploymentSpecMetricsServiceMonitorArgs) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutput() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecMetricsServiceMonitorArgs) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsServiceMonitorOutput).ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecMetricsServiceMonitorPtrInput is an input type that accepts ArangoDeploymentSpecMetricsServiceMonitorArgs, ArangoDeploymentSpecMetricsServiceMonitorPtr and ArangoDeploymentSpecMetricsServiceMonitorPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecMetricsServiceMonitorPtrInput` via:
+//
+//	        ArangoDeploymentSpecMetricsServiceMonitorArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecMetricsServiceMonitorPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecMetricsServiceMonitorPtrOutput() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput
+	ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(context.Context) ArangoDeploymentSpecMetricsServiceMonitorPtrOutput
+}
+
+type arangoDeploymentSpecMetricsServiceMonitorPtrType ArangoDeploymentSpecMetricsServiceMonitorArgs
+
+func ArangoDeploymentSpecMetricsServiceMonitorPtr(v *ArangoDeploymentSpecMetricsServiceMonitorArgs) ArangoDeploymentSpecMetricsServiceMonitorPtrInput {
+	return (*arangoDeploymentSpecMetricsServiceMonitorPtrType)(v)
+}
+
+func (*arangoDeploymentSpecMetricsServiceMonitorPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsServiceMonitor)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecMetricsServiceMonitorPtrType) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutput() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return i.ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecMetricsServiceMonitorPtrType) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecMetricsServiceMonitorPtrOutput)
+}
+
+type ArangoDeploymentSpecMetricsServiceMonitorOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsServiceMonitorOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecMetricsServiceMonitor)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) ToArangoDeploymentSpecMetricsServiceMonitorOutput() ArangoDeploymentSpecMetricsServiceMonitorOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) ToArangoDeploymentSpecMetricsServiceMonitorOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutput() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o.ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecMetricsServiceMonitor) *ArangoDeploymentSpecMetricsServiceMonitor {
+		return &v
+	}).(ArangoDeploymentSpecMetricsServiceMonitorPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetricsServiceMonitor) *bool { return v.Enabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorOutput) Labels() pulumi.StringMapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecMetricsServiceMonitor) map[string]string { return v.Labels }).(pulumi.StringMapOutput)
+}
+
+type ArangoDeploymentSpecMetricsServiceMonitorPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecMetricsServiceMonitor)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutput() ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) ToArangoDeploymentSpecMetricsServiceMonitorPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecMetricsServiceMonitorPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) Elem() ArangoDeploymentSpecMetricsServiceMonitorOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsServiceMonitor) ArangoDeploymentSpecMetricsServiceMonitor {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecMetricsServiceMonitor
+		return ret
+	}).(ArangoDeploymentSpecMetricsServiceMonitorOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsServiceMonitor) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Enabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecMetricsServiceMonitorPtrOutput) Labels() pulumi.StringMapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecMetricsServiceMonitor) map[string]string {
+		if v == nil {
+			return nil
+		}
+		return v.Labels
+	}).(pulumi.StringMapOutput)
+}
+
+type ArangoDeploymentSpecMetricsServiceMonitorLabels struct {
+}
+
+type ArangoDeploymentSpecRebalancer struct {
+	Enabled       *bool                                     `pulumi:"enabled"`
+	Optimizers    *ArangoDeploymentSpecRebalancerOptimizers `pulumi:"optimizers"`
+	ParallelMoves *int                                      `pulumi:"parallelMoves"`
+	Readers       *ArangoDeploymentSpecRebalancerReaders    `pulumi:"readers"`
+}
+
+// ArangoDeploymentSpecRebalancerInput is an input type that accepts ArangoDeploymentSpecRebalancerArgs and ArangoDeploymentSpecRebalancerOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerInput` via:
+//
+//	ArangoDeploymentSpecRebalancerArgs{...}
+type ArangoDeploymentSpecRebalancerInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerOutput() ArangoDeploymentSpecRebalancerOutput
+	ToArangoDeploymentSpecRebalancerOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerOutput
+}
+
+type ArangoDeploymentSpecRebalancerArgs struct {
+	Enabled       pulumi.BoolPtrInput                              `pulumi:"enabled"`
+	Optimizers    ArangoDeploymentSpecRebalancerOptimizersPtrInput `pulumi:"optimizers"`
+	ParallelMoves pulumi.IntPtrInput                               `pulumi:"parallelMoves"`
+	Readers       ArangoDeploymentSpecRebalancerReadersPtrInput    `pulumi:"readers"`
+}
+
+func (ArangoDeploymentSpecRebalancerArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancer)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRebalancerArgs) ToArangoDeploymentSpecRebalancerOutput() ArangoDeploymentSpecRebalancerOutput {
+	return i.ToArangoDeploymentSpecRebalancerOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerArgs) ToArangoDeploymentSpecRebalancerOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerOutput)
+}
+
+func (i ArangoDeploymentSpecRebalancerArgs) ToArangoDeploymentSpecRebalancerPtrOutput() ArangoDeploymentSpecRebalancerPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerArgs) ToArangoDeploymentSpecRebalancerPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerOutput).ToArangoDeploymentSpecRebalancerPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRebalancerPtrInput is an input type that accepts ArangoDeploymentSpecRebalancerArgs, ArangoDeploymentSpecRebalancerPtr and ArangoDeploymentSpecRebalancerPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerPtrInput` via:
+//
+//	        ArangoDeploymentSpecRebalancerArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRebalancerPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerPtrOutput() ArangoDeploymentSpecRebalancerPtrOutput
+	ToArangoDeploymentSpecRebalancerPtrOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerPtrOutput
+}
+
+type arangoDeploymentSpecRebalancerPtrType ArangoDeploymentSpecRebalancerArgs
+
+func ArangoDeploymentSpecRebalancerPtr(v *ArangoDeploymentSpecRebalancerArgs) ArangoDeploymentSpecRebalancerPtrInput {
+	return (*arangoDeploymentSpecRebalancerPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRebalancerPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancer)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRebalancerPtrType) ToArangoDeploymentSpecRebalancerPtrOutput() ArangoDeploymentSpecRebalancerPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRebalancerPtrType) ToArangoDeploymentSpecRebalancerPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancer)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) ToArangoDeploymentSpecRebalancerOutput() ArangoDeploymentSpecRebalancerOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) ToArangoDeploymentSpecRebalancerOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) ToArangoDeploymentSpecRebalancerPtrOutput() ArangoDeploymentSpecRebalancerPtrOutput {
+	return o.ToArangoDeploymentSpecRebalancerPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) ToArangoDeploymentSpecRebalancerPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRebalancer) *ArangoDeploymentSpecRebalancer {
+		return &v
+	}).(ArangoDeploymentSpecRebalancerPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancer) *bool { return v.Enabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) Optimizers() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancer) *ArangoDeploymentSpecRebalancerOptimizers { return v.Optimizers }).(ArangoDeploymentSpecRebalancerOptimizersPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) ParallelMoves() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancer) *int { return v.ParallelMoves }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOutput) Readers() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancer) *ArangoDeploymentSpecRebalancerReaders { return v.Readers }).(ArangoDeploymentSpecRebalancerReadersPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancer)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) ToArangoDeploymentSpecRebalancerPtrOutput() ArangoDeploymentSpecRebalancerPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) ToArangoDeploymentSpecRebalancerPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) Elem() ArangoDeploymentSpecRebalancerOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancer) ArangoDeploymentSpecRebalancer {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRebalancer
+		return ret
+	}).(ArangoDeploymentSpecRebalancerOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancer) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Enabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) Optimizers() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancer) *ArangoDeploymentSpecRebalancerOptimizers {
+		if v == nil {
+			return nil
+		}
+		return v.Optimizers
+	}).(ArangoDeploymentSpecRebalancerOptimizersPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) ParallelMoves() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancer) *int {
+		if v == nil {
+			return nil
+		}
+		return v.ParallelMoves
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerPtrOutput) Readers() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancer) *ArangoDeploymentSpecRebalancerReaders {
+		if v == nil {
+			return nil
+		}
+		return v.Readers
+	}).(ArangoDeploymentSpecRebalancerReadersPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerOptimizers struct {
+	Leader *bool `pulumi:"leader"`
+}
+
+// ArangoDeploymentSpecRebalancerOptimizersInput is an input type that accepts ArangoDeploymentSpecRebalancerOptimizersArgs and ArangoDeploymentSpecRebalancerOptimizersOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerOptimizersInput` via:
+//
+//	ArangoDeploymentSpecRebalancerOptimizersArgs{...}
+type ArangoDeploymentSpecRebalancerOptimizersInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerOptimizersOutput() ArangoDeploymentSpecRebalancerOptimizersOutput
+	ToArangoDeploymentSpecRebalancerOptimizersOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerOptimizersOutput
+}
+
+type ArangoDeploymentSpecRebalancerOptimizersArgs struct {
+	Leader pulumi.BoolPtrInput `pulumi:"leader"`
+}
+
+func (ArangoDeploymentSpecRebalancerOptimizersArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancerOptimizers)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRebalancerOptimizersArgs) ToArangoDeploymentSpecRebalancerOptimizersOutput() ArangoDeploymentSpecRebalancerOptimizersOutput {
+	return i.ToArangoDeploymentSpecRebalancerOptimizersOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerOptimizersArgs) ToArangoDeploymentSpecRebalancerOptimizersOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerOptimizersOutput)
+}
+
+func (i ArangoDeploymentSpecRebalancerOptimizersArgs) ToArangoDeploymentSpecRebalancerOptimizersPtrOutput() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerOptimizersArgs) ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerOptimizersOutput).ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRebalancerOptimizersPtrInput is an input type that accepts ArangoDeploymentSpecRebalancerOptimizersArgs, ArangoDeploymentSpecRebalancerOptimizersPtr and ArangoDeploymentSpecRebalancerOptimizersPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerOptimizersPtrInput` via:
+//
+//	        ArangoDeploymentSpecRebalancerOptimizersArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRebalancerOptimizersPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerOptimizersPtrOutput() ArangoDeploymentSpecRebalancerOptimizersPtrOutput
+	ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerOptimizersPtrOutput
+}
+
+type arangoDeploymentSpecRebalancerOptimizersPtrType ArangoDeploymentSpecRebalancerOptimizersArgs
+
+func ArangoDeploymentSpecRebalancerOptimizersPtr(v *ArangoDeploymentSpecRebalancerOptimizersArgs) ArangoDeploymentSpecRebalancerOptimizersPtrInput {
+	return (*arangoDeploymentSpecRebalancerOptimizersPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRebalancerOptimizersPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancerOptimizers)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRebalancerOptimizersPtrType) ToArangoDeploymentSpecRebalancerOptimizersPtrOutput() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRebalancerOptimizersPtrType) ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerOptimizersPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerOptimizersOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerOptimizersOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancerOptimizers)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersOutput) ToArangoDeploymentSpecRebalancerOptimizersOutput() ArangoDeploymentSpecRebalancerOptimizersOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersOutput) ToArangoDeploymentSpecRebalancerOptimizersOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersOutput) ToArangoDeploymentSpecRebalancerOptimizersPtrOutput() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o.ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersOutput) ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRebalancerOptimizers) *ArangoDeploymentSpecRebalancerOptimizers {
+		return &v
+	}).(ArangoDeploymentSpecRebalancerOptimizersPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersOutput) Leader() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancerOptimizers) *bool { return v.Leader }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerOptimizersPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerOptimizersPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancerOptimizers)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersPtrOutput) ToArangoDeploymentSpecRebalancerOptimizersPtrOutput() ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersPtrOutput) ToArangoDeploymentSpecRebalancerOptimizersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerOptimizersPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersPtrOutput) Elem() ArangoDeploymentSpecRebalancerOptimizersOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancerOptimizers) ArangoDeploymentSpecRebalancerOptimizers {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRebalancerOptimizers
+		return ret
+	}).(ArangoDeploymentSpecRebalancerOptimizersOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerOptimizersPtrOutput) Leader() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancerOptimizers) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Leader
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerReaders struct {
+	Count *bool `pulumi:"count"`
+}
+
+// ArangoDeploymentSpecRebalancerReadersInput is an input type that accepts ArangoDeploymentSpecRebalancerReadersArgs and ArangoDeploymentSpecRebalancerReadersOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerReadersInput` via:
+//
+//	ArangoDeploymentSpecRebalancerReadersArgs{...}
+type ArangoDeploymentSpecRebalancerReadersInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerReadersOutput() ArangoDeploymentSpecRebalancerReadersOutput
+	ToArangoDeploymentSpecRebalancerReadersOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerReadersOutput
+}
+
+type ArangoDeploymentSpecRebalancerReadersArgs struct {
+	Count pulumi.BoolPtrInput `pulumi:"count"`
+}
+
+func (ArangoDeploymentSpecRebalancerReadersArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancerReaders)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRebalancerReadersArgs) ToArangoDeploymentSpecRebalancerReadersOutput() ArangoDeploymentSpecRebalancerReadersOutput {
+	return i.ToArangoDeploymentSpecRebalancerReadersOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerReadersArgs) ToArangoDeploymentSpecRebalancerReadersOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerReadersOutput)
+}
+
+func (i ArangoDeploymentSpecRebalancerReadersArgs) ToArangoDeploymentSpecRebalancerReadersPtrOutput() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRebalancerReadersArgs) ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerReadersOutput).ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRebalancerReadersPtrInput is an input type that accepts ArangoDeploymentSpecRebalancerReadersArgs, ArangoDeploymentSpecRebalancerReadersPtr and ArangoDeploymentSpecRebalancerReadersPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRebalancerReadersPtrInput` via:
+//
+//	        ArangoDeploymentSpecRebalancerReadersArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRebalancerReadersPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRebalancerReadersPtrOutput() ArangoDeploymentSpecRebalancerReadersPtrOutput
+	ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(context.Context) ArangoDeploymentSpecRebalancerReadersPtrOutput
+}
+
+type arangoDeploymentSpecRebalancerReadersPtrType ArangoDeploymentSpecRebalancerReadersArgs
+
+func ArangoDeploymentSpecRebalancerReadersPtr(v *ArangoDeploymentSpecRebalancerReadersArgs) ArangoDeploymentSpecRebalancerReadersPtrInput {
+	return (*arangoDeploymentSpecRebalancerReadersPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRebalancerReadersPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancerReaders)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRebalancerReadersPtrType) ToArangoDeploymentSpecRebalancerReadersPtrOutput() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return i.ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRebalancerReadersPtrType) ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRebalancerReadersPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerReadersOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerReadersOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRebalancerReaders)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersOutput) ToArangoDeploymentSpecRebalancerReadersOutput() ArangoDeploymentSpecRebalancerReadersOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersOutput) ToArangoDeploymentSpecRebalancerReadersOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersOutput) ToArangoDeploymentSpecRebalancerReadersPtrOutput() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o.ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersOutput) ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRebalancerReaders) *ArangoDeploymentSpecRebalancerReaders {
+		return &v
+	}).(ArangoDeploymentSpecRebalancerReadersPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersOutput) Count() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRebalancerReaders) *bool { return v.Count }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRebalancerReadersPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRebalancerReadersPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRebalancerReaders)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersPtrOutput) ToArangoDeploymentSpecRebalancerReadersPtrOutput() ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersPtrOutput) ToArangoDeploymentSpecRebalancerReadersPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRebalancerReadersPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersPtrOutput) Elem() ArangoDeploymentSpecRebalancerReadersOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancerReaders) ArangoDeploymentSpecRebalancerReaders {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRebalancerReaders
+		return ret
+	}).(ArangoDeploymentSpecRebalancerReadersOutput)
+}
+
+func (o ArangoDeploymentSpecRebalancerReadersPtrOutput) Count() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRebalancerReaders) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Count
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRecovery struct {
+	AutoRecover *bool `pulumi:"autoRecover"`
+}
+
+// ArangoDeploymentSpecRecoveryInput is an input type that accepts ArangoDeploymentSpecRecoveryArgs and ArangoDeploymentSpecRecoveryOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRecoveryInput` via:
+//
+//	ArangoDeploymentSpecRecoveryArgs{...}
+type ArangoDeploymentSpecRecoveryInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRecoveryOutput() ArangoDeploymentSpecRecoveryOutput
+	ToArangoDeploymentSpecRecoveryOutputWithContext(context.Context) ArangoDeploymentSpecRecoveryOutput
+}
+
+type ArangoDeploymentSpecRecoveryArgs struct {
+	AutoRecover pulumi.BoolPtrInput `pulumi:"autoRecover"`
+}
+
+func (ArangoDeploymentSpecRecoveryArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRecovery)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRecoveryArgs) ToArangoDeploymentSpecRecoveryOutput() ArangoDeploymentSpecRecoveryOutput {
+	return i.ToArangoDeploymentSpecRecoveryOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRecoveryArgs) ToArangoDeploymentSpecRecoveryOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRecoveryOutput)
+}
+
+func (i ArangoDeploymentSpecRecoveryArgs) ToArangoDeploymentSpecRecoveryPtrOutput() ArangoDeploymentSpecRecoveryPtrOutput {
+	return i.ToArangoDeploymentSpecRecoveryPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRecoveryArgs) ToArangoDeploymentSpecRecoveryPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRecoveryOutput).ToArangoDeploymentSpecRecoveryPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRecoveryPtrInput is an input type that accepts ArangoDeploymentSpecRecoveryArgs, ArangoDeploymentSpecRecoveryPtr and ArangoDeploymentSpecRecoveryPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRecoveryPtrInput` via:
+//
+//	        ArangoDeploymentSpecRecoveryArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRecoveryPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRecoveryPtrOutput() ArangoDeploymentSpecRecoveryPtrOutput
+	ToArangoDeploymentSpecRecoveryPtrOutputWithContext(context.Context) ArangoDeploymentSpecRecoveryPtrOutput
+}
+
+type arangoDeploymentSpecRecoveryPtrType ArangoDeploymentSpecRecoveryArgs
+
+func ArangoDeploymentSpecRecoveryPtr(v *ArangoDeploymentSpecRecoveryArgs) ArangoDeploymentSpecRecoveryPtrInput {
+	return (*arangoDeploymentSpecRecoveryPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRecoveryPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRecovery)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRecoveryPtrType) ToArangoDeploymentSpecRecoveryPtrOutput() ArangoDeploymentSpecRecoveryPtrOutput {
+	return i.ToArangoDeploymentSpecRecoveryPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRecoveryPtrType) ToArangoDeploymentSpecRecoveryPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRecoveryPtrOutput)
+}
+
+type ArangoDeploymentSpecRecoveryOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRecoveryOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRecovery)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRecoveryOutput) ToArangoDeploymentSpecRecoveryOutput() ArangoDeploymentSpecRecoveryOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRecoveryOutput) ToArangoDeploymentSpecRecoveryOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRecoveryOutput) ToArangoDeploymentSpecRecoveryPtrOutput() ArangoDeploymentSpecRecoveryPtrOutput {
+	return o.ToArangoDeploymentSpecRecoveryPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRecoveryOutput) ToArangoDeploymentSpecRecoveryPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRecovery) *ArangoDeploymentSpecRecovery {
+		return &v
+	}).(ArangoDeploymentSpecRecoveryPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRecoveryOutput) AutoRecover() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRecovery) *bool { return v.AutoRecover }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRecoveryPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRecoveryPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRecovery)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRecoveryPtrOutput) ToArangoDeploymentSpecRecoveryPtrOutput() ArangoDeploymentSpecRecoveryPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRecoveryPtrOutput) ToArangoDeploymentSpecRecoveryPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRecoveryPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRecoveryPtrOutput) Elem() ArangoDeploymentSpecRecoveryOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRecovery) ArangoDeploymentSpecRecovery {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRecovery
+		return ret
+	}).(ArangoDeploymentSpecRecoveryOutput)
+}
+
+func (o ArangoDeploymentSpecRecoveryPtrOutput) AutoRecover() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRecovery) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AutoRecover
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdb struct {
+	Encryption *ArangoDeploymentSpecRocksdbEncryption `pulumi:"encryption"`
+}
+
+// ArangoDeploymentSpecRocksdbInput is an input type that accepts ArangoDeploymentSpecRocksdbArgs and ArangoDeploymentSpecRocksdbOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRocksdbInput` via:
+//
+//	ArangoDeploymentSpecRocksdbArgs{...}
+type ArangoDeploymentSpecRocksdbInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRocksdbOutput() ArangoDeploymentSpecRocksdbOutput
+	ToArangoDeploymentSpecRocksdbOutputWithContext(context.Context) ArangoDeploymentSpecRocksdbOutput
+}
+
+type ArangoDeploymentSpecRocksdbArgs struct {
+	Encryption ArangoDeploymentSpecRocksdbEncryptionPtrInput `pulumi:"encryption"`
+}
+
+func (ArangoDeploymentSpecRocksdbArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRocksdb)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRocksdbArgs) ToArangoDeploymentSpecRocksdbOutput() ArangoDeploymentSpecRocksdbOutput {
+	return i.ToArangoDeploymentSpecRocksdbOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRocksdbArgs) ToArangoDeploymentSpecRocksdbOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbOutput)
+}
+
+func (i ArangoDeploymentSpecRocksdbArgs) ToArangoDeploymentSpecRocksdbPtrOutput() ArangoDeploymentSpecRocksdbPtrOutput {
+	return i.ToArangoDeploymentSpecRocksdbPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRocksdbArgs) ToArangoDeploymentSpecRocksdbPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbOutput).ToArangoDeploymentSpecRocksdbPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRocksdbPtrInput is an input type that accepts ArangoDeploymentSpecRocksdbArgs, ArangoDeploymentSpecRocksdbPtr and ArangoDeploymentSpecRocksdbPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRocksdbPtrInput` via:
+//
+//	        ArangoDeploymentSpecRocksdbArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRocksdbPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRocksdbPtrOutput() ArangoDeploymentSpecRocksdbPtrOutput
+	ToArangoDeploymentSpecRocksdbPtrOutputWithContext(context.Context) ArangoDeploymentSpecRocksdbPtrOutput
+}
+
+type arangoDeploymentSpecRocksdbPtrType ArangoDeploymentSpecRocksdbArgs
+
+func ArangoDeploymentSpecRocksdbPtr(v *ArangoDeploymentSpecRocksdbArgs) ArangoDeploymentSpecRocksdbPtrInput {
+	return (*arangoDeploymentSpecRocksdbPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRocksdbPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRocksdb)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRocksdbPtrType) ToArangoDeploymentSpecRocksdbPtrOutput() ArangoDeploymentSpecRocksdbPtrOutput {
+	return i.ToArangoDeploymentSpecRocksdbPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRocksdbPtrType) ToArangoDeploymentSpecRocksdbPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdbOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRocksdbOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRocksdb)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRocksdbOutput) ToArangoDeploymentSpecRocksdbOutput() ArangoDeploymentSpecRocksdbOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbOutput) ToArangoDeploymentSpecRocksdbOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbOutput) ToArangoDeploymentSpecRocksdbPtrOutput() ArangoDeploymentSpecRocksdbPtrOutput {
+	return o.ToArangoDeploymentSpecRocksdbPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRocksdbOutput) ToArangoDeploymentSpecRocksdbPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRocksdb) *ArangoDeploymentSpecRocksdb {
+		return &v
+	}).(ArangoDeploymentSpecRocksdbPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRocksdbOutput) Encryption() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRocksdb) *ArangoDeploymentSpecRocksdbEncryption { return v.Encryption }).(ArangoDeploymentSpecRocksdbEncryptionPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdbPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRocksdbPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRocksdb)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRocksdbPtrOutput) ToArangoDeploymentSpecRocksdbPtrOutput() ArangoDeploymentSpecRocksdbPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbPtrOutput) ToArangoDeploymentSpecRocksdbPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbPtrOutput) Elem() ArangoDeploymentSpecRocksdbOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRocksdb) ArangoDeploymentSpecRocksdb {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRocksdb
+		return ret
+	}).(ArangoDeploymentSpecRocksdbOutput)
+}
+
+func (o ArangoDeploymentSpecRocksdbPtrOutput) Encryption() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRocksdb) *ArangoDeploymentSpecRocksdbEncryption {
+		if v == nil {
+			return nil
+		}
+		return v.Encryption
+	}).(ArangoDeploymentSpecRocksdbEncryptionPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdbEncryption struct {
+	KeySecretName *string `pulumi:"keySecretName"`
+}
+
+// ArangoDeploymentSpecRocksdbEncryptionInput is an input type that accepts ArangoDeploymentSpecRocksdbEncryptionArgs and ArangoDeploymentSpecRocksdbEncryptionOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRocksdbEncryptionInput` via:
+//
+//	ArangoDeploymentSpecRocksdbEncryptionArgs{...}
+type ArangoDeploymentSpecRocksdbEncryptionInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRocksdbEncryptionOutput() ArangoDeploymentSpecRocksdbEncryptionOutput
+	ToArangoDeploymentSpecRocksdbEncryptionOutputWithContext(context.Context) ArangoDeploymentSpecRocksdbEncryptionOutput
+}
+
+type ArangoDeploymentSpecRocksdbEncryptionArgs struct {
+	KeySecretName pulumi.StringPtrInput `pulumi:"keySecretName"`
+}
+
+func (ArangoDeploymentSpecRocksdbEncryptionArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRocksdbEncryption)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecRocksdbEncryptionArgs) ToArangoDeploymentSpecRocksdbEncryptionOutput() ArangoDeploymentSpecRocksdbEncryptionOutput {
+	return i.ToArangoDeploymentSpecRocksdbEncryptionOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRocksdbEncryptionArgs) ToArangoDeploymentSpecRocksdbEncryptionOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbEncryptionOutput)
+}
+
+func (i ArangoDeploymentSpecRocksdbEncryptionArgs) ToArangoDeploymentSpecRocksdbEncryptionPtrOutput() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return i.ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecRocksdbEncryptionArgs) ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbEncryptionOutput).ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecRocksdbEncryptionPtrInput is an input type that accepts ArangoDeploymentSpecRocksdbEncryptionArgs, ArangoDeploymentSpecRocksdbEncryptionPtr and ArangoDeploymentSpecRocksdbEncryptionPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecRocksdbEncryptionPtrInput` via:
+//
+//	        ArangoDeploymentSpecRocksdbEncryptionArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecRocksdbEncryptionPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecRocksdbEncryptionPtrOutput() ArangoDeploymentSpecRocksdbEncryptionPtrOutput
+	ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(context.Context) ArangoDeploymentSpecRocksdbEncryptionPtrOutput
+}
+
+type arangoDeploymentSpecRocksdbEncryptionPtrType ArangoDeploymentSpecRocksdbEncryptionArgs
+
+func ArangoDeploymentSpecRocksdbEncryptionPtr(v *ArangoDeploymentSpecRocksdbEncryptionArgs) ArangoDeploymentSpecRocksdbEncryptionPtrInput {
+	return (*arangoDeploymentSpecRocksdbEncryptionPtrType)(v)
+}
+
+func (*arangoDeploymentSpecRocksdbEncryptionPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRocksdbEncryption)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecRocksdbEncryptionPtrType) ToArangoDeploymentSpecRocksdbEncryptionPtrOutput() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return i.ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecRocksdbEncryptionPtrType) ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecRocksdbEncryptionPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdbEncryptionOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRocksdbEncryptionOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecRocksdbEncryption)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionOutput) ToArangoDeploymentSpecRocksdbEncryptionOutput() ArangoDeploymentSpecRocksdbEncryptionOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionOutput) ToArangoDeploymentSpecRocksdbEncryptionOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionOutput) ToArangoDeploymentSpecRocksdbEncryptionPtrOutput() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o.ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionOutput) ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecRocksdbEncryption) *ArangoDeploymentSpecRocksdbEncryption {
+		return &v
+	}).(ArangoDeploymentSpecRocksdbEncryptionPtrOutput)
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionOutput) KeySecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecRocksdbEncryption) *string { return v.KeySecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecRocksdbEncryptionPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecRocksdbEncryptionPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecRocksdbEncryption)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionPtrOutput) ToArangoDeploymentSpecRocksdbEncryptionPtrOutput() ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionPtrOutput) ToArangoDeploymentSpecRocksdbEncryptionPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecRocksdbEncryptionPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionPtrOutput) Elem() ArangoDeploymentSpecRocksdbEncryptionOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRocksdbEncryption) ArangoDeploymentSpecRocksdbEncryption {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecRocksdbEncryption
+		return ret
+	}).(ArangoDeploymentSpecRocksdbEncryptionOutput)
+}
+
+func (o ArangoDeploymentSpecRocksdbEncryptionPtrOutput) KeySecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecRocksdbEncryption) *string {
+		if v == nil {
+			return nil
+		}
+		return v.KeySecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingle struct {
+	Affinity              map[string]interface{}                         `pulumi:"affinity"`
+	AllowMemberRecreation *bool                                          `pulumi:"allowMemberRecreation"`
+	Annotations           map[string]interface{}                         `pulumi:"annotations"`
+	AnnotationsIgnoreList []string                                       `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       *string                                        `pulumi:"annotationsMode"`
+	AntiAffinity          map[string]interface{}                         `pulumi:"antiAffinity"`
+	Args                  []string                                       `pulumi:"args"`
+	Count                 *int                                           `pulumi:"count"`
+	Entrypoint            *string                                        `pulumi:"entrypoint"`
+	Envs                  []ArangoDeploymentSpecSingleEnvs               `pulumi:"envs"`
+	ExporterPort          *int                                           `pulumi:"exporterPort"`
+	ExternalPortEnabled   *bool                                          `pulumi:"externalPortEnabled"`
+	IndexMethod           *string                                        `pulumi:"indexMethod"`
+	Labels                map[string]interface{}                         `pulumi:"labels"`
+	LabelsIgnoreList      []string                                       `pulumi:"labelsIgnoreList"`
+	LabelsMode            *string                                        `pulumi:"labelsMode"`
+	MaxCount              *int                                           `pulumi:"maxCount"`
+	MemoryReservation     *int                                           `pulumi:"memoryReservation"`
+	MinCount              *int                                           `pulumi:"minCount"`
+	NodeAffinity          map[string]interface{}                         `pulumi:"nodeAffinity"`
+	NodeSelector          map[string]interface{}                         `pulumi:"nodeSelector"`
+	Resources             *ArangoDeploymentSpecSingleResources           `pulumi:"resources"`
+	SecurityContext       *ArangoDeploymentSpecSingleSecurityContext     `pulumi:"securityContext"`
+	VolumeClaimTemplate   *ArangoDeploymentSpecSingleVolumeClaimTemplate `pulumi:"volumeClaimTemplate"`
+}
+
+// ArangoDeploymentSpecSingleInput is an input type that accepts ArangoDeploymentSpecSingleArgs and ArangoDeploymentSpecSingleOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleInput` via:
+//
+//	ArangoDeploymentSpecSingleArgs{...}
+type ArangoDeploymentSpecSingleInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleOutput() ArangoDeploymentSpecSingleOutput
+	ToArangoDeploymentSpecSingleOutputWithContext(context.Context) ArangoDeploymentSpecSingleOutput
+}
+
+type ArangoDeploymentSpecSingleArgs struct {
+	Affinity              pulumi.MapInput                                       `pulumi:"affinity"`
+	AllowMemberRecreation pulumi.BoolPtrInput                                   `pulumi:"allowMemberRecreation"`
+	Annotations           pulumi.MapInput                                       `pulumi:"annotations"`
+	AnnotationsIgnoreList pulumi.StringArrayInput                               `pulumi:"annotationsIgnoreList"`
+	AnnotationsMode       pulumi.StringPtrInput                                 `pulumi:"annotationsMode"`
+	AntiAffinity          pulumi.MapInput                                       `pulumi:"antiAffinity"`
+	Args                  pulumi.StringArrayInput                               `pulumi:"args"`
+	Count                 pulumi.IntPtrInput                                    `pulumi:"count"`
+	Entrypoint            pulumi.StringPtrInput                                 `pulumi:"entrypoint"`
+	Envs                  ArangoDeploymentSpecSingleEnvsArrayInput              `pulumi:"envs"`
+	ExporterPort          pulumi.IntPtrInput                                    `pulumi:"exporterPort"`
+	ExternalPortEnabled   pulumi.BoolPtrInput                                   `pulumi:"externalPortEnabled"`
+	IndexMethod           pulumi.StringPtrInput                                 `pulumi:"indexMethod"`
+	Labels                pulumi.MapInput                                       `pulumi:"labels"`
+	LabelsIgnoreList      pulumi.StringArrayInput                               `pulumi:"labelsIgnoreList"`
+	LabelsMode            pulumi.StringPtrInput                                 `pulumi:"labelsMode"`
+	MaxCount              pulumi.IntPtrInput                                    `pulumi:"maxCount"`
+	MemoryReservation     pulumi.IntPtrInput                                    `pulumi:"memoryReservation"`
+	MinCount              pulumi.IntPtrInput                                    `pulumi:"minCount"`
+	NodeAffinity          pulumi.MapInput                                       `pulumi:"nodeAffinity"`
+	NodeSelector          pulumi.MapInput                                       `pulumi:"nodeSelector"`
+	Resources             ArangoDeploymentSpecSingleResourcesPtrInput           `pulumi:"resources"`
+	SecurityContext       ArangoDeploymentSpecSingleSecurityContextPtrInput     `pulumi:"securityContext"`
+	VolumeClaimTemplate   ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput `pulumi:"volumeClaimTemplate"`
+}
+
+func (ArangoDeploymentSpecSingleArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingle)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleArgs) ToArangoDeploymentSpecSingleOutput() ArangoDeploymentSpecSingleOutput {
+	return i.ToArangoDeploymentSpecSingleOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleArgs) ToArangoDeploymentSpecSingleOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleOutput)
+}
+
+func (i ArangoDeploymentSpecSingleArgs) ToArangoDeploymentSpecSinglePtrOutput() ArangoDeploymentSpecSinglePtrOutput {
+	return i.ToArangoDeploymentSpecSinglePtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleArgs) ToArangoDeploymentSpecSinglePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSinglePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleOutput).ToArangoDeploymentSpecSinglePtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSinglePtrInput is an input type that accepts ArangoDeploymentSpecSingleArgs, ArangoDeploymentSpecSinglePtr and ArangoDeploymentSpecSinglePtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSinglePtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSinglePtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSinglePtrOutput() ArangoDeploymentSpecSinglePtrOutput
+	ToArangoDeploymentSpecSinglePtrOutputWithContext(context.Context) ArangoDeploymentSpecSinglePtrOutput
+}
+
+type arangoDeploymentSpecSinglePtrType ArangoDeploymentSpecSingleArgs
+
+func ArangoDeploymentSpecSinglePtr(v *ArangoDeploymentSpecSingleArgs) ArangoDeploymentSpecSinglePtrInput {
+	return (*arangoDeploymentSpecSinglePtrType)(v)
+}
+
+func (*arangoDeploymentSpecSinglePtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingle)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSinglePtrType) ToArangoDeploymentSpecSinglePtrOutput() ArangoDeploymentSpecSinglePtrOutput {
+	return i.ToArangoDeploymentSpecSinglePtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSinglePtrType) ToArangoDeploymentSpecSinglePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSinglePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSinglePtrOutput)
+}
+
+type ArangoDeploymentSpecSingleOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingle)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ToArangoDeploymentSpecSingleOutput() ArangoDeploymentSpecSingleOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ToArangoDeploymentSpecSingleOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ToArangoDeploymentSpecSinglePtrOutput() ArangoDeploymentSpecSinglePtrOutput {
+	return o.ToArangoDeploymentSpecSinglePtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ToArangoDeploymentSpecSinglePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSinglePtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingle {
+		return &v
+	}).(ArangoDeploymentSpecSinglePtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.Affinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *bool { return v.AllowMemberRecreation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.Annotations }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) []string { return v.AnnotationsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *string { return v.AnnotationsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.AntiAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) []string { return v.Args }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *int { return v.Count }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *string { return v.Entrypoint }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Envs() ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) []ArangoDeploymentSpecSingleEnvs { return v.Envs }).(ArangoDeploymentSpecSingleEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *int { return v.ExporterPort }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *bool { return v.ExternalPortEnabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *string { return v.IndexMethod }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.Labels }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) []string { return v.LabelsIgnoreList }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *string { return v.LabelsMode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *int { return v.MaxCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *int { return v.MemoryReservation }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *int { return v.MinCount }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.NodeAffinity }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) map[string]interface{} { return v.NodeSelector }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) Resources() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleResources { return v.Resources }).(ArangoDeploymentSpecSingleResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) SecurityContext() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleSecurityContext {
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecSingleSecurityContextPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleOutput) VolumeClaimTemplate() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleVolumeClaimTemplate {
+		return v.VolumeClaimTemplate
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput)
+}
+
+type ArangoDeploymentSpecSinglePtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSinglePtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingle)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) ToArangoDeploymentSpecSinglePtrOutput() ArangoDeploymentSpecSinglePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) ToArangoDeploymentSpecSinglePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSinglePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Elem() ArangoDeploymentSpecSingleOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) ArangoDeploymentSpecSingle {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingle
+		return ret
+	}).(ArangoDeploymentSpecSingleOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Affinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Affinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) AllowMemberRecreation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowMemberRecreation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Annotations() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Annotations
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) AnnotationsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) AnnotationsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *string {
+		if v == nil {
+			return nil
+		}
+		return v.AnnotationsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) AntiAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.AntiAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Args() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) []string {
+		if v == nil {
+			return nil
+		}
+		return v.Args
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Count() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *int {
+		if v == nil {
+			return nil
+		}
+		return v.Count
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Entrypoint() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Entrypoint
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Envs() ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) []ArangoDeploymentSpecSingleEnvs {
+		if v == nil {
+			return nil
+		}
+		return v.Envs
+	}).(ArangoDeploymentSpecSingleEnvsArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) ExporterPort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *int {
+		if v == nil {
+			return nil
+		}
+		return v.ExporterPort
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) ExternalPortEnabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ExternalPortEnabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) IndexMethod() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *string {
+		if v == nil {
+			return nil
+		}
+		return v.IndexMethod
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Labels() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.Labels
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) LabelsIgnoreList() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsIgnoreList
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) LabelsMode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LabelsMode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) MaxCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MaxCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) MemoryReservation() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MemoryReservation
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) MinCount() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MinCount
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) NodeAffinity() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeAffinity
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) NodeSelector() pulumi.MapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) map[string]interface{} {
+		if v == nil {
+			return nil
+		}
+		return v.NodeSelector
+	}).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) Resources() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleResources {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(ArangoDeploymentSpecSingleResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) SecurityContext() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleSecurityContext {
+		if v == nil {
+			return nil
+		}
+		return v.SecurityContext
+	}).(ArangoDeploymentSpecSingleSecurityContextPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSinglePtrOutput) VolumeClaimTemplate() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingle) *ArangoDeploymentSpecSingleVolumeClaimTemplate {
+		if v == nil {
+			return nil
+		}
+		return v.VolumeClaimTemplate
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput)
+}
+
+type ArangoDeploymentSpecSingleAffinity struct {
+}
+
+type ArangoDeploymentSpecSingleAnnotations struct {
+}
+
+type ArangoDeploymentSpecSingleAntiAffinity struct {
+}
+
+type ArangoDeploymentSpecSingleEnvs struct {
+	Name  *string `pulumi:"name"`
+	Value *string `pulumi:"value"`
+}
+
+// ArangoDeploymentSpecSingleEnvsInput is an input type that accepts ArangoDeploymentSpecSingleEnvsArgs and ArangoDeploymentSpecSingleEnvsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleEnvsInput` via:
+//
+//	ArangoDeploymentSpecSingleEnvsArgs{...}
+type ArangoDeploymentSpecSingleEnvsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleEnvsOutput() ArangoDeploymentSpecSingleEnvsOutput
+	ToArangoDeploymentSpecSingleEnvsOutputWithContext(context.Context) ArangoDeploymentSpecSingleEnvsOutput
+}
+
+type ArangoDeploymentSpecSingleEnvsArgs struct {
+	Name  pulumi.StringPtrInput `pulumi:"name"`
+	Value pulumi.StringPtrInput `pulumi:"value"`
+}
+
+func (ArangoDeploymentSpecSingleEnvsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleEnvsArgs) ToArangoDeploymentSpecSingleEnvsOutput() ArangoDeploymentSpecSingleEnvsOutput {
+	return i.ToArangoDeploymentSpecSingleEnvsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleEnvsArgs) ToArangoDeploymentSpecSingleEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleEnvsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleEnvsOutput)
+}
+
+// ArangoDeploymentSpecSingleEnvsArrayInput is an input type that accepts ArangoDeploymentSpecSingleEnvsArray and ArangoDeploymentSpecSingleEnvsArrayOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleEnvsArrayInput` via:
+//
+//	ArangoDeploymentSpecSingleEnvsArray{ ArangoDeploymentSpecSingleEnvsArgs{...} }
+type ArangoDeploymentSpecSingleEnvsArrayInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleEnvsArrayOutput() ArangoDeploymentSpecSingleEnvsArrayOutput
+	ToArangoDeploymentSpecSingleEnvsArrayOutputWithContext(context.Context) ArangoDeploymentSpecSingleEnvsArrayOutput
+}
+
+type ArangoDeploymentSpecSingleEnvsArray []ArangoDeploymentSpecSingleEnvsInput
+
+func (ArangoDeploymentSpecSingleEnvsArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecSingleEnvs)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleEnvsArray) ToArangoDeploymentSpecSingleEnvsArrayOutput() ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return i.ToArangoDeploymentSpecSingleEnvsArrayOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleEnvsArray) ToArangoDeploymentSpecSingleEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleEnvsArrayOutput)
+}
+
+type ArangoDeploymentSpecSingleEnvsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleEnvsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleEnvsOutput) ToArangoDeploymentSpecSingleEnvsOutput() ArangoDeploymentSpecSingleEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleEnvsOutput) ToArangoDeploymentSpecSingleEnvsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleEnvsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleEnvsOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleEnvs) *string { return v.Name }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleEnvsOutput) Value() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleEnvs) *string { return v.Value }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleEnvsArrayOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleEnvsArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecSingleEnvs)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleEnvsArrayOutput) ToArangoDeploymentSpecSingleEnvsArrayOutput() ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleEnvsArrayOutput) ToArangoDeploymentSpecSingleEnvsArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleEnvsArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleEnvsArrayOutput) Index(i pulumi.IntInput) ArangoDeploymentSpecSingleEnvsOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) ArangoDeploymentSpecSingleEnvs {
+		return vs[0].([]ArangoDeploymentSpecSingleEnvs)[vs[1].(int)]
+	}).(ArangoDeploymentSpecSingleEnvsOutput)
+}
+
+type ArangoDeploymentSpecSingleLabels struct {
+}
+
+type ArangoDeploymentSpecSingleNodeAffinity struct {
+}
+
+type ArangoDeploymentSpecSingleNodeSelector struct {
+}
+
+type ArangoDeploymentSpecSingleResources struct {
+	Limits   *ArangoDeploymentSpecSingleResourcesLimits   `pulumi:"limits"`
+	Requests *ArangoDeploymentSpecSingleResourcesRequests `pulumi:"requests"`
+}
+
+// ArangoDeploymentSpecSingleResourcesInput is an input type that accepts ArangoDeploymentSpecSingleResourcesArgs and ArangoDeploymentSpecSingleResourcesOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesInput` via:
+//
+//	ArangoDeploymentSpecSingleResourcesArgs{...}
+type ArangoDeploymentSpecSingleResourcesInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesOutput() ArangoDeploymentSpecSingleResourcesOutput
+	ToArangoDeploymentSpecSingleResourcesOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesOutput
+}
+
+type ArangoDeploymentSpecSingleResourcesArgs struct {
+	Limits   ArangoDeploymentSpecSingleResourcesLimitsPtrInput   `pulumi:"limits"`
+	Requests ArangoDeploymentSpecSingleResourcesRequestsPtrInput `pulumi:"requests"`
+}
+
+func (ArangoDeploymentSpecSingleResourcesArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResources)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleResourcesArgs) ToArangoDeploymentSpecSingleResourcesOutput() ArangoDeploymentSpecSingleResourcesOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesArgs) ToArangoDeploymentSpecSingleResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesOutput)
+}
+
+func (i ArangoDeploymentSpecSingleResourcesArgs) ToArangoDeploymentSpecSingleResourcesPtrOutput() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesArgs) ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesOutput).ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleResourcesPtrInput is an input type that accepts ArangoDeploymentSpecSingleResourcesArgs, ArangoDeploymentSpecSingleResourcesPtr and ArangoDeploymentSpecSingleResourcesPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleResourcesArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleResourcesPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesPtrOutput() ArangoDeploymentSpecSingleResourcesPtrOutput
+	ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesPtrOutput
+}
+
+type arangoDeploymentSpecSingleResourcesPtrType ArangoDeploymentSpecSingleResourcesArgs
+
+func ArangoDeploymentSpecSingleResourcesPtr(v *ArangoDeploymentSpecSingleResourcesArgs) ArangoDeploymentSpecSingleResourcesPtrInput {
+	return (*arangoDeploymentSpecSingleResourcesPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleResourcesPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResources)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleResourcesPtrType) ToArangoDeploymentSpecSingleResourcesPtrOutput() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleResourcesPtrType) ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) ToArangoDeploymentSpecSingleResourcesOutput() ArangoDeploymentSpecSingleResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) ToArangoDeploymentSpecSingleResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) ToArangoDeploymentSpecSingleResourcesPtrOutput() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o.ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleResources) *ArangoDeploymentSpecSingleResources {
+		return &v
+	}).(ArangoDeploymentSpecSingleResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) Limits() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResources) *ArangoDeploymentSpecSingleResourcesLimits {
+		return v.Limits
+	}).(ArangoDeploymentSpecSingleResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesOutput) Requests() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResources) *ArangoDeploymentSpecSingleResourcesRequests {
+		return v.Requests
+	}).(ArangoDeploymentSpecSingleResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesPtrOutput) ToArangoDeploymentSpecSingleResourcesPtrOutput() ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesPtrOutput) ToArangoDeploymentSpecSingleResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesPtrOutput) Elem() ArangoDeploymentSpecSingleResourcesOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResources) ArangoDeploymentSpecSingleResources {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleResources
+		return ret
+	}).(ArangoDeploymentSpecSingleResourcesOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesPtrOutput) Limits() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResources) *ArangoDeploymentSpecSingleResourcesLimits {
+		if v == nil {
+			return nil
+		}
+		return v.Limits
+	}).(ArangoDeploymentSpecSingleResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesPtrOutput) Requests() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResources) *ArangoDeploymentSpecSingleResourcesRequests {
+		if v == nil {
+			return nil
+		}
+		return v.Requests
+	}).(ArangoDeploymentSpecSingleResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesLimits struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecSingleResourcesLimitsInput is an input type that accepts ArangoDeploymentSpecSingleResourcesLimitsArgs and ArangoDeploymentSpecSingleResourcesLimitsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesLimitsInput` via:
+//
+//	ArangoDeploymentSpecSingleResourcesLimitsArgs{...}
+type ArangoDeploymentSpecSingleResourcesLimitsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesLimitsOutput() ArangoDeploymentSpecSingleResourcesLimitsOutput
+	ToArangoDeploymentSpecSingleResourcesLimitsOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesLimitsOutput
+}
+
+type ArangoDeploymentSpecSingleResourcesLimitsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecSingleResourcesLimitsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesLimits)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleResourcesLimitsArgs) ToArangoDeploymentSpecSingleResourcesLimitsOutput() ArangoDeploymentSpecSingleResourcesLimitsOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesLimitsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesLimitsArgs) ToArangoDeploymentSpecSingleResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesLimitsOutput)
+}
+
+func (i ArangoDeploymentSpecSingleResourcesLimitsArgs) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutput() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesLimitsArgs) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesLimitsOutput).ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleResourcesLimitsPtrInput is an input type that accepts ArangoDeploymentSpecSingleResourcesLimitsArgs, ArangoDeploymentSpecSingleResourcesLimitsPtr and ArangoDeploymentSpecSingleResourcesLimitsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesLimitsPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleResourcesLimitsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleResourcesLimitsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesLimitsPtrOutput() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput
+	ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesLimitsPtrOutput
+}
+
+type arangoDeploymentSpecSingleResourcesLimitsPtrType ArangoDeploymentSpecSingleResourcesLimitsArgs
+
+func ArangoDeploymentSpecSingleResourcesLimitsPtr(v *ArangoDeploymentSpecSingleResourcesLimitsArgs) ArangoDeploymentSpecSingleResourcesLimitsPtrInput {
+	return (*arangoDeploymentSpecSingleResourcesLimitsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleResourcesLimitsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResourcesLimits)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleResourcesLimitsPtrType) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutput() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleResourcesLimitsPtrType) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesLimitsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesLimitsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesLimitsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) ToArangoDeploymentSpecSingleResourcesLimitsOutput() ArangoDeploymentSpecSingleResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) ToArangoDeploymentSpecSingleResourcesLimitsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutput() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o.ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleResourcesLimits) *ArangoDeploymentSpecSingleResourcesLimits {
+		return &v
+	}).(ArangoDeploymentSpecSingleResourcesLimitsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResourcesLimits) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResourcesLimits) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesLimitsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResourcesLimits)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutput() ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) ToArangoDeploymentSpecSingleResourcesLimitsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesLimitsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) Elem() ArangoDeploymentSpecSingleResourcesLimitsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesLimits) ArangoDeploymentSpecSingleResourcesLimits {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleResourcesLimits
+		return ret
+	}).(ArangoDeploymentSpecSingleResourcesLimitsOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesLimitsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesLimits) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesRequests struct {
+	Cpu    *string `pulumi:"cpu"`
+	Memory *string `pulumi:"memory"`
+}
+
+// ArangoDeploymentSpecSingleResourcesRequestsInput is an input type that accepts ArangoDeploymentSpecSingleResourcesRequestsArgs and ArangoDeploymentSpecSingleResourcesRequestsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesRequestsInput` via:
+//
+//	ArangoDeploymentSpecSingleResourcesRequestsArgs{...}
+type ArangoDeploymentSpecSingleResourcesRequestsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesRequestsOutput() ArangoDeploymentSpecSingleResourcesRequestsOutput
+	ToArangoDeploymentSpecSingleResourcesRequestsOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesRequestsOutput
+}
+
+type ArangoDeploymentSpecSingleResourcesRequestsArgs struct {
+	Cpu    pulumi.StringPtrInput `pulumi:"cpu"`
+	Memory pulumi.StringPtrInput `pulumi:"memory"`
+}
+
+func (ArangoDeploymentSpecSingleResourcesRequestsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesRequests)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleResourcesRequestsArgs) ToArangoDeploymentSpecSingleResourcesRequestsOutput() ArangoDeploymentSpecSingleResourcesRequestsOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesRequestsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesRequestsArgs) ToArangoDeploymentSpecSingleResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesRequestsOutput)
+}
+
+func (i ArangoDeploymentSpecSingleResourcesRequestsArgs) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleResourcesRequestsArgs) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesRequestsOutput).ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleResourcesRequestsPtrInput is an input type that accepts ArangoDeploymentSpecSingleResourcesRequestsArgs, ArangoDeploymentSpecSingleResourcesRequestsPtr and ArangoDeploymentSpecSingleResourcesRequestsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleResourcesRequestsPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleResourcesRequestsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleResourcesRequestsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput
+	ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleResourcesRequestsPtrOutput
+}
+
+type arangoDeploymentSpecSingleResourcesRequestsPtrType ArangoDeploymentSpecSingleResourcesRequestsArgs
+
+func ArangoDeploymentSpecSingleResourcesRequestsPtr(v *ArangoDeploymentSpecSingleResourcesRequestsArgs) ArangoDeploymentSpecSingleResourcesRequestsPtrInput {
+	return (*arangoDeploymentSpecSingleResourcesRequestsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleResourcesRequestsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResourcesRequests)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleResourcesRequestsPtrType) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleResourcesRequestsPtrType) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesRequestsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesRequestsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) ToArangoDeploymentSpecSingleResourcesRequestsOutput() ArangoDeploymentSpecSingleResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) ToArangoDeploymentSpecSingleResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o.ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleResourcesRequests) *ArangoDeploymentSpecSingleResourcesRequests {
+		return &v
+	}).(ArangoDeploymentSpecSingleResourcesRequestsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResourcesRequests) *string { return v.Cpu }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleResourcesRequests) *string { return v.Memory }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleResourcesRequestsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) ToArangoDeploymentSpecSingleResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) Elem() ArangoDeploymentSpecSingleResourcesRequestsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesRequests) ArangoDeploymentSpecSingleResourcesRequests {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleResourcesRequests
+		return ret
+	}).(ArangoDeploymentSpecSingleResourcesRequestsOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) Cpu() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Cpu
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleResourcesRequestsPtrOutput) Memory() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Memory
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleSecurityContext struct {
+	AllowPrivilegeEscalation *bool `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  *int  `pulumi:"fsGroup"`
+	Privileged               *bool `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   *bool `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               *int  `pulumi:"runAsGroup"`
+	RunAsUser                *int  `pulumi:"runAsUser"`
+	SupplementalGroups       []int `pulumi:"supplementalGroups"`
+}
+
+// ArangoDeploymentSpecSingleSecurityContextInput is an input type that accepts ArangoDeploymentSpecSingleSecurityContextArgs and ArangoDeploymentSpecSingleSecurityContextOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleSecurityContextInput` via:
+//
+//	ArangoDeploymentSpecSingleSecurityContextArgs{...}
+type ArangoDeploymentSpecSingleSecurityContextInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleSecurityContextOutput() ArangoDeploymentSpecSingleSecurityContextOutput
+	ToArangoDeploymentSpecSingleSecurityContextOutputWithContext(context.Context) ArangoDeploymentSpecSingleSecurityContextOutput
+}
+
+type ArangoDeploymentSpecSingleSecurityContextArgs struct {
+	AllowPrivilegeEscalation pulumi.BoolPtrInput  `pulumi:"allowPrivilegeEscalation"`
+	FsGroup                  pulumi.IntPtrInput   `pulumi:"fsGroup"`
+	Privileged               pulumi.BoolPtrInput  `pulumi:"privileged"`
+	ReadOnlyRootFilesystem   pulumi.BoolPtrInput  `pulumi:"readOnlyRootFilesystem"`
+	RunAsGroup               pulumi.IntPtrInput   `pulumi:"runAsGroup"`
+	RunAsUser                pulumi.IntPtrInput   `pulumi:"runAsUser"`
+	SupplementalGroups       pulumi.IntArrayInput `pulumi:"supplementalGroups"`
+}
+
+func (ArangoDeploymentSpecSingleSecurityContextArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleSecurityContext)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleSecurityContextArgs) ToArangoDeploymentSpecSingleSecurityContextOutput() ArangoDeploymentSpecSingleSecurityContextOutput {
+	return i.ToArangoDeploymentSpecSingleSecurityContextOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleSecurityContextArgs) ToArangoDeploymentSpecSingleSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleSecurityContextOutput)
+}
+
+func (i ArangoDeploymentSpecSingleSecurityContextArgs) ToArangoDeploymentSpecSingleSecurityContextPtrOutput() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleSecurityContextArgs) ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleSecurityContextOutput).ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleSecurityContextPtrInput is an input type that accepts ArangoDeploymentSpecSingleSecurityContextArgs, ArangoDeploymentSpecSingleSecurityContextPtr and ArangoDeploymentSpecSingleSecurityContextPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleSecurityContextPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleSecurityContextArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleSecurityContextPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleSecurityContextPtrOutput() ArangoDeploymentSpecSingleSecurityContextPtrOutput
+	ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleSecurityContextPtrOutput
+}
+
+type arangoDeploymentSpecSingleSecurityContextPtrType ArangoDeploymentSpecSingleSecurityContextArgs
+
+func ArangoDeploymentSpecSingleSecurityContextPtr(v *ArangoDeploymentSpecSingleSecurityContextArgs) ArangoDeploymentSpecSingleSecurityContextPtrInput {
+	return (*arangoDeploymentSpecSingleSecurityContextPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleSecurityContextPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleSecurityContext)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleSecurityContextPtrType) ToArangoDeploymentSpecSingleSecurityContextPtrOutput() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return i.ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleSecurityContextPtrType) ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleSecurityContextPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleSecurityContextOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleSecurityContextOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) ToArangoDeploymentSpecSingleSecurityContextOutput() ArangoDeploymentSpecSingleSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) ToArangoDeploymentSpecSingleSecurityContextOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) ToArangoDeploymentSpecSingleSecurityContextPtrOutput() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o.ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleSecurityContext) *ArangoDeploymentSpecSingleSecurityContext {
+		return &v
+	}).(ArangoDeploymentSpecSingleSecurityContextPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *bool { return v.AllowPrivilegeEscalation }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *int { return v.FsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *bool { return v.Privileged }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *bool { return v.ReadOnlyRootFilesystem }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *int { return v.RunAsGroup }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) *int { return v.RunAsUser }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleSecurityContext) []int { return v.SupplementalGroups }).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecSingleSecurityContextPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleSecurityContextPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleSecurityContext)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) ToArangoDeploymentSpecSingleSecurityContextPtrOutput() ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) ToArangoDeploymentSpecSingleSecurityContextPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleSecurityContextPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) Elem() ArangoDeploymentSpecSingleSecurityContextOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) ArangoDeploymentSpecSingleSecurityContext {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleSecurityContext
+		return ret
+	}).(ArangoDeploymentSpecSingleSecurityContextOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) AllowPrivilegeEscalation() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AllowPrivilegeEscalation
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) FsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.FsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) Privileged() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Privileged
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) ReadOnlyRootFilesystem() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.ReadOnlyRootFilesystem
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) RunAsGroup() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsGroup
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) RunAsUser() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) *int {
+		if v == nil {
+			return nil
+		}
+		return v.RunAsUser
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleSecurityContextPtrOutput) SupplementalGroups() pulumi.IntArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleSecurityContext) []int {
+		if v == nil {
+			return nil
+		}
+		return v.SupplementalGroups
+	}).(pulumi.IntArrayOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplate struct {
+	AccessModes      []string                                                `pulumi:"accessModes"`
+	Resources        *ArangoDeploymentSpecSingleVolumeClaimTemplateResources `pulumi:"resources"`
+	StorageClassName *string                                                 `pulumi:"storageClassName"`
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplateInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateArgs and ArangoDeploymentSpecSingleVolumeClaimTemplateOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplateInput` via:
+//
+//	ArangoDeploymentSpecSingleVolumeClaimTemplateArgs{...}
+type ArangoDeploymentSpecSingleVolumeClaimTemplateInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateOutput
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateArgs struct {
+	AccessModes      pulumi.StringArrayInput                                        `pulumi:"accessModes"`
+	Resources        ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput `pulumi:"resources"`
+	StorageClassName pulumi.StringPtrInput                                          `pulumi:"storageClassName"`
+}
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplate)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateOutput)
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateOutput).ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateArgs, ArangoDeploymentSpecSingleVolumeClaimTemplatePtr and ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleVolumeClaimTemplateArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput
+}
+
+type arangoDeploymentSpecSingleVolumeClaimTemplatePtrType ArangoDeploymentSpecSingleVolumeClaimTemplateArgs
+
+func ArangoDeploymentSpecSingleVolumeClaimTemplatePtr(v *ArangoDeploymentSpecSingleVolumeClaimTemplateArgs) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput {
+	return (*arangoDeploymentSpecSingleVolumeClaimTemplatePtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleVolumeClaimTemplatePtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplate)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplatePtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplatePtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplate)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o.ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleVolumeClaimTemplate) *ArangoDeploymentSpecSingleVolumeClaimTemplate {
+		return &v
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) AccessModes() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleVolumeClaimTemplate) []string { return v.AccessModes }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) Resources() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleVolumeClaimTemplate) *ArangoDeploymentSpecSingleVolumeClaimTemplateResources {
+		return v.Resources
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateOutput) StorageClassName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleVolumeClaimTemplate) *string { return v.StorageClassName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplate)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) Elem() ArangoDeploymentSpecSingleVolumeClaimTemplateOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplate) ArangoDeploymentSpecSingleVolumeClaimTemplate {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleVolumeClaimTemplate
+		return ret
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) AccessModes() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplate) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AccessModes
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) Resources() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplate) *ArangoDeploymentSpecSingleVolumeClaimTemplateResources {
+		if v == nil {
+			return nil
+		}
+		return v.Resources
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput) StorageClassName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplate) *string {
+		if v == nil {
+			return nil
+		}
+		return v.StorageClassName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResources struct {
+	Requests *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests `pulumi:"requests"`
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs and ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesInput` via:
+//
+//	ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs{...}
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs struct {
+	Requests ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput `pulumi:"requests"`
+}
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResources)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput)
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput).ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs, ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtr and ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput
+}
+
+type arangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrType ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs
+
+func ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtr(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput {
+	return (*arangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplateResources)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleVolumeClaimTemplateResources) *ArangoDeploymentSpecSingleVolumeClaimTemplateResources {
+		return &v
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput) Requests() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleVolumeClaimTemplateResources) *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests {
+		return v.Requests
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplateResources)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput) Elem() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResources) ArangoDeploymentSpecSingleVolumeClaimTemplateResources {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleVolumeClaimTemplateResources
+		return ret
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput) Requests() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResources) *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests {
+		if v == nil {
+			return nil
+		}
+		return v.Requests
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests struct {
+	Storage *string `pulumi:"storage"`
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs and ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsInput` via:
+//
+//	ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs{...}
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs struct {
+	Storage pulumi.StringPtrInput `pulumi:"storage"`
+}
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput)
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput).ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput is an input type that accepts ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs, ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtr and ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput` via:
+//
+//	        ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput
+	ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput
+}
+
+type arangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrType ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs
+
+func ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtr(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput {
+	return (*arangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return i.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrType) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o.ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests) *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests {
+		return &v
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput) Storage() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests) *string { return v.Storage }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput) ToArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput) Elem() ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests) ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests
+		return ret
+	}).(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput)
+}
+
+func (o ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput) Storage() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequests) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Storage
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSync struct {
+	Auth           *ArangoDeploymentSpecSyncAuth           `pulumi:"auth"`
+	Enabled        *bool                                   `pulumi:"enabled"`
+	ExternalAccess *ArangoDeploymentSpecSyncExternalAccess `pulumi:"externalAccess"`
+	Image          *string                                 `pulumi:"image"`
+	Tls            *ArangoDeploymentSpecSyncTls            `pulumi:"tls"`
+}
+
+// ArangoDeploymentSpecSyncInput is an input type that accepts ArangoDeploymentSpecSyncArgs and ArangoDeploymentSpecSyncOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncInput` via:
+//
+//	ArangoDeploymentSpecSyncArgs{...}
+type ArangoDeploymentSpecSyncInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncOutput() ArangoDeploymentSpecSyncOutput
+	ToArangoDeploymentSpecSyncOutputWithContext(context.Context) ArangoDeploymentSpecSyncOutput
+}
+
+type ArangoDeploymentSpecSyncArgs struct {
+	Auth           ArangoDeploymentSpecSyncAuthPtrInput           `pulumi:"auth"`
+	Enabled        pulumi.BoolPtrInput                            `pulumi:"enabled"`
+	ExternalAccess ArangoDeploymentSpecSyncExternalAccessPtrInput `pulumi:"externalAccess"`
+	Image          pulumi.StringPtrInput                          `pulumi:"image"`
+	Tls            ArangoDeploymentSpecSyncTlsPtrInput            `pulumi:"tls"`
+}
+
+func (ArangoDeploymentSpecSyncArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSync)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSyncArgs) ToArangoDeploymentSpecSyncOutput() ArangoDeploymentSpecSyncOutput {
+	return i.ToArangoDeploymentSpecSyncOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncArgs) ToArangoDeploymentSpecSyncOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncOutput)
+}
+
+func (i ArangoDeploymentSpecSyncArgs) ToArangoDeploymentSpecSyncPtrOutput() ArangoDeploymentSpecSyncPtrOutput {
+	return i.ToArangoDeploymentSpecSyncPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncArgs) ToArangoDeploymentSpecSyncPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncOutput).ToArangoDeploymentSpecSyncPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSyncPtrInput is an input type that accepts ArangoDeploymentSpecSyncArgs, ArangoDeploymentSpecSyncPtr and ArangoDeploymentSpecSyncPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncPtrInput` via:
+//
+//	        ArangoDeploymentSpecSyncArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSyncPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncPtrOutput() ArangoDeploymentSpecSyncPtrOutput
+	ToArangoDeploymentSpecSyncPtrOutputWithContext(context.Context) ArangoDeploymentSpecSyncPtrOutput
+}
+
+type arangoDeploymentSpecSyncPtrType ArangoDeploymentSpecSyncArgs
+
+func ArangoDeploymentSpecSyncPtr(v *ArangoDeploymentSpecSyncArgs) ArangoDeploymentSpecSyncPtrInput {
+	return (*arangoDeploymentSpecSyncPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSyncPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSync)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSyncPtrType) ToArangoDeploymentSpecSyncPtrOutput() ArangoDeploymentSpecSyncPtrOutput {
+	return i.ToArangoDeploymentSpecSyncPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSyncPtrType) ToArangoDeploymentSpecSyncPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSync)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncOutput) ToArangoDeploymentSpecSyncOutput() ArangoDeploymentSpecSyncOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncOutput) ToArangoDeploymentSpecSyncOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncOutput) ToArangoDeploymentSpecSyncPtrOutput() ArangoDeploymentSpecSyncPtrOutput {
+	return o.ToArangoDeploymentSpecSyncPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSyncOutput) ToArangoDeploymentSpecSyncPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSync) *ArangoDeploymentSpecSync {
+		return &v
+	}).(ArangoDeploymentSpecSyncPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncOutput) Auth() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncAuth { return v.Auth }).(ArangoDeploymentSpecSyncAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSync) *bool { return v.Enabled }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncOutput) ExternalAccess() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncExternalAccess { return v.ExternalAccess }).(ArangoDeploymentSpecSyncExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSync) *string { return v.Image }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncOutput) Tls() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncTls { return v.Tls }).(ArangoDeploymentSpecSyncTlsPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSync)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) ToArangoDeploymentSpecSyncPtrOutput() ArangoDeploymentSpecSyncPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) ToArangoDeploymentSpecSyncPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) Elem() ArangoDeploymentSpecSyncOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) ArangoDeploymentSpecSync {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSync
+		return ret
+	}).(ArangoDeploymentSpecSyncOutput)
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) Auth() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncAuth {
+		if v == nil {
+			return nil
+		}
+		return v.Auth
+	}).(ArangoDeploymentSpecSyncAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) Enabled() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.Enabled
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) ExternalAccess() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncExternalAccess {
+		if v == nil {
+			return nil
+		}
+		return v.ExternalAccess
+	}).(ArangoDeploymentSpecSyncExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) Image() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Image
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncPtrOutput) Tls() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSync) *ArangoDeploymentSpecSyncTls {
+		if v == nil {
+			return nil
+		}
+		return v.Tls
+	}).(ArangoDeploymentSpecSyncTlsPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncAuth struct {
+	ClientCASecretName *string `pulumi:"clientCASecretName"`
+	JwtSecretName      *string `pulumi:"jwtSecretName"`
+}
+
+// ArangoDeploymentSpecSyncAuthInput is an input type that accepts ArangoDeploymentSpecSyncAuthArgs and ArangoDeploymentSpecSyncAuthOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncAuthInput` via:
+//
+//	ArangoDeploymentSpecSyncAuthArgs{...}
+type ArangoDeploymentSpecSyncAuthInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncAuthOutput() ArangoDeploymentSpecSyncAuthOutput
+	ToArangoDeploymentSpecSyncAuthOutputWithContext(context.Context) ArangoDeploymentSpecSyncAuthOutput
+}
+
+type ArangoDeploymentSpecSyncAuthArgs struct {
+	ClientCASecretName pulumi.StringPtrInput `pulumi:"clientCASecretName"`
+	JwtSecretName      pulumi.StringPtrInput `pulumi:"jwtSecretName"`
+}
+
+func (ArangoDeploymentSpecSyncAuthArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncAuth)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSyncAuthArgs) ToArangoDeploymentSpecSyncAuthOutput() ArangoDeploymentSpecSyncAuthOutput {
+	return i.ToArangoDeploymentSpecSyncAuthOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncAuthArgs) ToArangoDeploymentSpecSyncAuthOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncAuthOutput)
+}
+
+func (i ArangoDeploymentSpecSyncAuthArgs) ToArangoDeploymentSpecSyncAuthPtrOutput() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return i.ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncAuthArgs) ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncAuthOutput).ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSyncAuthPtrInput is an input type that accepts ArangoDeploymentSpecSyncAuthArgs, ArangoDeploymentSpecSyncAuthPtr and ArangoDeploymentSpecSyncAuthPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncAuthPtrInput` via:
+//
+//	        ArangoDeploymentSpecSyncAuthArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSyncAuthPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncAuthPtrOutput() ArangoDeploymentSpecSyncAuthPtrOutput
+	ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(context.Context) ArangoDeploymentSpecSyncAuthPtrOutput
+}
+
+type arangoDeploymentSpecSyncAuthPtrType ArangoDeploymentSpecSyncAuthArgs
+
+func ArangoDeploymentSpecSyncAuthPtr(v *ArangoDeploymentSpecSyncAuthArgs) ArangoDeploymentSpecSyncAuthPtrInput {
+	return (*arangoDeploymentSpecSyncAuthPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSyncAuthPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncAuth)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSyncAuthPtrType) ToArangoDeploymentSpecSyncAuthPtrOutput() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return i.ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSyncAuthPtrType) ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncAuthPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncAuthOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncAuthOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncAuth)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) ToArangoDeploymentSpecSyncAuthOutput() ArangoDeploymentSpecSyncAuthOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) ToArangoDeploymentSpecSyncAuthOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) ToArangoDeploymentSpecSyncAuthPtrOutput() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o.ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSyncAuth) *ArangoDeploymentSpecSyncAuth {
+		return &v
+	}).(ArangoDeploymentSpecSyncAuthPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) ClientCASecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncAuth) *string { return v.ClientCASecretName }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncAuthOutput) JwtSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncAuth) *string { return v.JwtSecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncAuthPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncAuthPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncAuth)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncAuthPtrOutput) ToArangoDeploymentSpecSyncAuthPtrOutput() ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncAuthPtrOutput) ToArangoDeploymentSpecSyncAuthPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncAuthPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncAuthPtrOutput) Elem() ArangoDeploymentSpecSyncAuthOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncAuth) ArangoDeploymentSpecSyncAuth {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSyncAuth
+		return ret
+	}).(ArangoDeploymentSpecSyncAuthOutput)
+}
+
+func (o ArangoDeploymentSpecSyncAuthPtrOutput) ClientCASecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncAuth) *string {
+		if v == nil {
+			return nil
+		}
+		return v.ClientCASecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncAuthPtrOutput) JwtSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncAuth) *string {
+		if v == nil {
+			return nil
+		}
+		return v.JwtSecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncExternalAccess struct {
+	LoadBalancerIP           *string  `pulumi:"loadBalancerIP"`
+	LoadBalancerSourceRanges []string `pulumi:"loadBalancerSourceRanges"`
+	NodePort                 *int     `pulumi:"nodePort"`
+	Type                     *string  `pulumi:"type"`
+}
+
+// ArangoDeploymentSpecSyncExternalAccessInput is an input type that accepts ArangoDeploymentSpecSyncExternalAccessArgs and ArangoDeploymentSpecSyncExternalAccessOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncExternalAccessInput` via:
+//
+//	ArangoDeploymentSpecSyncExternalAccessArgs{...}
+type ArangoDeploymentSpecSyncExternalAccessInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncExternalAccessOutput() ArangoDeploymentSpecSyncExternalAccessOutput
+	ToArangoDeploymentSpecSyncExternalAccessOutputWithContext(context.Context) ArangoDeploymentSpecSyncExternalAccessOutput
+}
+
+type ArangoDeploymentSpecSyncExternalAccessArgs struct {
+	LoadBalancerIP           pulumi.StringPtrInput   `pulumi:"loadBalancerIP"`
+	LoadBalancerSourceRanges pulumi.StringArrayInput `pulumi:"loadBalancerSourceRanges"`
+	NodePort                 pulumi.IntPtrInput      `pulumi:"nodePort"`
+	Type                     pulumi.StringPtrInput   `pulumi:"type"`
+}
+
+func (ArangoDeploymentSpecSyncExternalAccessArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncExternalAccess)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSyncExternalAccessArgs) ToArangoDeploymentSpecSyncExternalAccessOutput() ArangoDeploymentSpecSyncExternalAccessOutput {
+	return i.ToArangoDeploymentSpecSyncExternalAccessOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncExternalAccessArgs) ToArangoDeploymentSpecSyncExternalAccessOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncExternalAccessOutput)
+}
+
+func (i ArangoDeploymentSpecSyncExternalAccessArgs) ToArangoDeploymentSpecSyncExternalAccessPtrOutput() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return i.ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncExternalAccessArgs) ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncExternalAccessOutput).ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSyncExternalAccessPtrInput is an input type that accepts ArangoDeploymentSpecSyncExternalAccessArgs, ArangoDeploymentSpecSyncExternalAccessPtr and ArangoDeploymentSpecSyncExternalAccessPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncExternalAccessPtrInput` via:
+//
+//	        ArangoDeploymentSpecSyncExternalAccessArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSyncExternalAccessPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncExternalAccessPtrOutput() ArangoDeploymentSpecSyncExternalAccessPtrOutput
+	ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(context.Context) ArangoDeploymentSpecSyncExternalAccessPtrOutput
+}
+
+type arangoDeploymentSpecSyncExternalAccessPtrType ArangoDeploymentSpecSyncExternalAccessArgs
+
+func ArangoDeploymentSpecSyncExternalAccessPtr(v *ArangoDeploymentSpecSyncExternalAccessArgs) ArangoDeploymentSpecSyncExternalAccessPtrInput {
+	return (*arangoDeploymentSpecSyncExternalAccessPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSyncExternalAccessPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncExternalAccess)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSyncExternalAccessPtrType) ToArangoDeploymentSpecSyncExternalAccessPtrOutput() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return i.ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSyncExternalAccessPtrType) ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncExternalAccessPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncExternalAccessOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncExternalAccessOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncExternalAccess)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) ToArangoDeploymentSpecSyncExternalAccessOutput() ArangoDeploymentSpecSyncExternalAccessOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) ToArangoDeploymentSpecSyncExternalAccessOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) ToArangoDeploymentSpecSyncExternalAccessPtrOutput() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o.ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSyncExternalAccess) *ArangoDeploymentSpecSyncExternalAccess {
+		return &v
+	}).(ArangoDeploymentSpecSyncExternalAccessPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) LoadBalancerIP() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncExternalAccess) *string { return v.LoadBalancerIP }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) LoadBalancerSourceRanges() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncExternalAccess) []string { return v.LoadBalancerSourceRanges }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) NodePort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncExternalAccess) *int { return v.NodePort }).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessOutput) Type() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncExternalAccess) *string { return v.Type }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncExternalAccessPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncExternalAccessPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncExternalAccess)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) ToArangoDeploymentSpecSyncExternalAccessPtrOutput() ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) ToArangoDeploymentSpecSyncExternalAccessPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncExternalAccessPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) Elem() ArangoDeploymentSpecSyncExternalAccessOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncExternalAccess) ArangoDeploymentSpecSyncExternalAccess {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSyncExternalAccess
+		return ret
+	}).(ArangoDeploymentSpecSyncExternalAccessOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) LoadBalancerIP() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncExternalAccess) *string {
+		if v == nil {
+			return nil
+		}
+		return v.LoadBalancerIP
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) LoadBalancerSourceRanges() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncExternalAccess) []string {
+		if v == nil {
+			return nil
+		}
+		return v.LoadBalancerSourceRanges
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) NodePort() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncExternalAccess) *int {
+		if v == nil {
+			return nil
+		}
+		return v.NodePort
+	}).(pulumi.IntPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncExternalAccessPtrOutput) Type() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncExternalAccess) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Type
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncTls struct {
+	AltNames     []string `pulumi:"altNames"`
+	CaSecretName *string  `pulumi:"caSecretName"`
+	Mode         *string  `pulumi:"mode"`
+	Ttl          *string  `pulumi:"ttl"`
+}
+
+// ArangoDeploymentSpecSyncTlsInput is an input type that accepts ArangoDeploymentSpecSyncTlsArgs and ArangoDeploymentSpecSyncTlsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncTlsInput` via:
+//
+//	ArangoDeploymentSpecSyncTlsArgs{...}
+type ArangoDeploymentSpecSyncTlsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncTlsOutput() ArangoDeploymentSpecSyncTlsOutput
+	ToArangoDeploymentSpecSyncTlsOutputWithContext(context.Context) ArangoDeploymentSpecSyncTlsOutput
+}
+
+type ArangoDeploymentSpecSyncTlsArgs struct {
+	AltNames     pulumi.StringArrayInput `pulumi:"altNames"`
+	CaSecretName pulumi.StringPtrInput   `pulumi:"caSecretName"`
+	Mode         pulumi.StringPtrInput   `pulumi:"mode"`
+	Ttl          pulumi.StringPtrInput   `pulumi:"ttl"`
+}
+
+func (ArangoDeploymentSpecSyncTlsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncTls)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecSyncTlsArgs) ToArangoDeploymentSpecSyncTlsOutput() ArangoDeploymentSpecSyncTlsOutput {
+	return i.ToArangoDeploymentSpecSyncTlsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncTlsArgs) ToArangoDeploymentSpecSyncTlsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncTlsOutput)
+}
+
+func (i ArangoDeploymentSpecSyncTlsArgs) ToArangoDeploymentSpecSyncTlsPtrOutput() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return i.ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecSyncTlsArgs) ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncTlsOutput).ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecSyncTlsPtrInput is an input type that accepts ArangoDeploymentSpecSyncTlsArgs, ArangoDeploymentSpecSyncTlsPtr and ArangoDeploymentSpecSyncTlsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecSyncTlsPtrInput` via:
+//
+//	        ArangoDeploymentSpecSyncTlsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecSyncTlsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecSyncTlsPtrOutput() ArangoDeploymentSpecSyncTlsPtrOutput
+	ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(context.Context) ArangoDeploymentSpecSyncTlsPtrOutput
+}
+
+type arangoDeploymentSpecSyncTlsPtrType ArangoDeploymentSpecSyncTlsArgs
+
+func ArangoDeploymentSpecSyncTlsPtr(v *ArangoDeploymentSpecSyncTlsArgs) ArangoDeploymentSpecSyncTlsPtrInput {
+	return (*arangoDeploymentSpecSyncTlsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecSyncTlsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncTls)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecSyncTlsPtrType) ToArangoDeploymentSpecSyncTlsPtrOutput() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return i.ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecSyncTlsPtrType) ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecSyncTlsPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncTlsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncTlsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecSyncTls)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) ToArangoDeploymentSpecSyncTlsOutput() ArangoDeploymentSpecSyncTlsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) ToArangoDeploymentSpecSyncTlsOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) ToArangoDeploymentSpecSyncTlsPtrOutput() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o.ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecSyncTls) *ArangoDeploymentSpecSyncTls {
+		return &v
+	}).(ArangoDeploymentSpecSyncTlsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) AltNames() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncTls) []string { return v.AltNames }).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) CaSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncTls) *string { return v.CaSecretName }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncTls) *string { return v.Mode }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsOutput) Ttl() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecSyncTls) *string { return v.Ttl }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecSyncTlsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecSyncTlsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecSyncTls)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) ToArangoDeploymentSpecSyncTlsPtrOutput() ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) ToArangoDeploymentSpecSyncTlsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecSyncTlsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) Elem() ArangoDeploymentSpecSyncTlsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncTls) ArangoDeploymentSpecSyncTls {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecSyncTls
+		return ret
+	}).(ArangoDeploymentSpecSyncTlsOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) AltNames() pulumi.StringArrayOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncTls) []string {
+		if v == nil {
+			return nil
+		}
+		return v.AltNames
+	}).(pulumi.StringArrayOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) CaSecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncTls) *string {
+		if v == nil {
+			return nil
+		}
+		return v.CaSecretName
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) Mode() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncTls) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Mode
+	}).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecSyncTlsPtrOutput) Ttl() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecSyncTls) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Ttl
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecTimeouts struct {
+	Actions                map[string]string `pulumi:"actions"`
+	MaintenanceGracePeriod *int              `pulumi:"maintenanceGracePeriod"`
+}
+
+// ArangoDeploymentSpecTimeoutsInput is an input type that accepts ArangoDeploymentSpecTimeoutsArgs and ArangoDeploymentSpecTimeoutsOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecTimeoutsInput` via:
+//
+//	ArangoDeploymentSpecTimeoutsArgs{...}
+type ArangoDeploymentSpecTimeoutsInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecTimeoutsOutput() ArangoDeploymentSpecTimeoutsOutput
+	ToArangoDeploymentSpecTimeoutsOutputWithContext(context.Context) ArangoDeploymentSpecTimeoutsOutput
+}
+
+type ArangoDeploymentSpecTimeoutsArgs struct {
+	Actions                pulumi.StringMapInput `pulumi:"actions"`
+	MaintenanceGracePeriod pulumi.IntPtrInput    `pulumi:"maintenanceGracePeriod"`
+}
+
+func (ArangoDeploymentSpecTimeoutsArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecTimeouts)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecTimeoutsArgs) ToArangoDeploymentSpecTimeoutsOutput() ArangoDeploymentSpecTimeoutsOutput {
+	return i.ToArangoDeploymentSpecTimeoutsOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecTimeoutsArgs) ToArangoDeploymentSpecTimeoutsOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecTimeoutsOutput)
+}
+
+func (i ArangoDeploymentSpecTimeoutsArgs) ToArangoDeploymentSpecTimeoutsPtrOutput() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return i.ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecTimeoutsArgs) ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecTimeoutsOutput).ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecTimeoutsPtrInput is an input type that accepts ArangoDeploymentSpecTimeoutsArgs, ArangoDeploymentSpecTimeoutsPtr and ArangoDeploymentSpecTimeoutsPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecTimeoutsPtrInput` via:
+//
+//	        ArangoDeploymentSpecTimeoutsArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecTimeoutsPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecTimeoutsPtrOutput() ArangoDeploymentSpecTimeoutsPtrOutput
+	ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(context.Context) ArangoDeploymentSpecTimeoutsPtrOutput
+}
+
+type arangoDeploymentSpecTimeoutsPtrType ArangoDeploymentSpecTimeoutsArgs
+
+func ArangoDeploymentSpecTimeoutsPtr(v *ArangoDeploymentSpecTimeoutsArgs) ArangoDeploymentSpecTimeoutsPtrInput {
+	return (*arangoDeploymentSpecTimeoutsPtrType)(v)
+}
+
+func (*arangoDeploymentSpecTimeoutsPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecTimeouts)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecTimeoutsPtrType) ToArangoDeploymentSpecTimeoutsPtrOutput() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return i.ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecTimeoutsPtrType) ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecTimeoutsPtrOutput)
+}
+
+type ArangoDeploymentSpecTimeoutsOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecTimeoutsOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecTimeouts)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) ToArangoDeploymentSpecTimeoutsOutput() ArangoDeploymentSpecTimeoutsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) ToArangoDeploymentSpecTimeoutsOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) ToArangoDeploymentSpecTimeoutsPtrOutput() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o.ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecTimeouts) *ArangoDeploymentSpecTimeouts {
+		return &v
+	}).(ArangoDeploymentSpecTimeoutsPtrOutput)
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) Actions() pulumi.StringMapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecTimeouts) map[string]string { return v.Actions }).(pulumi.StringMapOutput)
+}
+
+func (o ArangoDeploymentSpecTimeoutsOutput) MaintenanceGracePeriod() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecTimeouts) *int { return v.MaintenanceGracePeriod }).(pulumi.IntPtrOutput)
+}
+
+type ArangoDeploymentSpecTimeoutsPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecTimeoutsPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecTimeouts)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecTimeoutsPtrOutput) ToArangoDeploymentSpecTimeoutsPtrOutput() ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecTimeoutsPtrOutput) ToArangoDeploymentSpecTimeoutsPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecTimeoutsPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecTimeoutsPtrOutput) Elem() ArangoDeploymentSpecTimeoutsOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecTimeouts) ArangoDeploymentSpecTimeouts {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecTimeouts
+		return ret
+	}).(ArangoDeploymentSpecTimeoutsOutput)
+}
+
+func (o ArangoDeploymentSpecTimeoutsPtrOutput) Actions() pulumi.StringMapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecTimeouts) map[string]string {
+		if v == nil {
+			return nil
+		}
+		return v.Actions
+	}).(pulumi.StringMapOutput)
+}
+
+func (o ArangoDeploymentSpecTimeoutsPtrOutput) MaintenanceGracePeriod() pulumi.IntPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecTimeouts) *int {
+		if v == nil {
+			return nil
+		}
+		return v.MaintenanceGracePeriod
+	}).(pulumi.IntPtrOutput)
+}
+
+type ArangoDeploymentSpecTimeoutsActions struct {
+}
+
+type ArangoDeploymentSpecUpgrade struct {
+	AutoUpgrade *bool `pulumi:"autoUpgrade"`
+	DebugLog    *bool `pulumi:"debugLog"`
+}
+
+// ArangoDeploymentSpecUpgradeInput is an input type that accepts ArangoDeploymentSpecUpgradeArgs and ArangoDeploymentSpecUpgradeOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecUpgradeInput` via:
+//
+//	ArangoDeploymentSpecUpgradeArgs{...}
+type ArangoDeploymentSpecUpgradeInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecUpgradeOutput() ArangoDeploymentSpecUpgradeOutput
+	ToArangoDeploymentSpecUpgradeOutputWithContext(context.Context) ArangoDeploymentSpecUpgradeOutput
+}
+
+type ArangoDeploymentSpecUpgradeArgs struct {
+	AutoUpgrade pulumi.BoolPtrInput `pulumi:"autoUpgrade"`
+	DebugLog    pulumi.BoolPtrInput `pulumi:"debugLog"`
+}
+
+func (ArangoDeploymentSpecUpgradeArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecUpgrade)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecUpgradeArgs) ToArangoDeploymentSpecUpgradeOutput() ArangoDeploymentSpecUpgradeOutput {
+	return i.ToArangoDeploymentSpecUpgradeOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecUpgradeArgs) ToArangoDeploymentSpecUpgradeOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradeOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecUpgradeOutput)
+}
+
+func (i ArangoDeploymentSpecUpgradeArgs) ToArangoDeploymentSpecUpgradePtrOutput() ArangoDeploymentSpecUpgradePtrOutput {
+	return i.ToArangoDeploymentSpecUpgradePtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecUpgradeArgs) ToArangoDeploymentSpecUpgradePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecUpgradeOutput).ToArangoDeploymentSpecUpgradePtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecUpgradePtrInput is an input type that accepts ArangoDeploymentSpecUpgradeArgs, ArangoDeploymentSpecUpgradePtr and ArangoDeploymentSpecUpgradePtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecUpgradePtrInput` via:
+//
+//	        ArangoDeploymentSpecUpgradeArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecUpgradePtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecUpgradePtrOutput() ArangoDeploymentSpecUpgradePtrOutput
+	ToArangoDeploymentSpecUpgradePtrOutputWithContext(context.Context) ArangoDeploymentSpecUpgradePtrOutput
+}
+
+type arangoDeploymentSpecUpgradePtrType ArangoDeploymentSpecUpgradeArgs
+
+func ArangoDeploymentSpecUpgradePtr(v *ArangoDeploymentSpecUpgradeArgs) ArangoDeploymentSpecUpgradePtrInput {
+	return (*arangoDeploymentSpecUpgradePtrType)(v)
+}
+
+func (*arangoDeploymentSpecUpgradePtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecUpgrade)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecUpgradePtrType) ToArangoDeploymentSpecUpgradePtrOutput() ArangoDeploymentSpecUpgradePtrOutput {
+	return i.ToArangoDeploymentSpecUpgradePtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecUpgradePtrType) ToArangoDeploymentSpecUpgradePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradePtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecUpgradePtrOutput)
+}
+
+type ArangoDeploymentSpecUpgradeOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecUpgradeOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecUpgrade)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) ToArangoDeploymentSpecUpgradeOutput() ArangoDeploymentSpecUpgradeOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) ToArangoDeploymentSpecUpgradeOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradeOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) ToArangoDeploymentSpecUpgradePtrOutput() ArangoDeploymentSpecUpgradePtrOutput {
+	return o.ToArangoDeploymentSpecUpgradePtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) ToArangoDeploymentSpecUpgradePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradePtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecUpgrade) *ArangoDeploymentSpecUpgrade {
+		return &v
+	}).(ArangoDeploymentSpecUpgradePtrOutput)
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) AutoUpgrade() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecUpgrade) *bool { return v.AutoUpgrade }).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecUpgradeOutput) DebugLog() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecUpgrade) *bool { return v.DebugLog }).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecUpgradePtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecUpgradePtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecUpgrade)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecUpgradePtrOutput) ToArangoDeploymentSpecUpgradePtrOutput() ArangoDeploymentSpecUpgradePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecUpgradePtrOutput) ToArangoDeploymentSpecUpgradePtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecUpgradePtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecUpgradePtrOutput) Elem() ArangoDeploymentSpecUpgradeOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecUpgrade) ArangoDeploymentSpecUpgrade {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecUpgrade
+		return ret
+	}).(ArangoDeploymentSpecUpgradeOutput)
+}
+
+func (o ArangoDeploymentSpecUpgradePtrOutput) AutoUpgrade() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecUpgrade) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.AutoUpgrade
+	}).(pulumi.BoolPtrOutput)
+}
+
+func (o ArangoDeploymentSpecUpgradePtrOutput) DebugLog() pulumi.BoolPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecUpgrade) *bool {
+		if v == nil {
+			return nil
+		}
+		return v.DebugLog
+	}).(pulumi.BoolPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumes struct {
+	ConfigMap             *ArangoDeploymentSpecVolumesConfigMap             `pulumi:"configMap"`
+	EmptyDir              map[string]interface{}                            `pulumi:"emptyDir"`
+	HostPath              *ArangoDeploymentSpecVolumesHostPath              `pulumi:"hostPath"`
+	Name                  *string                                           `pulumi:"name"`
+	PersistentVolumeClaim *ArangoDeploymentSpecVolumesPersistentVolumeClaim `pulumi:"persistentVolumeClaim"`
+	Secret                *ArangoDeploymentSpecVolumesSecret                `pulumi:"secret"`
+}
+
+// ArangoDeploymentSpecVolumesInput is an input type that accepts ArangoDeploymentSpecVolumesArgs and ArangoDeploymentSpecVolumesOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesInput` via:
+//
+//	ArangoDeploymentSpecVolumesArgs{...}
+type ArangoDeploymentSpecVolumesInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesOutput() ArangoDeploymentSpecVolumesOutput
+	ToArangoDeploymentSpecVolumesOutputWithContext(context.Context) ArangoDeploymentSpecVolumesOutput
+}
+
+type ArangoDeploymentSpecVolumesArgs struct {
+	ConfigMap             ArangoDeploymentSpecVolumesConfigMapPtrInput             `pulumi:"configMap"`
+	EmptyDir              pulumi.MapInput                                          `pulumi:"emptyDir"`
+	HostPath              ArangoDeploymentSpecVolumesHostPathPtrInput              `pulumi:"hostPath"`
+	Name                  pulumi.StringPtrInput                                    `pulumi:"name"`
+	PersistentVolumeClaim ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput `pulumi:"persistentVolumeClaim"`
+	Secret                ArangoDeploymentSpecVolumesSecretPtrInput                `pulumi:"secret"`
+}
+
+func (ArangoDeploymentSpecVolumesArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumes)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesArgs) ToArangoDeploymentSpecVolumesOutput() ArangoDeploymentSpecVolumesOutput {
+	return i.ToArangoDeploymentSpecVolumesOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesArgs) ToArangoDeploymentSpecVolumesOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesOutput)
+}
+
+// ArangoDeploymentSpecVolumesArrayInput is an input type that accepts ArangoDeploymentSpecVolumesArray and ArangoDeploymentSpecVolumesArrayOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesArrayInput` via:
+//
+//	ArangoDeploymentSpecVolumesArray{ ArangoDeploymentSpecVolumesArgs{...} }
+type ArangoDeploymentSpecVolumesArrayInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesArrayOutput() ArangoDeploymentSpecVolumesArrayOutput
+	ToArangoDeploymentSpecVolumesArrayOutputWithContext(context.Context) ArangoDeploymentSpecVolumesArrayOutput
+}
+
+type ArangoDeploymentSpecVolumesArray []ArangoDeploymentSpecVolumesInput
+
+func (ArangoDeploymentSpecVolumesArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecVolumes)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesArray) ToArangoDeploymentSpecVolumesArrayOutput() ArangoDeploymentSpecVolumesArrayOutput {
+	return i.ToArangoDeploymentSpecVolumesArrayOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesArray) ToArangoDeploymentSpecVolumesArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesArrayOutput)
+}
+
+type ArangoDeploymentSpecVolumesOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumes)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) ToArangoDeploymentSpecVolumesOutput() ArangoDeploymentSpecVolumesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) ToArangoDeploymentSpecVolumesOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) ConfigMap() ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) *ArangoDeploymentSpecVolumesConfigMap { return v.ConfigMap }).(ArangoDeploymentSpecVolumesConfigMapPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) EmptyDir() pulumi.MapOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) map[string]interface{} { return v.EmptyDir }).(pulumi.MapOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) HostPath() ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) *ArangoDeploymentSpecVolumesHostPath { return v.HostPath }).(ArangoDeploymentSpecVolumesHostPathPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) *string { return v.Name }).(pulumi.StringPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) PersistentVolumeClaim() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) *ArangoDeploymentSpecVolumesPersistentVolumeClaim {
+		return v.PersistentVolumeClaim
+	}).(ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesOutput) Secret() ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumes) *ArangoDeploymentSpecVolumesSecret { return v.Secret }).(ArangoDeploymentSpecVolumesSecretPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesArrayOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]ArangoDeploymentSpecVolumes)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesArrayOutput) ToArangoDeploymentSpecVolumesArrayOutput() ArangoDeploymentSpecVolumesArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesArrayOutput) ToArangoDeploymentSpecVolumesArrayOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesArrayOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesArrayOutput) Index(i pulumi.IntInput) ArangoDeploymentSpecVolumesOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) ArangoDeploymentSpecVolumes {
+		return vs[0].([]ArangoDeploymentSpecVolumes)[vs[1].(int)]
+	}).(ArangoDeploymentSpecVolumesOutput)
+}
+
+type ArangoDeploymentSpecVolumesConfigMap struct {
+	Name *string `pulumi:"name"`
+}
+
+// ArangoDeploymentSpecVolumesConfigMapInput is an input type that accepts ArangoDeploymentSpecVolumesConfigMap and ArangoDeploymentSpecVolumesConfigMapOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesConfigMapInput` via:
+//
+//	ArangoDeploymentSpecVolumesConfigMap{ "key": ArangoDeploymentSpecVolumesConfigArgs{...} }
+type ArangoDeploymentSpecVolumesConfigMapInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesConfigMapOutput() ArangoDeploymentSpecVolumesConfigMapOutput
+	ToArangoDeploymentSpecVolumesConfigMapOutputWithContext(context.Context) ArangoDeploymentSpecVolumesConfigMapOutput
+}
+
+type ArangoDeploymentSpecVolumesConfigMapArgs struct {
+	Name pulumi.StringPtrInput `pulumi:"name"`
+}
+
+func (ArangoDeploymentSpecVolumesConfigMapArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesConfigMap)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesConfigMapArgs) ToArangoDeploymentSpecVolumesConfigMapOutput() ArangoDeploymentSpecVolumesConfigMapOutput {
+	return i.ToArangoDeploymentSpecVolumesConfigMapOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesConfigMapArgs) ToArangoDeploymentSpecVolumesConfigMapOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesConfigMapOutput)
+}
+
+func (i ArangoDeploymentSpecVolumesConfigMapArgs) ToArangoDeploymentSpecVolumesConfigMapPtrOutput() ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesConfigMapArgs) ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesConfigMapOutput).ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecVolumesConfigMapPtrInput is an input type that accepts ArangoDeploymentSpecVolumesConfigMapArgs, ArangoDeploymentSpecVolumesConfigMapPtr and ArangoDeploymentSpecVolumesConfigMapPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesConfigMapPtrInput` via:
+//
+//	        ArangoDeploymentSpecVolumesConfigMapArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecVolumesConfigMapPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesConfigMapPtrOutput() ArangoDeploymentSpecVolumesConfigMapPtrOutput
+	ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(context.Context) ArangoDeploymentSpecVolumesConfigMapPtrOutput
+}
+
+type arangoDeploymentSpecVolumesConfigMapPtrType ArangoDeploymentSpecVolumesConfigMapArgs
+
+func ArangoDeploymentSpecVolumesConfigMapPtr(v *ArangoDeploymentSpecVolumesConfigMapArgs) ArangoDeploymentSpecVolumesConfigMapPtrInput {
+	return (*arangoDeploymentSpecVolumesConfigMapPtrType)(v)
+}
+
+func (*arangoDeploymentSpecVolumesConfigMapPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesConfigMap)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecVolumesConfigMapPtrType) ToArangoDeploymentSpecVolumesConfigMapPtrOutput() ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecVolumesConfigMapPtrType) ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesConfigMapPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesConfigMapOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesConfigMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesConfigMap)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapOutput) ToArangoDeploymentSpecVolumesConfigMapOutput() ArangoDeploymentSpecVolumesConfigMapOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapOutput) ToArangoDeploymentSpecVolumesConfigMapOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapOutput) ToArangoDeploymentSpecVolumesConfigMapPtrOutput() ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return o.ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapOutput) ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecVolumesConfigMap) *ArangoDeploymentSpecVolumesConfigMap {
+		return &v
+	}).(ArangoDeploymentSpecVolumesConfigMapPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumesConfigMap) *string { return v.Name }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesConfigMapPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesConfigMapPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesConfigMap)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapPtrOutput) ToArangoDeploymentSpecVolumesConfigMapPtrOutput() ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapPtrOutput) ToArangoDeploymentSpecVolumesConfigMapPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesConfigMapPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapPtrOutput) Elem() ArangoDeploymentSpecVolumesConfigMapOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesConfigMap) ArangoDeploymentSpecVolumesConfigMap {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecVolumesConfigMap
+		return ret
+	}).(ArangoDeploymentSpecVolumesConfigMapOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesConfigMapPtrOutput) Name() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesConfigMap) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Name
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesEmptyDir struct {
+}
+
+type ArangoDeploymentSpecVolumesHostPath struct {
+	Path *string `pulumi:"path"`
+}
+
+// ArangoDeploymentSpecVolumesHostPathInput is an input type that accepts ArangoDeploymentSpecVolumesHostPathArgs and ArangoDeploymentSpecVolumesHostPathOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesHostPathInput` via:
+//
+//	ArangoDeploymentSpecVolumesHostPathArgs{...}
+type ArangoDeploymentSpecVolumesHostPathInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesHostPathOutput() ArangoDeploymentSpecVolumesHostPathOutput
+	ToArangoDeploymentSpecVolumesHostPathOutputWithContext(context.Context) ArangoDeploymentSpecVolumesHostPathOutput
+}
+
+type ArangoDeploymentSpecVolumesHostPathArgs struct {
+	Path pulumi.StringPtrInput `pulumi:"path"`
+}
+
+func (ArangoDeploymentSpecVolumesHostPathArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesHostPath)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesHostPathArgs) ToArangoDeploymentSpecVolumesHostPathOutput() ArangoDeploymentSpecVolumesHostPathOutput {
+	return i.ToArangoDeploymentSpecVolumesHostPathOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesHostPathArgs) ToArangoDeploymentSpecVolumesHostPathOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesHostPathOutput)
+}
+
+func (i ArangoDeploymentSpecVolumesHostPathArgs) ToArangoDeploymentSpecVolumesHostPathPtrOutput() ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesHostPathArgs) ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesHostPathOutput).ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecVolumesHostPathPtrInput is an input type that accepts ArangoDeploymentSpecVolumesHostPathArgs, ArangoDeploymentSpecVolumesHostPathPtr and ArangoDeploymentSpecVolumesHostPathPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesHostPathPtrInput` via:
+//
+//	        ArangoDeploymentSpecVolumesHostPathArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecVolumesHostPathPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesHostPathPtrOutput() ArangoDeploymentSpecVolumesHostPathPtrOutput
+	ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(context.Context) ArangoDeploymentSpecVolumesHostPathPtrOutput
+}
+
+type arangoDeploymentSpecVolumesHostPathPtrType ArangoDeploymentSpecVolumesHostPathArgs
+
+func ArangoDeploymentSpecVolumesHostPathPtr(v *ArangoDeploymentSpecVolumesHostPathArgs) ArangoDeploymentSpecVolumesHostPathPtrInput {
+	return (*arangoDeploymentSpecVolumesHostPathPtrType)(v)
+}
+
+func (*arangoDeploymentSpecVolumesHostPathPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesHostPath)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecVolumesHostPathPtrType) ToArangoDeploymentSpecVolumesHostPathPtrOutput() ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecVolumesHostPathPtrType) ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesHostPathPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesHostPathOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesHostPathOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesHostPath)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathOutput) ToArangoDeploymentSpecVolumesHostPathOutput() ArangoDeploymentSpecVolumesHostPathOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathOutput) ToArangoDeploymentSpecVolumesHostPathOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathOutput) ToArangoDeploymentSpecVolumesHostPathPtrOutput() ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return o.ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathOutput) ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecVolumesHostPath) *ArangoDeploymentSpecVolumesHostPath {
+		return &v
+	}).(ArangoDeploymentSpecVolumesHostPathPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathOutput) Path() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumesHostPath) *string { return v.Path }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesHostPathPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesHostPathPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesHostPath)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathPtrOutput) ToArangoDeploymentSpecVolumesHostPathPtrOutput() ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathPtrOutput) ToArangoDeploymentSpecVolumesHostPathPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesHostPathPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathPtrOutput) Elem() ArangoDeploymentSpecVolumesHostPathOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesHostPath) ArangoDeploymentSpecVolumesHostPath {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecVolumesHostPath
+		return ret
+	}).(ArangoDeploymentSpecVolumesHostPathOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesHostPathPtrOutput) Path() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesHostPath) *string {
+		if v == nil {
+			return nil
+		}
+		return v.Path
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesPersistentVolumeClaim struct {
+	ClaimName *string `pulumi:"claimName"`
+}
+
+// ArangoDeploymentSpecVolumesPersistentVolumeClaimInput is an input type that accepts ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs and ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesPersistentVolumeClaimInput` via:
+//
+//	ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs{...}
+type ArangoDeploymentSpecVolumesPersistentVolumeClaimInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput
+	ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutputWithContext(context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput
+}
+
+type ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs struct {
+	ClaimName pulumi.StringPtrInput `pulumi:"claimName"`
+}
+
+func (ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesPersistentVolumeClaim)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput {
+	return i.ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput)
+}
+
+func (i ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput).ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput is an input type that accepts ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs, ArangoDeploymentSpecVolumesPersistentVolumeClaimPtr and ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput` via:
+//
+//	        ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput
+	ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput
+}
+
+type arangoDeploymentSpecVolumesPersistentVolumeClaimPtrType ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs
+
+func ArangoDeploymentSpecVolumesPersistentVolumeClaimPtr(v *ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput {
+	return (*arangoDeploymentSpecVolumesPersistentVolumeClaimPtrType)(v)
+}
+
+func (*arangoDeploymentSpecVolumesPersistentVolumeClaimPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesPersistentVolumeClaim)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecVolumesPersistentVolumeClaimPtrType) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecVolumesPersistentVolumeClaimPtrType) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesPersistentVolumeClaim)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return o.ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecVolumesPersistentVolumeClaim) *ArangoDeploymentSpecVolumesPersistentVolumeClaim {
+		return &v
+	}).(ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput) ClaimName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumesPersistentVolumeClaim) *string { return v.ClaimName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesPersistentVolumeClaim)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput() ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput) ToArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput) Elem() ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesPersistentVolumeClaim) ArangoDeploymentSpecVolumesPersistentVolumeClaim {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecVolumesPersistentVolumeClaim
+		return ret
+	}).(ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput) ClaimName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesPersistentVolumeClaim) *string {
+		if v == nil {
+			return nil
+		}
+		return v.ClaimName
+	}).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesSecret struct {
+	SecretName *string `pulumi:"secretName"`
+}
+
+// ArangoDeploymentSpecVolumesSecretInput is an input type that accepts ArangoDeploymentSpecVolumesSecretArgs and ArangoDeploymentSpecVolumesSecretOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesSecretInput` via:
+//
+//	ArangoDeploymentSpecVolumesSecretArgs{...}
+type ArangoDeploymentSpecVolumesSecretInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesSecretOutput() ArangoDeploymentSpecVolumesSecretOutput
+	ToArangoDeploymentSpecVolumesSecretOutputWithContext(context.Context) ArangoDeploymentSpecVolumesSecretOutput
+}
+
+type ArangoDeploymentSpecVolumesSecretArgs struct {
+	SecretName pulumi.StringPtrInput `pulumi:"secretName"`
+}
+
+func (ArangoDeploymentSpecVolumesSecretArgs) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesSecret)(nil)).Elem()
+}
+
+func (i ArangoDeploymentSpecVolumesSecretArgs) ToArangoDeploymentSpecVolumesSecretOutput() ArangoDeploymentSpecVolumesSecretOutput {
+	return i.ToArangoDeploymentSpecVolumesSecretOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesSecretArgs) ToArangoDeploymentSpecVolumesSecretOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesSecretOutput)
+}
+
+func (i ArangoDeploymentSpecVolumesSecretArgs) ToArangoDeploymentSpecVolumesSecretPtrOutput() ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(context.Background())
+}
+
+func (i ArangoDeploymentSpecVolumesSecretArgs) ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesSecretOutput).ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(ctx)
+}
+
+// ArangoDeploymentSpecVolumesSecretPtrInput is an input type that accepts ArangoDeploymentSpecVolumesSecretArgs, ArangoDeploymentSpecVolumesSecretPtr and ArangoDeploymentSpecVolumesSecretPtrOutput values.
+// You can construct a concrete instance of `ArangoDeploymentSpecVolumesSecretPtrInput` via:
+//
+//	        ArangoDeploymentSpecVolumesSecretArgs{...}
+//
+//	or:
+//
+//	        nil
+type ArangoDeploymentSpecVolumesSecretPtrInput interface {
+	pulumi.Input
+
+	ToArangoDeploymentSpecVolumesSecretPtrOutput() ArangoDeploymentSpecVolumesSecretPtrOutput
+	ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(context.Context) ArangoDeploymentSpecVolumesSecretPtrOutput
+}
+
+type arangoDeploymentSpecVolumesSecretPtrType ArangoDeploymentSpecVolumesSecretArgs
+
+func ArangoDeploymentSpecVolumesSecretPtr(v *ArangoDeploymentSpecVolumesSecretArgs) ArangoDeploymentSpecVolumesSecretPtrInput {
+	return (*arangoDeploymentSpecVolumesSecretPtrType)(v)
+}
+
+func (*arangoDeploymentSpecVolumesSecretPtrType) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesSecret)(nil)).Elem()
+}
+
+func (i *arangoDeploymentSpecVolumesSecretPtrType) ToArangoDeploymentSpecVolumesSecretPtrOutput() ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return i.ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(context.Background())
+}
+
+func (i *arangoDeploymentSpecVolumesSecretPtrType) ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ArangoDeploymentSpecVolumesSecretPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesSecretOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesSecretOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*ArangoDeploymentSpecVolumesSecret)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesSecretOutput) ToArangoDeploymentSpecVolumesSecretOutput() ArangoDeploymentSpecVolumesSecretOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesSecretOutput) ToArangoDeploymentSpecVolumesSecretOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesSecretOutput) ToArangoDeploymentSpecVolumesSecretPtrOutput() ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return o.ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(context.Background())
+}
+
+func (o ArangoDeploymentSpecVolumesSecretOutput) ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return o.ApplyTWithContext(ctx, func(_ context.Context, v ArangoDeploymentSpecVolumesSecret) *ArangoDeploymentSpecVolumesSecret {
+		return &v
+	}).(ArangoDeploymentSpecVolumesSecretPtrOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesSecretOutput) SecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v ArangoDeploymentSpecVolumesSecret) *string { return v.SecretName }).(pulumi.StringPtrOutput)
+}
+
+type ArangoDeploymentSpecVolumesSecretPtrOutput struct{ *pulumi.OutputState }
+
+func (ArangoDeploymentSpecVolumesSecretPtrOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((**ArangoDeploymentSpecVolumesSecret)(nil)).Elem()
+}
+
+func (o ArangoDeploymentSpecVolumesSecretPtrOutput) ToArangoDeploymentSpecVolumesSecretPtrOutput() ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesSecretPtrOutput) ToArangoDeploymentSpecVolumesSecretPtrOutputWithContext(ctx context.Context) ArangoDeploymentSpecVolumesSecretPtrOutput {
+	return o
+}
+
+func (o ArangoDeploymentSpecVolumesSecretPtrOutput) Elem() ArangoDeploymentSpecVolumesSecretOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesSecret) ArangoDeploymentSpecVolumesSecret {
+		if v != nil {
+			return *v
+		}
+		var ret ArangoDeploymentSpecVolumesSecret
+		return ret
+	}).(ArangoDeploymentSpecVolumesSecretOutput)
+}
+
+func (o ArangoDeploymentSpecVolumesSecretPtrOutput) SecretName() pulumi.StringPtrOutput {
+	return o.ApplyT(func(v *ArangoDeploymentSpecVolumesSecret) *string {
+		if v == nil {
+			return nil
+		}
+		return v.SecretName
+	}).(pulumi.StringPtrOutput)
 }
 
 func init() {
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecInput)(nil)).Elem(), ArangoDeploymentSpecArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecPtrInput)(nil)).Elem(), ArangoDeploymentSpecArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecAuthInput)(nil)).Elem(), ArangoDeploymentSpecAuthArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecAuthPtrInput)(nil)).Elem(), ArangoDeploymentSpecAuthArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecBootstrapInput)(nil)).Elem(), ArangoDeploymentSpecBootstrapArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecBootstrapPtrInput)(nil)).Elem(), ArangoDeploymentSpecBootstrapArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecChaosInput)(nil)).Elem(), ArangoDeploymentSpecChaosArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecChaosPtrInput)(nil)).Elem(), ArangoDeploymentSpecChaosArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsPtrInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsEnvsInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsEnvsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsEnvsArrayInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsEnvsArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesPtrInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesLimitsInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesRequestsInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsSecurityContextInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecCoordinatorsSecurityContextPtrInput)(nil)).Elem(), ArangoDeploymentSpecCoordinatorsSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversInput)(nil)).Elem(), ArangoDeploymentSpecDbserversArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversPtrInput)(nil)).Elem(), ArangoDeploymentSpecDbserversArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversEnvsInput)(nil)).Elem(), ArangoDeploymentSpecDbserversEnvsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversEnvsArrayInput)(nil)).Elem(), ArangoDeploymentSpecDbserversEnvsArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesPtrInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesLimitsInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesLimitsPtrInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesRequestsInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversResourcesRequestsPtrInput)(nil)).Elem(), ArangoDeploymentSpecDbserversResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversSecurityContextInput)(nil)).Elem(), ArangoDeploymentSpecDbserversSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecDbserversSecurityContextPtrInput)(nil)).Elem(), ArangoDeploymentSpecDbserversSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecExternalAccessInput)(nil)).Elem(), ArangoDeploymentSpecExternalAccessArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecExternalAccessPtrInput)(nil)).Elem(), ArangoDeploymentSpecExternalAccessArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecLicenseInput)(nil)).Elem(), ArangoDeploymentSpecLicenseArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecLicensePtrInput)(nil)).Elem(), ArangoDeploymentSpecLicenseArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecLifecycleInput)(nil)).Elem(), ArangoDeploymentSpecLifecycleArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecLifecyclePtrInput)(nil)).Elem(), ArangoDeploymentSpecLifecycleArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsInput)(nil)).Elem(), ArangoDeploymentSpecMetricsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsPtrInput)(nil)).Elem(), ArangoDeploymentSpecMetricsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsAuthenticationInput)(nil)).Elem(), ArangoDeploymentSpecMetricsAuthenticationArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsAuthenticationPtrInput)(nil)).Elem(), ArangoDeploymentSpecMetricsAuthenticationArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsExtensionsInput)(nil)).Elem(), ArangoDeploymentSpecMetricsExtensionsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsExtensionsPtrInput)(nil)).Elem(), ArangoDeploymentSpecMetricsExtensionsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsServiceMonitorInput)(nil)).Elem(), ArangoDeploymentSpecMetricsServiceMonitorArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecMetricsServiceMonitorPtrInput)(nil)).Elem(), ArangoDeploymentSpecMetricsServiceMonitorArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerPtrInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerOptimizersInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerOptimizersArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerOptimizersPtrInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerOptimizersArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerReadersInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerReadersArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRebalancerReadersPtrInput)(nil)).Elem(), ArangoDeploymentSpecRebalancerReadersArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRecoveryInput)(nil)).Elem(), ArangoDeploymentSpecRecoveryArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRecoveryPtrInput)(nil)).Elem(), ArangoDeploymentSpecRecoveryArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRocksdbInput)(nil)).Elem(), ArangoDeploymentSpecRocksdbArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRocksdbPtrInput)(nil)).Elem(), ArangoDeploymentSpecRocksdbArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRocksdbEncryptionInput)(nil)).Elem(), ArangoDeploymentSpecRocksdbEncryptionArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecRocksdbEncryptionPtrInput)(nil)).Elem(), ArangoDeploymentSpecRocksdbEncryptionArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleInput)(nil)).Elem(), ArangoDeploymentSpecSingleArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSinglePtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleEnvsInput)(nil)).Elem(), ArangoDeploymentSpecSingleEnvsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleEnvsArrayInput)(nil)).Elem(), ArangoDeploymentSpecSingleEnvsArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesLimitsInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesLimitsPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesLimitsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesRequestsInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleResourcesRequestsPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleSecurityContextInput)(nil)).Elem(), ArangoDeploymentSpecSingleSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleSecurityContextPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleSecurityContextArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplatePtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrInput)(nil)).Elem(), ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncInput)(nil)).Elem(), ArangoDeploymentSpecSyncArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncPtrInput)(nil)).Elem(), ArangoDeploymentSpecSyncArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncAuthInput)(nil)).Elem(), ArangoDeploymentSpecSyncAuthArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncAuthPtrInput)(nil)).Elem(), ArangoDeploymentSpecSyncAuthArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncExternalAccessInput)(nil)).Elem(), ArangoDeploymentSpecSyncExternalAccessArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncExternalAccessPtrInput)(nil)).Elem(), ArangoDeploymentSpecSyncExternalAccessArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncTlsInput)(nil)).Elem(), ArangoDeploymentSpecSyncTlsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecSyncTlsPtrInput)(nil)).Elem(), ArangoDeploymentSpecSyncTlsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecTimeoutsInput)(nil)).Elem(), ArangoDeploymentSpecTimeoutsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecTimeoutsPtrInput)(nil)).Elem(), ArangoDeploymentSpecTimeoutsArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecUpgradeInput)(nil)).Elem(), ArangoDeploymentSpecUpgradeArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecUpgradePtrInput)(nil)).Elem(), ArangoDeploymentSpecUpgradeArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesInput)(nil)).Elem(), ArangoDeploymentSpecVolumesArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesArrayInput)(nil)).Elem(), ArangoDeploymentSpecVolumesArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesConfigMapInput)(nil)).Elem(), ArangoDeploymentSpecVolumesConfigMapArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesConfigMapPtrInput)(nil)).Elem(), ArangoDeploymentSpecVolumesConfigMapArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesHostPathInput)(nil)).Elem(), ArangoDeploymentSpecVolumesHostPathArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesHostPathPtrInput)(nil)).Elem(), ArangoDeploymentSpecVolumesHostPathArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesPersistentVolumeClaimInput)(nil)).Elem(), ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrInput)(nil)).Elem(), ArangoDeploymentSpecVolumesPersistentVolumeClaimArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesSecretInput)(nil)).Elem(), ArangoDeploymentSpecVolumesSecretArgs{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ArangoDeploymentSpecVolumesSecretPtrInput)(nil)).Elem(), ArangoDeploymentSpecVolumesSecretArgs{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecAuthOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecAuthPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecBootstrapOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecBootstrapPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecChaosOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecChaosPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsEnvsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsEnvsArrayOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesLimitsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesLimitsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesRequestsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsResourcesRequestsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsSecurityContextOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecCoordinatorsSecurityContextPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversEnvsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversEnvsArrayOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesLimitsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesLimitsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesRequestsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversResourcesRequestsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversSecurityContextOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecDbserversSecurityContextPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecExternalAccessOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecExternalAccessPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecLicenseOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecLicensePtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecLifecycleOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecLifecyclePtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsAuthenticationOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsAuthenticationPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsExtensionsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsExtensionsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsServiceMonitorOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecMetricsServiceMonitorPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerOptimizersOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerOptimizersPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerReadersOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRebalancerReadersPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRecoveryOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRecoveryPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRocksdbOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRocksdbPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRocksdbEncryptionOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecRocksdbEncryptionPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSinglePtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleEnvsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleEnvsArrayOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesLimitsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesLimitsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesRequestsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleResourcesRequestsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleSecurityContextOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleSecurityContextPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplateOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplatePtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncAuthOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncAuthPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncExternalAccessOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncExternalAccessPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncTlsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecSyncTlsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecTimeoutsOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecTimeoutsPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecUpgradeOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecUpgradePtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesArrayOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesConfigMapOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesConfigMapPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesHostPathOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesHostPathPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesPersistentVolumeClaimOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesPersistentVolumeClaimPtrOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesSecretOutput{})
+	pulumi.RegisterOutputType(ArangoDeploymentSpecVolumesSecretPtrOutput{})
 }

@@ -15,9 +15,10 @@ import (
 type ArangoDeployment struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput     `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput     `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaPtrOutput `pulumi:"metadata"`
+	ApiVersion pulumi.StringPtrOutput        `pulumi:"apiVersion"`
+	Kind       pulumi.StringPtrOutput        `pulumi:"kind"`
+	Metadata   metav1.ObjectMetaPtrOutput    `pulumi:"metadata"`
+	Spec       ArangoDeploymentSpecPtrOutput `pulumi:"spec"`
 }
 
 // NewArangoDeployment registers a new resource with the given unique name, arguments, and options.
@@ -27,8 +28,8 @@ func NewArangoDeployment(ctx *pulumi.Context,
 		args = &ArangoDeploymentArgs{}
 	}
 
-	args.ApiVersion = pulumi.StringPtr("analytics.arangodb.com/v1alpha1")
-	args.Kind = pulumi.StringPtr("GraphAnalyticsEngine")
+	args.ApiVersion = pulumi.StringPtr("database.arangodb.com/v1")
+	args.Kind = pulumi.StringPtr("ArangoDeployment")
 	opts = utilities.PkgResourceDefaultOpts(opts)
 	var resource ArangoDeployment
 	err := ctx.RegisterResource("kubernetes:database.arangodb.com/v1:ArangoDeployment", name, args, &resource, opts...)
@@ -62,9 +63,10 @@ func (ArangoDeploymentState) ElementType() reflect.Type {
 }
 
 type arangoDeploymentArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
+	ApiVersion *string               `pulumi:"apiVersion"`
+	Kind       *string               `pulumi:"kind"`
+	Metadata   *metav1.ObjectMeta    `pulumi:"metadata"`
+	Spec       *ArangoDeploymentSpec `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a ArangoDeployment resource.
@@ -72,6 +74,7 @@ type ArangoDeploymentArgs struct {
 	ApiVersion pulumi.StringPtrInput
 	Kind       pulumi.StringPtrInput
 	Metadata   metav1.ObjectMetaPtrInput
+	Spec       ArangoDeploymentSpecPtrInput
 }
 
 func (ArangoDeploymentArgs) ElementType() reflect.Type {
@@ -121,6 +124,10 @@ func (o ArangoDeploymentOutput) Kind() pulumi.StringPtrOutput {
 
 func (o ArangoDeploymentOutput) Metadata() metav1.ObjectMetaPtrOutput {
 	return o.ApplyT(func(v *ArangoDeployment) metav1.ObjectMetaPtrOutput { return v.Metadata }).(metav1.ObjectMetaPtrOutput)
+}
+
+func (o ArangoDeploymentOutput) Spec() ArangoDeploymentSpecPtrOutput {
+	return o.ApplyT(func(v *ArangoDeployment) ArangoDeploymentSpecPtrOutput { return v.Spec }).(ArangoDeploymentSpecPtrOutput)
 }
 
 func init() {
