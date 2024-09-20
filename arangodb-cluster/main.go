@@ -9,8 +9,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type VolumeClaimTemplateSpec = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateArgs
-type ResourcesSpec = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesArgs
+type (
+	VolumeClaimTemplateSpec     = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateArgs
+	VolumeClaimTemplateSpecArgs = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateSpecArgs
+	ResourcesSpec               = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateSpecResourcesRequestsArgs
+	ResourcesArgs               = databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateSpecResourcesArgs
+)
 
 type ArangoDeploymentConfig struct {
 	Namespace string
@@ -74,6 +78,12 @@ func (adp *ArangoDeployment) createArangoSpec() *databasev1.ArangoDeploymentSpec
 		ImagePullPolicy: pulumi.String("IfNotPresent"),
 		Environment:     pulumi.String("Development"),
 		Single:          adp.createSingleSpec(),
+		ExternalAccess: &databasev1.ArangoDeploymentSpecExternalAccessArgs{
+			Type: pulumi.String("NodePort"),
+		},
+		Tls: &databasev1.ArangoDeploymentSpecTlsArgs{
+			CaSecretName: pulumi.String("None"),
+		},
 	}
 }
 
@@ -83,22 +93,23 @@ func (adp *ArangoDeployment) createImageSpec() pulumi.StringInput {
 
 func (adp *ArangoDeployment) createSingleSpec() *databasev1.ArangoDeploymentSpecSingleArgs {
 	return &databasev1.ArangoDeploymentSpecSingleArgs{
-		VolumeClaimTemplate: adp.createVolumeClaimTemplateSpec(),
+		VolumeClaimTemplate: &VolumeClaimTemplateSpec{
+			Spec: adp.createVolumeClaimTemplateSpec(),
+		},
 	}
 }
 
-func (adp *ArangoDeployment) createVolumeClaimTemplateSpec() *VolumeClaimTemplateSpec {
-	return &VolumeClaimTemplateSpec{
-		AccessModes:      pulumi.StringArray{pulumi.String("ReadWriteOnce")},
+func (adp *ArangoDeployment) createVolumeClaimTemplateSpec() *VolumeClaimTemplateSpecArgs {
+	return &VolumeClaimTemplateSpecArgs{
 		StorageClassName: pulumi.String(adp.Config.Storage.Class),
-		Resources:        adp.createResourcesSpec(),
-	}
-}
-
-func (adp *ArangoDeployment) createResourcesSpec() *ResourcesSpec {
-	return &ResourcesSpec{
-		Requests: &databasev1.ArangoDeploymentSpecSingleVolumeClaimTemplateResourcesRequestsArgs{
-			Storage: pulumi.String(adp.Config.Storage.Size),
+		VolumeMode:       pulumi.String("Filesystem"),
+		AccessModes: pulumi.StringArray{
+			pulumi.String("ReadWriteOnce"),
+		},
+		Resources: &ResourcesArgs{
+			Requests: &ResourcesSpec{
+				Storage: pulumi.String(adp.Config.Storage.Size),
+			},
 		},
 	}
 }
