@@ -32,3 +32,4 @@ kops/kops-cluster-creator
 bin
 gcs-files/service-accounts
 config.json.old
+scratch
