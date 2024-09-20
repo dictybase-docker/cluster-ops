@@ -1,7 +1,7 @@
 secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
 encryptedkey: CiQA3xuh3PqVGxQoLJAKlT0ynvleeo0QadNHZUQyHwP7aR+C1PgSSQAbtemJ5VtMXEgXS2fD9JH9QJbyvm4MdKqq3uOKBBH40ndT77+gDydX9Ck91vKUYL1bLNQTZwX3FEuOgztVA9+ji4RPPO44Fwc=
 config:
-  arangodb-cluster:properties:
+  arangodb-single:properties:
     namespace: dev
     storage:
       class: dictycr-balanced

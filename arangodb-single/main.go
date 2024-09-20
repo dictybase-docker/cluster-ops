@@ -30,7 +30,7 @@ type ArangoDeployment struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*ArangoDeploymentConfig, error) {
-	conf := config.New(ctx, "arangodb-cluster")
+	conf := config.New(ctx, "arangodb-single")
 	arangoConfig := &ArangoDeploymentConfig{}
 	if err := conf.TryObject("properties", arangoConfig); err != nil {
 		return nil, fmt.Errorf(
@@ -50,7 +50,7 @@ func NewArangoDeployment(config *ArangoDeploymentConfig) *ArangoDeployment {
 func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 	arango, err := databasev1.NewArangoDeployment(
 		ctx,
-		"arango-single",
+		"arangodb-single",
 		&databasev1.ArangoDeploymentArgs{
 			Metadata: adp.createMetadata(),
 			Spec:     adp.createArangoSpec(),
