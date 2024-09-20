@@ -1,4 +1,4 @@
-name: arangodb-cluster
+name: arangodb-single
 runtime: go
 description: A minimal Go Pulumi program
 config:
