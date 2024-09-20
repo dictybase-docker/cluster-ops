@@ -1,7 +1,10 @@
 name: arangodb-single
 runtime: go
-description: A minimal Go Pulumi program
+description: A Pulumi program to deploy and manage a single-instance ArangoDB on Kubernetes using the ArangoDB Kubernetes Operator
 config:
   pulumi:tags:
     value:
       pulumi:template: go
+      component: database
+      technology: arangodb
+      deployment: single-instance
