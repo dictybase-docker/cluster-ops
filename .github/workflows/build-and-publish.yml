@@ -16,7 +16,7 @@ jobs:
           version: v0.11.9
           module: github.com/dictybase-docker/dagger-of-dcr/container-image@main
           args: |
-            . with-image --image database-backup \
+            with-image --image database-backup \
             with-ref --ref ${{ github.ref_name }} \
             with-repository --repository dictyBase-docker/cluster-ops \
             with-dockerfile --docker-file build/package/Dockerfile \
