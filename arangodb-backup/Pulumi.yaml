@@ -1,0 +1,7 @@
+name: arangodb-backup
+runtime: go
+description: A Pulumi program to set up ArangoDB backup infrastructure on GCP
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
