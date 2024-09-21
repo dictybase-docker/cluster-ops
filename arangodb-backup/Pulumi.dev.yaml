@@ -1,0 +1,13 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3DSJwNEt6KuFrGxxvm54PglVfFSCBhtnbs4XpTs820cSSQAbtemJ3ot4X9zXiWGdgG9GjtvuKtyuX5rSBq0ngw7hoCHO3kYTcRpAD2Z6fd03Zk4fHC0P/vKAz8SC5ImV/cnol9OypTbLdg0=
+config:
+  arangodb-backup:properties:
+    bucket: dictycr-restic-arango-backup
+    folder: arangodump
+    namespace: dev
+    secret:
+      secure: v1:k9ohHl2bxqC1owMb:2m3wyCQ73JHHc9DRx305Ra66ojbLxkJheVgQP28=
+    server:
+      secure: v1:yU2usPBDa/Q1kH4q:207LjmVtgZq073QEGzyMqAn8N428+MVD
+    user:
+      secure: v1:SW64kYJayCIDDdhf:xTPnGvbugNG59JERLwmoY6t+TT0=
