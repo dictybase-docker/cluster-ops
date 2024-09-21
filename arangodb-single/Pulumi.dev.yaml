@@ -3,6 +3,11 @@ encryptedkey: CiQA3xuh3PqVGxQoLJAKlT0ynvleeo0QadNHZUQyHwP7aR+C1PgSSQAbtemJ5VtMXE
 config:
   arangodb-single:properties:
     namespace: dev
+    secret:
+      name:
+        secure: v1:0m61A68DJ4P2xqX1:reiQDci8ESLqkttB1on0jUI4P07EfSGYgpItwho=
+      password:
+        secure: v1:sOVwc6HMIYxnbgLl:GKrEoCip7e5xc3Dh9YrFLFxgTJTnCdgXA4nwPxbp5NUT4VFg07CLKIZqUIILjm1qhMfMKbo=
     storage:
       class: dictycr-balanced
       size: 75Gi
