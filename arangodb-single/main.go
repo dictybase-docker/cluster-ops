@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	databasev1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/database/v1"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -23,6 +24,10 @@ type ArangoDeploymentConfig struct {
 		Size  string
 	}
 	Version string
+	Secret  struct {
+		Name     string
+		Password string
+	}
 }
 
 type ArangoDeployment struct {
@@ -48,6 +53,19 @@ func NewArangoDeployment(config *ArangoDeploymentConfig) *ArangoDeployment {
 }
 
 func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
+	secret, err := corev1.NewSecret(ctx, "arangodb-secret", &corev1.SecretArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String(adp.Config.Secret.Name),
+			Namespace: pulumi.String(adp.Config.Namespace),
+		},
+		StringData: pulumi.StringMap{
+			"password": pulumi.String(adp.Config.Secret.Password),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error creating Secret: %w", err)
+	}
+
 	arango, err := databasev1.NewArangoDeployment(
 		ctx,
 		"arangodb-single",
@@ -55,12 +73,14 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 			Metadata: adp.createMetadata(),
 			Spec:     adp.createArangoSpec(),
 		},
+		pulumi.DependsOn([]pulumi.Resource{secret}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating ArangoDeployment: %w", err)
 	}
 
 	ctx.Export("arangoName", arango.Metadata.Name())
+	ctx.Export("secretName", secret.Metadata.Name())
 	return nil
 }
 
@@ -83,6 +103,11 @@ func (adp *ArangoDeployment) createArangoSpec() *databasev1.ArangoDeploymentSpec
 		},
 		Tls: &databasev1.ArangoDeploymentSpecTlsArgs{
 			CaSecretName: pulumi.String("None"),
+		},
+		Bootstrap: &databasev1.ArangoDeploymentSpecBootstrapArgs{
+			PasswordSecretNames: pulumi.StringMap{
+				"root": pulumi.String(adp.Config.Secret.Name),
+			},
 		},
 	}
 }
