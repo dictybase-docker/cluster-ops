@@ -35,7 +35,7 @@ type ArangoDeployment struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*ArangoDeploymentConfig, error) {
-	conf := config.New(ctx, "arangodb-single")
+	conf := config.New(ctx, "arangodb")
 	arangoConfig := &ArangoDeploymentConfig{}
 	if err := conf.TryObject("properties", arangoConfig); err != nil {
 		return nil, fmt.Errorf(
@@ -68,7 +68,7 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 
 	arango, err := databasev1.NewArangoDeployment(
 		ctx,
-		"arangodb-single",
+		"arangodb",
 		&databasev1.ArangoDeploymentArgs{
 			Metadata: adp.createMetadata(),
 			Spec:     adp.createArangoSpec(),
@@ -86,7 +86,7 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 
 func (adp *ArangoDeployment) createMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String("arango-single"),
+		Name:      pulumi.String("arango"),
 		Namespace: pulumi.String(adp.Config.Namespace),
 	}
 }
