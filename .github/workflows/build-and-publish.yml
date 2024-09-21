@@ -1,0 +1,25 @@
+name: Build and Publish Docker Image
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and publish Docker image with Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: v0.11.9
+          module: github.com/dictybase-docker/dagger-of-dcr/container-image@main
+          args: |
+            . with-image --image database-backup \
+            with-ref --ref ${{ github.ref_name }} \
+            with-repository --repository dictyBase-docker/cluster-ops \
+            with-dockerfile --docker-file build/package/Dockerfile \
+            with-namespace publish-from-repo \
+            --user ${{ secrets.DOCKERHUB_USER }} \
+            --password ${{ secrets.DOCKER_PASS }}
