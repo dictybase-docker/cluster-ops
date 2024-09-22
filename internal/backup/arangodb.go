@@ -2,6 +2,7 @@ package backup
 
 import (
 	"log/slog"
+	"os"
 	"os/exec"
 
 	"github.com/urfave/cli/v2"
@@ -14,6 +15,14 @@ func ArangoDBBackupAction(cltx *cli.Context) error {
 	server := cltx.String("server")
 	output := cltx.String("output")
 	repository := cltx.String("repository")
+	resticPassword := cltx.String("restic-password")
+
+	// Set RESTIC_PASSWORD environment variable
+	if _, ok := os.LookupEnv("RESTIC_PASSWORD"); !ok {
+		if len(resticPassword) > 0 {
+			os.Setenv("RESTIC_PASSWORD", resticPassword)
+		}
+	}
 
 	// Check if the repository exists
 	checkCmd := exec.Command("restic", "-r", repository, "snapshots")
