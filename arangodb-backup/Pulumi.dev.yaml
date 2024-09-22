@@ -9,5 +9,9 @@ config:
       secure: v1:k9ohHl2bxqC1owMb:2m3wyCQ73JHHc9DRx305Ra66ojbLxkJheVgQP28=
     server:
       secure: v1:yU2usPBDa/Q1kH4q:207LjmVtgZq073QEGzyMqAn8N428+MVD
+    storage:
+      class: dictycr-balanced
+      name: arangodb-backup-ephemeral
+      size: 20Gi
     user:
       secure: v1:SW64kYJayCIDDdhf:xTPnGvbugNG59JERLwmoY6t+TT0=
