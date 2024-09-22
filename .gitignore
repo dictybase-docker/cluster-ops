@@ -33,3 +33,4 @@ bin
 gcs-files/service-accounts
 config.json.old
 scratch
+backup
