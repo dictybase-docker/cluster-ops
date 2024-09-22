@@ -1,0 +1,9 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3K0eLl90t9pc6pd65jqgsdhbN25emwMGIQ5QP3M8BIMSSQAbtemJvsRlrAvakErEz/TI4bVlMUn1xJZe0P63L5Picajx7O3Kjhv10td0EOFORa+NHz905H5o8uvIuLIJlzFZATNwnE6nOKA=
+config:
+  backup_secrets:properties:
+    namespace: dev
+    secret:
+      name: dictycr
+      resticPass:
+        secure: v1:2J5Lsm+lghTqY4at:p4QIKTa20WTDiyvBT2qmCCxOoJSy0dyOx0+rO6DIA7kfOBE5Vio=
