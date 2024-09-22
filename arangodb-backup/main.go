@@ -18,6 +18,11 @@ type ArangoBackupConfig struct {
 	Secret    string
 	Server    string
 	User      string
+	Storage   struct {
+		Class string
+		Name  string
+		Size  string
+	}
 }
 
 type ArangoBackup struct {
@@ -157,6 +162,39 @@ func (ab *ArangoBackup) createPodTemplateSpec(
 				ab.createBackupContainer(bucket),
 			},
 			RestartPolicy: pulumi.String("Never"),
+			Volumes:       corev1.VolumeArray{ab.createBackupVolume()},
+		},
+	}
+}
+
+func (ab *ArangoBackup) createBackupVolume() *corev1.VolumeArgs {
+	return &corev1.VolumeArgs{
+		Name: pulumi.String(ab.Config.Storage.Name),
+		Ephemeral: &corev1.EphemeralVolumeSourceArgs{
+			VolumeClaimTemplate: ab.createVolumeClaimTemplate(),
+		},
+	}
+}
+
+func (ab *ArangoBackup) createVolumeClaimTemplate() *corev1.PersistentVolumeClaimTemplateArgs {
+	return &corev1.PersistentVolumeClaimTemplateArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Labels: pulumi.StringMap{
+				"type": pulumi.String("arangodb-backup-ephemeral"),
+			},
+		},
+		Spec: ab.createPersistentVolumeClaimSpec(),
+	}
+}
+
+func (ab *ArangoBackup) createPersistentVolumeClaimSpec() *corev1.PersistentVolumeClaimSpecArgs {
+	return &corev1.PersistentVolumeClaimSpecArgs{
+		AccessModes:      pulumi.StringArray{pulumi.String("ReadWriteOnce")},
+		StorageClassName: pulumi.String(ab.Config.Storage.Class),
+		Resources: &corev1.VolumeResourceRequirementsArgs{
+			Requests: pulumi.StringMap{
+				"storage": pulumi.String(ab.Config.Storage.Size),
+			},
 		},
 	}
 }
@@ -172,6 +210,12 @@ func (ab *ArangoBackup) createBackupContainer(
 		},
 		Args: ab.createBackupArgs(bucket),
 		Env:  ab.createBackupEnv(),
+		VolumeMounts: corev1.VolumeMountArray{
+			&corev1.VolumeMountArgs{
+				Name:      pulumi.String(ab.Config.Storage.Name),
+				MountPath: pulumi.String(ab.Config.Folder),
+			},
+		},
 	}
 }
 
@@ -184,7 +228,7 @@ func (ab *ArangoBackup) createBackupArgs(
 		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
 		pulumi.String("--server"), pulumi.String(ab.Config.Server),
 		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
-		pulumi.String("--repository"), pulumi.Sprintf("gs://%s", bucket.Name),
+		pulumi.String("--repository"), pulumi.Sprintf("gs:%s/", bucket.Name),
 	}
 }
 
