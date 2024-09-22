@@ -4,6 +4,9 @@ import (
 	"fmt"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
+	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -12,15 +15,9 @@ type ArangoBackupConfig struct {
 	Bucket    string
 	Folder    string
 	Namespace string
-	Secret    struct {
-		Value string
-	}
-	Server struct {
-		Value string
-	}
-	User struct {
-		Value string
-	}
+	Secret    string
+	Server    string
+	User      string
 }
 
 type ArangoBackup struct {
@@ -43,6 +40,21 @@ func NewArangoBackup(config *ArangoBackupConfig) *ArangoBackup {
 }
 
 func (ab *ArangoBackup) Install(ctx *pulumi.Context) error {
+	bucket, err := ab.createGCSBucket(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := ab.createBackupCronJob(ctx, bucket); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ab *ArangoBackup) createGCSBucket(
+	ctx *pulumi.Context,
+) (*storage.Bucket, error) {
 	bucket, err := storage.NewBucket(ctx, ab.Config.Bucket, &storage.BucketArgs{
 		Name:     pulumi.String(ab.Config.Bucket),
 		Location: pulumi.String("US"),
@@ -51,36 +63,143 @@ func (ab *ArangoBackup) Install(ctx *pulumi.Context) error {
 				60 * 24 * 60 * 60,
 			), // 60 days in seconds
 		},
-		LifecycleRules: storage.BucketLifecycleRuleArray{
-			&storage.BucketLifecycleRuleArgs{
-				Action: &storage.BucketLifecycleRuleActionArgs{
-					Type: pulumi.String("Delete"),
-				},
-				Condition: &storage.BucketLifecycleRuleConditionArgs{
-					Age: pulumi.Int(65), // 65 days
-				},
-			},
-			&storage.BucketLifecycleRuleArgs{
-				Action: &storage.BucketLifecycleRuleActionArgs{
-					Type: pulumi.String("Delete"),
-				},
-				Condition: &storage.BucketLifecycleRuleConditionArgs{
-					NumNewerVersions: pulumi.Int(1),
-				},
-			},
-		},
+		LifecycleRules: ab.createLifecycleRules(),
 		Versioning: &storage.BucketVersioningArgs{
 			Enabled: pulumi.Bool(false),
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error creating GCS bucket: %w", err)
+		return nil, fmt.Errorf("error creating GCS bucket: %w", err)
 	}
 
 	ctx.Export("bucketName", bucket.Name)
 	ctx.Export("bucketUrl", bucket.Url)
+	return bucket, nil
+}
 
+func (ab *ArangoBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
+	return storage.BucketLifecycleRuleArray{
+		&storage.BucketLifecycleRuleArgs{
+			Action: &storage.BucketLifecycleRuleActionArgs{
+				Type: pulumi.String("Delete"),
+			},
+			Condition: &storage.BucketLifecycleRuleConditionArgs{
+				Age: pulumi.Int(65), // 65 days
+			},
+		},
+		&storage.BucketLifecycleRuleArgs{
+			Action: &storage.BucketLifecycleRuleActionArgs{
+				Type: pulumi.String("Delete"),
+			},
+			Condition: &storage.BucketLifecycleRuleConditionArgs{
+				NumNewerVersions: pulumi.Int(1),
+			},
+		},
+	}
+}
+
+func (ab *ArangoBackup) createBackupCronJob(
+	ctx *pulumi.Context,
+	bucket *storage.Bucket,
+) error {
+	cronJobName := "arangodb-backup-cronjob"
+	cronJobArgs := &batchv1.CronJobArgs{
+		Metadata: ab.createCronJobMetadata(cronJobName),
+		Spec:     ab.createCronJobSpec(bucket),
+	}
+
+	_, err := batchv1.NewCronJob(
+		ctx,
+		cronJobName,
+		cronJobArgs,
+		pulumi.DependsOn([]pulumi.Resource{bucket}),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating Kubernetes CronJob: %w", err)
+	}
 	return nil
+}
+
+func (ab *ArangoBackup) createCronJobMetadata(
+	name string,
+) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(name),
+		Namespace: pulumi.String(ab.Config.Namespace),
+	}
+}
+
+func (ab *ArangoBackup) createCronJobSpec(
+	bucket *storage.Bucket,
+) *batchv1.CronJobSpecArgs {
+	return &batchv1.CronJobSpecArgs{
+		Schedule:    pulumi.String("0 2 * * *"), // Run at 2AM every night
+		JobTemplate: ab.createJobTemplateSpec(bucket),
+	}
+}
+
+func (ab *ArangoBackup) createJobTemplateSpec(
+	bucket *storage.Bucket,
+) *batchv1.JobTemplateSpecArgs {
+	return &batchv1.JobTemplateSpecArgs{
+		Spec: &batchv1.JobSpecArgs{
+			Template: ab.createPodTemplateSpec(bucket),
+		},
+	}
+}
+
+func (ab *ArangoBackup) createPodTemplateSpec(
+	bucket *storage.Bucket,
+) *corev1.PodTemplateSpecArgs {
+	return &corev1.PodTemplateSpecArgs{
+		Spec: &corev1.PodSpecArgs{
+			Containers: corev1.ContainerArray{
+				ab.createBackupContainer(bucket),
+			},
+			RestartPolicy: pulumi.String("Never"),
+		},
+	}
+}
+
+func (ab *ArangoBackup) createBackupContainer(
+	bucket *storage.Bucket,
+) *corev1.ContainerArgs {
+	return &corev1.ContainerArgs{
+		Name:  pulumi.String("backup"),
+		Image: pulumi.String("dictybase/restic-redis-arangopg:main-471213a"),
+		Command: pulumi.StringArray{
+			pulumi.String("app"),
+		},
+		Args: ab.createBackupArgs(bucket),
+		Env:  ab.createBackupEnv(),
+	}
+}
+
+func (ab *ArangoBackup) createBackupArgs(
+	bucket *storage.Bucket,
+) pulumi.StringArray {
+	return pulumi.StringArray{
+		pulumi.String("arangodb-backup"),
+		pulumi.String("--user"), pulumi.String(ab.Config.User),
+		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
+		pulumi.String("--server"), pulumi.String(ab.Config.Server),
+		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
+		pulumi.String("--repository"), pulumi.Sprintf("gs://%s", bucket.Name),
+	}
+}
+
+func (ab *ArangoBackup) createBackupEnv() corev1.EnvVarArray {
+	return corev1.EnvVarArray{
+		&corev1.EnvVarArgs{
+			Name: pulumi.String("PASSWORD"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(ab.Config.Secret),
+					Key:  pulumi.String("password"),
+				},
+			},
+		},
+	}
 }
 
 func Run(ctx *pulumi.Context) error {
