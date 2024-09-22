@@ -10,16 +10,17 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Build and publish Docker image with Dagger
-        uses: dagger/dagger-for-github@v6
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Setup just
+        uses: extractions/setup-just@v1
         with:
-          version: v0.11.9
-          module: github.com/dictybase-docker/dagger-of-dcr/container-image@main
-          args: |
-            with-image --image database-backup \
-            with-ref --ref ${{ github.ref_name }} \
-            with-repository --repository dictyBase-docker/cluster-ops \
-            with-dockerfile --docker-file build/package/Dockerfile \
-            with-namespace publish-from-repo \
-            --user ${{ secrets.DOCKERHUB_USER }} \
-            --password ${{ secrets.DOCKER_PASS }}
+          just-version: '1.28.0'
+
+      - name: Build and publish backup image
+        run: |
+          just build-publish-backup-image ${{ github.ref_name }} \
+            ${{ secrets.DOCKERHUB_USER }} \
+            ${{ secrets.DOCKER_PASS }} \
+
