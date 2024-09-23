@@ -14,7 +14,7 @@ func main() {
 	slog.SetDefault(logger)
 	app := &cli.App{
 		Name:  "backup",
-		Usage: "Backup tools",
+		Usage: "Backup tools for ArangoDB and Redis databases",
 		Commands: []*cli.Command{
 			{
 				Name:  "arangodb-backup",
