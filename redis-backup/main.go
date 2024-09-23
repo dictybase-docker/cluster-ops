@@ -22,6 +22,10 @@ type RedisBackupConfig struct {
 		Name string
 		Key  string
 	}
+	ProjectSecret struct {
+		Name string
+		Key  string
+	}
 	Host string
 }
 
@@ -227,6 +231,15 @@ func (rb *RedisBackup) createBackupEnv() corev1.EnvVarArray {
 		&corev1.EnvVarArgs{
 			Name:  pulumi.String("GOOGLE_APPLICATION_CREDENTIALS"),
 			Value: pulumi.String("/var/secret/gcs-credentials"),
+		},
+		&corev1.EnvVarArgs{
+			Name: pulumi.String("GOOGLE_PROJECT_ID"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(rb.Config.ProjectSecret.Name),
+					Key:  pulumi.String(rb.Config.ProjectSecret.Key),
+				},
+			},
 		},
 	}
 }
