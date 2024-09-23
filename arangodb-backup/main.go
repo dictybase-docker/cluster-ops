@@ -12,13 +12,17 @@ import (
 )
 
 type ArangoBackupConfig struct {
-	Bucket    string
-	Folder    string
-	Namespace string
-	Secret    string
-	Server    string
-	User      string
-	Storage   struct {
+	Bucket       string
+	Folder       string
+	Namespace    string
+	Secret       string
+	ResticSecret struct {
+		Name string
+		Key  string
+	}
+	Server  string
+	User    string
+	Storage struct {
 		Class string
 		Name  string
 		Size  string
@@ -240,6 +244,15 @@ func (ab *ArangoBackup) createBackupEnv() corev1.EnvVarArray {
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
 					Name: pulumi.String(ab.Config.Secret),
 					Key:  pulumi.String("password"),
+				},
+			},
+		},
+		&corev1.EnvVarArgs{
+			Name: pulumi.String("RESTIC_PASSWORD"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(ab.Config.ResticSecret.Name),
+					Key:  pulumi.String(ab.Config.ResticSecret.Key),
 				},
 			},
 		},
