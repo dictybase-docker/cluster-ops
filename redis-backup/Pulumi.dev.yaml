@@ -9,6 +9,11 @@ config:
       name:
         secure: v1:x4rDYRN0MwMzR0mr:ghse2wuRkYjLed1BLik2vmwP3KiUOeg=
     namespace: dev
+    projectSecret:
+      key:
+        secure: v1:QLC427ivMZAikkNR:yatif4NTelzYSXW1g93XsGpEK35A1rXugNI=
+      name:
+        secure: v1:CwNrFy6XqHmc5A+D:lk03ixln2jsWY5LsjtgG1YwKARbztiw=
     resticSecret:
       key:
         secure: v1:lQXWUmVIn/DGdQen:rN8qUhepGKLJOn9DuvG67IkiIOT8RjonJ4I=
