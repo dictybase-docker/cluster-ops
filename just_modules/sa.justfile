@@ -22,6 +22,19 @@ create-sa-manager project_id sa_name sa_display_name:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Check if the authenticated account is an owner
+    echo "Checking if the authenticated account is an owner..."
+    if ! gcloud projects get-iam-policy {{project_id}} \
+        --format="value(bindings.members)" \
+        --filter="bindings.role:roles/owner" | \
+        grep -q "$(gcloud config get-value account)"; then
+        echo "Error: The authenticated account is not an owner of the project."
+        echo "Please authenticate with an owner account and try again."
+        exit 1
+    fi
+
+    echo "Authenticated account is an owner. Proceeding with service account creation..."
+
     echo "Creating service account: {{sa_name}}"
     gcloud iam service-accounts create {{sa_name}} \
         --project={{project_id}} \
