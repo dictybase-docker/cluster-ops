@@ -3,6 +3,9 @@ encryptedkey: CiQA3xuh3DSJwNEt6KuFrGxxvm54PglVfFSCBhtnbs4XpTs820cSSQAbtemJ3ot4X9
 config:
   arangodb-backup:properties:
     bucket: dictycr-restic-arango-backup
+    bucketSecret:
+      key: gcsCredentials
+      name: dictycr
     folder: arangodump
     namespace: dev
     resticSecret:
