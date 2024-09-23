@@ -12,8 +12,8 @@ import (
 
 type BackupSecretsConfig struct {
 	Secret struct {
-		Name       string
-		ResticPass string
+		Name           string
+		ResticPass     string
 		ServiceAccount struct {
 			Filepath string
 			Keyname  string
@@ -47,7 +47,9 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 	// Read the content of the file specified by Filepath
-	serviceAccountContent, err := os.ReadFile(bsr.Config.Secret.ServiceAccount.Filepath)
+	serviceAccountContent, err := os.ReadFile(
+		bsr.Config.Secret.ServiceAccount.Filepath,
+	)
 	if err != nil {
 		return fmt.Errorf("error reading service account file: %w", err)
 	}
@@ -58,8 +60,12 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 		&corev1.SecretArgs{
 			Metadata: bsr.createMetadata(),
 			StringData: pulumi.StringMap{
-				"resticPass":                     pulumi.String(bsr.Config.Secret.ResticPass),
-				bsr.Config.Secret.ServiceAccount.Keyname: pulumi.String(string(serviceAccountContent)),
+				"resticPass": pulumi.String(
+					bsr.Config.Secret.ResticPass,
+				),
+				bsr.Config.Secret.ServiceAccount.Keyname: pulumi.String(
+					string(serviceAccountContent),
+				),
 			},
 		},
 	)
