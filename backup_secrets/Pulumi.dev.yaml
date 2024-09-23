@@ -4,6 +4,8 @@ config:
   backup_secrets:properties:
     namespace: dev
     secret:
+      gcsProject:
+        secure: v1:BjddTeLM6io0jrqY:osnOqspCrJt4WVpoZyWbGAtt4MiRjdh+Mn9LpLg=
       name: dictycr
       resticPass:
         secure: v1:2J5Lsm+lghTqY4at:p4QIKTa20WTDiyvBT2qmCCxOoJSy0dyOx0+rO6DIA7kfOBE5Vio=

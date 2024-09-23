@@ -14,6 +14,7 @@ type BackupSecretsConfig struct {
 	Secret struct {
 		Name           string
 		ResticPass     string
+		GcsProject     string
 		ServiceAccount struct {
 			Filepath string
 			Keyname  string
@@ -62,6 +63,9 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 			StringData: pulumi.StringMap{
 				"resticPass": pulumi.String(
 					bsr.Config.Secret.ResticPass,
+				),
+				"gcsProject": pulumi.String(
+					bsr.Config.Secret.GcsProject,
 				),
 				bsr.Config.Secret.ServiceAccount.Keyname: pulumi.String(
 					string(serviceAccountContent),
