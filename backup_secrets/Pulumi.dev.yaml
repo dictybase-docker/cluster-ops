@@ -7,3 +7,10 @@ config:
       name: dictycr
       resticPass:
         secure: v1:2J5Lsm+lghTqY4at:p4QIKTa20WTDiyvBT2qmCCxOoJSy0dyOx0+rO6DIA7kfOBE5Vio=
+      serviceAccount:
+        filepath:
+          secure: v1:HqgqOU39NIAszgdn:XpHtP1DFghLg044dJxNqvRoDZkEw7Ueh3v/R+S6C6XKvV3vOlnYohz5u2+c=
+        keyname:
+          secure: v1:wtP/HahsfP2VIpOp:/jA1lEdnGRwjsXrNRAvNGiqiUjR+PiYagr5DU24F
+        key:
+          secure: v1:newSecureKey123:ThisIsTheNewServiceAccountKey
