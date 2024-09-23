@@ -12,5 +12,3 @@ config:
           secure: v1:HqgqOU39NIAszgdn:XpHtP1DFghLg044dJxNqvRoDZkEw7Ueh3v/R+S6C6XKvV3vOlnYohz5u2+c=
         keyname:
           secure: v1:wtP/HahsfP2VIpOp:/jA1lEdnGRwjsXrNRAvNGiqiUjR+PiYagr5DU24F
-        key:
-          secure: v1:newSecureKey123:ThisIsTheNewServiceAccountKey
