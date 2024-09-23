@@ -1,0 +1,18 @@
+secretsprovider: gcpkms://projects/devenv-194321/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQA3xuh3Nqt6X8wKoZgrA/KmBvF+aKYp2qOYmuTyg3ieay7lcASSQAbtemJYQIiGrbTM25O4Rl3z+k/vlmotTwAc3L7IwDTarVfDSXrt54YmW8a1T4x7DUvzC9pAj3jK7Cs9JfV+LPRWoxWrir8zLE=
+config:
+  redis-backup:properties:
+    bucket: dictycr-restic-redis-backup
+    bucketSecret:
+      key:
+        secure: v1:9Lx6JHbt6oyQCNlr:RdaQHoSPzoNhJsP7uEmDMM2mMyD+o3fY4JcJSWym
+      name:
+        secure: v1:x4rDYRN0MwMzR0mr:ghse2wuRkYjLed1BLik2vmwP3KiUOeg=
+    namespace: dev
+    resticSecret:
+      key:
+        secure: v1:lQXWUmVIn/DGdQen:rN8qUhepGKLJOn9DuvG67IkiIOT8RjonJ4I=
+      name:
+        secure: v1:furrIMNRiHT3z+2D:1yIplBtk3+oJUYAMbCPNnPQCFpctiT8=
+    server:
+      secure: v1:3haFrvdCpw2jlMbu:yTKh/+CaMxlUsfELEXJqKIwaOmAj
