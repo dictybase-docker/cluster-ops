@@ -1,0 +1,7 @@
+name: redis-backup
+runtime: go
+description: A Pulumi program for managing Redis backups using Restic and Google Cloud Storage
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
