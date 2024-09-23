@@ -20,6 +20,10 @@ type ArangoBackupConfig struct {
 		Name string
 		Key  string
 	}
+	BucketSecret struct {
+		Name string
+		Key  string
+	}
 	Server  string
 	User    string
 	Storage struct {
@@ -166,7 +170,25 @@ func (ab *ArangoBackup) createPodTemplateSpec(
 				ab.createBackupContainer(bucket),
 			},
 			RestartPolicy: pulumi.String("Never"),
-			Volumes:       corev1.VolumeArray{ab.createBackupVolume()},
+			Volumes: corev1.VolumeArray{
+				ab.createBackupVolume(),
+				ab.createGCSCredentialsVolume(),
+			},
+		},
+	}
+}
+
+func (ab *ArangoBackup) createGCSCredentialsVolume() *corev1.VolumeArgs {
+	return &corev1.VolumeArgs{
+		Name: pulumi.String("gcs-credentials"),
+		Secret: &corev1.SecretVolumeSourceArgs{
+			SecretName: pulumi.String(ab.Config.BucketSecret.Name),
+			Items: corev1.KeyToPathArray{
+				&corev1.KeyToPathArgs{
+					Key:  pulumi.String(ab.Config.BucketSecret.Key),
+					Path: pulumi.String("gcs-credentials"),
+				},
+			},
 		},
 	}
 }
@@ -219,6 +241,11 @@ func (ab *ArangoBackup) createBackupContainer(
 				Name:      pulumi.String(ab.Config.Storage.Name),
 				MountPath: pulumi.String(ab.Config.Folder),
 			},
+			&corev1.VolumeMountArgs{
+				Name:      pulumi.String("gcs-credentials"),
+				MountPath: pulumi.String("/var/secret"),
+				ReadOnly:  pulumi.Bool(true),
+			},
 		},
 	}
 }
@@ -255,6 +282,10 @@ func (ab *ArangoBackup) createBackupEnv() corev1.EnvVarArray {
 					Key:  pulumi.String(ab.Config.ResticSecret.Key),
 				},
 			},
+		},
+		&corev1.EnvVarArgs{
+			Name:  pulumi.String("GOOGLE_APPLICATION_CREDENTIALS"),
+			Value: pulumi.String("/var/secret/gcs-credentials"),
 		},
 	}
 }
