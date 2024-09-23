@@ -50,8 +50,37 @@ func main() {
 						Usage:    "GCS location of restic repository",
 						Required: true,
 					},
+					&cli.StringFlag{
+						Name:    "restic-password",
+						Usage:   "Restic repository password (reads from RESTIC_PASSWORD env var if not provided)",
+						EnvVars: []string{"RESTIC_PASSWORD"},
+					},
 				},
 				Action: backup.ArangoDBBackupAction,
+			},
+			{
+				Name:  "redis-backup",
+				Usage: "Backup Redis database",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "host",
+						Aliases:  []string{"h"},
+						Usage:    "Redis host address",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "repository",
+						Aliases:  []string{"r"},
+						Usage:    "GCS location of restic repository",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:    "restic-password",
+						Usage:   "Restic repository password (reads from RESTIC_PASSWORD env var if not provided)",
+						EnvVars: []string{"RESTIC_PASSWORD"},
+					},
+				},
+				Action: backup.RedisBackupAction,
 			},
 		},
 	}
