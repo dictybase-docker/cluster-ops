@@ -8,6 +8,9 @@ config:
       name: dictycr
     folder: arangodump
     namespace: dev
+    projectSecret:
+      key: gcsProject
+      name: dictycr
     resticSecret:
       key: resticPass
       name: dictycr

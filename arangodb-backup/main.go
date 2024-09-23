@@ -24,6 +24,10 @@ type ArangoBackupConfig struct {
 		Name string
 		Key  string
 	}
+	ProjectSecret struct {
+		Name string
+		Key  string
+	}
 	Server  string
 	User    string
 	Storage struct {
@@ -286,6 +290,15 @@ func (ab *ArangoBackup) createBackupEnv() corev1.EnvVarArray {
 		&corev1.EnvVarArgs{
 			Name:  pulumi.String("GOOGLE_APPLICATION_CREDENTIALS"),
 			Value: pulumi.String("/var/secret/gcs-credentials"),
+		},
+		&corev1.EnvVarArgs{
+			Name: pulumi.String("GOOGLE_PROJECT_ID"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(ab.Config.ProjectSecret.Name),
+					Key:  pulumi.String(ab.Config.ProjectSecret.Key),
+				},
+			},
 		},
 	}
 }
