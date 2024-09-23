@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -13,6 +14,11 @@ type BackupSecretsConfig struct {
 	Secret struct {
 		Name       string
 		ResticPass string
+		ServiceAccount struct {
+			Filepath string
+			Keyname  string
+			Key      string
+		}
 	}
 	Namespace string
 }
@@ -40,13 +46,20 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 }
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
+	// Read the content of the file specified by Filepath
+	serviceAccountContent, err := os.ReadFile(bsr.Config.Secret.ServiceAccount.Filepath)
+	if err != nil {
+		return fmt.Errorf("error reading service account file: %w", err)
+	}
+
 	secret, err := corev1.NewSecret(
 		ctx,
 		bsr.Config.Secret.Name,
 		&corev1.SecretArgs{
 			Metadata: bsr.createMetadata(),
 			StringData: pulumi.StringMap{
-				"resticPass": pulumi.String(bsr.Config.Secret.ResticPass),
+				"resticPass":                     pulumi.String(bsr.Config.Secret.ResticPass),
+				bsr.Config.Secret.ServiceAccount.Keyname: pulumi.String(string(serviceAccountContent)),
 			},
 		},
 	)
