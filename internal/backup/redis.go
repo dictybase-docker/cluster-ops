@@ -1,12 +1,16 @@
 package backup
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/urfave/cli/v2"
 )
 
@@ -70,6 +74,33 @@ func performRedisBackup(host, repository string) error {
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Invalid repository path: %v", err), 1)
 	}
+
+	// Create a Redis client
+	rdb := redis.NewClient(&redis.Options{
+		Addr: host,
+	})
+	defer rdb.Close()
+
+	ctx := context.Background()
+
+	// Start BGSAVE
+	if err := rdb.BgSave(ctx).Err(); err != nil {
+		return cli.Exit(fmt.Sprintf("Failed to start BGSAVE: %v", err), 1)
+	}
+
+	// Wait for BGSAVE to complete
+	for {
+		info, err := rdb.Info(ctx, "persistence").Result()
+		if err != nil {
+			return cli.Exit(fmt.Sprintf("Failed to get Redis info: %v", err), 1)
+		}
+		if !strings.Contains(info, "rdb_bgsave_in_progress:1") {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	// Run redis-cli --rdb and pipe to restic
 	redisCli := exec.Command("redis-cli", "-h", host, "--rdb", "-")
 	restic := exec.Command(
 		"restic",
@@ -80,26 +111,30 @@ func performRedisBackup(host, repository string) error {
 		"--stdin-filename",
 		"redis-backup.rdb",
 		"--tag",
-		"redis-backup,",
+		"redis-backup",
 	)
 
 	restic.Stdin, err = redisCli.StdoutPipe()
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Failed to create pipe: %v", err), 1)
 	}
+
 	restic.Stdout = os.Stdout
 	restic.Stderr = os.Stderr
 
 	if err := restic.Start(); err != nil {
-		return cli.Exit("failed to start restic: "+err.Error(), 1)
+		return cli.Exit(fmt.Sprintf("Failed to start restic: %v", err), 1)
 	}
 
 	if err := redisCli.Run(); err != nil {
-		return cli.Exit("failed to run redis-cli: "+err.Error(), 1)
+		return cli.Exit(fmt.Sprintf("Failed to run redis-cli: %v", err), 1)
 	}
 
 	if err := restic.Wait(); err != nil {
-		return cli.Exit("failed to complete restic backup: "+err.Error(), 1)
+		return cli.Exit(
+			fmt.Sprintf("Failed to complete restic backup: %v", err),
+			1,
+		)
 	}
 
 	slog.Info("Redis backup completed successfully")
