@@ -5,6 +5,9 @@ config:
     bucket: dictycr-restic-arango-backup
     folder: arangodump
     namespace: dev
+    resticSecret:
+      key: resticPass
+      name: dictycr
     secret:
       secure: v1:k9ohHl2bxqC1owMb:2m3wyCQ73JHHc9DRx305Ra66ojbLxkJheVgQP28=
     server:
