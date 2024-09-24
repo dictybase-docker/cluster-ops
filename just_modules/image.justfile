@@ -2,6 +2,8 @@
 [group('image-management')]
 create-machine-image project instance backup_for="k8s-node":
     #!/usr/bin/env bash
+    # disable prompt
+    gcloud config set disable_prompts true
     set -euo pipefail
     
     # Generate image name from instance name and current date

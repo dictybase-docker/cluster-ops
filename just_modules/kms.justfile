@@ -2,6 +2,8 @@
 create-keyring-and-key PROJECT_ID KEYRING_NAME KEY_NAME LOCATION="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     # Check if the keyring already exists
     if ! gcloud kms keyrings describe {{KEYRING_NAME}} --location={{LOCATION}} --project={{PROJECT_ID}} &>/dev/null; then

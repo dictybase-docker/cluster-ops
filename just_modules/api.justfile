@@ -3,6 +3,8 @@
 enable-apis project api_file:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     echo "Enabling APIs for project {{project}} from file {{api_file}}"
     
