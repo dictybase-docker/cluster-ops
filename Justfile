@@ -16,7 +16,10 @@ base_gha_download_url := "https://github.com/dictybase-docker/github-actions/rel
 gha_download_url := if os() == "macos" { base_gha_download_url + "darwin_arm64" } else { base_gha_download_url + "linux_amd64" }
 file_suffix := ".tar.gz"
 dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux_amd64" + file_suffix }
-export GOOGLE_APPLICATION_CREDENTIALS := invocation_directory()  + "/credentials/devenv-cloud-manager.json"
+
+
+set dotenv-filename := "./.env.dev.dcr-experiments"
+
 
 # Run Golang tests using Dagger
 test:
@@ -52,4 +55,7 @@ build-publish-backup-image ref user pass: setup
 
 # Run aider AI coding assistant with specific configuration
 aider:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory() }}/credentials/devenv-cloud-manager.json"
     aider --model 'vertex_ai/claude-3-5-sonnet@20240620' --no-auto-commits --no-auto-lint --vim
