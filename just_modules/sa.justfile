@@ -62,6 +62,7 @@ create-sa-manager project_id sa_name sa_display_name:
 
 # Create a JSON-formatted key for a service account
 [group('service-account-management')]
+[no-cd]
 create-sa-key project sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -75,6 +76,7 @@ create-sa-key project sa_name key_file:
 
 # Output service account details in JSON format
 [group('service-account-management')]
+[no-cd]
 sa-details project_id sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -94,6 +96,7 @@ sa-details project_id sa_name output_file:
 
 # Create an HMAC key for a service account
 [group('service-account-management')]
+[no-cd]
 create-hmac-key project sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
