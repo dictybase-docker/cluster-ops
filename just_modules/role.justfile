@@ -43,6 +43,7 @@ add-role-to-sa project sa_name role:
 
 # Assign multiple roles to an existing service account from a file
 [group('role-management')]
+[no-cd]
 assign-roles-to-sa project sa_name roles_file:
     #!/usr/bin/env bash
     set -euo pipefail
