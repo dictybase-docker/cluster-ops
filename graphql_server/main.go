@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
@@ -32,6 +31,7 @@ type Config struct {
 	ConfigMapName string
 	S3Bucket      string
 	S3BucketPath  string
+  AllowedOrigins []string
 }
 
 func main() {
@@ -97,7 +97,7 @@ func execute(ctx *pulumi.Context) error {
 
 
 	// Create deployment
-	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.Name), &appsv1.DeploymentArgs{
+	_, err = appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.Name), &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(fmt.Sprintf("%s-api-server", config.Name)),
 			Namespace: pulumi.String(config.Namespace),
@@ -163,27 +163,27 @@ func execute(ctx *pulumi.Context) error {
 	}
 
 	// Create service
-	_, err = corev1.NewService(ctx, fmt.Sprintf("%s-api", config.Name), &corev1.ServiceArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(fmt.Sprintf("%s-api", config.Name)),
-			Namespace: pulumi.String(config.Namespace),
-		},
-		Spec: &corev1.ServiceSpecArgs{
-			Selector: pulumi.StringMap{
-				"app": pulumi.String(fmt.Sprintf("%s-api-server", config.Name)),
-			},
-			Ports: corev1.ServicePortArray{
-				&corev1.ServicePortArgs{
-					Port:       pulumi.Int(config.Port),
-					TargetPort: pulumi.Int(config.Port),
-				},
-			},
-			Type: pulumi.String("NodePort"),
-		},
-	})
-	if err != nil {
-		return err
-	}
+	//_, err = corev1.NewService(ctx, fmt.Sprintf("%s-api", config.Name), &corev1.ServiceArgs{
+	//	Metadata: &metav1.ObjectMetaArgs{
+	//		Name:      pulumi.String(fmt.Sprintf("%s-api", config.Name)),
+	//		Namespace: pulumi.String(config.Namespace),
+	//	},
+	//	Spec: &corev1.ServiceSpecArgs{
+	//		Selector: pulumi.StringMap{
+	//			"app": pulumi.String(fmt.Sprintf("%s-api-server", config.Name)),
+	//		},
+	//		Ports: corev1.ServicePortArray{
+	//			&corev1.ServicePortArgs{
+	//				Port:       pulumi.Int(config.Port),
+	//				TargetPort: pulumi.Int(config.Port),
+	//			},
+	//		},
+	//		Type: pulumi.String("NodePort"),
+	//	},
+	//})
+	//if err != nil {
+	//	return err
+	//}
 
 	return nil
 }
