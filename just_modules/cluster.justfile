@@ -11,20 +11,22 @@ sa-accounts-setup project activate_api="true":
         sleep 10
     fi
 
-    sa_name="cloud-manager"
-    sa_email="${sa_name}@{{ project }}.iam.gserviceaccount.com"
+    sa_accounts=("cloud-manager" "cluster-backup" "database-backup" "deploy-manager" "kops-cluster-creator")
+    for sa_name in "${sa_accounts[@]}"; do
+        sa_email="${sa_name}@{{ project }}.iam.gserviceaccount.com"
 
-    # Check if the service account already exists
-    if ! gcloud iam service-accounts describe "$sa_email" --project={{ project }} &>/dev/null; then
-        echo "Creating service account: $sa_name"
-        just gcp-sa create-sa {{ project }} \
-            $sa_name 'service account to manage cloud resources'
-    else
-        echo "Service account $sa_name already exists. Skipping creation."
-    fi
+        # Check if the service account already exists
+        if ! gcloud iam service-accounts describe "$sa_email" --project={{ project }} &>/dev/null; then
+            echo "Creating service account: $sa_name"
+            just gcp-sa create-sa {{ project }} \
+                $sa_name "service account for ${sa_name}"
+        else
+            echo "Service account $sa_name already exists. Skipping creation."
+        fi
 
-    just gcp-role assign-roles-to-sa {{ project }} $sa_name {{ invocation_directory() }}/gcs-files/roles-permissions/${sa_name}-roles.txt
-    just gcp-sa create-sa-key {{ project }} $sa_name \
-        {{ invocation_directory() }}/credentials/{{ project }}-$sa_name.json
+        just gcp-role assign-roles-to-sa {{ project }} $sa_name {{ invocation_directory() }}/gcs-files/roles-permissions/${sa_name}-roles.txt
+        just gcp-sa create-sa-key {{ project }} $sa_name \
+            {{ invocation_directory() }}/credentials/{{ project }}-$sa_name.json
+    done
 
     gcloud config set disable_prompts false
