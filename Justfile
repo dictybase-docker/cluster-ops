@@ -5,6 +5,7 @@ mod gcp-api 'just_modules/api.justfile'
 mod gcp-image 'just_modules/image.justfile'
 mod gcp-kms 'just_modules/kms.justfile'
 mod gcp-pulumi 'just_modules/pulumi.justfile'
+mod gcp-cluster 'just_modules/cluster.justfile'
 
 
 dagger_version := "v0.11.9"
@@ -58,13 +59,4 @@ build-publish-backup-image ref user pass: setup
     --user={{user}} --password={{pass}}
 
 
-[no-cd]
-cluster-sa-accounts-setup project:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just gcp-sa create-sa {{project}} \
-        cloud-manager 'service account to manage cloud resources'
-    just gcp-role {{project}} \ 
-        cloud-manager \
-        gcs-files/roles-permissions/cloud-manager-roles.json
 
