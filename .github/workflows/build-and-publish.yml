@@ -19,6 +19,8 @@ jobs:
           just-version: '1.28.0'
 
       - name: Build and publish backup image
+        env:
+          JUST_UNSTABLE: 1
         run: |
           just build-publish-backup-image ${{ github.ref_name }} \
             ${{ secrets.DOCKERHUB_USER }} \
