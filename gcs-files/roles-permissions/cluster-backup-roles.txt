@@ -1,0 +1,3 @@
+roles/compute.admin
+roles/storage.admin
+roles/iam.serviceAccountTokenCreator
