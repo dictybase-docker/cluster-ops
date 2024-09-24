@@ -18,23 +18,24 @@ create-sa project sa_name sa_description:
 
 # Create service account manager and assign predefined roles
 [group('service-account-management')]
+[no-cd]
 create-sa-manager project_id:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    sa_name="sa-manager"
-    sa_display_name="service account manager"
-
-    # Verify if the authenticated service account is a project owner
-    echo "Verifying if the service account is a project owner..."
+    # Check if the current active configuration is an owner
+    echo "Verifying if the current active configuration is a project owner..."
+    current_account=$(gcloud config get-value account)
     if ! gcloud projects get-iam-policy {{project_id}} \
         --format="value(bindings.members)" \
         --filter="bindings.role:roles/owner" | \
-        grep -q "serviceAccount:${sa_name}@{{project_id}}.iam.gserviceaccount.com"; then
-        echo "Error: The account is not an owner of the project."
-        exit 2
+        grep -q "$current_account"; then
+        echo "Error: The current active account ($current_account) is not an owner of the project {{project_id}}."
+        exit 1
     fi
 
+    sa_name="sa-manager"
+    sa_display_name="service account manager"
 
     # Check if the service account already exists
     if gcloud iam service-accounts describe ${sa_name}@{{project_id}}.iam.gserviceaccount.com --project={{project_id}} &>/dev/null; then
