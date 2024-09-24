@@ -18,36 +18,39 @@ create-sa project sa_name sa_description:
 
 # Create service account manager and assign predefined roles
 [group('service-account-management')]
-create-sa-manager project_id sa_name sa_display_name:
+create-sa-manager project_id:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    sa_name="sa-manager"
+    sa_display_name="service account manager"
 
     # Verify if the authenticated service account is a project owner
     echo "Verifying if the service account is a project owner..."
     if ! gcloud projects get-iam-policy {{project_id}} \
         --format="value(bindings.members)" \
         --filter="bindings.role:roles/owner" | \
-        grep -q "serviceAccount:{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"; then
+        grep -q "serviceAccount:${sa_name}@{{project_id}}.iam.gserviceaccount.com"; then
         echo "Error: The account is not an owner of the project."
         exit 2
     fi
 
 
     # Check if the service account already exists
-    if gcloud iam service-accounts describe {{sa_name}}@{{project_id}}.iam.gserviceaccount.com --project={{project_id}} &>/dev/null; then
-        echo "Service account {{sa_name}} already exists. Using existing account."
+    if gcloud iam service-accounts describe ${sa_name}@{{project_id}}.iam.gserviceaccount.com --project={{project_id}} &>/dev/null; then
+        echo "Service account ${sa_name} already exists. Using existing account."
     else
-        echo "Creating service account: {{sa_name}}"
-        just gcp-sa create-sa {{project_id}} {{sa_name}} 'service account manager'  
+        echo "Creating service account: ${sa_name}"
+        just gcp-sa create-sa {{project_id}} ${sa_name} "${sa_display_name}"  
     fi
 
     # Create the service account key file path
-    key_file="credentials/{{project_id}}-{{sa_name}}.json"
+    key_file="credentials/{{project_id}}-${sa_name}.json"
 
     echo "Creating/updating service account key..."
-    just gcp-sa create-sa-key {{project_id}} {{sa_name}} $key_file
+    just gcp-sa create-sa-key {{project_id}} ${sa_name} $key_file
 
-    echo "Assigning roles to {{sa_name}}"
+    echo "Assigning roles to ${sa_name}"
     for role in roles/iam.serviceAccountAdmin \
                 roles/iam.serviceAccountCreator \
                 roles/iam.roleAdmin \
@@ -61,7 +64,7 @@ create-sa-manager project_id sa_name sa_display_name:
                 roles/serviceusage.serviceUsageAdmin
     do
         gcloud projects add-iam-policy-binding {{project_id}} \
-            --member="serviceAccount:{{sa_name}}@{{project_id}}.iam.gserviceaccount.com" \
+            --member="serviceAccount:${sa_name}@{{project_id}}.iam.gserviceaccount.com" \
             --role="$role"
     done
 
@@ -69,7 +72,7 @@ create-sa-manager project_id sa_name sa_display_name:
     echo "Activating service account..."
     gcloud auth activate-service-account --key-file="$key_file"
     gcloud config set account \
-           "{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
+           "${sa_name}@{{project_id}}.iam.gserviceaccount.com"
 
     echo "Service account creation, key generation, and role assignment completed."
 
