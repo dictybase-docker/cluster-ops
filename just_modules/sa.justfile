@@ -29,7 +29,7 @@ create-sa-manager project_id sa_name sa_display_name:
         --filter="bindings.role:roles/owner" | \
         grep -q "serviceAccount:{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"; then
         echo "Error: The account is not an owner of the project."
-	exit 2
+        exit 2
     fi
 
 
@@ -38,7 +38,7 @@ create-sa-manager project_id sa_name sa_display_name:
         echo "Service account {{sa_name}} already exists. Using existing account."
     else
         echo "Creating service account: {{sa_name}}"
-	just gcp-sa create-sa {{project_id}} {{sa_name}} 'service account manager'  
+        just gcp-sa create-sa {{project_id}} {{sa_name}} 'service account manager'  
     fi
 
     # Create the service account key file path
@@ -69,7 +69,7 @@ create-sa-manager project_id sa_name sa_display_name:
     echo "Activating service account..."
     gcloud auth activate-service-account --key-file="$key_file"
     gcloud config set account \
-	"{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
+           "{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
 
     echo "Service account creation, key generation, and role assignment completed."
 
