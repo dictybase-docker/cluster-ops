@@ -3,6 +3,8 @@
 create-sa project sa_name sa_description:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     echo "Creating service account '{{sa_name}}' in project {{project}}"
     gcloud iam service-accounts create {{sa_name}} \
@@ -89,6 +91,8 @@ create-sa-manager project_id:
 create-sa-key project sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
     echo "Creating service account key for $sa_email in project {{project}}"
     gcloud iam service-accounts keys create {{key_file}} \
@@ -103,6 +107,8 @@ create-sa-key project sa_name key_file:
 sa-details project_id sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     sa_email="{{sa_name}}@{{project_id}}.iam.gserviceaccount.com"
     echo "Fetching details for service account: $sa_email in project: {{project_id}}"
     echo "Output will be saved to: {{output_file}}"
@@ -123,6 +129,8 @@ sa-details project_id sa_name output_file:
 create-hmac-key project sa_name output_file:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
     echo "Creating HMAC key for service account: $sa_email in project: {{project}}"

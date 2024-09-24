@@ -24,6 +24,8 @@ extract-roles-custom project_id sa_name output_file:
 add-role-to-sa project sa_name role:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     # Construct the full service account email
     sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"
@@ -47,6 +49,8 @@ add-role-to-sa project sa_name role:
 assign-roles-to-sa project sa_name roles_file:
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     # Construct the full service account email
     sa_email="{{sa_name}}@{{project}}.iam.gserviceaccount.com"

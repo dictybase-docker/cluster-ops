@@ -3,6 +3,8 @@
 pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
+    # disable prompt
+    gcloud config set disable_prompts true
     
     # Expand sa_json_path to full path
     full_sa_json_path=$(realpath "{{sa_json_path}}")
