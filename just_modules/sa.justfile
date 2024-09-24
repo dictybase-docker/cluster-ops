@@ -23,6 +23,9 @@ create-sa-manager project_id:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # disable prompt
+    gcloud config set disable_prompts true
+
     # Check if the current active configuration is an owner
     echo "Verifying if the current active configuration is a project owner..."
     current_account=$(gcloud config get-value account)
@@ -43,6 +46,9 @@ create-sa-manager project_id:
     else
         echo "Creating service account: ${sa_name}"
         just gcp-sa create-sa {{project_id}} ${sa_name} "${sa_display_name}"  
+
+        # create new configuration
+        gcloud config configurations create {{project_id}}-${sa_name}
     fi
 
     # Create the service account key file path
@@ -69,11 +75,11 @@ create-sa-manager project_id:
             --role="$role"
     done
 
+
     # Activate the service account
     echo "Activating service account..."
-    gcloud auth activate-service-account --key-file="$key_file"
-    gcloud config set account \
-           "${sa_name}@{{project_id}}.iam.gserviceaccount.com"
+    gcloud auth activate-service-account --key-file="$key_file" --project {{project_id}}
+    gcloud config set compute/zone us-central1-c
 
     echo "Service account creation, key generation, and role assignment completed."
 
