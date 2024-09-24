@@ -56,3 +56,15 @@ build-publish-backup-image ref user pass: setup
     with-image --image database-backup \
     with-namespace publish-from-repo \
     --user={{user}} --password={{pass}}
+
+
+[no-cd]
+cluster-sa-accounts-setup project:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just gcp-sa create-sa {{project}} \
+        cloud-manager 'service account to manage cloud resources'
+    just gcp-role {{project}} \ 
+        cloud-manager \
+        gcs-files/roles-permissions/cloud-manager-roles.json
+
