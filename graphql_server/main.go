@@ -98,7 +98,7 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 					},
 				},
 				Spec: &corev1.PodSpecArgs{
-					Containers: containerArray(&ContainerConfig{
+					Containers: ContainerArray(&ContainerConfig{
 						name:           config.name,
 						image:          config.image,
 						tag:            config.tag,
