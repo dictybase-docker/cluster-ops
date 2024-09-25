@@ -6,7 +6,7 @@ config:
   tag: staging
   logLevel: error
   port: 8080
-  secretName:    dictycr-secret
+  secretName:    dictycr-secret-staging
   configMapName: dictycr-configuration
   s3Bucket: editor
   s3BucketPath: assets
