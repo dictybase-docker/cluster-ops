@@ -55,6 +55,7 @@ create-kops-cluster project bucket_name:
 
     just update-cluster
     just validate-cluster
+    just cluster-status
 
 [no-cd]
 update-cluster:
@@ -67,3 +68,11 @@ validate-cluster waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
     kops validate cluster --wait {{ waittime }}m
+
+[no-cd]
+cluster-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kubectl version
+    kubectl cluster-info
+    kubectl get nodes
