@@ -15,6 +15,8 @@ type ContainerConfig struct {
   secretName string
   port int
   allowedOrigins []string
+	s3Bucket      string
+	s3BucketPath  string
 }
 
 func SecretEnvArgsArray(secretName string) corev1.EnvVarArray {
@@ -98,11 +100,15 @@ func allowedOriginsFlags(origins []string) pulumi.StringArray {
   return pulumi.ToStringArray(originFlagArray)
 }
 
-func containerArgs(logLevel string, origins []string) pulumi.StringArray {
+func containerArgs(logLevel string, s3Bucket string, s3BucketPath string, origins []string) pulumi.StringArray {
   args := pulumi.StringArray{
     pulumi.String("start-server"),
     pulumi.String("--log-level"),
     pulumi.String(logLevel),
+    pulumi.String("--s3-bucket"),
+    pulumi.String(s3Bucket),
+    pulumi.String("--s3-bucket-path"),
+    pulumi.String(s3BucketPath),
   }
   return append(args, allowedOriginsFlags(origins)...)
 }
@@ -112,7 +118,7 @@ func containerArray(config *ContainerConfig) corev1.ContainerArray {
     &corev1.ContainerArgs{
       Name:  pulumi.String(fmt.Sprintf("%s-container", config.name)),
       Image: pulumi.String(fmt.Sprintf("%s:%s", config.image, config.tag)),
-      Args: containerArgs(config.logLevel, config.allowedOrigins),
+      Args: containerArgs(config.logLevel, config.s3Bucket, config.s3BucketPath, config.allowedOrigins),
       Env: ContainerEnvArgsArray(config.configMapName, config.secretName),
       Ports: ContainerPortArray(config.name, config.port),
     },
