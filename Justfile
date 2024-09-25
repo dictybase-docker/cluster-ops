@@ -58,4 +58,5 @@ aider:
     #!/usr/bin/env bash
     set -euxo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory() }}/credentials/devenv-cloud-manager.json"
-    aider --model 'vertex_ai/claude-3-5-sonnet@20240620' --no-auto-commits --no-auto-lint --vim
+    aider --model 'vertex_ai/claude-3-5-sonnet@20240620' --no-auto-commits \
+          --no-auto-lint --vim --cache-prompts --cache-keepalive-pings 3
