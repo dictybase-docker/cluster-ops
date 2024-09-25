@@ -99,6 +99,7 @@ func execute(ctx *pulumi.Context) error {
 	// Load configuration
 	config := loadConfig(ctx)
   deploymentName := fmt.Sprintf("%s-api-server", config.name)
+  serviceName := fmt.Sprintf("%s-api", config.name)
 
 	// Create deployment
   deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
@@ -138,9 +139,9 @@ func execute(ctx *pulumi.Context) error {
 	}
 
 	// Create service
-	_, err = corev1.NewService(ctx, fmt.Sprintf("%s-api", config.name), &corev1.ServiceArgs{
+  _, err = corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(fmt.Sprintf("%s-api", config.name)),
+			Name:      pulumi.String(serviceName),
 			Namespace: pulumi.String(config.namespace),
 		},
 		Spec: &corev1.ServiceSpecArgs{
@@ -157,7 +158,7 @@ func execute(ctx *pulumi.Context) error {
 		},
 	}, 
   pulumi.DependsOn([]pulumi.Resource{deployment}),
-)
+  )
 
 	if err != nil {
 		return err
