@@ -38,8 +38,24 @@ type GraphqlServer struct {
   Config *GraphqlServerConfig
 }
 
+func Run(ctx *pulumi.Context) error {
+  // Load configuration
+  config, err := ReadConfig(ctx)
+  if err != nil {
+    return err
+  }
+
+  graphqlServer := NewGraphqlServer(config)
+
+	if err := graphqlServer.Install(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
-	pulumi.Run(execute)
+	pulumi.Run(Run)
 }
 
 func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
@@ -51,15 +67,20 @@ func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 	return arangoConfig, nil
 }
 
-func execute(ctx *pulumi.Context) error {
-	// Load configuration
-	config, err := ReadConfig(ctx)
-  
-  deploymentName := fmt.Sprintf("%s-api-server", config.name)
-  serviceName := fmt.Sprintf("%s-api", config.name)
+func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
+  return &GraphqlServer{
+    Config: config,
+  }
+}
+
+func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
+	config := gs.Config
+
+	deploymentName := fmt.Sprintf("%s-api-server", config.name)
+	serviceName := fmt.Sprintf("%s-api", config.name)
 
 	// Create deployment
-  deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
+	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(deploymentName),
 			Namespace: pulumi.String(config.namespace),
@@ -78,15 +99,15 @@ func execute(ctx *pulumi.Context) error {
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: containerArray(&ContainerConfig{
-            name: config.name,
-            image: config.image,
-            tag: config.tag,
-            logLevel: config.logLevel,
-            configMapName: config.logLevel,
-            secretName: config.secretName,
-            port: config.port,
-            allowedOrigins: config.allowedOrigins,
-          }),
+						name:           config.name,
+						image:          config.image,
+						tag:            config.tag,
+						logLevel:       config.logLevel,
+						configMapName:  config.logLevel,
+						secretName:     config.secretName,
+						port:           config.port,
+						allowedOrigins: config.allowedOrigins,
+					}),
 				},
 			},
 		},
@@ -96,7 +117,7 @@ func execute(ctx *pulumi.Context) error {
 	}
 
 	// Create service
-  _, err = corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
+	_, err = corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(serviceName),
 			Namespace: pulumi.String(config.namespace),
@@ -113,9 +134,9 @@ func execute(ctx *pulumi.Context) error {
 			},
 			Type: pulumi.String("NodePort"),
 		},
-	}, 
-  pulumi.DependsOn([]pulumi.Resource{deployment}),
-  )
+	},
+		pulumi.DependsOn([]pulumi.Resource{deployment}),
+	)
 
 	if err != nil {
 		return err
