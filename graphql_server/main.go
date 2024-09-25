@@ -21,21 +21,25 @@ var allowedOrigins = []string{
 }
 
 type GraphqlServerConfig struct {
-	namespace     string
-	name          string
-	image         string
-	tag           string
-	logLevel      string
-	port          int
-	secretName    string
-	configMapName string
-	s3Bucket      string
-	s3BucketPath  string
-  allowedOrigins []string
+	Namespace     string
+	Name          string
+	Image         string
+	Tag           string
+	LogLevel      string
+	Port          int
+	SecretName    string
+	ConfigMapName string
+	S3Bucket      string
+	S3BucketPath  string
+  AllowedOrigins []string
 }
 
 type GraphqlServer struct {
   Config *GraphqlServerConfig
+}
+
+func main() {
+	pulumi.Run(Run)
 }
 
 func Run(ctx *pulumi.Context) error {
@@ -54,17 +58,13 @@ func Run(ctx *pulumi.Context) error {
 	return nil
 }
 
-func main() {
-	pulumi.Run(Run)
-}
-
 func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 	conf := config.New(ctx, "graphql_server")
-	arangoConfig := &GraphqlServerConfig{}
-	if err := conf.TryObject("properties", arangoConfig); err != nil {
-		return nil, fmt.Errorf("failed to read arangodb config: %w", err)
+	graphqlConfig := &GraphqlServerConfig{}
+	if err := conf.TryObject("properties", graphqlConfig); err != nil {
+		return nil, fmt.Errorf("failed to read graphql config: %w", err)
 	}
-	return arangoConfig, nil
+	return graphqlConfig, nil
 }
 
 func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
@@ -73,17 +73,14 @@ func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
   }
 }
 
-func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
+func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
 	config := gs.Config
+	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
 
-	deploymentName := fmt.Sprintf("%s-api-server", config.name)
-	serviceName := fmt.Sprintf("%s-api", config.name)
-
-	// Create deployment
-	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
+	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.Name), &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(deploymentName),
-			Namespace: pulumi.String(config.namespace),
+			Namespace: pulumi.String(config.Namespace),
 		},
 		Spec: &appsv1.DeploymentSpecArgs{
 			Selector: &metav1.LabelSelectorArgs{
@@ -99,28 +96,41 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: ContainerArray(&ContainerConfig{
-						name:           config.name,
-						image:          config.image,
-						tag:            config.tag,
-						logLevel:       config.logLevel,
-						configMapName:  config.logLevel,
-						secretName:     config.secretName,
-						port:           config.port,
-						allowedOrigins: config.allowedOrigins,
+						name:           config.Name,
+						image:          config.Image,
+						tag:            config.Tag,
+						logLevel:       config.LogLevel,
+						configMapName:  config.LogLevel,
+						secretName:     config.SecretName,
+						port:           config.Port,
+						allowedOrigins: config.AllowedOrigins,
 					}),
 				},
 			},
 		},
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	return deployment, nil
+}
+
+func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
+	deployment, err := gs.CreateDeployment(ctx)
+	if err != nil {
 		return err
 	}
+
+	config := gs.Config
+	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
+	serviceName := fmt.Sprintf("%s-api", config.Name)
 
 	// Create service
 	_, err = corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(serviceName),
-			Namespace: pulumi.String(config.namespace),
+			Namespace: pulumi.String(config.Namespace),
 		},
 		Spec: &corev1.ServiceSpecArgs{
 			Selector: pulumi.StringMap{
@@ -128,8 +138,8 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 			},
 			Ports: corev1.ServicePortArray{
 				&corev1.ServicePortArgs{
-					Port:       pulumi.Int(config.port),
-					TargetPort: pulumi.Int(config.port),
+					Port:       pulumi.Int(config.Port),
+					TargetPort: pulumi.Int(config.Port),
 				},
 			},
 			Type: pulumi.String("NodePort"),
