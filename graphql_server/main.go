@@ -34,6 +34,10 @@ type GraphqlServerConfig struct {
   allowedOrigins []string
 }
 
+type GraphqlServer struct {
+  Config *GraphqlServerConfig
+}
+
 func main() {
 	pulumi.Run(execute)
 }
@@ -51,7 +55,6 @@ func execute(ctx *pulumi.Context) error {
 	// Load configuration
 	config, err := ReadConfig(ctx)
   
-
   deploymentName := fmt.Sprintf("%s-api-server", config.name)
   serviceName := fmt.Sprintf("%s-api", config.name)
 
