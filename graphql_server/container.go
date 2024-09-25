@@ -4,22 +4,20 @@ import (
   "fmt"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
-
-type ContainerArgs struct {
-}
 
 type ContainerConfig struct {
   name string
   image string
   tag string
   logLevel string
+  configMapName string
   secretName string
   port int
+  allowedOrigins []string
 }
 
-func ContainerEnvArgsArray(secretName string) corev1.EnvVarArray {
+func SecretEnvArgsArray(secretName string) corev1.EnvVarArray {
   envVars := []struct {
     name string
     key  string
@@ -48,6 +46,40 @@ func ContainerEnvArgsArray(secretName string) corev1.EnvVarArray {
   return envVarArray
 }
 
+func ConfigMapEnvArgsArray(configMapName string) corev1.EnvVarArray {
+  envVars := []struct {
+    name string
+    key  string
+  }{
+    {"PUBLICATION_API_ENDPOINT", "endpoint.publication"},
+    {"S3_STORAGE_ENDPOINT", "endpoint.storage"},
+    {"AUTH_ENDPOINT", "auth.endpoint"},
+    {"ORGANISM_API_ENDPOINT", "endpoint.organism"},
+  }
+
+  var envVarArray corev1.EnvVarArray
+  for _, envVar := range envVars {
+    envVarArray = append(envVarArray, &corev1.EnvVarArgs{
+      Name: pulumi.String(envVar.name),
+      ValueFrom: &corev1.EnvVarSourceArgs{
+        ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
+          Name: pulumi.String(configMapName),
+          Key:  pulumi.String(envVar.key),
+        },
+      },
+    })
+  }
+  return envVarArray
+}
+
+
+func ContainerEnvArgsArray(configMapName string, secretName string) corev1.EnvVarArray {
+  var envVarArray corev1.EnvVarArray
+  envVarArray = append(envVarArray, ConfigMapEnvArgsArray(configMapName)...)
+  envVarArray = append(envVarArray, SecretEnvArgsArray(secretName)...)
+  return envVarArray
+}
+
 func ContainerPortArray(name string, port int) corev1.ContainerPortArray {
   return corev1.ContainerPortArray{
     &corev1.ContainerPortArgs{
@@ -58,7 +90,7 @@ func ContainerPortArray(name string, port int) corev1.ContainerPortArray {
   }
 }
 
-func ContainerArray(config ContainerConfig) corev1.ContainerArray {
+func containerArray(config *ContainerConfig) corev1.ContainerArray {
   return corev1.ContainerArray{
     &corev1.ContainerArgs{
       Name:  pulumi.String(fmt.Sprintf("%s-container", config.name)),
@@ -68,12 +100,8 @@ func ContainerArray(config ContainerConfig) corev1.ContainerArray {
         pulumi.String(config.logLevel),
         pulumi.String("start-server"),
       },
-      Env: ContainerEnvArgsArray(config.secretName),
+      Env: ContainerEnvArgsArray(config.configMapName, config.secretName),
       Ports: ContainerPortArray(config.name, config.port),
     },
   }
-}
-
-func ContainerProperties(args *config.Config) corev1.ContainerArgs {
-  return corev1.ContainerArgs{}
 }
