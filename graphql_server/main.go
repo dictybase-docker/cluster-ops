@@ -20,7 +20,7 @@ var allowedOrigins = []string{
 	"https://dictybase.dev*",
 }
 
-type Config struct {
+type GraphqlServerConfig struct {
 	namespace     string
 	name          string
 	image         string
@@ -38,66 +38,20 @@ func main() {
 	pulumi.Run(execute)
 }
 
-func loadConfig(ctx *pulumi.Context) Config {
-	conf := config.New(ctx, "")
-
-	namespace := conf.Require("namespace")
-	name := conf.Require("name")
-	tag := conf.Require("tag")
-
-	image := conf.Get("image")
-	if image == "" {
-		image = "dictybase/graphql-server"
+func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
+	conf := config.New(ctx, "graphql_server")
+	arangoConfig := &GraphqlServerConfig{}
+	if err := conf.TryObject("properties", arangoConfig); err != nil {
+		return nil, fmt.Errorf("failed to read arangodb config: %w", err)
 	}
-
-	logLevel := conf.Get("logLevel")
-	if logLevel == "" {
-		logLevel = "error"
-	}
-  
-	port := conf.GetInt("port")
-	if port == 0 {
-		port = 8080
-	}
-  
-	secretName := conf.Get("secret")
-	if secretName == "" {
-		secretName = "dictycr-secret"
-	}
-
-	configMapName := conf.Get("configMap")
-	if configMapName == "" {
-		configMapName = "dictycr-configuration"
-	}
-
-	s3Bucket := conf.Get("s3Bucket")
-	if s3Bucket == "" {
-		s3Bucket = "editor"
-	}
-
-	s3BucketPath := conf.Get("s3BucketPath")
-	if s3BucketPath == "" {
-		s3BucketPath = "assets"
-	}
-
-	return Config{
-		namespace:     namespace,
-		name:          name,
-		image:         image,
-		tag:           tag,
-		logLevel:      logLevel,
-		port:          port,
-		secretName:    secretName,
-		configMapName: configMapName,
-		s3Bucket:      s3Bucket,
-		s3BucketPath:  s3BucketPath,
-		allowedOrigins: allowedOrigins,
-	}
+	return arangoConfig, nil
 }
 
 func execute(ctx *pulumi.Context) error {
 	// Load configuration
-	config := loadConfig(ctx)
+	config, err := ReadConfig(ctx)
+  
+
   deploymentName := fmt.Sprintf("%s-api-server", config.name)
   serviceName := fmt.Sprintf("%s-api", config.name)
 
