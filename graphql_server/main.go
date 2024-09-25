@@ -98,23 +98,24 @@ func loadConfig(ctx *pulumi.Context) Config {
 func execute(ctx *pulumi.Context) error {
 	// Load configuration
 	config := loadConfig(ctx)
+  deploymentName := fmt.Sprintf("%s-api-server", config.name)
 
 	// Create deployment
   deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(fmt.Sprintf("%s-api-server", config.name)),
+			Name:      pulumi.String(deploymentName),
 			Namespace: pulumi.String(config.namespace),
 		},
 		Spec: &appsv1.DeploymentSpecArgs{
 			Selector: &metav1.LabelSelectorArgs{
 				MatchLabels: pulumi.StringMap{
-					"app": pulumi.String(fmt.Sprintf("%s-api-server", config.name)),
+					"app": pulumi.String(deploymentName),
 				},
 			},
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Labels: pulumi.StringMap{
-						"app": pulumi.String(fmt.Sprintf("%s-api-server", config.name)),
+						"app": pulumi.String(deploymentName),
 					},
 				},
 				Spec: &corev1.PodSpecArgs{
@@ -144,7 +145,7 @@ func execute(ctx *pulumi.Context) error {
 		},
 		Spec: &corev1.ServiceSpecArgs{
 			Selector: pulumi.StringMap{
-				"app": pulumi.String(fmt.Sprintf("%s-api-server", config.name)),
+				"app": pulumi.String(deploymentName),
 			},
 			Ports: corev1.ServicePortArray{
 				&corev1.ServicePortArgs{
