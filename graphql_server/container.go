@@ -40,13 +40,7 @@ func SecretEnvArgsArray(secretName string) corev1.EnvVarArray {
           Name: pulumi.String(secretName),
           Key:  pulumi.String(envVar.key),
         },
-        pulumi.String("--allowed-origins"),
       },
-      Args: append(pulumi.StringArray{
-        pulumi.String("--log-level"),
-        pulumi.String(config.logLevel),
-        pulumi.String("start-server"),
-      }, pulumi.StringArray(config.allowedOrigins)...),
     })
   }
   return envVarArray
