@@ -1,12 +1,18 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/dictybase-docker/cluster-ops/internal/gcp"
 	"github.com/urfave/cli/v2"
 )
+
+var logger *slog.Logger
+
+func init() {
+	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+}
 
 func main() {
 	app := &cli.App{
@@ -78,7 +84,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error running application %s", err)
+		logger.Error("Error running application", slog.Any("error", err))
 		os.Exit(1)
 	}
 }

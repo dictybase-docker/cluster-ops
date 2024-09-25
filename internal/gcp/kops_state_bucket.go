@@ -3,12 +3,21 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"cloud.google.com/go/storage"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/api/option"
 )
+
+var logger *slog.Logger
+
+func init() {
+	logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+}
 
 type CreateBucketParams struct {
 	Ctx         context.Context
@@ -44,14 +53,13 @@ func CreateKopsStateBucket(cliContext *cli.Context) error {
 			return err
 		}
 	} else {
-		fmt.Printf("Bucket %s already exists. Updating configuration.\n", params.BucketName)
+		logger.Info("Bucket already exists. Updating configuration.", slog.String("bucket", params.BucketName))
 	}
 
 	if err := setLifecycleConfig(ctx, bucket, params.MaxVersions); err != nil {
 		return err
 	}
 
-	fmt.Println("Bucket setup complete. Ready for use as kops state store.")
 	return nil
 }
 
@@ -126,12 +134,12 @@ func setupNewBucket(
 }
 
 func createBucket(params CreateBucketParams) error {
-	fmt.Printf("Creating bucket: %s\n", params.BucketName)
+	logger.Info("Creating bucket", slog.String("bucket", params.BucketName))
 	bucket := params.Client.Bucket(params.BucketName)
 	if err := bucket.Create(params.Ctx, params.ProjectID, &storage.BucketAttrs{
 		Location: params.RegionName,
 	}); err != nil {
-		return fmt.Errorf("failed to create bucket: %v", err)
+		return fmt.Errorf("failed to create bucket: %w", err)
 	}
 	return nil
 }
