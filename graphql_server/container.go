@@ -6,19 +6,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type ContainerConfig struct {
-  name string
-  image string
-  tag string
-  logLevel string
-  configMapName string
-  secretName string
-  port int
-  allowedOrigins []string
-	s3Bucket      string
-	s3BucketPath  string
-}
-
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
 	secretName := gs.Config.SecretName
   envVars := []struct {
