@@ -1,13 +1,13 @@
 encryptionsalt: v1:0eUzmeVI6Bg=:v1:IDstkF0VHJRlWbkM:zRIfXGcoBf9mKSCy/HC9vHBvx4ZRQQ==
 config:
-  namespace: dev
-  name: graphql
-  image: dictybase/graphql-server
-  tag: develop
-  logLevel: error
-  port: 8080
-  secretName:    dictycr-secret-dev
-  configMapName: dictycr-configuration
-  s3Bucket: editor
-  s3BucketPath: assets
-
+  graphql_server:properties:
+    configMapName: dictycr-configuration
+    image: dictybase/graphql-server
+    logLevel: error
+    name: graphql
+    namespace: dev
+    port: "8080"
+    s3Bucket: editor
+    s3BucketPath: assets
+    secretName: dictycr-secret-dev
+    tag: develop
