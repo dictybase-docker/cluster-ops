@@ -95,16 +95,7 @@ func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployme
 					},
 				},
 				Spec: &corev1.PodSpecArgs{
-					Containers: ContainerArray(&ContainerConfig{
-						name:           config.Name,
-						image:          config.Image,
-						tag:            config.Tag,
-						logLevel:       config.LogLevel,
-						configMapName:  config.LogLevel,
-						secretName:     config.SecretName,
-						port:           config.Port,
-						allowedOrigins: config.AllowedOrigins,
-					}),
+					Containers: gs.ContainerArray(),
 				},
 			},
 		},
