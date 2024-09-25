@@ -1,7 +1,7 @@
 encryptionsalt: v1:0eUzmeVI6Bg=:v1:IDstkF0VHJRlWbkM:zRIfXGcoBf9mKSCy/HC9vHBvx4ZRQQ==
 config:
   namespace: staging
-  name: graphql-server
+  name: graphql
   image: dictybase/graphql-server
   tag: staging
   logLevel: error
