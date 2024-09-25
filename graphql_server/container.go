@@ -19,7 +19,8 @@ type ContainerConfig struct {
 	s3BucketPath  string
 }
 
-func SecretEnvArgsArray(secretName string) corev1.EnvVarArray {
+func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
+	secretName := gs.Config.SecretName
   envVars := []struct {
     name string
     key  string
@@ -48,7 +49,8 @@ func SecretEnvArgsArray(secretName string) corev1.EnvVarArray {
   return envVarArray
 }
 
-func ConfigMapEnvArgsArray(configMapName string) corev1.EnvVarArray {
+func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
+	configMapName := gs.Config.ConfigMapName
   envVars := []struct {
     name string
     key  string
@@ -75,52 +77,56 @@ func ConfigMapEnvArgsArray(configMapName string) corev1.EnvVarArray {
 }
 
 
-func ContainerEnvArgsArray(configMapName string, secretName string) corev1.EnvVarArray {
-  var envVarArray corev1.EnvVarArray
-  envVarArray = append(envVarArray, ConfigMapEnvArgsArray(configMapName)...)
-  envVarArray = append(envVarArray, SecretEnvArgsArray(secretName)...)
-  return envVarArray
+func (gs *GraphqlServer) ContainerEnvArgsArray() corev1.EnvVarArray {
+	var envVarArray corev1.EnvVarArray
+	envVarArray = append(envVarArray, gs.ConfigMapEnvArgsArray()...)
+	envVarArray = append(envVarArray, gs.SecretEnvArgsArray()...)
+	return envVarArray
 }
 
-func ContainerPortArray(name string, port int) corev1.ContainerPortArray {
-  return corev1.ContainerPortArray{
-    &corev1.ContainerPortArgs{
-      Name:          pulumi.String(fmt.Sprintf("%s-api", name)),
-      ContainerPort: pulumi.Int(port),
-      Protocol:      pulumi.String("TCP"),
-    },
-  }
+func (gs *GraphqlServer) ContainerPortArray() corev1.ContainerPortArray {
+	config := gs.Config
+	return corev1.ContainerPortArray{
+		&corev1.ContainerPortArgs{
+			Name:          pulumi.String(fmt.Sprintf("%s-api", config.Name)),
+			ContainerPort: pulumi.Int(config.Port),
+			Protocol:      pulumi.String("TCP"),
+		},
+	}
 }
 
-func allowedOriginsFlags(origins []string) pulumi.StringArray {
-  var originFlagArray []string
-  for _, origin := range origins {
-    originFlagArray = append(originFlagArray, "--allowed-origin", origin)
-  }
-  return pulumi.ToStringArray(originFlagArray)
+func (gs *GraphqlServer) allowedOriginsFlags() pulumi.StringArray {
+	origins := gs.Config.AllowedOrigins
+	var originFlagArray []string
+	for _, origin := range origins {
+		originFlagArray = append(originFlagArray, "--allowed-origin", origin)
+	}
+	return pulumi.ToStringArray(originFlagArray)
 }
 
-func ContainerArgs(logLevel string, s3Bucket string, s3BucketPath string, origins []string) pulumi.StringArray {
-  args := pulumi.StringArray{
-    pulumi.String("start-server"),
-    pulumi.String("--log-level"),
-    pulumi.String(logLevel),
-    pulumi.String("--s3-bucket"),
-    pulumi.String(s3Bucket),
-    pulumi.String("--s3-bucket-path"),
-    pulumi.String(s3BucketPath),
-  }
-  return append(args, allowedOriginsFlags(origins)...)
+func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
+	config := gs.Config
+	args := pulumi.StringArray{
+		pulumi.String("start-server"),
+		pulumi.String("--log-level"),
+		pulumi.String(config.LogLevel),
+		pulumi.String("--s3-bucket"),
+		pulumi.String(config.S3Bucket),
+		pulumi.String("--s3-bucket-path"),
+		pulumi.String(config.S3BucketPath),
+	}
+	return append(args, gs.allowedOriginsFlags()...)
 }
 
-func ContainerArray(config *ContainerConfig) corev1.ContainerArray {
-  return corev1.ContainerArray{
-    &corev1.ContainerArgs{
-      Name:  pulumi.String(fmt.Sprintf("%s-container", config.name)),
-      Image: pulumi.String(fmt.Sprintf("%s:%s", config.image, config.tag)),
-      Args: ContainerArgs(config.logLevel, config.s3Bucket, config.s3BucketPath, config.allowedOrigins),
-      Env: ContainerEnvArgsArray(config.configMapName, config.secretName),
-      Ports: ContainerPortArray(config.name, config.port),
-    },
-  }
+func (gs *GraphqlServer) ContainerArray() corev1.ContainerArray {
+	config := gs.Config
+	return corev1.ContainerArray{
+		&corev1.ContainerArgs{
+			Name:  pulumi.String(fmt.Sprintf("%s-container", config.Name)),
+			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image, config.Tag)),
+			Args:  gs.ContainerArgs(),
+			Env:   gs.ContainerEnvArgsArray(),
+			Ports: gs.ContainerPortArray(),
+		},
+	}
 }
