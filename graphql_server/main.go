@@ -100,7 +100,7 @@ func execute(ctx *pulumi.Context) error {
 	config := loadConfig(ctx)
 
 	// Create deployment
-  _, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
+  deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.name), &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(fmt.Sprintf("%s-api-server", config.name)),
 			Namespace: pulumi.String(config.namespace),
@@ -154,7 +154,10 @@ func execute(ctx *pulumi.Context) error {
 			},
 			Type: pulumi.String("NodePort"),
 		},
-	})
+	}, 
+  pulumi.DependsOn([]pulumi.Resource{deployment}),
+)
+
 	if err != nil {
 		return err
 	}
