@@ -44,6 +44,36 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:   "find-or-create-kops-bucket",
+				Usage:  "Find or Create a bucket for kops state storage on Google Cloud",
+				Action: gcp.CreateKopsStateBucket,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "project",
+						Aliases:  []string{"p"},
+						Usage:    "Google Cloud project ID",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "bucket",
+						Aliases:  []string{"b"},
+						Usage:    "Name of the bucket to create",
+						Required: true,
+					},
+					&cli.IntFlag{
+						Name:    "max-versions",
+						Aliases: []string{"m"},
+						Usage:   "Maximum number of versions to keep for each object",
+						Value:   6,
+					},
+					&cli.StringFlag{
+						Name:  "region",
+						Value: "US",
+						Usage: "Region name for the bucket",
+					},
+				},
+			},
 		},
 	}
 
