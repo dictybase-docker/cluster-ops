@@ -1,9 +1,9 @@
 encryptionsalt: v1:0eUzmeVI6Bg=:v1:IDstkF0VHJRlWbkM:zRIfXGcoBf9mKSCy/HC9vHBvx4ZRQQ==
 config:
-  namespace: dev
+  namespace: staging
   name: graphql-server
   image: dictybase/graphql-server
-  tag: develop
+  tag: staging
   logLevel: error
   port: 8080
   secretName:    dictycr-secret
