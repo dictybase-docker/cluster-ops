@@ -90,16 +90,29 @@ func ContainerPortArray(name string, port int) corev1.ContainerPortArray {
   }
 }
 
+func allowedOriginsFlags(origins []string) pulumi.StringArray {
+  var originFlagArray []string
+  for _, origin := range origins {
+    originFlagArray = append(originFlagArray, "--allowed-origin", origin)
+  }
+  return pulumi.ToStringArray(originFlagArray)
+}
+
+func containerArgs(logLevel string, origins []string) pulumi.StringArray {
+  args := pulumi.StringArray{
+    pulumi.String("start-server"),
+    pulumi.String("--log-level"),
+    pulumi.String(logLevel),
+  }
+  return append(args, allowedOriginsFlags(origins)...)
+}
+
 func containerArray(config *ContainerConfig) corev1.ContainerArray {
   return corev1.ContainerArray{
     &corev1.ContainerArgs{
       Name:  pulumi.String(fmt.Sprintf("%s-container", config.name)),
       Image: pulumi.String(fmt.Sprintf("%s:%s", config.image, config.tag)),
-      Args: pulumi.StringArray{
-        pulumi.String("--log-level"),
-        pulumi.String(config.logLevel),
-        pulumi.String("start-server"),
-      },
+      Args: containerArgs(config.logLevel, config.allowedOrigins),
       Env: ContainerEnvArgsArray(config.configMapName, config.secretName),
       Ports: ContainerPortArray(config.name, config.port),
     },
