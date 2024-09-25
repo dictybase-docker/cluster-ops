@@ -11,3 +11,4 @@ config:
     s3BucketPath: assets
     secretName: dictycr-secret-dev
     tag: develop
+    allowedOrigins: '["http://localhost:*", "https://dictybase.org", "https://*.dictybase.org", "https://dictycr.org", "https://*.dictycr.org", "https://dictybase.dev", "https://*.dictybase.dev", "https://dictybase.dev*"]' 
