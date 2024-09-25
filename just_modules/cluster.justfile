@@ -39,8 +39,16 @@ create-kops-cluster project bucket_name:
     # Build the Go binary
     go build -o bin/gcp-tools cmd/gcp/main.go
 
-    # Run the Go command
-    ./bin/gcp-tools find-or-create-kops-bucket --project {{ project }} --bucket {{ bucket_name }} 
+    # Run the Go command to create or find the kops bucket
+    ./bin/gcp-tools find-or-create-kops-bucket --project {{ project }} --bucket {{ bucket_name }}
 
-    # TODO: Add kops cluster creation steps here
-    echo "Bucket setup complete. Ready for kops cluster creation."
+    echo "Bucket setup complete. Ready for kops cluster createion"
+
+
+    # Build the kops-cluster-creator binary
+    go build -o bin/kops-cluster-creator cmd/kops/main.go
+
+    # Run the kops-cluster-creator command
+    ./bin/kops-cluster-creator
+
+    echo "Kops cluster creation initiated. Please check the logs for details."
