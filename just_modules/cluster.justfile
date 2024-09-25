@@ -49,6 +49,21 @@ create-kops-cluster project bucket_name:
     go build -o bin/kops-cluster-creator cmd/kops/main.go
 
     # Run the kops-cluster-creator command
-    ./bin/kops-cluster-creator
+    ./bin/kops-cluster-creator --project-id {{project}}
 
     echo "Kops cluster creation initiated. Please check the logs for details."
+
+    just update-cluster
+    just validate-cluster
+
+[no-cd]
+update-cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kops update cluster --yes --admin
+
+[no-cd]
+validate-cluster waittime="20":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kops validate cluster --wait {{ waittime }}m
