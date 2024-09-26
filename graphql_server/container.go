@@ -8,7 +8,7 @@ import (
 
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
   envVars := []struct {
-    envVarName string
+    name string
     secret SecretConfig
   }{
     {"SECRET_KEY", gs.Config.MinioSecret},
@@ -23,7 +23,7 @@ func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
   var envVarArray corev1.EnvVarArray
   for _, envVar := range envVars {
     envVarArray = append(envVarArray, &corev1.EnvVarArgs{
-      Name: pulumi.String(envVar.envVarName),
+      Name: pulumi.String(envVar.name),
       ValueFrom: &corev1.EnvVarSourceArgs{
         SecretKeyRef: &corev1.SecretKeySelectorArgs{
           Name: pulumi.String(envVar.secret.name),
@@ -36,30 +36,29 @@ func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
 }
 
 func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
-	configMapName := gs.Config.ConfigMapName
-  envVars := []struct {
-    name string
-    key  string
-  }{
-    {"PUBLICATION_API_ENDPOINT", "endpoint.publication"},
-    {"S3_STORAGE_ENDPOINT", "endpoint.storage"},
-    {"AUTH_ENDPOINT", "auth.endpoint"},
-    {"ORGANISM_API_ENDPOINT", "endpoint.organism"},
-  }
+	envVars := []struct {
+		name string
+		configMap  ConfigMapEntry
+	}{
+		{"PUBLICATION_API_ENDPOINT", gs.Config.PublicationApiEndpoint},
+		{"S3_STORAGE_ENDPOINT", gs.Config.S3StorageEndpoint},
+		{"AUTH_ENDPOINT", gs.Config.AuthEndpoint},
+		{"ORGANISM_API_ENDPOINT", gs.Config.OrganismEndpoint},
+	}
 
-  var envVarArray corev1.EnvVarArray
-  for _, envVar := range envVars {
-    envVarArray = append(envVarArray, &corev1.EnvVarArgs{
-      Name: pulumi.String(envVar.name),
-      ValueFrom: &corev1.EnvVarSourceArgs{
-        ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
-          Name: pulumi.String(configMapName),
-          Key:  pulumi.String(envVar.key),
-        },
-      },
-    })
-  }
-  return envVarArray
+	var envVarArray corev1.EnvVarArray
+	for _, envVar := range envVars {
+		envVarArray = append(envVarArray, &corev1.EnvVarArgs{
+			Name: pulumi.String(envVar.name),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
+					Name: pulumi.String(envVar.configMap.name),
+					Key:  pulumi.String(envVar.configMap.key),
+				},
+			},
+		})
+	}
+	return envVarArray
 }
 
 
