@@ -12,7 +12,6 @@ config:
     authEndpoint:
       key: keyname
       name: dictycr-configuration
-    configMapName: dictycr-configuration
     image: dictybase/graphql-server
     jwksURI:
       key: keyname
@@ -44,5 +43,4 @@ config:
     s3StorageEndpoint:
       key: keyname
       name: dictycr-configuration
-    secretName: dictycr-secret-dev
     tag: develop
