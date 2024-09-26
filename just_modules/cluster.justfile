@@ -82,3 +82,10 @@ k9s:
     #!/usr/bin/env bash
     set -euo pipefail
     k9s
+
+[no-cd]
+preview folder stack="dev":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	pulumi -C {{ folder }} -s {{ stack }} preview
+
