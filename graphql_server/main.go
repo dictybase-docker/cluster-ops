@@ -7,6 +7,7 @@ import (
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"github.com/dictybase-docker/cluster-ops/k8s"
 )
 
 var allowedOrigins = []string{
@@ -73,16 +74,17 @@ func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
   }
 }
 
-func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
-	config := gs.Config
-	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
-
-	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", config.Name), &appsv1.DeploymentArgs{
-		Metadata: &metav1.ObjectMetaArgs{
+func (gs *GraphqlServer) CreateDeploymentMetaData() (*metav1.ObjectMetaArgs) {
+	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
+  return &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(deploymentName),
-			Namespace: pulumi.String(config.Namespace),
-		},
-		Spec: &appsv1.DeploymentSpecArgs{
+			Namespace: pulumi.String(gs.Config.Namespace),
+  }
+}
+
+func (gs *GraphqlServer) CreateDeploymentSpec() (*appsv1.DeploymentSpecArgs) {
+	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
+  return &appsv1.DeploymentSpecArgs{
 			Selector: &metav1.LabelSelectorArgs{
 				MatchLabels: pulumi.StringMap{
 					"app": pulumi.String(deploymentName),
@@ -98,7 +100,13 @@ func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployme
 					Containers: gs.ContainerArray(),
 				},
 			},
-		},
+		}
+}
+
+func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
+	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", gs.Config.Name), &appsv1.DeploymentArgs{
+		Metadata: gs.CreateDeploymentMetaData(),
+    Spec: gs.CreateDeploymentSpec(),
 	})
 	if err != nil {
 		return nil, err
