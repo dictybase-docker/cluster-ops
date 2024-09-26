@@ -2,7 +2,15 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnGTbCB+Lo5YxzFRrER4JYZqxnGH5A9GhH9hgOrazQxASSQB2302FQu2boX09bYt7UYC0fFiJl9CfPc8ZXkaoKjaPZi+QRs1K5zteamI2UDwC33UwAXLgr4g0M5Nnd818z//HCp2K0+0DKog=
 config:
   graphql_server:properties:
-    allowedOrigins: '["http://localhost:*", "https://dictybase.org", "https://*.dictybase.org", "https://dictycr.org", "https://*.dictycr.org", "https://dictybase.dev", "https://*.dictybase.dev", "https://dictybase.dev*"]'
+    allowedOrigins:
+      - "http://localhost:*"
+      - "https://dictybase.org"
+      - "https://*.dictybase.org"
+      - "https://dictycr.org"
+      - "https://*.dictycr.org"
+      - "https://dictybase.dev"
+      - "https://*.dictybase.dev"
+      - "https://dictybase.dev*"
     authAppId:
       key: keyname
       name: dictycr-secret
