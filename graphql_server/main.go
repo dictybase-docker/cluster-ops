@@ -2,9 +2,6 @@ package main
 
 import (
 	"fmt"
-	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -32,7 +29,6 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-  // Load configuration
   config, err := ReadConfig(ctx)
   if err != nil {
     return err
@@ -68,33 +64,7 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	config := gs.Config
-	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
-	serviceName := fmt.Sprintf("%s-api", config.Name)
-
-	// Create service
-	_, err = corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(serviceName),
-			Namespace: pulumi.String(config.Namespace),
-		},
-		Spec: &corev1.ServiceSpecArgs{
-			Selector: pulumi.StringMap{
-				"app": pulumi.String(deploymentName),
-			},
-			Ports: corev1.ServicePortArray{
-				&corev1.ServicePortArgs{
-					Port:       pulumi.Int(config.Port),
-					TargetPort: pulumi.Int(config.Port),
-				},
-			},
-			Type: pulumi.String("NodePort"),
-		},
-	},
-		pulumi.DependsOn([]pulumi.Resource{deployment}),
-	)
-
-	if err != nil {
+	if err := gs.CreateService(ctx, deployment); err != nil {
 		return err
 	}
 
