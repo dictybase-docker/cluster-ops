@@ -3,13 +3,46 @@ encryptedkey: CiQALAIOnGTbCB+Lo5YxzFRrER4JYZqxnGH5A9GhH9hgOrazQxASSQB2302FQu2boX
 config:
   graphql_server:properties:
     allowedOrigins: '["http://localhost:*", "https://dictybase.org", "https://*.dictybase.org", "https://dictycr.org", "https://*.dictycr.org", "https://dictybase.dev", "https://*.dictybase.dev", "https://dictybase.dev*"]'
+    authAppId:
+      key: keyname
+      name: dictycr-secret
+    authAppSecret:
+      key: keyname
+      name: dictycr-secret
+    authEndpoint:
+      key: keyname
+      name: dictycr-configuration
     configMapName: dictycr-configuration
     image: dictybase/graphql-server
+    jwksURI:
+      key: keyname
+      name: dictycr-secret
+    jwtAudience:
+      key: keyname
+      name: dictycr-secret
+    jwtIssuer:
+      key: keyname
+      name: dictycr-secret
     logLevel: error
+    minioAccess:
+      key: keyname
+      name: dictycr-secret
+    minioSecret:
+      key: keyname
+      name: dictycr-secret
     name: graphql
     namespace: dev
-    port: "8080"
+    organismEndpoint:
+      key: keyname
+      name: dictycr-configuration
+    port: 8080
+    publicationApiEndpoint:
+      key: keyname
+      name: dictycr-configuration
     s3Bucket: editor
     s3BucketPath: assets
+    s3StorageEndpoint:
+      key: keyname
+      name: dictycr-configuration
     secretName: dictycr-secret-dev
     tag: develop
