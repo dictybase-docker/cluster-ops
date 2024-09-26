@@ -1,4 +1,10 @@
 # Set up Pulumi with GCS backend
+# This target sets up a Google Cloud Storage (GCS) bucket for Pulumi state management
+# Parameters:
+#   sa_json_path: Path to the service account JSON file
+#   gcs_bucket: Name of the GCS bucket to create or use
+#   lifecycle_config: Path to the lifecycle configuration file (optional)
+#   location: GCS bucket location (default: us-central1)
 [group('pulumi-management')]
 pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1":
     #!/usr/bin/env bash
@@ -42,9 +48,33 @@ pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1"
         echo "Lifecycle configuration has been applied from {{lifecycle_config}}."
     fi
 
+# Preview Pulumi changes
+# This target previews Pulumi changes for a specific stack in a given folder
+# Parameters:
+#   folder: The folder containing the Pulumi project
+#   stack: The name of the Pulumi stack (default: dev)
 [no-cd]
 preview folder stack="dev":
 	#!/usr/bin/env bash
 	set -euo pipefail
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} -s {{ stack }} preview
+
+# This target creates a new Pulumi stack in a given folder
+# Parameters:
+#   folder: The folder containing the Pulumi project
+#   stack: The name of the new Pulumi stack (default: dev)
+[no-cd]
+new-stack folder stack="dev":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} stack init {{ stack }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
+
+[no-cd]
+copy-stack folder existing destination:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} config cp -s {{ existing }} -d {{ destination }}
+
