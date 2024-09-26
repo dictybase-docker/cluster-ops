@@ -18,7 +18,6 @@ type BackupSecretsConfig struct {
 		ServiceAccount struct {
 			Filepath string
 			Keyname  string
-			Key      string
 		}
 	}
 	Namespace string
