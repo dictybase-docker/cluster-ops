@@ -41,3 +41,10 @@ pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1"
     if [ -n "{{lifecycle_config}}" ]; then
         echo "Lifecycle configuration has been applied from {{lifecycle_config}}."
     fi
+
+[no-cd]
+preview folder stack="dev":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} -s {{ stack }} preview
