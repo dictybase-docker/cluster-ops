@@ -1,0 +1,12 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnJ1z9EpHhS0EwipUdEgwMTfu/x1MY679NbblzU7YP30SSQB2302FZ4umlmmJrHREWi3MIowB52h7ARlnpv+lWW5rP4bfTV/DHmqno+G3k6RUMzrUTBfCl8n7giayqieS7zvcSL4V2XpBs2k=
+config:
+  redis-operator:properties:
+    chart:
+      name: redis-operator
+      repository: https://ot-container-kit.github.io/helm-charts
+      version: 0.18.1
+    image:
+      tag: v0.18.0
+    namespace: operators
+    watchNamespace: dev

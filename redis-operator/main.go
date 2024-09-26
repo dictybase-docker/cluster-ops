@@ -30,7 +30,7 @@ type RedisOperator struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*RedisOperatorConfig, error) {
-	conf := config.New(ctx, "redis-operator")
+	conf := config.New(ctx, "")
 	redisConfig := &RedisOperatorConfig{}
 	if err := conf.TryObject("properties", redisConfig); err != nil {
 		return nil, fmt.Errorf("failed to read redis-operator config: %w", err)
