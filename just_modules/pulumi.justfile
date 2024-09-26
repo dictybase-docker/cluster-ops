@@ -78,3 +78,9 @@ copy-stack folder existing destination:
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} config cp -s {{ existing }} -d {{ destination }}
 
+[no-cd]
+create-resource folder stack:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} up -s {{ stack }} -f -y
