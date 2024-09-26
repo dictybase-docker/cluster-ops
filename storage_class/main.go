@@ -10,11 +10,9 @@ import (
 )
 
 type StorageClassConfig struct {
-	Properties struct {
-		DiskType    string
-		Name        string
-		Provisioner string
-	}
+	DiskType    string
+	Name        string
+	Provisioner string
 }
 
 func main() {
@@ -35,7 +33,7 @@ func Run(ctx *pulumi.Context) error {
 }
 
 func NewStorageClassConfig(ctx *pulumi.Context) (*StorageClassConfig, error) {
-	conf := config.New(ctx, "storage-class")
+	conf := config.New(ctx, "")
 	storageConfig := &StorageClassConfig{}
 	if err := conf.TryObject("properties", storageConfig); err != nil {
 		return nil, fmt.Errorf("failed to read storage class config: %w", err)
@@ -46,14 +44,14 @@ func NewStorageClassConfig(ctx *pulumi.Context) (*StorageClassConfig, error) {
 func (sconf *StorageClassConfig) CreateStorageClass(ctx *pulumi.Context) error {
 	_, err := storagev1.NewStorageClass(
 		ctx,
-		sconf.Properties.Name,
+		sconf.Name,
 		&storagev1.StorageClassArgs{
 			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(sconf.Properties.Name),
+				Name: pulumi.String(sconf.Name),
 			},
-			Provisioner: pulumi.String(sconf.Properties.Provisioner),
+			Provisioner: pulumi.String(sconf.Provisioner),
 			Parameters: pulumi.StringMap{
-				"type": pulumi.String(sconf.Properties.DiskType),
+				"type": pulumi.String(sconf.DiskType),
 			},
 			AllowVolumeExpansion: pulumi.Bool(true),
 			VolumeBindingMode:    pulumi.String("WaitForFirstConsumer"),
