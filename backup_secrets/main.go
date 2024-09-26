@@ -28,7 +28,7 @@ type BackupSecrets struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*BackupSecretsConfig, error) {
-	conf := config.New(ctx, "backup_secrets")
+	conf := config.New(ctx, "")
 	backupConfig := &BackupSecretsConfig{}
 	if err := conf.TryObject("properties", backupConfig); err != nil {
 		return nil, fmt.Errorf(
@@ -46,6 +46,16 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 }
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
+	// Create namespace
+	namespace, err := corev1.NewNamespace(ctx, bsr.Config.Namespace, &corev1.NamespaceArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: pulumi.String(bsr.Config.Namespace),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error creating namespace: %w", err)
+	}
+
 	// Read the content of the file specified by Filepath
 	serviceAccountContent, err := os.ReadFile(
 		bsr.Config.Secret.ServiceAccount.Filepath,
@@ -71,12 +81,14 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 				),
 			},
 		},
+		pulumi.DependsOn([]pulumi.Resource{namespace}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating backup secret: %w", err)
 	}
 
 	ctx.Export("secretName", secret.Metadata.Name())
+	ctx.Export("namespaceName", namespace.Metadata.Name())
 	return nil
 }
 
