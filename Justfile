@@ -17,9 +17,7 @@ gha_download_url := if os() == "macos" { base_gha_download_url + "darwin_arm64" 
 file_suffix := ".tar.gz"
 dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux_amd64" + file_suffix }
 
-
 set dotenv-filename := "./.env.dev.dcr-experiments"
-
 
 # Run Golang tests using Dagger
 test:
