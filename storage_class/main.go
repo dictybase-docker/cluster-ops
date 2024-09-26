@@ -37,7 +37,7 @@ func Run(ctx *pulumi.Context) error {
 func NewStorageClassConfig(ctx *pulumi.Context) (*StorageClassConfig, error) {
 	conf := config.New(ctx, "storage-class")
 	storageConfig := &StorageClassConfig{}
-	if err := conf.TryObject("", storageConfig); err != nil {
+	if err := conf.TryObject("properties", storageConfig); err != nil {
 		return nil, fmt.Errorf("failed to read storage class config: %w", err)
 	}
 	return storageConfig, nil
