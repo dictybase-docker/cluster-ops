@@ -1,5 +1,5 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
-encryptedkey: CiQALAIOnMm+h4alyNgoOlUut8yPEvXZsWr/qALeSuctD8SJsFESSQB2302FBXmueh3ggXyWHpAdRKMuJYuuuLdBnOO0dIgFDTvv7ARFOclXacN2LgKtSQ5rP4EFdhGgfnfTRpWrx2AIToAsQO1xctQ=
+encryptedkey: CiQALAIOnFjHOypywdiBNX9CSp+HMR+Nycd4hBTb40PgF+UwyLYSSQB2302FSoHVZjm3OtyJF6k+/uWdDLlWlh9lOmP1Tzqyhz/yEd19EEtTEd5biBAAtpIJBKiZ84QUZz+3mpFs+Z11FP/YkeWqgIw=
 config:
   storage-class:properties:
     diskType: pd-balanced
