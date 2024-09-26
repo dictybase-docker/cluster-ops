@@ -61,7 +61,6 @@ func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	return envVarArray
 }
 
-
 func (gs *GraphqlServer) ContainerEnvArgsArray() corev1.EnvVarArray {
 	var envVarArray corev1.EnvVarArray
 	envVarArray = append(envVarArray, gs.ConfigMapEnvArgsArray()...)
