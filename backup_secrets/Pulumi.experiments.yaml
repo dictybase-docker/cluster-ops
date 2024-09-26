@@ -1,0 +1,15 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnFBFmtiTjYg/CjR0o5Pr+itvV4uUM7YCCQC79RiEfJwSSQB2302FdTei4mLHRK3TcsiW6Do8lpLlE9TDq1sMloZr8/ry+PVvuyUgJuHr6i5G1gHDhLHiFDZVGO/JeKL16rOqBOz67kVxdAM=
+config:
+  backup_secrets:properties:
+    namespace: dev
+    secret:
+      gcsProject: dcr-experiments
+      name: dictycr
+      resticPass:
+        secure: v1:rwlVTEemQEi96iVU:2tCX/NR4C59DRm1vr8oPfqkMsiK75+FhWWTQ/sXsat4LMmu+irU=
+      serviceAccount:
+        filepath:
+          secure: v1:/uKuz6inyV6JNQ0O:+5TEQ2VNmuLCtrgzO2VZNpFmowijpYouIe0GaTTPFxiqEskU4NMeQz6pi0VVHYl+j+nt8+melhLS+d//L5fU0Pkodw==
+        keyname:
+          secure: v1:+xOtVf9fTKSyrrKu:KJ14b1Dudy99FxUXF0aTOyRPqrBZXkC4ZxTYQeZI
