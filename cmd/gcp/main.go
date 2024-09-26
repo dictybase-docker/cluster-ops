@@ -132,6 +132,12 @@ func createKeyringAndKeyCommand() *cli.Command {
 				Usage:   "Location for the keyring and key",
 				Value:   "us-central1",
 			},
+			&cli.StringFlag{
+				Name:    "credentials",
+				Aliases: []string{"c"},
+				Usage:   "Path to the Google Cloud credentials file (can also be set via GOOGLE_APPLICATION_CREDENTIALS env var)",
+				EnvVars: []string{"GOOGLE_APPLICATION_CREDENTIALS"},
+			},
 		},
 	}
 }
