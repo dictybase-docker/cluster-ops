@@ -3,33 +3,125 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 )
+
+type KeyringAndKeyParams struct {
+	ProjectID       string
+	KeyringName     string
+	KeyName         string
+	Location        string
+	CredentialsFile string
+}
+
+type KeyringParams struct {
+	Ctx         context.Context
+	Client      *kms.KeyManagementClient
+	ParentName  string
+	KeyringName string
+}
+
+type KeyParams struct {
+	Ctx         context.Context
+	Client      *kms.KeyManagementClient
+	ParentName  string
+	KeyringName string
+	KeyName     string
+}
 
 func CreateKeyringAndKey(cltx *cli.Context) error {
 	ctx := context.Background()
-	client, err := kms.NewKeyManagementClient(ctx)
+
+	params := KeyringAndKeyParams{
+		ProjectID:       cltx.String("project-id"),
+		KeyringName:     cltx.String("keyring-name"),
+		KeyName:         cltx.String("key-name"),
+		Location:        cltx.String("location"),
+		CredentialsFile: cltx.String("credentials"),
+	}
+
+	client, err := createKMSClient(ctx, params.CredentialsFile)
 	if err != nil {
-		return fmt.Errorf("failed to create KMS client: %v", err)
+		return err
 	}
 	defer client.Close()
 
-	projectID := cltx.String("project-id")
-	keyringName := cltx.String("keyring-name")
-	keyName := cltx.String("key-name")
-	location := cltx.String("location")
+	parentName := fmt.Sprintf("projects/%s/locations/%s", params.ProjectID, params.Location)
 
-	// The resource name of the location associated with the keyring.
-	parentName := fmt.Sprintf("projects/%s/locations/%s", projectID, location)
+	keyringParams := KeyringParams{
+		Ctx:         ctx,
+		Client:      client,
+		ParentName:  parentName,
+		KeyringName: params.KeyringName,
+	}
+	if err := createKeyringIfNotExists(keyringParams); err != nil {
+		return err
+	}
 
-	// Check if the keyring already exists
-	keyringExists := false
-	keyringIterator := client.ListKeyRings(ctx, &kmspb.ListKeyRingsRequest{
-		Parent: parentName,
+	keyParams := KeyParams{
+		Ctx:         ctx,
+		Client:      client,
+		ParentName:  parentName,
+		KeyringName: params.KeyringName,
+		KeyName:     params.KeyName,
+	}
+	if err := createKey(keyParams); err != nil {
+		return err
+	}
+
+	slog.Info("Successfully created keyring and key",
+		"keyring", params.KeyringName,
+		"key", params.KeyName,
+		"project", params.ProjectID,
+		"location", params.Location,
+	)
+	return nil
+}
+
+func createKMSClient(
+	ctx context.Context,
+	credentialsFile string,
+) (*kms.KeyManagementClient, error) {
+	client, err := kms.NewKeyManagementClient(
+		ctx,
+		option.WithCredentialsFile(credentialsFile),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KMS client: %v", err)
+	}
+	return client, nil
+}
+
+func createKeyringIfNotExists(params KeyringParams) error {
+	keyringExists, err := checkKeyringExists(params)
+	if err != nil {
+		return err
+	}
+
+	if !keyringExists {
+		slog.Info("Creating keyring", "keyring", params.KeyringName)
+		_, err = params.Client.CreateKeyRing(params.Ctx, &kmspb.CreateKeyRingRequest{
+			Parent:    params.ParentName,
+			KeyRingId: params.KeyringName,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create keyring: %v", err)
+		}
+	} else {
+		slog.Info("Keyring already exists", "keyring", params.KeyringName)
+	}
+	return nil
+}
+
+func checkKeyringExists(params KeyringParams) (bool, error) {
+	keyringIterator := params.Client.ListKeyRings(params.Ctx, &kmspb.ListKeyRingsRequest{
+		Parent: params.ParentName,
 	})
 	for {
 		keyring, err := keyringIterator.Next()
@@ -37,37 +129,24 @@ func CreateKeyringAndKey(cltx *cli.Context) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to list keyrings: %v", err)
+			return false, fmt.Errorf("failed to list keyrings: %v", err)
 		}
 		if keyring.Name == fmt.Sprintf(
 			"%s/keyRings/%s",
-			parentName,
-			keyringName,
+			params.ParentName,
+			params.KeyringName,
 		) {
-			keyringExists = true
-			break
+			return true, nil
 		}
 	}
+	return false, nil
+}
 
-	// Create the keyring if it doesn't exist
-	if !keyringExists {
-		fmt.Printf("Creating keyring %s...\n", keyringName)
-		_, err = client.CreateKeyRing(ctx, &kmspb.CreateKeyRingRequest{
-			Parent:    parentName,
-			KeyRingId: keyringName,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create keyring: %v", err)
-		}
-	} else {
-		fmt.Printf("Keyring %s already exists.\n", keyringName)
-	}
-
-	// Create the key
-	fmt.Printf("Creating key %s...\n", keyName)
-	_, err = client.CreateCryptoKey(ctx, &kmspb.CreateCryptoKeyRequest{
-		Parent:      fmt.Sprintf("%s/keyRings/%s", parentName, keyringName),
-		CryptoKeyId: keyName,
+func createKey(params KeyParams) error {
+	slog.Info("Creating key", "key", params.KeyName)
+	_, err := params.Client.CreateCryptoKey(params.Ctx, &kmspb.CreateCryptoKeyRequest{
+		Parent:      fmt.Sprintf("%s/keyRings/%s", params.ParentName, params.KeyringName),
+		CryptoKeyId: params.KeyName,
 		CryptoKey: &kmspb.CryptoKey{
 			Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
 		},
@@ -75,13 +154,5 @@ func CreateKeyringAndKey(cltx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create key: %v", err)
 	}
-
-	fmt.Printf(
-		"Successfully created keyring %s and key %s in project %s, location %s\n",
-		keyringName,
-		keyName,
-		projectID,
-		location,
-	)
 	return nil
 }
