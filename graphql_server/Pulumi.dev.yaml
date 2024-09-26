@@ -1,6 +1,7 @@
 encryptionsalt: v1:0eUzmeVI6Bg=:v1:IDstkF0VHJRlWbkM:zRIfXGcoBf9mKSCy/HC9vHBvx4ZRQQ==
 config:
   graphql_server:properties:
+    allowedOrigins: '["http://localhost:*", "https://dictybase.org", "https://*.dictybase.org", "https://dictycr.org", "https://*.dictycr.org", "https://dictybase.dev", "https://*.dictybase.dev", "https://dictybase.dev*"]'
     configMapName: dictycr-configuration
     image: dictybase/graphql-server
     logLevel: error
@@ -11,4 +12,3 @@ config:
     s3BucketPath: assets
     secretName: dictycr-secret-dev
     tag: develop
-    allowedOrigins: '["http://localhost:*", "https://dictybase.org", "https://*.dictybase.org", "https://dictycr.org", "https://*.dictycr.org", "https://dictybase.dev", "https://*.dictybase.dev", "https://dictybase.dev*"]' 
