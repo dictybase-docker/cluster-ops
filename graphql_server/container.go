@@ -7,28 +7,27 @@ import (
 )
 
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
-	secretName := gs.Config.SecretName
   envVars := []struct {
-    name string
-    key  string
+    envVarName string
+    secret SecretConfig
   }{
-    {"SECRET_KEY", "minio.secretkey"},
-    {"ACCESS_KEY", "minio.accesskey"},
-    {"JWT_AUDIENCE", "auth.JwtAudience"},
-    {"JWT_ISSUER", "auth.JwtIssuer"},
-    {"JWKS_PUBLIC_URI", "auth.JwksURI"},
-    {"APPLICATION_SECRET", "auth.appSecret"},
-    {"APPLICATION_ID", "auth.appId"},
+    {"SECRET_KEY", gs.Config.MinioSecret},
+    {"ACCESS_KEY", gs.Config.MinioAccess},
+    {"JWT_AUDIENCE", gs.Config.JwtAudience},
+    {"JWT_ISSUER", gs.Config.JwtIssuer},
+    {"JWKS_PUBLIC_URI", gs.Config.JwksURI},
+    {"APPLICATION_SECRET", gs.Config.AuthAppSecret},
+    {"APPLICATION_ID", gs.Config.AuthAppId},
   }
 
   var envVarArray corev1.EnvVarArray
   for _, envVar := range envVars {
     envVarArray = append(envVarArray, &corev1.EnvVarArgs{
-      Name: pulumi.String(envVar.name),
+      Name: pulumi.String(envVar.envVarName),
       ValueFrom: &corev1.EnvVarSourceArgs{
         SecretKeyRef: &corev1.SecretKeySelectorArgs{
-          Name: pulumi.String(secretName),
-          Key:  pulumi.String(envVar.key),
+          Name: pulumi.String(envVar.secret.name),
+          Key:  pulumi.String(envVar.secret.key),
         },
       },
     })
