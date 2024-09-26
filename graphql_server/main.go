@@ -63,47 +63,6 @@ func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
   }
 }
 
-func (gs *GraphqlServer) CreateDeploymentMetaData() (*metav1.ObjectMetaArgs) {
-	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
-  return &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(deploymentName),
-			Namespace: pulumi.String(gs.Config.Namespace),
-  }
-}
-
-func (gs *GraphqlServer) CreateDeploymentSpec() (*appsv1.DeploymentSpecArgs) {
-	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
-  return &appsv1.DeploymentSpecArgs{
-			Selector: &metav1.LabelSelectorArgs{
-				MatchLabels: pulumi.StringMap{
-					"app": pulumi.String(deploymentName),
-				},
-			},
-			Template: &corev1.PodTemplateSpecArgs{
-				Metadata: &metav1.ObjectMetaArgs{
-					Labels: pulumi.StringMap{
-						"app": pulumi.String(deploymentName),
-					},
-				},
-				Spec: &corev1.PodSpecArgs{
-					Containers: gs.ContainerArray(),
-				},
-			},
-		}
-}
-
-func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
-	deployment, err := appsv1.NewDeployment(ctx, fmt.Sprintf("%s-api-server", gs.Config.Name), &appsv1.DeploymentArgs{
-		Metadata: gs.CreateDeploymentMetaData(),
-    Spec: gs.CreateDeploymentSpec(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return deployment, nil
-}
-
 func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 	deployment, err := gs.CreateDeployment(ctx)
 	if err != nil {
