@@ -10,17 +10,6 @@ import (
 	"github.com/dictybase-docker/cluster-ops/k8s"
 )
 
-var allowedOrigins = []string{
-	"http://localhost:*",
-	"https://dictybase.org",
-	"https://*.dictybase.org",
-	"https://dictycr.org",
-	"https://*.dictycr.org",
-	"https://dictybase.dev",
-	"https://*.dictybase.dev",
-	"https://dictybase.dev*",
-}
-
 type GraphqlServerConfig struct {
 	Namespace     string
 	Name          string
