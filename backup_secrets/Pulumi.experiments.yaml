@@ -2,6 +2,7 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnFBFmtiTjYg/CjR0o5Pr+itvV4uUM7YCCQC79RiEfJwSSQB2302FdTei4mLHRK3TcsiW6Do8lpLlE9TDq1sMloZr8/ry+PVvuyUgJuHr6i5G1gHDhLHiFDZVGO/JeKL16rOqBOz67kVxdAM=
 config:
   backup_secrets:properties:
+    extraNamespace: operators
     namespace: dev
     secret:
       gcsProject: dcr-experiments
