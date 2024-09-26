@@ -7,6 +7,9 @@ config:
       key: gcsCredentials
       name: dictycr
     folder: arangodump
+    image:
+      name: database-backup
+      tag: develop-b273965
     namespace: dev
     projectSecret:
       key: gcsProject

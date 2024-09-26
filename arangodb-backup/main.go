@@ -35,6 +35,10 @@ type ArangoBackupConfig struct {
 		Name  string
 		Size  string
 	}
+	Image struct {
+		Name string
+		Tag  string
+	}
 }
 
 type ArangoBackup struct {
@@ -234,7 +238,7 @@ func (ab *ArangoBackup) createBackupContainer(
 ) *corev1.ContainerArgs {
 	return &corev1.ContainerArgs{
 		Name:  pulumi.String("backup"),
-		Image: pulumi.String("dictybase/restic-redis-arangopg:main-471213a"),
+		Image: pulumi.Sprintf("%s:%s", ab.Config.Image.Name, ab.Config.Image.Tag),
 		Command: pulumi.StringArray{
 			pulumi.String("app"),
 		},

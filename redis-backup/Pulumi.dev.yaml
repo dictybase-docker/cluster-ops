@@ -8,6 +8,9 @@ config:
         secure: v1:9Lx6JHbt6oyQCNlr:RdaQHoSPzoNhJsP7uEmDMM2mMyD+o3fY4JcJSWym
       name:
         secure: v1:x4rDYRN0MwMzR0mr:ghse2wuRkYjLed1BLik2vmwP3KiUOeg=
+    image:
+      name: database-backup
+      tag: develop-b273965
     namespace: dev
     projectSecret:
       key:
