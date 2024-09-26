@@ -1,2 +1,23 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
 encryptedkey: CiQALAIOnDYDJPAZKhz6baNl/eqeoJb8Lv/MMnz0t7k9vchYNk8SSQB2302FF7hfoCLHG7HF9V51Rhv7sywjMkfomQ2+hHOfKB9AHQAG+MkKr+nn9deJgIVNs9w+mpZLb0bMYA3ASrswxy8pizUhYTY=
+config:
+  event-messenger-email:properties:
+    mailgunApiKey:
+      key: eventMessenger.email.apiKey
+      name: dictybase-configuration
+    domain: 
+      key: eventMessenger.email.domain
+      name: dictybase-configuration
+    sender: 
+      key: eventMessenger.email.sender
+      name: dictybase-configuration
+    senderName: 
+      key: eventMessenger.email.senderName
+      name: dictybase-configuration
+    cc: 
+      key: eventMessenger.email.cc
+      name: dictybase-configuration
+    publicationApiEndpoint: 
+      key: endpoints.publication
+      name: dictybase-configuration
+
