@@ -35,6 +35,46 @@ func getCommands() []*cli.Command {
 	}
 }
 
+func createKeyringAndKeyCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "create-keyring-and-key",
+		Usage:  "Create a keyring and key in Google Cloud KMS",
+		Action: gcp.CreateKeyringAndKey,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "project-id",
+				Aliases:  []string{"p"},
+				Usage:    "Google Cloud project ID",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "keyring-name",
+				Aliases:  []string{"k"},
+				Usage:    "Name of the keyring to create",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "key-name",
+				Aliases:  []string{"n"},
+				Usage:    "Name of the key to create",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:    "location",
+				Aliases: []string{"l"},
+				Usage:   "Location for the keyring and key",
+				Value:   "us-central1",
+			},
+			&cli.StringFlag{
+				Name:    "credentials",
+				Aliases: []string{"c"},
+				Usage:   "Path to the Google Cloud credentials file (can also be set via GOOGLE_APPLICATION_CREDENTIALS env var)",
+				EnvVars: []string{"GOOGLE_APPLICATION_CREDENTIALS"},
+			},
+		},
+	}
+}
+
 func analyzeRolesCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "analyze-roles",
@@ -97,46 +137,6 @@ func findOrCreateKopsBucketCommand() *cli.Command {
 				Name:  "region",
 				Value: "US",
 				Usage: "Region name for the bucket",
-			},
-		},
-	}
-}
-
-func createKeyringAndKeyCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "create-keyring-and-key",
-		Usage:  "Create a keyring and key in Google Cloud KMS",
-		Action: gcp.CreateKeyringAndKey,
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "project-id",
-				Aliases:  []string{"p"},
-				Usage:    "Google Cloud project ID",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "keyring-name",
-				Aliases:  []string{"k"},
-				Usage:    "Name of the keyring to create",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "key-name",
-				Aliases:  []string{"n"},
-				Usage:    "Name of the key to create",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:    "location",
-				Aliases: []string{"l"},
-				Usage:   "Location for the keyring and key",
-				Value:   "us-central1",
-			},
-			&cli.StringFlag{
-				Name:    "credentials",
-				Aliases: []string{"c"},
-				Usage:   "Path to the Google Cloud credentials file (can also be set via GOOGLE_APPLICATION_CREDENTIALS env var)",
-				EnvVars: []string{"GOOGLE_APPLICATION_CREDENTIALS"},
 			},
 		},
 	}
