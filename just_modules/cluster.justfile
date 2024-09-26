@@ -49,7 +49,7 @@ create-kops-cluster project bucket_name:
     go build -o bin/kops-cluster-creator cmd/kops/main.go
 
     # Run the kops-cluster-creator command
-    ./bin/kops-cluster-creator --project-id {{project}}
+    ./bin/kops-cluster-creator --project-id {{ project }}
 
     echo "Kops cluster creation initiated. Please check the logs for details."
 
@@ -82,4 +82,3 @@ k9s:
     #!/usr/bin/env bash
     set -euo pipefail
     k9s
-
