@@ -13,22 +13,8 @@ func (gs *GraphqlServer) CreateService(ctx *pulumi.Context, deployment pulumi.Re
 	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
 
 	_, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(serviceName),
-			Namespace: pulumi.String(config.Namespace),
-		},
-		Spec: &corev1.ServiceSpecArgs{
-			Selector: pulumi.StringMap{
-				"app": pulumi.String(deploymentName),
-			},
-			Ports: corev1.ServicePortArray{
-				&corev1.ServicePortArgs{
-					Port:       pulumi.Int(config.Port),
-					TargetPort: pulumi.Int(config.Port),
-				},
-			},
-			Type: pulumi.String("NodePort"),
-		},
+		Metadata: gs.CreateServiceMetaData(),
+		Spec:     gs.CreateServiceSpec(deploymentName),
 	}, pulumi.DependsOn([]pulumi.Resource{deployment}))
 
 	if err != nil {
@@ -38,3 +24,27 @@ func (gs *GraphqlServer) CreateService(ctx *pulumi.Context, deployment pulumi.Re
 	return nil
 }
 
+func (gs *GraphqlServer) CreateServiceMetaData() *metav1.ObjectMetaArgs {
+	config := gs.Config
+	serviceName := fmt.Sprintf("%s-api", config.Name)
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(serviceName),
+		Namespace: pulumi.String(config.Namespace),
+	}
+}
+
+func (gs *GraphqlServer) CreateServiceSpec(deploymentName string) *corev1.ServiceSpecArgs {
+	config := gs.Config
+	return &corev1.ServiceSpecArgs{
+		Selector: pulumi.StringMap{
+			"app": pulumi.String(deploymentName),
+		},
+		Ports: corev1.ServicePortArray{
+			&corev1.ServicePortArgs{
+				Port:       pulumi.Int(config.Port),
+				TargetPort: pulumi.Int(config.Port),
+			},
+		},
+		Type: pulumi.String("NodePort"),
+	}
+}
