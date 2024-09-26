@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "event-messenger-email.fullname" . }}
+  labels:
+    app: {{ template "event-messenger-email.fullname" . }}
+    chart: {{ template "event-messenger-email.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "event-messenger-email.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "event-messenger-email.fullname" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [
+            "--log-level",
+            "{{ .Values.logLevel }}",
+            "send-email",
+            "--subject",
+            "{{ .Values.nats.subject }}",
+            "--domain",
+            $(EMAIL_DOMAIN),
+            "--apiKey",
+            $(MAILGUN_API_KEY),
+            "--name",
+            $(EMAIL_SENDER_NAME),
+            "--sender",
+            $(EMAIL_SENDER),
+            "--cc",
+            $(EMAIL_CC),
+            "--pub",
+            $(PUBLICATION_API_ENDPOINT),
+          ]
+          env:
+          - name: MAILGUN_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.secrets.name }}"
+                key: "{{ .Values.dictybaseConfiguration.secrets.apiKey }}"
+          - name: EMAIL_DOMAIN
+            valueFrom:
+              configMapKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.configMap.name }}"
+                key: "{{ .Values.dictybaseConfiguration.configMap.domain }}"
+          - name: EMAIL_SENDER_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.configMap.name }}"
+                key: "{{ .Values.dictybaseConfiguration.configMap.senderName }}"
+          - name: EMAIL_SENDER
+            valueFrom:
+              configMapKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.configMap.name }}"
+                key: "{{ .Values.dictybaseConfiguration.configMap.sender }}"
+          - name: EMAIL_CC
+            valueFrom:
+              configMapKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.configMap.name }}"
+                key: "{{ .Values.dictybaseConfiguration.configMap.cc }}"
+          - name: PUBLICATION_API_ENDPOINT
+            valueFrom:
+              configMapKeyRef:
+                name: "{{ .Values.dictybaseConfiguration.configMap.name }}"
+                key: "{{ .Values.dictybaseConfiguration.configMap.publication }}"
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
