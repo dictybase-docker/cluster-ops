@@ -76,3 +76,10 @@ cluster-status:
     kubectl version
     kubectl cluster-info
     kubectl get nodes
+
+[no-cd]
+k9s:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    k9s
+
