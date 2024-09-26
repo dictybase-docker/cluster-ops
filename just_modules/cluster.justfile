@@ -83,4 +83,8 @@ k9s:
     set -euo pipefail
     k9s
 
-
+[no-cd]
+export-kubeconfig:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kops export kubeconfig --admin
