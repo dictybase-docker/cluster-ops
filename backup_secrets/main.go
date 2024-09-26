@@ -20,7 +20,8 @@ type BackupSecretsConfig struct {
 			Keyname  string
 		}
 	}
-	Namespace string
+	Namespace       string
+	ExtraNamespace  string
 }
 
 type BackupSecrets struct {
@@ -46,14 +47,24 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 }
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
-	// Create namespace
+	// Create main namespace
 	namespace, err := corev1.NewNamespace(ctx, bsr.Config.Namespace, &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: pulumi.String(bsr.Config.Namespace),
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error creating namespace: %w", err)
+		return fmt.Errorf("error creating main namespace: %w", err)
+	}
+
+	// Create extra namespace
+	extraNamespace, err := corev1.NewNamespace(ctx, bsr.Config.ExtraNamespace, &corev1.NamespaceArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name: pulumi.String(bsr.Config.ExtraNamespace),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error creating extra namespace: %w", err)
 	}
 
 	// Read the content of the file specified by Filepath
@@ -81,7 +92,7 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 				),
 			},
 		},
-		pulumi.DependsOn([]pulumi.Resource{namespace}),
+		pulumi.DependsOn([]pulumi.Resource{namespace, extraNamespace}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating backup secret: %w", err)
@@ -89,6 +100,7 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 
 	ctx.Export("secretName", secret.Metadata.Name())
 	ctx.Export("namespaceName", namespace.Metadata.Name())
+	ctx.Export("extraNamespaceName", extraNamespace.Metadata.Name())
 	return nil
 }
 
