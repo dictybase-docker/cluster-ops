@@ -25,7 +25,7 @@ type ArangoDBOperator struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*ArangoDBConfig, error) {
-	conf := config.New(ctx, "arangodb")
+	conf := config.New(ctx, "")
 	arangoConfig := &ArangoDBConfig{}
 	if err := conf.TryObject("properties", arangoConfig); err != nil {
 		return nil, fmt.Errorf("failed to read arangodb config: %w", err)
