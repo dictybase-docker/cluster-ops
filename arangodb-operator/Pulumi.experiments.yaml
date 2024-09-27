@@ -7,4 +7,4 @@ config:
       repository: https://arangodb.github.io/kube-arangodb
       version: 1.2.42
     deploymentReplication: false
-    namespace: operators
+    namespace: dev
