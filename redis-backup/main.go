@@ -38,7 +38,7 @@ type RedisBackup struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*RedisBackupConfig, error) {
-	conf := config.New(ctx, "redis-backup")
+	conf := config.New(ctx, "")
 	backupConfig := &RedisBackupConfig{}
 	if err := conf.TryObject("properties", backupConfig); err != nil {
 		return nil, fmt.Errorf("failed to read redis-backup config: %w", err)
@@ -100,14 +100,6 @@ func (rb *RedisBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
 				Age: pulumi.Int(65), // 65 days
 			},
 		},
-		&storage.BucketLifecycleRuleArgs{
-			Action: &storage.BucketLifecycleRuleActionArgs{
-				Type: pulumi.String("Delete"),
-			},
-			Condition: &storage.BucketLifecycleRuleConditionArgs{
-				NumNewerVersions: pulumi.Int(1),
-			},
-		},
 	}
 }
 
@@ -133,7 +125,9 @@ func (rb *RedisBackup) createBackupCronJob(
 	return nil
 }
 
-func (rb *RedisBackup) createCronJobMetadata(name string) *metav1.ObjectMetaArgs {
+func (rb *RedisBackup) createCronJobMetadata(
+	name string,
+) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(name),
 		Namespace: pulumi.String(rb.Config.Namespace),
@@ -144,7 +138,9 @@ func (rb *RedisBackup) createCronJobSpec(
 	bucket *storage.Bucket,
 ) *batchv1.CronJobSpecArgs {
 	return &batchv1.CronJobSpecArgs{
-		Schedule:    pulumi.String("0 1 * * *"), // Run at 1AM every night (1 hour before ArangoDB backup)
+		Schedule: pulumi.String(
+			"0 1 * * *",
+		), // Run at 1AM every night (1 hour before ArangoDB backup)
 		JobTemplate: rb.createJobTemplateSpec(bucket),
 	}
 }
@@ -194,8 +190,12 @@ func (rb *RedisBackup) createBackupContainer(
 	bucket *storage.Bucket,
 ) *corev1.ContainerArgs {
 	return &corev1.ContainerArgs{
-		Name:  pulumi.String("backup"),
-		Image: pulumi.Sprintf("%s:%s", rb.Config.Image.Name, rb.Config.Image.Tag),
+		Name: pulumi.String("backup"),
+		Image: pulumi.Sprintf(
+			"%s:%s",
+			rb.Config.Image.Name,
+			rb.Config.Image.Tag,
+		),
 		Command: pulumi.StringArray{
 			pulumi.String("app"),
 		},
