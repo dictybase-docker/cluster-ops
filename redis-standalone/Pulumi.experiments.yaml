@@ -1,0 +1,12 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnPKqwOwwhXwx23NSKzoFQkVYNo/CEF+iZemLs8Z0p9QSSQB2302FCH62JX7RIwba02VgBvRah60JOP4xcv+knPEU1wCTrWKzPn3CskfjVP53wPuS5yhQ1jkXeJ6QqlWFO1cWb5r9jn01Xx8=
+config:
+  redis-standalone:properties:
+    image:
+      name: redis/redis-stack-server
+      tag: 7.4.0-v0
+    name: redis
+    namespace: dev
+    storage:
+      class: dictycr-balanced
+      size: 100Gi
