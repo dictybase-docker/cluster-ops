@@ -47,7 +47,7 @@ type Minio struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*MinioConfig, error) {
-	conf := config.New(ctx, "minio")
+	conf := config.New(ctx, "")
 	minioConfig := &MinioConfig{}
 	if err := conf.TryObject("properties", minioConfig); err != nil {
 		return nil, fmt.Errorf("failed to read minio config: %w", err)
@@ -71,8 +71,12 @@ func (mno *Minio) createSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
 				Namespace: pulumi.String(mno.Config.Namespace),
 			},
 			StringData: pulumi.StringMap{
-				mno.Config.Secret.UserKey: pulumi.String(mno.Config.Secret.UserName),
-				mno.Config.Secret.PassKey: pulumi.String(mno.Config.Secret.Password),
+				mno.Config.Secret.UserKey: pulumi.String(
+					mno.Config.Secret.UserName,
+				),
+				mno.Config.Secret.PassKey: pulumi.String(
+					mno.Config.Secret.Password,
+				),
 			},
 		},
 	)
@@ -96,8 +100,12 @@ func (mno *Minio) getHelmValues() pulumi.Map {
 	}
 }
 
-func (mno *Minio) installHelmChart(ctx *pulumi.Context, secret *corev1.Secret) error {
+func (mno *Minio) installHelmChart(
+	ctx *pulumi.Context,
+	secret *corev1.Secret,
+) error {
 	_, err := helm.NewRelease(ctx, "minio", &helm.ReleaseArgs{
+		Name:      pulumi.String(mno.Config.Chart.Name),
 		Chart:     pulumi.String(mno.Config.Chart.Name),
 		Version:   pulumi.String(mno.Config.Chart.Version),
 		Namespace: pulumi.String(mno.Config.Namespace),
@@ -106,7 +114,6 @@ func (mno *Minio) installHelmChart(ctx *pulumi.Context, secret *corev1.Secret) e
 		},
 		Values: mno.getHelmValues(),
 	}, pulumi.DependsOn([]pulumi.Resource{secret}))
-
 	if err != nil {
 		return fmt.Errorf("failed to install Helm chart: %w", err)
 	}
