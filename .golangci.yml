@@ -53,3 +53,7 @@ linters:
   # - gochecknoglobals
   # - golint
   #  - forcetypeassert
+issues:
+  exclude-dirs:
+    - crds
+
