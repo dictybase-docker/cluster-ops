@@ -1,0 +1,20 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnDCKn0EJUwNfo9wl4BYW/rxHUXUvmMkYyXpk2rs1nPYSSQB2302FoS28WwO1WSsHkwqZwFXocHTEVo9x0BELrLYATPTeNb57XFx4TLx+GtpxPrcIvfp6X/DdK6Uys8JYFEBp9awfHFbNHg4=
+config:
+  gcp:project: dcr-experiments
+  redis-backup:properties:
+    bucket: restic-redis-backup-dcr-experiments
+    bucketSecret:
+      key: gcsCredentials
+      name: dictycr
+    image:
+      name: database-backup
+      tag: develop-085a5ea
+    namespace: dev
+    projectSecret:
+      key: gcsProject
+      name: dictycr
+    resticSecret:
+      key: resticPass
+      name: dictycr
+    server: redis
