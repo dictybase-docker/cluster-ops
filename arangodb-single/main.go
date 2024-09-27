@@ -35,7 +35,7 @@ type ArangoDeployment struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*ArangoDeploymentConfig, error) {
-	conf := config.New(ctx, "arangodb")
+	conf := config.New(ctx, "")
 	arangoConfig := &ArangoDeploymentConfig{}
 	if err := conf.TryObject("properties", arangoConfig); err != nil {
 		return nil, fmt.Errorf(
@@ -86,7 +86,7 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 
 func (adp *ArangoDeployment) createMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String("arango"),
+		Name:      pulumi.String("arangodb"),
 		Namespace: pulumi.String(adp.Config.Namespace),
 	}
 }
