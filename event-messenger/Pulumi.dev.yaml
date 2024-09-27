@@ -21,6 +21,7 @@ config:
     publicationApiEndpoint:
       key: endpoints.publication
       name: dictybase-configuration
+    replicas: 1
     sender:
       key: eventMessenger.email.sender
       name: dictybase-configuration
