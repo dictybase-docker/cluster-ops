@@ -1,0 +1,7 @@
+name: nats
+runtime: go
+description: A Pulumi program to deploy NATS messaging system using Helm charts in Kubernetes
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
