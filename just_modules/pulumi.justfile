@@ -77,3 +77,18 @@ create-resource folder stack:
 	set -euo pipefail
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} up -s {{ stack }} -f -y
+
+
+[no-cd]
+remove-resource folder stack:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} destroy -s {{ stack }} -f -y
+
+[no-cd]
+cleanup-resource folder stack:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} stack rm -s {{ stack }} --preserve-config --force
