@@ -1,0 +1,14 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnMoxG70WakXkqBpNsOveuPwFhLNJ+zGAMdV0UVcq0ZASSQB2302Fpe5MBj1Hw8W48WhQzYOCKy8zsPLfv8KLYJHjpFln7NkzjQSi3uDszAPe2vPALFeHxF2Mslsck9L9vf0E9dkh4E71vt4=
+config:
+  nats:properties:
+    chart:
+      name: nats
+      repository: https://nats-io.github.io/k8s/helm/charts
+      version: 1.2.4
+    image:
+      tag: 2.10.20-alpine
+    namespace: dev
+    storage:
+      class: dictycr-balanced
+      size: 20Gi
