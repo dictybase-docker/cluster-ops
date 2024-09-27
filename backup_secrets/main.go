@@ -11,7 +11,9 @@ import (
 )
 
 type BackupSecretsConfig struct {
-	Secret struct {
+	Namespace      string
+	ExtraNamespace string
+	Secret         struct {
 		Name           string
 		ResticPass     string
 		GcsProject     string
@@ -20,8 +22,6 @@ type BackupSecretsConfig struct {
 			Keyname  string
 		}
 	}
-	Namespace       string
-	ExtraNamespace  string
 }
 
 type BackupSecrets struct {
@@ -48,21 +48,29 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 	// Create main namespace
-	namespace, err := corev1.NewNamespace(ctx, bsr.Config.Namespace, &corev1.NamespaceArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name: pulumi.String(bsr.Config.Namespace),
+	namespace, err := corev1.NewNamespace(
+		ctx,
+		bsr.Config.Namespace,
+		&corev1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String(bsr.Config.Namespace),
+			},
 		},
-	})
+	)
 	if err != nil {
 		return fmt.Errorf("error creating main namespace: %w", err)
 	}
 
 	// Create extra namespace
-	extraNamespace, err := corev1.NewNamespace(ctx, bsr.Config.ExtraNamespace, &corev1.NamespaceArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name: pulumi.String(bsr.Config.ExtraNamespace),
+	extraNamespace, err := corev1.NewNamespace(
+		ctx,
+		bsr.Config.ExtraNamespace,
+		&corev1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String(bsr.Config.ExtraNamespace),
+			},
 		},
-	})
+	)
 	if err != nil {
 		return fmt.Errorf("error creating extra namespace: %w", err)
 	}
