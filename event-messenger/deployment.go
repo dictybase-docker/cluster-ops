@@ -37,13 +37,7 @@ func (eme *EventMessengerEmail) CreateDeploymentSpec() *appsv1.DeploymentSpecArg
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
-				Containers: corev1.ContainerArray{
-					&corev1.ContainerArgs{
-						Name:  pulumi.String("event-messenger-email"),
-						Image: pulumi.String(eme.Config.Image),
-						Env: eme.ContainerEnvArgsArray(),
-					},
-				},
+				Containers: eme.ContainerArray(),
 			},
 		},
 	}
