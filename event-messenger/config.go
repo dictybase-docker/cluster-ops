@@ -1,19 +1,31 @@
 package main
 
 type SecretConfig struct {
-  name string
-  key string
+  Name string
+  Key string
 }
 
 type ConfigMapEntry struct {
-  name string
-  key string
+  Name string
+  Key string
+}
+
+type ImageProperties struct {
+  Repository string
+  Tag string
+  PullPolicy string
+}
+
+type NatsProperties struct {
+  Subject string
 }
 
 type EventMessengerEmailConfig struct {
 	Namespace string
-	Image     string
 	Replicas  int
+  LogLevel string
+  Nats NatsProperties 
+	Image     ImageProperties
   MailgunApiKey SecretConfig
   Domain ConfigMapEntry
   Sender ConfigMapEntry
