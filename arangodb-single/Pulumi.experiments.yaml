@@ -1,0 +1,14 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnDAmUmzsNSaRayUGLgnwOAm29KcT8vXo3+bWnQgLnRISSQB2302FFgWLSGOb8miy+FQwRNAo1n/NS+CRxv2gIQVKWPp54fCYzOwgSl0jubRN5WYJwsh09WqoGI0uuaXweeo6KKIiMVREsro=
+config:
+  arangodb-single:properties:
+    namespace: dev
+    secret:
+      name:
+        secure: v1:jNHVUkhMVd2yJXMa:zhfJb5aQeg6UnE3y1HYS81WA2vM+GoRo+829P2U=
+      password:
+        secure: v1:NUTda1XTGtN99Cce:rE5dZ9Bt/skt5NOwltu2P/VY/5Z3ArUlIQiLMCzdx8qSTd/C54114CYoLEMFerxAMyWfPF4=
+    storage:
+      class: dictycr-balanced
+      size: 150Gi
+    version: 3.11.6
