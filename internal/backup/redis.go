@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 
@@ -63,9 +62,7 @@ func initializeResticRepository(repository string) error {
 }
 
 func validateAndSanitizeRepository(repository string) (string, error) {
-	// Check if the repository path contains only allowed characters
-	validPath := regexp.MustCompile(`^[a-zA-Z0-9/._-]+$`)
-	if !validPath.MatchString(repository) {
+	if len(repository) == 0 {
 		return "", fmt.Errorf("repository path contains invalid characters")
 	}
 
