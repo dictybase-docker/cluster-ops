@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup just
         uses: extractions/setup-just@v1
@@ -19,6 +19,6 @@ jobs:
         env:
           JUST_UNSTABLE: 1
         run: |
-          just build-publish-backup-image ${{ github.sha }} \
+          just build-publish-backup-image ${{ github.event.pull_request.head.sha }} \
             ${{ secrets.DOCKERHUB_USER }} \
             ${{ secrets.DOCKER_PASS }}
