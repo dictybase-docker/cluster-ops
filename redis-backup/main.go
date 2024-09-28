@@ -26,8 +26,8 @@ type RedisBackupConfig struct {
 		Name string
 		Key  string
 	}
-	Host  string
-	Image struct {
+	Server string
+	Image  struct {
 		Name string
 		Tag  string
 	}
@@ -62,7 +62,53 @@ func (rb *RedisBackup) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
+	if err := rb.createImmediateBackupJob(ctx, bucket); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (rb *RedisBackup) createImmediateBackupJob(
+	ctx *pulumi.Context,
+	bucket *storage.Bucket,
+) error {
+	jobName := "redis-immediate-backup-job"
+	jobArgs := &batchv1.JobArgs{
+		Metadata: rb.createJobMetadata(jobName),
+		Spec:     rb.createJobSpec(bucket),
+	}
+
+	_, err := batchv1.NewJob(
+		ctx,
+		jobName,
+		jobArgs,
+		pulumi.DependsOn([]pulumi.Resource{bucket}),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"error creating Kubernetes immediate backup Job: %w",
+			err,
+		)
+	}
+	return nil
+}
+
+func (rb *RedisBackup) createJobMetadata(
+	name string,
+) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(name),
+		Namespace: pulumi.String(rb.Config.Namespace),
+	}
+}
+
+func (rb *RedisBackup) createJobSpec(
+	bucket *storage.Bucket,
+) *batchv1.JobSpecArgs {
+	return &batchv1.JobSpecArgs{
+		Template: rb.createPodTemplateSpec(bucket),
+	}
 }
 
 func (rb *RedisBackup) createGCSBucket(
@@ -216,7 +262,7 @@ func (rb *RedisBackup) createBackupArgs(
 ) pulumi.StringArray {
 	return pulumi.StringArray{
 		pulumi.String("redis-backup"),
-		pulumi.String("--host"), pulumi.String(rb.Config.Host),
+		pulumi.String("--host"), pulumi.String(rb.Config.Server),
 		pulumi.String("--repository"), pulumi.Sprintf("gs:%s/", bucket.Name),
 	}
 }
