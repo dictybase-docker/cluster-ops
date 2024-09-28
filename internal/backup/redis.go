@@ -50,7 +50,10 @@ func initializeResticRepository(repository string) error {
 	if err := cmd.Run(); err != nil {
 		cmd = exec.Command("restic", "-r", repository, "init")
 		if err := cmd.Run(); err != nil {
-			return cli.Exit("failed to initialize repository: "+err.Error(), 1)
+			return cli.Exit(
+				fmt.Sprintf("failed to initialize repository %s", err.Error()),
+				2,
+			)
 		}
 		slog.Info("Repository initialized successfully")
 	} else {
@@ -72,7 +75,7 @@ func validateAndSanitizeRepository(repository string) (string, error) {
 func performRedisBackup(host, repository string) error {
 	sanitizedRepo, err := validateAndSanitizeRepository(repository)
 	if err != nil {
-		return cli.Exit(fmt.Sprintf("Invalid repository path: %v", err), 1)
+		return cli.Exit(fmt.Sprintf("Invalid repository path: %v", err), 2)
 	}
 
 	// Create a Redis client
