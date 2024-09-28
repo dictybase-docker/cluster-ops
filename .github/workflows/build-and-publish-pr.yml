@@ -19,6 +19,7 @@ jobs:
         env:
           JUST_UNSTABLE: 1
         run: |
-          just build-publish-backup-image $(git rev-parse --short HEAD) \
+          short_sha=$(echo ${{ github.sha }} | cut -c1-7)
+          just build-publish-backup-image $short_sha \
             ${{ secrets.DOCKERHUB_USER }} \
             ${{ secrets.DOCKER_PASS }}
