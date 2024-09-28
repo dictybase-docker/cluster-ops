@@ -1,0 +1,24 @@
+name: Build and Publish Docker Image (PR)
+
+on:
+  pull_request:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Setup just
+        uses: extractions/setup-just@v1
+        with:
+          just-version: '1.35.0'
+
+      - name: Build and publish backup image
+        env:
+          JUST_UNSTABLE: 1
+        run: |
+          just build-publish-backup-image ${{ github.head_ref }} \
+            ${{ secrets.DOCKERHUB_USER }} \
+            ${{ secrets.DOCKER_PASS }}
