@@ -107,7 +107,8 @@ func (rb *RedisBackup) createJobSpec(
 	bucket *storage.Bucket,
 ) *batchv1.JobSpecArgs {
 	return &batchv1.JobSpecArgs{
-		Template: rb.createPodTemplateSpec(bucket),
+		Template:     rb.createPodTemplateSpec(bucket),
+		BackoffLimit: pulumi.Int(0),
 	}
 }
 
