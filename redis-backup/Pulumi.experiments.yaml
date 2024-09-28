@@ -8,7 +8,7 @@ config:
       key: gcsCredentials
       name: dictycr
     image:
-      name: database-backup
+      name: dictybase/database-backup
       tag: develop-085a5ea
     namespace: dev
     projectSecret:
