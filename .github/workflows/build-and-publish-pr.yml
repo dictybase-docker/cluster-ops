@@ -19,6 +19,6 @@ jobs:
         env:
           JUST_UNSTABLE: 1
         run: |
-          just build-publish-backup-image ${{ github.head_ref }} \
+          just build-publish-backup-image $(git rev-parse --short HEAD) \
             ${{ secrets.DOCKERHUB_USER }} \
             ${{ secrets.DOCKER_PASS }}
