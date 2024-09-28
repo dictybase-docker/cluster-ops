@@ -64,7 +64,6 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "host",
-						Aliases:  []string{"h"},
 						Usage:    "Redis host address",
 						Required: true,
 					},
