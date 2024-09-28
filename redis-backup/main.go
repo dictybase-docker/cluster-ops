@@ -264,7 +264,7 @@ func (rb *RedisBackup) createBackupArgs(
 	return pulumi.StringArray{
 		pulumi.String("redis-backup"),
 		pulumi.String("--host"), pulumi.String(rb.Config.Server),
-		pulumi.String("--repository"), pulumi.Sprintf("gs:%s/", bucket.Name),
+		pulumi.String("--repository"), pulumi.Sprintf("gs:%s:/", bucket.Name),
 	}
 }
 
