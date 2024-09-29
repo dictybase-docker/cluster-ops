@@ -1,18 +1,22 @@
 package main
 
 import (
+  "fmt"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (eme *EventMessengerEmail) CreateDeployment(ctx *pulumi.Context) error {
-	_, err := appsv1.NewDeployment(ctx, "event-messenger-email", &appsv1.DeploymentArgs{
+func (eme *EventMessengerEmail) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
+	deployment, err := appsv1.NewDeployment(ctx, "event-messenger-email", &appsv1.DeploymentArgs{
 		Metadata: eme.CreateDeploymentMetadata(),
 		Spec:     eme.CreateDeploymentSpec(),
 	})
-	return err
+  if err != nil {
+    return nil, fmt.Errorf("error creating graphql-server deployment: %w", err)
+  }
+	return deployment, nil
 }
 
 func (eme *EventMessengerEmail) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
