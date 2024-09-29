@@ -9,7 +9,38 @@ type EventMessengerEmail struct {
 }
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		return nil
-	})
+	pulumi.Run(Run)
 }
+
+func Run(ctx *pulumi.Context) error {
+  emeConfig, err := ReadEventMessengerEmailConfig(ctx)
+
+  if err != nil {
+    return err
+  }
+
+  eventMessengerEmail := NewEventMessengerEmail(emeConfig)
+
+	if err := eventMessengerEmail.Install(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (eme *EventMessengerEmail) Install(ctx *pulumi.Context) error {
+	_, err := eme.CreateDeployment(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func NewEventMessengerEmail(config *EventMessengerEmailConfig) *EventMessengerEmail {
+	return &EventMessengerEmail{
+		Config: config,
+	}
+}
+
+
