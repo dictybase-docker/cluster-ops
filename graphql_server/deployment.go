@@ -43,7 +43,7 @@ func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployme
     Spec: gs.CreateDeploymentSpec(),
 	})
 	if err != nil {
-		return nil, err
+    return nil, fmt.Errorf("error creating graphql-server deployment: %w", err)
 	}
 
 	return deployment, nil
