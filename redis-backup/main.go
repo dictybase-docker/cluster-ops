@@ -119,14 +119,13 @@ func (rb *RedisBackup) createGCSBucket(
 		Name:           pulumi.String(rb.Config.Bucket),
 		Location:       pulumi.String("US"),
 		LifecycleRules: rb.createLifecycleRules(),
-		RetentionPolicy: &storage.BucketRetentionPolicyArgs{
-			RetentionPeriod: pulumi.Int(
-				60 * 24 * 60 * 60,
-			), // 60 days in seconds
-		},
 		Versioning: &storage.BucketVersioningArgs{
-			Enabled: pulumi.Bool(false),
+			Enabled: pulumi.Bool(true),
 		},
+		SoftDeletePolicy: &storage.BucketSoftDeletePolicyArgs{
+			RetentionDurationSeconds: pulumi.Int(5011200), // 58 days in seconds
+		},
+		ForceDestroy: pulumi.Bool(true),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating GCS bucket: %w", err)
@@ -145,6 +144,15 @@ func (rb *RedisBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
 			},
 			Condition: &storage.BucketLifecycleRuleConditionArgs{
 				Age: pulumi.Int(65), // 65 days
+			},
+		},
+		&storage.BucketLifecycleRuleArgs{
+			Action: &storage.BucketLifecycleRuleActionArgs{
+				Type: pulumi.String("Delete"),
+			},
+			Condition: &storage.BucketLifecycleRuleConditionArgs{
+				WithState:        pulumi.String("ARCHIVED"),
+				NumNewerVersions: pulumi.Int(3),
 			},
 		},
 	}
