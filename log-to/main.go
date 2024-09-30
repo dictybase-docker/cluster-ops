@@ -2,12 +2,13 @@ package main
 
 import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type LogtoConfig struct {
   Name string
   Namespace string
+  StorageClass string
+  DiskSize int
 }
 
 type Logto struct {
