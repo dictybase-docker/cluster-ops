@@ -12,33 +12,32 @@ import (
 )
 
 type ArangoBackupConfig struct {
-	Bucket       string
-	Folder       string
-	Namespace    string
-	Secret       string
-	ResticSecret struct {
-		Name string
-		Key  string
-	}
-	BucketSecret struct {
-		Name string
-		Key  string
-	}
-	ProjectSecret struct {
-		Name string
-		Key  string
-	}
-	Server  string
-	User    string
-	Storage struct {
-		Class string
-		Name  string
-		Size  string
-	}
-	Image struct {
-		Name string
-		Tag  string
-	}
+	Bucket         string
+	Folder         string
+	Namespace      string
+	ArangodbSecret SecretKeyPair
+	ResticSecret   SecretKeyPair
+	BucketSecret   SecretKeyPair
+	ProjectSecret  SecretKeyPair
+	Server         string
+	Storage        StorageConfig
+	Image          ImageConfig
+}
+
+type SecretKeyPair struct {
+	Name string
+	Key  string
+}
+
+type StorageConfig struct {
+	Class string
+	Name  string
+	Size  string
+}
+
+type ImageConfig struct {
+	Name string
+	Tag  string
 }
 
 type ArangoBackup struct {
@@ -267,7 +266,6 @@ func (ab *ArangoBackup) createBackupArgs(
 ) pulumi.StringArray {
 	return pulumi.StringArray{
 		pulumi.String("arangodb-backup"),
-		pulumi.String("--user"), pulumi.String(ab.Config.User),
 		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
 		pulumi.String("--server"), pulumi.String(ab.Config.Server),
 		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
@@ -281,8 +279,8 @@ func (ab *ArangoBackup) createBackupEnv() corev1.EnvVarArray {
 			Name: pulumi.String("PASSWORD"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: pulumi.String(ab.Config.Secret),
-					Key:  pulumi.String("password"),
+					Name: pulumi.String(ab.Config.ArangodbSecret.Name),
+					Key:  pulumi.String(ab.Config.ArangodbSecret.Key),
 				},
 			},
 		},
