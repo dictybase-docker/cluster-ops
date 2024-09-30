@@ -72,8 +72,8 @@ func (emi *EventMessengerIssue) ContainerArray() corev1.ContainerArray {
 	config := emi.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name:  pulumi.String("event-messenger-issue"),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image, config.Image.Tag)),
+			Name:  pulumi.String(config.Name),
+			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Repository, config.Image.Tag)),
       Args: emi.ContainerArgs(),
 			Env:   emi.ContainerEnvArgsArray(),
 		},
