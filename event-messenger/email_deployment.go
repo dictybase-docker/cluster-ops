@@ -14,7 +14,7 @@ func (eme *EventMessengerEmail) CreateDeployment(ctx *pulumi.Context) (*appsv1.D
 		Spec:     eme.CreateDeploymentSpec(),
 	})
   if err != nil {
-    return nil, fmt.Errorf("error creating graphql-server deployment: %w", err)
+    return nil, fmt.Errorf("error creating event-messenger-email deployment: %w", err)
   }
 	return deployment, nil
 }
