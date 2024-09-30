@@ -1,0 +1,27 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnGHPpIhQ9aFq15OrVMgu+znPFEou63iwNhBfHYgCYKYSSQB2302FIAb6buFtnVqCAcQenUjTsWfwoh93jcixB2SHiBZdFpZzgTuuYWxVelAIRqvXNFgbjFJ2RpAyeFE+kpupWdSc5OawXGo=
+config:
+  arangodb-backup:properties:
+    arangodbSecret:
+      key: password
+      name: arangodb-pass
+    bucket: restic-arangodb-backup-dcr-experiments
+    bucketSecret:
+      key: gcsCredentials
+      name: dictycr
+    folder: arangodump
+    image:
+      name: dictybase/database-backup
+      tag: sha-ca97436
+    namespace: dev
+    projectSecret:
+      key: gcsProject
+      name: dictycr
+    resticSecret:
+      key: resticPass
+      name: dictycr
+    server: arangodb
+    storage:
+      class: dictycr-balanced
+      name: arangodb-backup-ephemeral
+      size: 50Gi
