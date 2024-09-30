@@ -28,3 +28,20 @@ config:
     senderName:
       key: eventMessenger.email.senderName
       name: dictybase-configuration
+  event-messenger-issue:properties:
+    githubOwner:
+      key: eventMessenger.github.owner
+      name: dictybase-configuration
+    githubRepo:
+      key: eventMessenger.github.repository
+      name: dictybase-configuration
+    githubToken:
+      key: eventMessenger.github.token
+      name: dictybase-configuration
+    image:
+      pullPolicy: IfNotPresent
+      repository: dictybase/event-messenger
+      tag: latest
+    nats:
+      subject: OrderService.Create
+    replicas: 1
