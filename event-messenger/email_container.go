@@ -9,7 +9,7 @@ import (
 func (eme *EventMessengerEmail) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	envVars := []struct {
 		name      string
-		configMap ConfigMapEntry
+		configMap ConfigMapPair
 	}{
 		{"EMAIL_DOMAIN", eme.Config.Domain},
 		{"EMAIL_SENDER_NAME", eme.Config.SenderName},

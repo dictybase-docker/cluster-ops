@@ -9,7 +9,7 @@ import (
 func (emi *EventMessengerIssue) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	envVars := []struct {
 		name      string
-		configMap ConfigMapEntry
+		configMap ConfigMapPair
 	}{
 		{"GITHUB_REPOSITORY", emi.Config.GithubRepo},
 		{"GITHUB_OWNER", emi.Config.GithubOwner},
