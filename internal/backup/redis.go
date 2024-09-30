@@ -71,25 +71,70 @@ func validateAndSanitizeRepository(repository string) (string, error) {
 }
 
 func performRedisBackup(host string, port int, repository string) error {
-	sanitizedRepo, err := validateAndSanitizeRepository(repository)
+	sanitizedRepo, sanitizedHost, sanitizedPort, err := validateAndSanitizeInputs(
+		repository,
+		host,
+		port,
+	)
 	if err != nil {
-		return cli.Exit(fmt.Sprintf("Invalid repository path: %v", err), 2)
+		return err
 	}
 
-	// Create a Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", host, port),
-	})
+	rdb := createRedisClient(sanitizedHost, sanitizedPort)
 	defer rdb.Close()
 
 	ctx := context.Background()
 
-	// Start BGSAVE
+	if err := performBGSave(ctx, rdb); err != nil {
+		return err
+	}
+
+	if err := waitForBGSaveCompletion(ctx, rdb); err != nil {
+		return err
+	}
+
+	return runBackupCommands(sanitizedRepo, sanitizedHost, sanitizedPort)
+}
+
+func validateAndSanitizeInputs(
+	repository, host string,
+	port int,
+) (string, string, int, error) {
+	sanitizedRepo, err := validateAndSanitizeRepository(repository)
+	if err != nil {
+		return "", "", 0, cli.Exit(
+			fmt.Sprintf("Invalid repository path: %v", err),
+			2,
+		)
+	}
+
+	sanitizedHost, err := validateAndSanitizeHost(host)
+	if err != nil {
+		return "", "", 0, cli.Exit(fmt.Sprintf("Invalid host: %v", err), 2)
+	}
+
+	sanitizedPort, err := validateAndSanitizePort(port)
+	if err != nil {
+		return "", "", 0, cli.Exit(fmt.Sprintf("Invalid port: %v", err), 2)
+	}
+
+	return sanitizedRepo, sanitizedHost, sanitizedPort, nil
+}
+
+func createRedisClient(host string, port int) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: fmt.Sprintf("%s:%d", host, port),
+	})
+}
+
+func performBGSave(ctx context.Context, rdb *redis.Client) error {
 	if err := rdb.BgSave(ctx).Err(); err != nil {
 		return cli.Exit(fmt.Sprintf("Failed to start BGSAVE: %v", err), 1)
 	}
+	return nil
+}
 
-	// Wait for BGSAVE to complete
+func waitForBGSaveCompletion(ctx context.Context, rdb *redis.Client) error {
 	for {
 		info, err := rdb.Info(ctx, "persistence").Result()
 		if err != nil {
@@ -100,21 +145,27 @@ func performRedisBackup(host string, port int, repository string) error {
 		}
 		time.Sleep(time.Second)
 	}
+	return nil
+}
 
-	// Run redis-cli --rdb and pipe to restic
-	redisCli := exec.Command("redis-cli", "-h", host, "-p", fmt.Sprintf("%d", port), "--rdb", "-")
-	restic := exec.Command(
-		"restic",
-		"-r",
-		sanitizedRepo,
+func runBackupCommands(repository, host string, port int) error {
+	redisCliArgs := []string{
+		"-h", host,
+		"-p", fmt.Sprintf("%d", port),
+		"--rdb", "-",
+	}
+	redisCli := exec.Command("redis-cli", redisCliArgs...)
+
+	resticArgs := []string{
+		"-r", repository,
 		"backup",
 		"--stdin",
-		"--stdin-filename",
-		"redis-backup.rdb",
-		"--tag",
-		"redis-backup",
-	)
+		"--stdin-filename", "redis-backup.rdb",
+		"--tag", "redis-backup",
+	}
+	restic := exec.Command("restic", resticArgs...)
 
+	var err error
 	restic.Stdin, err = redisCli.StdoutPipe()
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Failed to create pipe: %v", err), 1)
@@ -140,4 +191,20 @@ func performRedisBackup(host string, port int, repository string) error {
 
 	slog.Info("Redis backup completed successfully")
 	return nil
+}
+
+func validateAndSanitizeHost(host string) (string, error) {
+	// Simple validation: check if the host is not empty and doesn't contain spaces
+	if len(host) == 0 {
+		return "", fmt.Errorf("invalid host")
+	}
+	return host, nil
+}
+
+func validateAndSanitizePort(port int) (int, error) {
+	// Check if the port is within the valid range
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid port number")
+	}
+	return port, nil
 }
