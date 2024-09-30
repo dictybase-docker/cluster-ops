@@ -26,10 +26,17 @@ func getArangoDBBackupCommand() *cli.Command {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "server",
-				Aliases:  []string{"s"},
-				Usage:    "ArangoDB server address",
-				Required: true,
+				Name:    "server",
+				Aliases: []string{"s"},
+				Usage:   "ArangoDB server address",
+				EnvVars: []string{"ARANGODB_SERVICE_HOST"},
+				Value:   "arangodb",
+			},
+			&cli.IntFlag{
+				Name:    "port",
+				Usage:   "ArangoDB port",
+				EnvVars: []string{"ARANGODB_SERVICE_PORT"},
+				Value:   8529,
 			},
 			&cli.StringFlag{
 				Name:     "output",
@@ -49,7 +56,9 @@ func getArangoDBBackupCommand() *cli.Command {
 				EnvVars: []string{"RESTIC_PASSWORD"},
 			},
 		},
-		Action: backup.ArangoDBBackupAction,
+		Action: func(cCtx *cli.Context) error {
+			return backup.ArangoDBBackupAction(cCtx, cCtx.Int("port"))
+		},
 	}
 }
 
