@@ -111,7 +111,8 @@ func (ab *ArangoBackup) createJobSpec(
 	bucket *storage.Bucket,
 ) *batchv1.JobSpecArgs {
 	return &batchv1.JobSpecArgs{
-		Template: ab.createPodTemplateSpec(bucket),
+		Template:     ab.createPodTemplateSpec(bucket),
+		BackoffLimit: pulumi.Int(0),
 	}
 }
 
@@ -309,6 +310,7 @@ func (ab *ArangoBackup) createBackupArgs(
 ) pulumi.StringArray {
 	return pulumi.StringArray{
 		pulumi.String("arangodb-backup"),
+		pulumi.String("--user"), pulumi.String("root"),
 		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
 		pulumi.String("--server"), pulumi.String(ab.Config.Server),
 		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
