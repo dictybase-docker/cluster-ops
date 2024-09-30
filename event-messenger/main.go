@@ -28,6 +28,17 @@ func Run(ctx *pulumi.Context) error {
 	if err := eventMessengerEmail.Install(ctx); err != nil {
 		return err
 	}
+  emiConfig, err := ReadEventMessengerIssueConfig(ctx)
+
+  if err != nil {
+    return err
+  }
+
+  eventMessengerIssue := NewEventMessengerIssue(emiConfig)
+
+	if err := eventMessengerIssue.Install(ctx); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -47,4 +58,17 @@ func NewEventMessengerEmail(config *EventMessengerEmailConfig) *EventMessengerEm
 	}
 }
 
+func (emi *EventMessengerIssue) Install(ctx *pulumi.Context) error {
+	_, err := emi.CreateDeployment(ctx)
+	if err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func NewEventMessengerIssue(config *EventMessengerIssueConfig) *EventMessengerIssue {
+	return &EventMessengerIssue{
+		Config: config,
+	}
+}
