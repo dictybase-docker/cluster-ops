@@ -19,4 +19,3 @@ type ImageProperties struct {
 type NatsProperties struct {
   Subject string
 }
-
