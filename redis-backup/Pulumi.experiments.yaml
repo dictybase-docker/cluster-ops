@@ -9,7 +9,7 @@ config:
       name: dictycr
     image:
       name: dictybase/database-backup
-      tag: sha-11cc086
+      tag: sha-13586b8
     namespace: dev
     projectSecret:
       key: gcsProject
