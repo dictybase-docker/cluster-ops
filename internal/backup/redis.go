@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/urfave/cli/v2"
+	redis "github.com/redis/go-redis/v9"
+	cli "github.com/urfave/cli/v2"
 )
 
 func RedisBackupAction(cltx *cli.Context) error {
 	host := cltx.String("host")
+	port := cltx.Int("port")
 	repository := cltx.String("repository")
 	resticPassword := cltx.String("restic-password")
 
@@ -26,7 +27,7 @@ func RedisBackupAction(cltx *cli.Context) error {
 		return err
 	}
 
-	return performRedisBackup(host, repository)
+	return performRedisBackup(host, port, repository)
 }
 
 func setupResticPassword(resticPassword string) error {
@@ -69,7 +70,7 @@ func validateAndSanitizeRepository(repository string) (string, error) {
 	return repository, nil
 }
 
-func performRedisBackup(host, repository string) error {
+func performRedisBackup(host string, port int, repository string) error {
 	sanitizedRepo, err := validateAndSanitizeRepository(repository)
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Invalid repository path: %v", err), 2)
@@ -77,7 +78,7 @@ func performRedisBackup(host, repository string) error {
 
 	// Create a Redis client
 	rdb := redis.NewClient(&redis.Options{
-		Addr: host,
+		Addr: fmt.Sprintf("%s:%d", host, port),
 	})
 	defer rdb.Close()
 
@@ -101,7 +102,7 @@ func performRedisBackup(host, repository string) error {
 	}
 
 	// Run redis-cli --rdb and pipe to restic
-	redisCli := exec.Command("redis-cli", "-h", host, "--rdb", "-")
+	redisCli := exec.Command("redis-cli", "-h", host, "-p", fmt.Sprintf("%d", port), "--rdb", "-")
 	restic := exec.Command(
 		"restic",
 		"-r",
