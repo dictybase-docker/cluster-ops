@@ -9,7 +9,7 @@ import (
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
   envVars := []struct {
     name string
-    secret SecretConfig
+    secret SecretKeyPair
   }{
     {"SECRET_KEY", gs.Config.MinioSecret},
     {"ACCESS_KEY", gs.Config.MinioAccess},
@@ -38,7 +38,7 @@ func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
 func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	envVars := []struct {
 		name string
-		configMap  ConfigMapEntry
+		configMap ConfigMapPair
 	}{
 		{"PUBLICATION_API_ENDPOINT", gs.Config.PublicationApiEndpoint},
 		{"S3_STORAGE_ENDPOINT", gs.Config.S3StorageEndpoint},
