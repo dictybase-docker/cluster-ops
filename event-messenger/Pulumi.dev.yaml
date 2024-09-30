@@ -43,6 +43,7 @@ config:
       pullPolicy: IfNotPresent
       repository: dictybase/event-messenger
       tag: latest
+    name: event-messenger-issue
     nats:
       subject: OrderService.Create
     replicas: 1
