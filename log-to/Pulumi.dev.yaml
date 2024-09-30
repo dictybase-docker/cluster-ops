@@ -2,6 +2,7 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnPbIh1kleW1+3i7+B+uBErSMGDyMw8Nxy7sc91UkuLISSQB2302Fy7W2ILf52fve09DLtzOQiGDTDHL9zpQLVVtU/RKqhMctOSRGsyiegx92eOqVuXyCI1kmUKKj3mNjPRJysXprr0KLJ3k=
 config:
   log-to:properties:
+    diskSize: 30
     name: logto
     namespace: dev
     storageClass: dictycr-balanced
