@@ -35,7 +35,7 @@ func (emi *EventMessengerIssue) SecretEnvArgsArray() corev1.EnvVarArray {
     &corev1.EnvVarArgs{
 			Name: pulumi.String("GITHUB_TOKEN"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
-				ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
+        SecretKeyRef: &corev1.SecretKeySelectorArgs{
 					Name: pulumi.String(emi.Config.GithubToken.Name),
 					Key:  pulumi.String(emi.Config.GithubToken.Key),
 				},
