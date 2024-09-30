@@ -15,7 +15,7 @@ type EventMessengerIssueConfig struct {
 	Image     ImageProperties
   GithubRepo ConfigMapEntry
   GithubOwner ConfigMapEntry
-  GithubToken ConfigMapEntry
+  GithubToken SecretConfig
 }
 
 func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerIssueConfig, error) {
