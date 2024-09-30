@@ -81,8 +81,8 @@ func (eme *EventMessengerEmail) ContainerArray() corev1.ContainerArray {
 	config := eme.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name:  pulumi.String("event-messenger-email"),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image, config.Image.Tag)),
+			Name:  pulumi.String(config.Name),
+			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Repository, config.Image.Tag)),
       Args: eme.ContainerArgs(),
 			Env:   eme.ContainerEnvArgsArray(),
 		},
