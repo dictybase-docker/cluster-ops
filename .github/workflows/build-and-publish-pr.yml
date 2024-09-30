@@ -2,6 +2,11 @@ name: Build and Publish Docker Image (PR)
 
 on:
   pull_request:
+    paths:
+      - 'cmd/backup/main.go'
+      - 'internal/backup/arangodb.go'
+      - 'internal/backup/redis.go'
+      - 'build/package/Dockerfile'
 
 jobs:
   build-and-publish:
