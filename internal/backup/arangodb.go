@@ -13,7 +13,7 @@ func ArangoDBBackupAction(cltx *cli.Context) error {
 	config := extractConfig(cltx)
 
 	if err := setResticPassword(config.ResticPassword); err != nil {
-		return cli.Exit(err.Error(), 1)
+		return cli.Exit(err.Error(), 2)
 	}
 
 	if err := ensureRepositoryExists(config.Repository); err != nil {
@@ -21,11 +21,11 @@ func ArangoDBBackupAction(cltx *cli.Context) error {
 	}
 
 	if err := runArangoDump(config); err != nil {
-		return cli.Exit(err.Error(), 3)
+		return cli.Exit(err.Error(), 2)
 	}
 
 	if err := backupToRestic(config.Repository, config.Output); err != nil {
-		return cli.Exit(err.Error(), 4)
+		return cli.Exit(err.Error(), 2)
 	}
 
 	return nil
