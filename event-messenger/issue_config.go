@@ -7,24 +7,22 @@ import (
 )
 
 type EventMessengerIssueConfig struct {
+  Namespace string
 	Replicas  int
   LogLevel string
   Nats NatsProperties
 	Image     ImageProperties
-  MailgunApiKey SecretConfig
-  Domain ConfigMapEntry
-  Sender ConfigMapEntry
-  SenderName ConfigMapEntry
-  Cc ConfigMapEntry
-	PublicationApiEndpoint ConfigMapEntry
+  GithubRepo ConfigMapEntry
+  GithubOwner ConfigMapEntry
+  GithubToken ConfigMapEntry
 }
 
-func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerEmailConfig, error) {
-	conf := config.New(ctx, "event-messenger-email")
-	graphqlConfig := &EventMessengerIssueConfig{}
-	if err := conf.TryObject("properties", graphqlConfig); err != nil {
-		return nil, fmt.Errorf("failed to read event-messenger-email config: %w", err)
+func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerIssueConfig, error) {
+	conf := config.New(ctx, "event-messenger-issue")
+	eventMessengerIssue := &EventMessengerIssueConfig{}
+	if err := conf.TryObject("properties", eventMessengerIssue); err != nil {
+		return nil, fmt.Errorf("failed to read event-messenger-issue config: %w", err)
 	}
-	return graphqlConfig, nil
+	return eventMessengerIssue, nil
 }
 
