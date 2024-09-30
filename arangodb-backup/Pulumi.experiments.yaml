@@ -12,7 +12,7 @@ config:
     folder: arangodump
     image:
       name: dictybase/database-backup
-      tag: sha-ca97436
+      tag: sha-2152ef0
     namespace: dev
     projectSecret:
       key: gcsProject
@@ -25,3 +25,4 @@ config:
       class: dictycr-balanced
       name: arangodb-backup-ephemeral
       size: 50Gi
+  gcp:project: dcr-experiments

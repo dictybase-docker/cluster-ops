@@ -69,7 +69,50 @@ func (ab *ArangoBackup) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
+	if err := ab.createBackupJob(ctx, bucket); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (ab *ArangoBackup) createBackupJob(
+	ctx *pulumi.Context,
+	bucket *storage.Bucket,
+) error {
+	jobName := "arangodb-backup-job"
+	jobArgs := &batchv1.JobArgs{
+		Metadata: ab.createJobMetadata(jobName),
+		Spec:     ab.createJobSpec(bucket),
+	}
+
+	_, err := batchv1.NewJob(
+		ctx,
+		jobName,
+		jobArgs,
+		pulumi.DependsOn([]pulumi.Resource{bucket}),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating Kubernetes Job: %w", err)
+	}
+	return nil
+}
+
+func (ab *ArangoBackup) createJobMetadata(
+	name string,
+) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(name),
+		Namespace: pulumi.String(ab.Config.Namespace),
+	}
+}
+
+func (ab *ArangoBackup) createJobSpec(
+	bucket *storage.Bucket,
+) *batchv1.JobSpecArgs {
+	return &batchv1.JobSpecArgs{
+		Template: ab.createPodTemplateSpec(bucket),
+	}
 }
 
 func (ab *ArangoBackup) createGCSBucket(
