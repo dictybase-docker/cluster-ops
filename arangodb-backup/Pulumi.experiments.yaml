@@ -12,7 +12,7 @@ config:
     folder: arangodump
     image:
       name: dictybase/database-backup
-      tag: sha-1ec5ef2
+      tag: sha-c897491
     namespace: dev
     projectSecret:
       key: gcsProject
@@ -20,7 +20,6 @@ config:
     resticSecret:
       key: resticPass
       name: dictycr
-    server: arangodb
     storage:
       class: dictycr-balanced
       name: arangodb-backup-ephemeral
