@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ArangoDBBackupAction(cltx *cli.Context) error {
+func ArangoDBBackupAction(cltx *cli.Context, port int) error {
 	config := extractConfig(cltx)
 
 	if err := setResticPassword(config.ResticPassword); err != nil {
@@ -35,6 +35,7 @@ type arangoDBConfig struct {
 	User           string
 	Password       string
 	Server         string
+	Port           int
 	Output         string
 	Repository     string
 	ResticPassword string
@@ -45,6 +46,7 @@ func extractConfig(cltx *cli.Context) arangoDBConfig {
 		User:           cltx.String("user"),
 		Password:       cltx.String("password"),
 		Server:         cltx.String("server"),
+		Port:           cltx.Int("port"),
 		Output:         cltx.String("output"),
 		Repository:     cltx.String("repository"),
 		ResticPassword: cltx.String("restic-password"),
@@ -105,6 +107,7 @@ func runArangoDump(config arangoDBConfig) error {
 
 func validateConfig(config arangoDBConfig) error {
 	if config.User == "" || config.Password == "" || config.Server == "" ||
+		config.Port == 0 ||
 		config.Output == "" {
 		return fmt.Errorf("invalid configuration: all fields must be non-empty")
 	}
@@ -116,7 +119,7 @@ func buildArangoDumpArgs(config arangoDBConfig) []string {
 		"--all-databases",
 		"--server.username", config.User,
 		"--server.password", config.Password,
-		"--server.endpoint", config.Server,
+		"--server.endpoint", fmt.Sprintf("http+tcp://%s:%d", config.Server, config.Port),
 		"--output-directory", config.Output,
 		"--overwrite",
 	}
