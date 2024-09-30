@@ -64,9 +64,10 @@ func getRedisBackupCommand() *cli.Command {
 				Required: true,
 			},
 			&cli.IntFlag{
-				Name:  "port",
-				Usage: "Redis port",
-				Value: 6379,
+				Name:    "port",
+				Usage:   "Redis port",
+				EnvVars: []string{"REDIS_SERVICE_PORT"},
+				Value:   6379,
 			},
 			&cli.StringFlag{
 				Name:     "repository",
