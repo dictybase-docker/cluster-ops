@@ -46,7 +46,7 @@ type ArangoBackup struct {
 }
 
 func ReadConfig(ctx *pulumi.Context) (*ArangoBackupConfig, error) {
-	conf := config.New(ctx, "arangodb-backup")
+	conf := config.New(ctx, "")
 	backupConfig := &ArangoBackupConfig{}
 	if err := conf.TryObject("properties", backupConfig); err != nil {
 		return nil, fmt.Errorf("failed to read arangodb-backup config: %w", err)
@@ -77,17 +77,16 @@ func (ab *ArangoBackup) createGCSBucket(
 	ctx *pulumi.Context,
 ) (*storage.Bucket, error) {
 	bucket, err := storage.NewBucket(ctx, ab.Config.Bucket, &storage.BucketArgs{
-		Name:     pulumi.String(ab.Config.Bucket),
-		Location: pulumi.String("US"),
-		RetentionPolicy: &storage.BucketRetentionPolicyArgs{
-			RetentionPeriod: pulumi.Int(
-				60 * 24 * 60 * 60,
-			), // 60 days in seconds
-		},
+		Name:           pulumi.String(ab.Config.Bucket),
+		Location:       pulumi.String("US"),
 		LifecycleRules: ab.createLifecycleRules(),
 		Versioning: &storage.BucketVersioningArgs{
-			Enabled: pulumi.Bool(false),
+			Enabled: pulumi.Bool(true),
 		},
+		SoftDeletePolicy: &storage.BucketSoftDeletePolicyArgs{
+			RetentionDurationSeconds: pulumi.Int(5011200), // 58 days in seconds
+		},
+		ForceDestroy: pulumi.Bool(true),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating GCS bucket: %w", err)
@@ -113,7 +112,8 @@ func (ab *ArangoBackup) createLifecycleRules() storage.BucketLifecycleRuleArray 
 				Type: pulumi.String("Delete"),
 			},
 			Condition: &storage.BucketLifecycleRuleConditionArgs{
-				NumNewerVersions: pulumi.Int(1),
+				WithState:        pulumi.String("ARCHIVED"),
+				NumNewerVersions: pulumi.Int(3),
 			},
 		},
 	}
@@ -237,8 +237,12 @@ func (ab *ArangoBackup) createBackupContainer(
 	bucket *storage.Bucket,
 ) *corev1.ContainerArgs {
 	return &corev1.ContainerArgs{
-		Name:  pulumi.String("backup"),
-		Image: pulumi.Sprintf("%s:%s", ab.Config.Image.Name, ab.Config.Image.Tag),
+		Name: pulumi.String("backup"),
+		Image: pulumi.Sprintf(
+			"%s:%s",
+			ab.Config.Image.Name,
+			ab.Config.Image.Tag,
+		),
 		Command: pulumi.StringArray{
 			pulumi.String("app"),
 		},
@@ -267,7 +271,7 @@ func (ab *ArangoBackup) createBackupArgs(
 		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
 		pulumi.String("--server"), pulumi.String(ab.Config.Server),
 		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
-		pulumi.String("--repository"), pulumi.Sprintf("gs:%s/", bucket.Name),
+		pulumi.String("--repository"), pulumi.Sprintf("gs:%s:/", bucket.Name),
 	}
 }
 
