@@ -1,5 +1,11 @@
 package main
 
+import (
+  "fmt"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+)
+
 type SecretConfig struct {
   Name string
   Key string
@@ -33,3 +39,13 @@ type EventMessengerEmailConfig struct {
   Cc ConfigMapEntry
 	PublicationApiEndpoint ConfigMapEntry
 }
+
+func ReadEventMessengerEmailConfig(ctx *pulumi.Context) (*EventMessengerEmailConfig, error) {
+	conf := config.New(ctx, "event-messenger-email")
+	graphqlConfig := &EventMessengerEmailConfig{}
+	if err := conf.TryObject("properties", graphqlConfig); err != nil {
+		return nil, fmt.Errorf("failed to read event-messenger-email config: %w", err)
+	}
+	return graphqlConfig, nil
+}
+
