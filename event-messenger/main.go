@@ -8,6 +8,10 @@ type EventMessengerEmail struct {
 	Config *EventMessengerEmailConfig
 }
 
+type EventMessengerIssue struct {
+	Config *EventMessengerIssueConfig
+}
+
 func main() {
 	pulumi.Run(Run)
 }
