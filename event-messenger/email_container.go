@@ -38,7 +38,7 @@ func (eme *EventMessengerEmail) SecretEnvArgsArray() corev1.EnvVarArray {
     &corev1.EnvVarArgs{
 			Name: pulumi.String("MAILGUN_API_KEY"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
-				ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
+        SecretKeyRef: &corev1.SecretKeySelectorArgs{
 					Name: pulumi.String(eme.Config.MailgunApiKey.Name),
 					Key:  pulumi.String(eme.Config.MailgunApiKey.Key),
 				},
