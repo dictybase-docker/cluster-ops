@@ -118,6 +118,7 @@ func buildArangoDumpArgs(config arangoDBConfig) []string {
 		"--server.password", config.Password,
 		"--server.endpoint", config.Server,
 		"--output-directory", config.Output,
+		"--overwrite",
 	}
 }
 
