@@ -15,7 +15,3 @@ type ImageProperties struct {
   Tag string
   PullPolicy string
 }
-
-type NatsProperties struct {
-  Subject string
-}

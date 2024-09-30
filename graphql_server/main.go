@@ -6,12 +6,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type SecretConfig struct {
+type SecretKeyPair struct {
   name string
   key string
 }
 
-type ConfigMapEntry struct {
+type ConfigMapPair struct {
   name string
   key string
 }
@@ -28,17 +28,17 @@ type GraphqlServerConfig struct {
 	S3Bucket               string
 	S3BucketPath           string
 	AllowedOrigins         []string
-	AuthAppId              SecretConfig
-	AuthAppSecret          SecretConfig
-	AuthEndpoint           ConfigMapEntry
-	JwksURI                SecretConfig
-	JwtAudience            SecretConfig
-	JwtIssuer              SecretConfig
-	MinioAccess            SecretConfig
-	MinioSecret            SecretConfig
-	OrganismEndpoint       ConfigMapEntry
-	PublicationApiEndpoint ConfigMapEntry
-	S3StorageEndpoint      ConfigMapEntry
+	AuthAppId              SecretKeyPair
+	AuthAppSecret          SecretKeyPair
+	AuthEndpoint           ConfigMapPair
+	JwksURI                SecretKeyPair
+	JwtAudience            SecretKeyPair
+	JwtIssuer              SecretKeyPair
+	MinioAccess            SecretKeyPair
+	MinioSecret            SecretKeyPair
+	OrganismEndpoint       ConfigMapPair
+	PublicationApiEndpoint ConfigMapPair
+	S3StorageEndpoint      ConfigMapPair
 }
 
 type GraphqlServer struct {
