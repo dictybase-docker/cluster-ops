@@ -19,7 +19,6 @@ type ArangoBackupConfig struct {
 	ResticSecret   SecretKeyPair
 	BucketSecret   SecretKeyPair
 	ProjectSecret  SecretKeyPair
-	Server         string
 	Storage        StorageConfig
 	Image          ImageConfig
 }
@@ -312,7 +311,6 @@ func (ab *ArangoBackup) createBackupArgs(
 		pulumi.String("arangodb-backup"),
 		pulumi.String("--user"), pulumi.String("root"),
 		pulumi.String("--password"), pulumi.String("$(PASSWORD)"),
-		pulumi.String("--server"), pulumi.String(ab.Config.Server),
 		pulumi.String("--output"), pulumi.String(ab.Config.Folder),
 		pulumi.String("--repository"), pulumi.Sprintf("gs:%s:/", bucket.Name),
 	}
