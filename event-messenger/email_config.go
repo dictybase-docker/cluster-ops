@@ -7,6 +7,7 @@ import (
 )
 
 type EventMessengerEmailConfig struct {
+  Name string
 	Namespace string
 	Replicas  int
   LogLevel string
