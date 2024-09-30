@@ -7,6 +7,7 @@ import (
 )
 
 type EventMessengerIssueConfig struct {
+  Name string
   Namespace string
 	Replicas  int
   LogLevel string
