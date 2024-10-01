@@ -11,7 +11,8 @@ func (lt *Logto) ContainerArray() corev1.ContainerArray {
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
 			Name:  pulumi.String(fmt.Sprintf("%s-container", config.Name)),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image, config.Tag)),
+			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
+      Command: pulumi.StringArray{pulumi.String("/bin/sh")},
 			Args:  lt.ContainerArgs(),
 			Env:   lt.ContainerEnvArgsArray(),
 			Ports: lt.ContainerPortArray(),
