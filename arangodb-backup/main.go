@@ -82,7 +82,7 @@ func (ab *ArangoBackup) createBackupJob(
 	jobName := "arangodb-backup-job"
 	jobArgs := &batchv1.JobArgs{
 		Metadata: ab.createJobMetadata(jobName),
-		Spec:     ab.createJobSpec(bucket),
+		Spec:     ab.createJobSpec(bucket, true), // Pass true for immediate backup
 	}
 
 	_, err := batchv1.NewJob(
@@ -108,11 +108,18 @@ func (ab *ArangoBackup) createJobMetadata(
 
 func (ab *ArangoBackup) createJobSpec(
 	bucket *storage.Bucket,
+	isImmediateBackup bool,
 ) *batchv1.JobSpecArgs {
-	return &batchv1.JobSpecArgs{
+	jobSpec := &batchv1.JobSpecArgs{
 		Template:     ab.createPodTemplateSpec(bucket),
 		BackoffLimit: pulumi.Int(0),
 	}
+
+	if isImmediateBackup {
+		jobSpec.TtlSecondsAfterFinished = pulumi.Int(900) // 15 minutes
+	}
+
+	return jobSpec
 }
 
 func (ab *ArangoBackup) createGCSBucket(
@@ -196,17 +203,9 @@ func (ab *ArangoBackup) createCronJobSpec(
 	bucket *storage.Bucket,
 ) *batchv1.CronJobSpecArgs {
 	return &batchv1.CronJobSpecArgs{
-		Schedule:    pulumi.String("0 2 * * *"), // Run at 2AM every night
-		JobTemplate: ab.createJobTemplateSpec(bucket),
-	}
-}
-
-func (ab *ArangoBackup) createJobTemplateSpec(
-	bucket *storage.Bucket,
-) *batchv1.JobTemplateSpecArgs {
-	return &batchv1.JobTemplateSpecArgs{
-		Spec: &batchv1.JobSpecArgs{
-			Template: ab.createPodTemplateSpec(bucket),
+		Schedule: pulumi.String("0 2 * * *"), // Run at 2AM every night
+		JobTemplate: &batchv1.JobTemplateSpecArgs{
+			Spec: ab.createJobSpec(bucket, false), // Pass false for cron job
 		},
 	}
 }

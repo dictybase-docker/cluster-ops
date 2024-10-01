@@ -69,6 +69,28 @@ func (rb *RedisBackup) Install(ctx *pulumi.Context) error {
 	return nil
 }
 
+func (rb *RedisBackup) createBackupCronJob(
+	ctx *pulumi.Context,
+	bucket *storage.Bucket,
+) error {
+	cronJobName := "redis-backup-cronjob"
+	cronJobArgs := &batchv1.CronJobArgs{
+		Metadata: rb.createCronJobMetadata(cronJobName),
+		Spec:     rb.createCronJobSpec(bucket),
+	}
+
+	_, err := batchv1.NewCronJob(
+		ctx,
+		cronJobName,
+		cronJobArgs,
+		pulumi.DependsOn([]pulumi.Resource{bucket}),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating Kubernetes CronJob: %w", err)
+	}
+	return nil
+}
+
 func (rb *RedisBackup) createImmediateBackupJob(
 	ctx *pulumi.Context,
 	bucket *storage.Bucket,
@@ -76,7 +98,7 @@ func (rb *RedisBackup) createImmediateBackupJob(
 	jobName := "redis-immediate-backup-job"
 	jobArgs := &batchv1.JobArgs{
 		Metadata: rb.createJobMetadata(jobName),
-		Spec:     rb.createJobSpec(bucket),
+		Spec:     rb.createJobSpec(bucket, true), // Pass true for immediate backup
 	}
 
 	_, err := batchv1.NewJob(
@@ -105,11 +127,18 @@ func (rb *RedisBackup) createJobMetadata(
 
 func (rb *RedisBackup) createJobSpec(
 	bucket *storage.Bucket,
+	isImmediateBackup bool,
 ) *batchv1.JobSpecArgs {
-	return &batchv1.JobSpecArgs{
+	jobSpec := &batchv1.JobSpecArgs{
 		Template:     rb.createPodTemplateSpec(bucket),
 		BackoffLimit: pulumi.Int(0),
 	}
+
+	if isImmediateBackup {
+		jobSpec.TtlSecondsAfterFinished = pulumi.Int(900) // 15 minutes
+	}
+
+	return jobSpec
 }
 
 func (rb *RedisBackup) createGCSBucket(
@@ -158,28 +187,6 @@ func (rb *RedisBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
 	}
 }
 
-func (rb *RedisBackup) createBackupCronJob(
-	ctx *pulumi.Context,
-	bucket *storage.Bucket,
-) error {
-	cronJobName := "redis-backup-cronjob"
-	cronJobArgs := &batchv1.CronJobArgs{
-		Metadata: rb.createCronJobMetadata(cronJobName),
-		Spec:     rb.createCronJobSpec(bucket),
-	}
-
-	_, err := batchv1.NewCronJob(
-		ctx,
-		cronJobName,
-		cronJobArgs,
-		pulumi.DependsOn([]pulumi.Resource{bucket}),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating Kubernetes CronJob: %w", err)
-	}
-	return nil
-}
-
 func (rb *RedisBackup) createCronJobMetadata(
 	name string,
 ) *metav1.ObjectMetaArgs {
@@ -196,16 +203,8 @@ func (rb *RedisBackup) createCronJobSpec(
 		Schedule: pulumi.String(
 			"0 1 * * *",
 		), // Run at 1AM every night (1 hour before ArangoDB backup)
-		JobTemplate: rb.createJobTemplateSpec(bucket),
-	}
-}
-
-func (rb *RedisBackup) createJobTemplateSpec(
-	bucket *storage.Bucket,
-) *batchv1.JobTemplateSpecArgs {
-	return &batchv1.JobTemplateSpecArgs{
-		Spec: &batchv1.JobSpecArgs{
-			Template: rb.createPodTemplateSpec(bucket),
+		JobTemplate: &batchv1.JobTemplateSpecArgs{
+			Spec: rb.createJobSpec(bucket, false), // Pass false for cron job
 		},
 	}
 }
