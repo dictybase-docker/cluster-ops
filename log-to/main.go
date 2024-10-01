@@ -36,9 +36,7 @@ type Logto struct {
 }
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		return nil
-	})
+	pulumi.Run(Run)
 }
 
 func Run(ctx *pulumi.Context) error {
