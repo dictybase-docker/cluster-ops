@@ -18,11 +18,6 @@ type LogtoConfig struct {
   AdminPort int
 }
 
-type ImageConfig struct {
-  Name string
-  Tag string
-}
-
 type DatabaseProperties struct {
   Name string
   User string
