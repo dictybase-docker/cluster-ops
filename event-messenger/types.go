@@ -10,7 +10,7 @@ type ConfigMapPair struct {
   Key string
 }
 
-type ImageProperties struct {
+type ImageConfig struct {
   Repository string
   Tag string
   PullPolicy string

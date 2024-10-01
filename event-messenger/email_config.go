@@ -12,13 +12,13 @@ type EventMessengerEmailConfig struct {
 	Replicas  int
   LogLevel string
   Nats NatsProperties 
-	Image     ImageProperties
-  MailgunApiKey SecretConfig
-  Domain ConfigMapEntry
-  Sender ConfigMapEntry
-  SenderName ConfigMapEntry
-  Cc ConfigMapEntry
-	PublicationApiEndpoint ConfigMapEntry
+	Image     ImageConfig
+  MailgunApiKey SecretKeyPair
+  Domain ConfigMapPair
+  Sender ConfigMapPair
+  SenderName ConfigMapPair
+  Cc ConfigMapPair
+	PublicationApiEndpoint ConfigMapPair
 }
 
 func ReadEventMessengerEmailConfig(ctx *pulumi.Context) (*EventMessengerEmailConfig, error) {
