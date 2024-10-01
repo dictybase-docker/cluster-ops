@@ -7,12 +7,18 @@ import (
 type LogtoConfig struct {
   Name string
   Namespace string
+  Image ImageConfig
   StorageClass string
   DiskSize int
   Database DatabaseProperties
   Endpoint string
   ApiPort int
   AdminPort int
+}
+
+type ImageConfig struct {
+  Name string
+  Tag string
 }
 
 type DatabaseProperties struct {
