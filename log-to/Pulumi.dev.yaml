@@ -13,3 +13,6 @@ config:
       port: 0
     apiPort: 1
     adminPort: 2
+    image:
+      repository: svhd/logto
+      tag: latest
