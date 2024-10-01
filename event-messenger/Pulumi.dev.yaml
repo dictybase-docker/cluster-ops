@@ -11,7 +11,7 @@ config:
       name: dictybase-configuration
     image:
       pullPolicy: IfNotPresent
-      repository: dictybase/event-messenger
+      name: dictybase/event-messenger
       tag: latest
     logLevel: debug
     mailgunApiKey:
@@ -41,7 +41,7 @@ config:
       name: dictybase-configuration
     image:
       pullPolicy: IfNotPresent
-      repository: dictybase/event-messenger
+      name: dictybase/event-messenger
       tag: latest
     name: event-messenger-issue
     nats:

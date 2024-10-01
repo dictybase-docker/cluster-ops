@@ -73,7 +73,7 @@ func (emi *EventMessengerIssue) ContainerArray() corev1.ContainerArray {
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
 			Name:  pulumi.String(config.Name),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Repository, config.Image.Tag)),
+			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
       Args: emi.ContainerArgs(),
 			Env:   emi.ContainerEnvArgsArray(),
 		},
