@@ -12,7 +12,7 @@ config:
     folder: arangodump
     image:
       name: dictybase/database-backup
-      tag: sha-c897491
+      tag: develop-4d92815
     namespace: dev
     projectSecret:
       key: gcsProject
