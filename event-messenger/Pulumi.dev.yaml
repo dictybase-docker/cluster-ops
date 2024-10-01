@@ -2,7 +2,6 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnDYDJPAZKhz6baNl/eqeoJb8Lv/MMnz0t7k9vchYNk8SSQB2302FF7hfoCLHG7HF9V51Rhv7sywjMkfomQ2+hHOfKB9AHQAG+MkKr+nn9deJgIVNs9w+mpZLb0bMYA3ASrswxy8pizUhYTY=
 config:
   event-messenger-email:properties:
-    name: event-messenger-email
     cc:
       key: eventMessenger.email.cc
       name: dictybase-configuration
@@ -17,6 +16,7 @@ config:
     mailgunApiKey:
       key: eventMessenger.email.apiKey
       name: dictybase-configuration
+    name: event-messenger-email
     nats:
       subject: OrderService.Create
     publicationApiEndpoint:
