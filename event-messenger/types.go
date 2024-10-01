@@ -11,7 +11,7 @@ type ConfigMapPair struct {
 }
 
 type ImageConfig struct {
-  Repository string
+  Name string
   Tag string
   PullPolicy string
 }
