@@ -16,11 +16,15 @@ type ConfigMapPair struct {
   key string
 }
 
+type ImageConfig struct {
+	Name string
+	Tag  string
+}
+
 type GraphqlServerConfig struct {
 	Namespace              string
 	Name                   string
-	Image                  string
-	Tag                    string
+	Image                  ImageConfig
 	LogLevel               string
 	Port                   int
 	SecretName             string
