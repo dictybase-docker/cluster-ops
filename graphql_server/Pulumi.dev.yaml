@@ -20,7 +20,7 @@ config:
     authEndpoint:
       key: keyname
       name: dictycr-configuration
-    Image:
+    image:
       Repository: dictybase/graphql-server
       tag: develop
     jwksURI:
