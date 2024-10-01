@@ -6,3 +6,10 @@ config:
     name: logto
     namespace: dev
     storageClass: dictycr-balanced
+    database:
+      name: dictycr_auth
+      user: user_secret
+      host: host_secret
+      port: 0
+    apiPort: 1
+    adminPort: 2
