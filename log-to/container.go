@@ -10,13 +10,27 @@ func (lt *Logto) ContainerArray() corev1.ContainerArray {
 	config := lt.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name:  pulumi.String(fmt.Sprintf("%s-container", config.Name)),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
-      Command: pulumi.StringArray{pulumi.String("/bin/sh")},
-			Args:  lt.ContainerArgs(),
-			Env:   lt.ContainerEnvArgsArray(),
-			Ports: lt.ContainerPortArray(),
+			Name:         pulumi.String(fmt.Sprintf("%s-container", config.Name)),
+			Image:        pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
+			Command:      pulumi.StringArray{pulumi.String("/bin/sh")},
+			Args:         lt.ContainerArgs(),
+			Env:          lt.ContainerEnvArgsArray(),
+			Ports:        lt.ContainerPortArray(),
+			VolumeMounts: lt.ContainerVolumeMountArray(),
 		},
+	}
+}
+
+func (lt *Logto) ContainerArgs() pulumi.StringArray {
+	config := lt.Config
+	script := fmt.Sprintf("npm run cli db seed -- --swe && "+
+		"npm run cli db alteration deploy %s && "+
+		"npm run cli connector link && "+
+		"npm start", config.Image.Tag)
+	
+	return pulumi.StringArray{
+		pulumi.String("-c"),
+		pulumi.String(script),
 	}
 }
 
@@ -61,6 +75,15 @@ func (lt *Logto) ContainerPortArray() corev1.ContainerPortArray {
 			Name:          pulumi.String(fmt.Sprintf("%s-admin", config.Name)),
 			ContainerPort: pulumi.Int(config.AdminPort),
 			Protocol:      pulumi.String("TCP"),
+		},
+	}
+}
+
+func (lt *Logto) ContainerVolumeMountArray() corev1.VolumeMountArray {
+	return corev1.VolumeMountArray{
+		&corev1.VolumeMountArgs{
+			Name:      pulumi.String(fmt.Sprintf("%s-volume", lt.Config.Name)),
+			MountPath: pulumi.String("/etc/logto/packages/core/connectors"),
 		},
 	}
 }
