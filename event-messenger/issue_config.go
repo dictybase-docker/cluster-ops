@@ -12,10 +12,10 @@ type EventMessengerIssueConfig struct {
 	Replicas  int
   LogLevel string
   Nats NatsProperties
-	Image     ImageProperties
-  GithubRepo ConfigMapEntry
-  GithubOwner ConfigMapEntry
-  GithubToken SecretConfig
+	Image     ImageConfig
+  GithubRepo ConfigMapPair
+  GithubOwner ConfigMapPair
+  GithubToken SecretKeyPair
 }
 
 func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerIssueConfig, error) {
