@@ -9,6 +9,18 @@ type LogtoConfig struct {
   Namespace string
   StorageClass string
   DiskSize int
+  Database DatabaseProperties
+  Endpoint string
+  ApiPort int
+  AdminPort int
+}
+
+type DatabaseProperties struct {
+  Name string
+  User string
+  Host string
+  Port int
+  Password string
 }
 
 type Logto struct {
