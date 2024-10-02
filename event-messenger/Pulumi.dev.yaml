@@ -25,5 +25,6 @@ config:
           token: eventMessenger.github.token
         name: dictybase-secrets
     logLevel: debug
+    namespace: dev
     nats:
       subject: OrderService.Create
