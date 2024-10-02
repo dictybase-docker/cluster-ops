@@ -59,7 +59,6 @@ func Run(ctx *pulumi.Context) error {
 
 func (fe *Frontend) Install(ctx *pulumi.Context) error {
 	for _, app := range fe.Config.Apps {
-		appConfig := app
 
 		deploymentName := fmt.Sprintf("%s-api-server", app.Name)
 		serviceName := fmt.Sprintf("%s-api", app.Name)
@@ -69,7 +68,7 @@ func (fe *Frontend) Install(ctx *pulumi.Context) error {
 				deploymentName: deploymentName,
 				serviceName:    serviceName,
 				port:           fe.Config.Port,
-				app:            &appConfig,
+				app:            &app,
 				namespace:      fe.Config.Namespace,
 			}))
 
@@ -88,7 +87,7 @@ func (fe *Frontend) Install(ctx *pulumi.Context) error {
 				&specProperties{
 					deploymentName: deploymentName,
 					serviceName:    serviceName,
-					app:            &appConfig,
+					app:            &app,
 					port:           fe.Config.Port,
 					namespace:      fe.Config.Namespace,
 				},
