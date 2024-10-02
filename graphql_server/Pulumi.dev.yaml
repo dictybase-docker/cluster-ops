@@ -19,7 +19,7 @@ config:
         publicationApiEndpoint: endpoints.publication
         s3StorageEndpoint: endpoints.s3
     image:
-      Repository: dictybase/graphql-server
+      name: dictybase/graphql-server
       tag: develop
     s3Bucket:
       name: editor
