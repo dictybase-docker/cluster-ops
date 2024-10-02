@@ -9,13 +9,13 @@ import (
 )
 
 func (emi *EventMessengerIssue) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
-	deployment, err := appsv1.NewDeployment(ctx, emi.Config.Name, &appsv1.DeploymentArgs{
+	deployment, err := appsv1.NewDeployment(ctx, emi.Config.Issue.Name, &appsv1.DeploymentArgs{
 		Metadata: emi.CreateDeploymentMetadata(),
 		Spec:     emi.CreateDeploymentSpec(),
 	})
-  if err != nil {
-    return nil, fmt.Errorf("error creating %s deployment: %w", emi.Config.Name, err)
-  }
+	if err != nil {
+		return nil, fmt.Errorf("error creating %s deployment: %w", emi.Config.Issue.Name, err)
+	}
 	return deployment, nil
 }
 
@@ -23,21 +23,23 @@ func (emi *EventMessengerIssue) CreateDeploymentMetadata() *metav1.ObjectMetaArg
 	return &metav1.ObjectMetaArgs{
 		Namespace: pulumi.String(emi.Config.Namespace),
 		Name: pulumi.String(emi.Config.Issue.Name),
+		Labels: pulumi.StringMap{
+			"app": pulumi.String(emi.Config.Issue.Name),
+		},
 	}
 }
 
 func (emi *EventMessengerIssue) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
-		Replicas: pulumi.Int(emi.Config.Replicas),
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(emi.Config.Name),
+				"app": pulumi.String(emi.Config.Issue.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(emi.Config.Name),
+					"app": pulumi.String(emi.Config.Issue.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
