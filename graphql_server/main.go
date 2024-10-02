@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type SecretKeyPair struct {
-  name string
-  key string
+	name string
+	key  string
 }
 
 type ConfigMapPair struct {
-  name string
-  key string
+	name string
+	key  string
 }
 
 type ImageConfig struct {
@@ -46,7 +47,7 @@ type GraphqlServerConfig struct {
 }
 
 type GraphqlServer struct {
-  Config *GraphqlServerConfig
+	Config *GraphqlServerConfig
 }
 
 func main() {
@@ -54,12 +55,12 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-  config, err := ReadConfig(ctx)
-  if err != nil {
-    return err
-  }
+	config, err := ReadConfig(ctx)
+	if err != nil {
+		return err
+	}
 
-  graphqlServer := NewGraphqlServer(config)
+	graphqlServer := NewGraphqlServer(config)
 
 	if err := graphqlServer.Install(ctx); err != nil {
 		return err
@@ -78,9 +79,9 @@ func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 }
 
 func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
-  return &GraphqlServer{
-    Config: config,
-  }
+	return &GraphqlServer{
+		Config: config,
+	}
 }
 
 func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
@@ -95,4 +96,3 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 
 	return nil
 }
-

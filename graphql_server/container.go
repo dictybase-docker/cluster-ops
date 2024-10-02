@@ -1,43 +1,44 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
-  envVars := []struct {
-    name string
-    secret SecretKeyPair
-  }{
-    {"SECRET_KEY", gs.Config.MinioSecret},
-    {"ACCESS_KEY", gs.Config.MinioAccess},
-    {"JWT_AUDIENCE", gs.Config.JwtAudience},
-    {"JWT_ISSUER", gs.Config.JwtIssuer},
-    {"JWKS_PUBLIC_URI", gs.Config.JwksURI},
-    {"APPLICATION_SECRET", gs.Config.AuthAppSecret},
-    {"APPLICATION_ID", gs.Config.AuthAppId},
-  }
+	envVars := []struct {
+		name   string
+		secret SecretKeyPair
+	}{
+		{"SECRET_KEY", gs.Config.MinioSecret},
+		{"ACCESS_KEY", gs.Config.MinioAccess},
+		{"JWT_AUDIENCE", gs.Config.JwtAudience},
+		{"JWT_ISSUER", gs.Config.JwtIssuer},
+		{"JWKS_PUBLIC_URI", gs.Config.JwksURI},
+		{"APPLICATION_SECRET", gs.Config.AuthAppSecret},
+		{"APPLICATION_ID", gs.Config.AuthAppId},
+	}
 
-  var envVarArray corev1.EnvVarArray
-  for _, envVar := range envVars {
-    envVarArray = append(envVarArray, &corev1.EnvVarArgs{
-      Name: pulumi.String(envVar.name),
-      ValueFrom: &corev1.EnvVarSourceArgs{
-        SecretKeyRef: &corev1.SecretKeySelectorArgs{
-          Name: pulumi.String(envVar.secret.name),
-          Key:  pulumi.String(envVar.secret.key),
-        },
-      },
-    })
-  }
-  return envVarArray
+	var envVarArray corev1.EnvVarArray
+	for _, envVar := range envVars {
+		envVarArray = append(envVarArray, &corev1.EnvVarArgs{
+			Name: pulumi.String(envVar.name),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(envVar.secret.name),
+					Key:  pulumi.String(envVar.secret.key),
+				},
+			},
+		})
+	}
+	return envVarArray
 }
 
 func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	envVars := []struct {
-		name string
+		name      string
 		configMap ConfigMapPair
 	}{
 		{"PUBLICATION_API_ENDPOINT", gs.Config.PublicationApiEndpoint},
