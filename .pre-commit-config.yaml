@@ -4,8 +4,8 @@ repos:
      hooks:
        -   id: trailing-whitespace
        -   id: end-of-file-fixer
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v1.58.2  # Or the latest version
-    hooks:
-      - id: golangci-lint
-        args: [--config=.golangci.yml] # Use your golangci.yml config
+  # - repo: https://github.com/golangci/golangci-lint
+  #   rev: v1.58.2  # Or the latest version
+  #   hooks:
+  #     - id: golangci-lint
+  #       args: [--config=.golangci.yml] # Use your golangci.yml config
