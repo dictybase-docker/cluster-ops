@@ -73,7 +73,7 @@ func (lt *Logto) ContainerPortArray() corev1.ContainerPortArray {
 	return corev1.ContainerPortArray{
 		&corev1.ContainerPortArgs{
 			Name:          pulumi.String(fmt.Sprintf("%s-api", config.Name)),
-			ContainerPort: pulumi.Int(config.ApiPort),
+			ContainerPort: pulumi.Int(config.APIPort),
 			Protocol:      pulumi.String("TCP"),
 		},
 		&corev1.ContainerPortArgs{
