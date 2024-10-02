@@ -1,7 +1,8 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
@@ -22,7 +23,7 @@ func (emi *EventMessengerIssue) CreateDeployment(ctx *pulumi.Context) (*appsv1.D
 func (emi *EventMessengerIssue) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Namespace: pulumi.String(emi.Config.Namespace),
-		Name: pulumi.String(emi.Config.Deployment.Name),
+		Name:      pulumi.String(emi.Config.Deployment.Name),
 		Labels: pulumi.StringMap{
 			"app": pulumi.String(emi.Config.Deployment.Name),
 		},

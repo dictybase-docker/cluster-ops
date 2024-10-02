@@ -17,24 +17,24 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-  emeConfig, err := ReadEventMessengerEmailConfig(ctx)
+	emeConfig, err := ReadEventMessengerEmailConfig(ctx)
 
-  if err != nil {
-    return err
-  }
+	if err != nil {
+		return err
+	}
 
-  eventMessengerEmail := NewEventMessengerEmail(emeConfig)
+	eventMessengerEmail := NewEventMessengerEmail(emeConfig)
 
 	if err := eventMessengerEmail.Install(ctx); err != nil {
 		return err
 	}
-  emiConfig, err := ReadEventMessengerIssueConfig(ctx)
+	emiConfig, err := ReadEventMessengerIssueConfig(ctx)
 
-  if err != nil {
-    return err
-  }
+	if err != nil {
+		return err
+	}
 
-  eventMessengerIssue := NewEventMessengerIssue(emiConfig)
+	eventMessengerIssue := NewEventMessengerIssue(emiConfig)
 
 	if err := eventMessengerIssue.Install(ctx); err != nil {
 		return err
