@@ -8,6 +8,7 @@ import (
 
 type EventMessengerEmailConfig struct {
 	LogLevel string
+  Namespace string
 	Nats     NatsProperties
 	Image    ImageConfig
   Email EmailDeployment 
