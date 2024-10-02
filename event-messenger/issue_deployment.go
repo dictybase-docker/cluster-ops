@@ -9,13 +9,23 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (emi *EventMessengerIssue) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
-	deployment, err := appsv1.NewDeployment(ctx, emi.Config.Deployment.Name, &appsv1.DeploymentArgs{
-		Metadata: emi.CreateDeploymentMetadata(),
-		Spec:     emi.CreateDeploymentSpec(),
-	})
+func (emi *EventMessengerIssue) CreateDeployment(
+	ctx *pulumi.Context,
+) (*appsv1.Deployment, error) {
+	deployment, err := appsv1.NewDeployment(
+		ctx,
+		emi.Config.Deployment.Name,
+		&appsv1.DeploymentArgs{
+			Metadata: emi.CreateDeploymentMetadata(),
+			Spec:     emi.CreateDeploymentSpec(),
+		},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating %s deployment: %w", emi.Config.Deployment.Name, err)
+		return nil, fmt.Errorf(
+			"error creating %s deployment: %w",
+			emi.Config.Deployment.Name,
+			err,
+		)
 	}
 	return deployment, nil
 }

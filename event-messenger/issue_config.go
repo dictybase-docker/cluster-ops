@@ -31,7 +31,9 @@ type IssueSecretKeys struct {
 	Token      string
 }
 
-func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerIssueConfig, error) {
+func ReadEventMessengerIssueConfig(
+	ctx *pulumi.Context,
+) (*EventMessengerIssueConfig, error) {
 	conf := config.New(ctx, "event-messenger")
 	eventMessengerIssue := &EventMessengerIssueConfig{}
 	if err := conf.TryObject("properties", eventMessengerIssue); err != nil {

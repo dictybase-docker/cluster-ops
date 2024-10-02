@@ -40,7 +40,9 @@ func (gs *GraphqlServer) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	}
 }
 
-func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
+func (gs *GraphqlServer) CreateDeployment(
+	ctx *pulumi.Context,
+) (*appsv1.Deployment, error) {
 	config := gs.Config
 	deployment, err := appsv1.NewDeployment(
 		ctx,
@@ -51,7 +53,10 @@ func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployme
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating graphql-server deployment: %w", err)
+		return nil, fmt.Errorf(
+			"error creating graphql-server deployment: %w",
+			err,
+		)
 	}
 
 	return deployment, nil

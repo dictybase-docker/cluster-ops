@@ -43,7 +43,10 @@ func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 		name string
 		key  string
 	}{
-		{"PUBLICATION_API_ENDPOINT", configMap.EndpointKeys.PublicationApiEndpoint},
+		{
+			"PUBLICATION_API_ENDPOINT",
+			configMap.EndpointKeys.PublicationApiEndpoint,
+		},
 		{"S3_STORAGE_ENDPOINT", configMap.EndpointKeys.S3StorageEndpoint},
 		{"AUTH_ENDPOINT", configMap.EndpointKeys.AuthEndpoint},
 		{"ORGANISM_API_ENDPOINT", configMap.EndpointKeys.OrganismEndpoint},
@@ -109,8 +112,10 @@ func (gs *GraphqlServer) ContainerArray() corev1.ContainerArray {
 	config := gs.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name:  pulumi.String(fmt.Sprintf("%s-container", config.Name)),
-			Image: pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
+			Name: pulumi.String(fmt.Sprintf("%s-container", config.Name)),
+			Image: pulumi.String(
+				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
+			),
 			Args:  gs.ContainerArgs(),
 			Env:   gs.ContainerEnvArgsArray(),
 			Ports: gs.ContainerPortArray(),

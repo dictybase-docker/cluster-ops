@@ -52,7 +52,9 @@ func (eme *EventMessengerEmail) Install(ctx *pulumi.Context) error {
 	return nil
 }
 
-func NewEventMessengerEmail(config *EventMessengerEmailConfig) *EventMessengerEmail {
+func NewEventMessengerEmail(
+	config *EventMessengerEmailConfig,
+) *EventMessengerEmail {
 	return &EventMessengerEmail{
 		Config: config,
 	}
@@ -67,7 +69,9 @@ func (emi *EventMessengerIssue) Install(ctx *pulumi.Context) error {
 	return nil
 }
 
-func NewEventMessengerIssue(config *EventMessengerIssueConfig) *EventMessengerIssue {
+func NewEventMessengerIssue(
+	config *EventMessengerIssueConfig,
+) *EventMessengerIssue {
 	return &EventMessengerIssue{
 		Config: config,
 	}

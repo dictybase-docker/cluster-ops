@@ -20,14 +20,20 @@ func (lt *Logto) CreateService(
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("error creating %s service: %w", serviceName, err)
+		return nil, fmt.Errorf(
+			"error creating %s service: %w",
+			serviceName,
+			err,
+		)
 
 	}
 
 	return service, nil
 }
 
-func (lt *Logto) CreateServiceMetaData(serviceName string) *metav1.ObjectMetaArgs {
+func (lt *Logto) CreateServiceMetaData(
+	serviceName string,
+) *metav1.ObjectMetaArgs {
 	config := lt.Config
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(serviceName),
