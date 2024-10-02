@@ -11,8 +11,23 @@ type EventMessengerIssue struct {
 	Config *EventMessengerIssueConfig
 }
 
+type EventMessengerEmail struct {
+	Config *EventMessengerEmailConfig
+}
+
 func main() {
 	pulumi.Run(Run)
+}
+
+func ReadEventMessengerIssueConfig(
+	ctx *pulumi.Context,
+) (*EventMessengerIssueConfig, error) {
+	conf := config.New(ctx, "event-messenger")
+	eventMessengerIssue := &EventMessengerIssueConfig{}
+	if err := conf.TryObject("properties", eventMessengerIssue); err != nil {
+		return nil, fmt.Errorf("failed to read event-messenger config: %w", err)
+	}
+	return eventMessengerIssue, nil
 }
 
 func ReadEventMessengerEmailConfig(
