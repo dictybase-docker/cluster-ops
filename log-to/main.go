@@ -1,12 +1,13 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 type Logto struct {
-  Config *LogtoConfig
+	Config *LogtoConfig
 }
 
 func main() {
@@ -14,12 +15,12 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-  config, err := ReadConfig(ctx)
-  if err != nil {
-    return err
-  }
+	config, err := ReadConfig(ctx)
+	if err != nil {
+		return err
+	}
 
-  lt := NewLogto(config)
+	lt := NewLogto(config)
 
 	if err := lt.Install(ctx); err != nil {
 		return err
@@ -29,9 +30,9 @@ func Run(ctx *pulumi.Context) error {
 }
 
 func NewLogto(config *LogtoConfig) *Logto {
-  return &Logto{
-    Config: config,
-  }
+	return &Logto{
+		Config: config,
+	}
 }
 
 func (lt *Logto) Install(ctx *pulumi.Context) error {
@@ -39,23 +40,32 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-  
-  claimName := pvc.Metadata.Name().Elem()
 
-  deployment, err := lt.CreateDeployment(ctx, claimName)
+	claimName := pvc.Metadata.Name().Elem()
+
+	deployment, err := lt.CreateDeployment(ctx, claimName)
 	if err != nil {
 		return err
 	}
 
-  _, err = lt.CreateService(ctx, deployment.Metadata.Name().Elem(), fmt.Sprintf("%s-api", lt.Config.Name), lt.Config.ApiPort)
+	_, err = lt.CreateService(
+		ctx,
+		deployment.Metadata.Name().Elem(),
+		fmt.Sprintf("%s-api", lt.Config.Name),
+		lt.Config.ApiPort,
+	)
 	if err != nil {
 		return err
 	}
-  _, err = lt.CreateService(ctx, deployment.Metadata.Name().Elem(), fmt.Sprintf("%s-admin", lt.Config.Name), lt.Config.AdminPort)
+	_, err = lt.CreateService(
+		ctx,
+		deployment.Metadata.Name().Elem(),
+		fmt.Sprintf("%s-admin", lt.Config.Name),
+		lt.Config.AdminPort,
+	)
 	if err != nil {
 		return err
 	}
 
 	return nil
 }
-

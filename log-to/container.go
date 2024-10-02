@@ -1,7 +1,8 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -27,7 +28,7 @@ func (lt *Logto) ContainerArgs() pulumi.StringArray {
 		"npm run cli db alteration deploy %s && "+
 		"npm run cli connector link && "+
 		"npm start", config.Image.Tag)
-	
+
 	return pulumi.StringArray{
 		pulumi.String("-c"),
 		pulumi.String(script),
@@ -41,7 +42,7 @@ func (lt *Logto) ContainerEnvArgsArray() corev1.EnvVarArray {
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.Name,
-  )
+	)
 
 	return corev1.EnvVarArray{
 		&corev1.EnvVarArgs{
@@ -87,4 +88,3 @@ func (lt *Logto) ContainerVolumeMountArray() corev1.VolumeMountArray {
 		},
 	}
 }
-
