@@ -15,7 +15,7 @@ type LogtoConfig struct {
 	DiskSize     int
 	Database     DatabaseProperties
 	Endpoint     string
-	ApiPort      int
+	APIPort      int
 	AdminPort    int
 }
 
