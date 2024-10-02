@@ -10,14 +10,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type EventMessengerIssueConfig struct {
-	LogLevel   string
-	Namespace  string
-	Nats       NatsProperties
-	Image      ImageConfig
-	Deployment IssueDeployment
-}
-
 type IssueDeployment struct {
 	Name    string
 	Secrets IssueSecrets
@@ -34,8 +26,8 @@ type IssueSecretKeys struct {
 	Token      string
 }
 
-func (emi *EventMessengerIssue) ContainerEnvArgsArray() corev1.EnvVarArray {
-	secrets := emi.Config.Deployment.Secrets
+func (emi *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
+	secrets := emi.Config.IssueDeployment.Secrets
 	var envVarArray corev1.EnvVarArray
 
 	secretEnvVars := []struct {
@@ -61,7 +53,7 @@ func (emi *EventMessengerIssue) ContainerEnvArgsArray() corev1.EnvVarArray {
 	return envVarArray
 }
 
-func (emi *EventMessengerIssue) ContainerArgs() pulumi.StringArray {
+func (emi *EventMessenger) IssueContainerArgs() pulumi.StringArray {
 	args := []string{
 		"gh-issue",
 		"--log-level",
@@ -78,67 +70,67 @@ func (emi *EventMessengerIssue) ContainerArgs() pulumi.StringArray {
 	return pulumi.ToStringArray(args)
 }
 
-func (emi *EventMessengerIssue) ContainerArray() corev1.ContainerArray {
+func (emi *EventMessenger) IssueContainerArray() corev1.ContainerArray {
 	config := emi.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name: pulumi.String(config.Deployment.Name),
+			Name: pulumi.String(config.IssueDeployment.Name),
 			Image: pulumi.String(
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
 			ImagePullPolicy: pulumi.String(config.Image.PullPolicy),
-			Args:            emi.ContainerArgs(),
-			Env:             emi.ContainerEnvArgsArray(),
+			Args:            emi.IssueContainerArgs(),
+			Env:             emi.IssueContainerEnvArgsArray(),
 		},
 	}
 }
 
-func (emi *EventMessengerIssue) CreateDeployment(
+func (emi *EventMessenger) CreateIssueDeployment(
 	ctx *pulumi.Context,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
-		emi.Config.Deployment.Name,
+		emi.Config.IssueDeployment.Name,
 		&appsv1.DeploymentArgs{
-			Metadata: emi.CreateDeploymentMetadata(),
-			Spec:     emi.CreateDeploymentSpec(),
+			Metadata: emi.CreateIssueDeploymentMetadata(),
+			Spec:     emi.CreateIssueDeploymentSpec(),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating %s deployment: %w",
-			emi.Config.Deployment.Name,
+			emi.Config.IssueDeployment.Name,
 			err,
 		)
 	}
 	return deployment, nil
 }
 
-func (emi *EventMessengerIssue) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
+func (emi *EventMessenger) CreateIssueDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Namespace: pulumi.String(emi.Config.Namespace),
-		Name:      pulumi.String(emi.Config.Deployment.Name),
+		Name:      pulumi.String(emi.Config.IssueDeployment.Name),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(emi.Config.Deployment.Name),
+			"app": pulumi.String(emi.Config.IssueDeployment.Name),
 		},
 	}
 }
 
-func (emi *EventMessengerIssue) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
+func (emi *EventMessenger) CreateIssueDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(emi.Config.Deployment.Name),
+				"app": pulumi.String(emi.Config.IssueDeployment.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(emi.Config.Deployment.Name),
+					"app": pulumi.String(emi.Config.IssueDeployment.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
-				Containers: emi.ContainerArray(),
+				Containers: emi.IssueContainerArray(),
 			},
 		},
 	}

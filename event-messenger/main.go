@@ -7,12 +7,17 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type EventMessengerIssue struct {
-	Config *EventMessengerIssueConfig
+type EventMessengerConfig struct {
+	Namespace       string
+	Nats            NatsProperties
+	Image           ImageConfig
+	LogLevel        string
+	IssueDeployment IssueDeployment
+	EmailDeployment EmailDeployment
 }
 
-type EventMessengerEmail struct {
-	Config *EventMessengerEmailConfig
+type EventMessenger struct {
+	Config *EventMessengerConfig
 }
 
 func main() {
@@ -20,64 +25,36 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-	emeConfig, err := ReadEventMessengerEmailConfig(ctx)
+	emeConfig, err := ReadConfig(ctx)
 	if err != nil {
 		return err
 	}
-
-	eventMessengerEmail := NewEventMessengerEmail(emeConfig)
-
-	if _, err := eventMessengerEmail.CreateDeployment(ctx); err != nil {
+	eventMessenger := NewEventMessenger(emeConfig)
+	if _, err := eventMessenger.CreateIssueDeployment(ctx); err != nil {
 		return err
 	}
-	emiConfig, err := ReadEventMessengerIssueConfig(ctx)
-	if err != nil {
-		return err
-	}
-
-	eventMessengerIssue := NewEventMessengerIssue(emiConfig)
-
-	if _, err := eventMessengerIssue.CreateDeployment(ctx); err != nil {
+	if _, err := eventMessenger.CreateEmailDeployment(ctx); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func ReadEventMessengerIssueConfig(
+func ReadConfig(
 	ctx *pulumi.Context,
-) (*EventMessengerIssueConfig, error) {
-	conf := config.New(ctx, "event-messenger")
-	eventMessengerIssue := &EventMessengerIssueConfig{}
-	if err := conf.TryObject("properties", eventMessengerIssue); err != nil {
+) (*EventMessengerConfig, error) {
+	conf := config.New(ctx, "")
+	eventMessengerConfig := &EventMessengerConfig{}
+	if err := conf.TryObject("properties", eventMessengerConfig); err != nil {
 		return nil, fmt.Errorf("failed to read event-messenger config: %w", err)
 	}
-	return eventMessengerIssue, nil
+	return eventMessengerConfig, nil
 }
 
-func ReadEventMessengerEmailConfig(
-	ctx *pulumi.Context,
-) (*EventMessengerEmailConfig, error) {
-	conf := config.New(ctx, "event-messenger")
-	eventMessengerEmail := &EventMessengerEmailConfig{}
-	if err := conf.TryObject("properties", eventMessengerEmail); err != nil {
-		return nil, fmt.Errorf("failed to read event-messenger config: %w", err)
-	}
-	return eventMessengerEmail, nil
-}
-
-func NewEventMessengerEmail(
-	config *EventMessengerEmailConfig,
-) *EventMessengerEmail {
-	return &EventMessengerEmail{
-		Config: config,
-	}
-}
-
-func NewEventMessengerIssue(
-	config *EventMessengerIssueConfig,
-) *EventMessengerIssue {
-	return &EventMessengerIssue{
+func NewEventMessenger(
+	config *EventMessengerConfig,
+) *EventMessenger {
+	return &EventMessenger{
 		Config: config,
 	}
 }
