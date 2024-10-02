@@ -11,7 +11,7 @@ type EventMessengerEmailConfig struct {
   Namespace string
 	Nats     NatsProperties
 	Image    ImageConfig
-  Email EmailDeployment 
+  Deployment EmailDeployment 
 }
 
 type EmailDeployment struct {
