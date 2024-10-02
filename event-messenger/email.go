@@ -10,27 +10,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type EmailDeployment struct {
-	Name    string
-	Secrets EmailSecrets
-}
-
-type EmailSecrets struct {
-	Name string
-	Keys EmailSecretKeys
-}
-
-type EmailSecretKeys struct {
-	Cc                     string
-	Domain                 string
-	MailgunAPIKey          string
-	PublicationAPIEndpoint string
-	Sender                 string
-	SenderName             string
-}
-
-func (eme *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
-	secrets := eme.Config.EmailDeployment.Secrets
+func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
+	secrets := emn.Config.EmailDeployment.Secrets
 	var envVarArray corev1.EnvVarArray
 
 	secretEnvVars := []struct {
@@ -59,13 +40,13 @@ func (eme *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 	return envVarArray
 }
 
-func (eme *EventMessenger) EmailContainerArgs() pulumi.StringArray {
+func (emn *EventMessenger) EmailContainerArgs() pulumi.StringArray {
 	args := []string{
 		"send-email",
 		"--log-level",
-		eme.Config.LogLevel,
+		emn.Config.LogLevel,
 		"--subject",
-		eme.Config.Nats.Subject,
+		emn.Config.Nats.Subject,
 		"--domain",
 		"$(EMAIL_DOMAIN)",
 		"--apiKey",
@@ -82,66 +63,66 @@ func (eme *EventMessenger) EmailContainerArgs() pulumi.StringArray {
 	return pulumi.ToStringArray(args)
 }
 
-func (eme *EventMessenger) EmailContainerArray() corev1.ContainerArray {
-	config := eme.Config
+func (emn *EventMessenger) EmailContainerArray() corev1.ContainerArray {
+	config := emn.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
 			Name: pulumi.String(config.EmailDeployment.Name),
 			Image: pulumi.String(
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
-			Args: eme.EmailContainerArgs(),
-			Env:  eme.EmailContainerEnvArgsArray(),
+			Args: emn.EmailContainerArgs(),
+			Env:  emn.EmailContainerEnvArgsArray(),
 		},
 	}
 }
 
-func (eme *EventMessenger) CreateEmailDeployment(
+func (emn *EventMessenger) CreateEmailDeployment(
 	ctx *pulumi.Context,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
-		eme.Config.EmailDeployment.Name,
+		emn.Config.EmailDeployment.Name,
 		&appsv1.DeploymentArgs{
-			Metadata: eme.CreateEmailDeploymentMetadata(),
-			Spec:     eme.CreateEmailDeploymentSpec(),
+			Metadata: emn.CreateEmailDeploymentMetadata(),
+			Spec:     emn.CreateEmailDeploymentSpec(),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating %s deployment: %w",
-			eme.Config.EmailDeployment.Name,
+			emn.Config.EmailDeployment.Name,
 			err,
 		)
 	}
 	return deployment, nil
 }
 
-func (eme *EventMessenger) CreateEmailDeploymentMetadata() *metav1.ObjectMetaArgs {
+func (emn *EventMessenger) CreateEmailDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String(eme.Config.EmailDeployment.Name),
-		Namespace: pulumi.String(eme.Config.Namespace),
+		Name:      pulumi.String(emn.Config.EmailDeployment.Name),
+		Namespace: pulumi.String(emn.Config.Namespace),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(eme.Config.EmailDeployment.Name),
+			"app": pulumi.String(emn.Config.EmailDeployment.Name),
 		},
 	}
 }
 
-func (eme *EventMessenger) CreateEmailDeploymentSpec() *appsv1.DeploymentSpecArgs {
+func (emn *EventMessenger) CreateEmailDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(eme.Config.EmailDeployment.Name),
+				"app": pulumi.String(emn.Config.EmailDeployment.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(eme.Config.EmailDeployment.Name),
+					"app": pulumi.String(emn.Config.EmailDeployment.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
-				Containers: eme.EmailContainerArray(),
+				Containers: emn.EmailContainerArray(),
 			},
 		},
 	}

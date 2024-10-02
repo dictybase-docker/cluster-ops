@@ -7,19 +7,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type EventMessengerConfig struct {
-	Namespace       string
-	Nats            NatsProperties
-	Image           ImageConfig
-	LogLevel        string
-	IssueDeployment IssueDeployment
-	EmailDeployment EmailDeployment
-}
-
-type EventMessenger struct {
-	Config *EventMessengerConfig
-}
-
 func main() {
 	pulumi.Run(Run)
 }
