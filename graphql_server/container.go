@@ -45,7 +45,7 @@ func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 	}{
 		{
 			"PUBLICATION_API_ENDPOINT",
-			configMap.EndpointKeys.PublicationApiEndpoint,
+			configMap.EndpointKeys.PublicationAPIEndpoint,
 		},
 		{"S3_STORAGE_ENDPOINT", configMap.EndpointKeys.S3StorageEndpoint},
 		{"AUTH_ENDPOINT", configMap.EndpointKeys.AuthEndpoint},
