@@ -10,24 +10,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type IssueDeployment struct {
-	Name    string
-	Secrets IssueSecrets
-}
-
-type IssueSecrets struct {
-	Name string
-	Keys IssueSecretKeys
-}
-
-type IssueSecretKeys struct {
-	Owner      string
-	Repository string
-	Token      string
-}
-
-func (emi *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
-	secrets := emi.Config.IssueDeployment.Secrets
+func (emn *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
+	secrets := emn.Config.IssueDeployment.Secrets
 	var envVarArray corev1.EnvVarArray
 
 	secretEnvVars := []struct {
@@ -53,13 +37,13 @@ func (emi *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
 	return envVarArray
 }
 
-func (emi *EventMessenger) IssueContainerArgs() pulumi.StringArray {
+func (emn *EventMessenger) IssueContainerArgs() pulumi.StringArray {
 	args := []string{
 		"gh-issue",
 		"--log-level",
-		emi.Config.LogLevel,
+		emn.Config.LogLevel,
 		"--subject",
-		emi.Config.Nats.Subject,
+		emn.Config.Nats.Subject,
 		"--token",
 		"$(GITHUB_TOKEN)",
 		"--repository",
@@ -70,8 +54,8 @@ func (emi *EventMessenger) IssueContainerArgs() pulumi.StringArray {
 	return pulumi.ToStringArray(args)
 }
 
-func (emi *EventMessenger) IssueContainerArray() corev1.ContainerArray {
-	config := emi.Config
+func (emn *EventMessenger) IssueContainerArray() corev1.ContainerArray {
+	config := emn.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
 			Name: pulumi.String(config.IssueDeployment.Name),
@@ -79,58 +63,58 @@ func (emi *EventMessenger) IssueContainerArray() corev1.ContainerArray {
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
 			ImagePullPolicy: pulumi.String(config.Image.PullPolicy),
-			Args:            emi.IssueContainerArgs(),
-			Env:             emi.IssueContainerEnvArgsArray(),
+			Args:            emn.IssueContainerArgs(),
+			Env:             emn.IssueContainerEnvArgsArray(),
 		},
 	}
 }
 
-func (emi *EventMessenger) CreateIssueDeployment(
+func (emn *EventMessenger) CreateIssueDeployment(
 	ctx *pulumi.Context,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
-		emi.Config.IssueDeployment.Name,
+		emn.Config.IssueDeployment.Name,
 		&appsv1.DeploymentArgs{
-			Metadata: emi.CreateIssueDeploymentMetadata(),
-			Spec:     emi.CreateIssueDeploymentSpec(),
+			Metadata: emn.CreateIssueDeploymentMetadata(),
+			Spec:     emn.CreateIssueDeploymentSpec(),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating %s deployment: %w",
-			emi.Config.IssueDeployment.Name,
+			emn.Config.IssueDeployment.Name,
 			err,
 		)
 	}
 	return deployment, nil
 }
 
-func (emi *EventMessenger) CreateIssueDeploymentMetadata() *metav1.ObjectMetaArgs {
+func (emn *EventMessenger) CreateIssueDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Namespace: pulumi.String(emi.Config.Namespace),
-		Name:      pulumi.String(emi.Config.IssueDeployment.Name),
+		Namespace: pulumi.String(emn.Config.Namespace),
+		Name:      pulumi.String(emn.Config.IssueDeployment.Name),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(emi.Config.IssueDeployment.Name),
+			"app": pulumi.String(emn.Config.IssueDeployment.Name),
 		},
 	}
 }
 
-func (emi *EventMessenger) CreateIssueDeploymentSpec() *appsv1.DeploymentSpecArgs {
+func (emn *EventMessenger) CreateIssueDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(emi.Config.IssueDeployment.Name),
+				"app": pulumi.String(emn.Config.IssueDeployment.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(emi.Config.IssueDeployment.Name),
+					"app": pulumi.String(emn.Config.IssueDeployment.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
-				Containers: emi.IssueContainerArray(),
+				Containers: emn.IssueContainerArray(),
 			},
 		},
 	}
