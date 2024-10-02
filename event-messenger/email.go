@@ -10,10 +10,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type EventMessengerEmail struct {
-	Config *EventMessengerEmailConfig
-}
-
 // EventMessengerEmailConfig holds the configuration for the event messenger email service
 type EventMessengerEmailConfig struct {
 	LogLevel   string
