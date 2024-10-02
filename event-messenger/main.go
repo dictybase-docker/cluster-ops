@@ -19,6 +19,31 @@ func main() {
 	pulumi.Run(Run)
 }
 
+func Run(ctx *pulumi.Context) error {
+	emeConfig, err := ReadEventMessengerEmailConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	eventMessengerEmail := NewEventMessengerEmail(emeConfig)
+
+	if _, err := eventMessengerEmail.CreateDeployment(ctx); err != nil {
+		return err
+	}
+	emiConfig, err := ReadEventMessengerIssueConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	eventMessengerIssue := NewEventMessengerIssue(emiConfig)
+
+	if _, err := eventMessengerIssue.CreateDeployment(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func ReadEventMessengerIssueConfig(
 	ctx *pulumi.Context,
 ) (*EventMessengerIssueConfig, error) {
@@ -41,46 +66,12 @@ func ReadEventMessengerEmailConfig(
 	return eventMessengerEmail, nil
 }
 
-func Run(ctx *pulumi.Context) error {
-	emeConfig, err := ReadEventMessengerEmailConfig(ctx)
-	if err != nil {
-		return err
-	}
-
-	eventMessengerEmail := NewEventMessengerEmail(emeConfig)
-
-	if _, err := eventMessengerEmail.CreateDeployment(ctx); err != nil {
-		return err
-	}
-	emiConfig, err := ReadEventMessengerIssueConfig(ctx)
-	if err != nil {
-		return err
-	}
-
-	eventMessengerIssue := NewEventMessengerIssue(emiConfig)
-
-	if err := eventMessengerIssue.Install(ctx); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func NewEventMessengerEmail(
 	config *EventMessengerEmailConfig,
 ) *EventMessengerEmail {
 	return &EventMessengerEmail{
 		Config: config,
 	}
-}
-
-func (emi *EventMessengerIssue) Install(ctx *pulumi.Context) error {
-	_, err := emi.CreateDeployment(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func NewEventMessengerIssue(
