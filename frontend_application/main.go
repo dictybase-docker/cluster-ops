@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -47,13 +48,13 @@ func Run(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-  frontend := NewFrontend(frontendConfig)
-  
-  if err := frontend.Install(ctx); err != nil {
-    return err 
-  }
+	frontend := NewFrontend(frontendConfig)
 
-  return nil
+	if err := frontend.Install(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (fe *Frontend) Install(ctx *pulumi.Context) error {
@@ -62,7 +63,7 @@ func (fe *Frontend) Install(ctx *pulumi.Context) error {
 
 		deploymentName := fmt.Sprintf("%s-api-server", app.Name)
 		serviceName := fmt.Sprintf("%s-api", app.Name)
-		
+
 		deployment, err := appsv1.NewDeployment(
 			ctx, deploymentName, deploymentSpec(&specProperties{
 				deploymentName: deploymentName,
@@ -73,7 +74,11 @@ func (fe *Frontend) Install(ctx *pulumi.Context) error {
 			}))
 
 		if err != nil {
-			return fmt.Errorf("error in running deployment for %s: %w", app.Name, err)
+			return fmt.Errorf(
+				"error in running deployment for %s: %w",
+				app.Name,
+				err,
+			)
 		}
 
 		_, err = corev1.NewService(
@@ -91,7 +96,11 @@ func (fe *Frontend) Install(ctx *pulumi.Context) error {
 			pulumi.DependsOn([]pulumi.Resource{deployment}),
 		)
 		if err != nil {
-			return fmt.Errorf("error in running service for %s: %w", app.Name, err)
+			return fmt.Errorf(
+				"error in running service for %s: %w",
+				app.Name,
+				err,
+			)
 		}
 	}
 
