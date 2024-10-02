@@ -1,49 +1,42 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
 encryptedkey: CiQALAIOnDYDJPAZKhz6baNl/eqeoJb8Lv/MMnz0t7k9vchYNk8SSQB2302FF7hfoCLHG7HF9V51Rhv7sywjMkfomQ2+hHOfKB9AHQAG+MkKr+nn9deJgIVNs9w+mpZLb0bMYA3ASrswxy8pizUhYTY=
 config:
-  event-messenger-email:properties:
-    cc:
-      key: eventMessenger.email.cc
-      name: dictybase-configuration
-    domain:
-      key: eventMessenger.email.domain
-      name: dictybase-configuration
-    image:
-      pullPolicy: IfNotPresent
-      name: dictybase/event-messenger
-      tag: latest
-    logLevel: debug
-    mailgunApiKey:
-      key: eventMessenger.email.apiKey
-      name: dictybase-configuration
-    name: event-messenger-email
-    nats:
-      subject: OrderService.Create
-    publicationApiEndpoint:
-      key: endpoints.publication
-      name: dictybase-configuration
-    replicas: 1
-    sender:
-      key: eventMessenger.email.sender
-      name: dictybase-configuration
-    senderName:
-      key: eventMessenger.email.senderName
-      name: dictybase-configuration
-  event-messenger-issue:properties:
-    githubOwner:
-      key: eventMessenger.github.owner
-      name: dictybase-configuration
-    githubRepo:
-      key: eventMessenger.github.repository
-      name: dictybase-configuration
-    githubToken:
-      key: eventMessenger.github.token
-      name: dictybase-configuration
-    image:
-      pullPolicy: IfNotPresent
-      name: dictybase/event-messenger
-      tag: latest
-    name: event-messenger-issue
-    nats:
-      subject: OrderService.Create
-    replicas: 1
+  event-messenger:properties:
+    email:
+      cc:
+        key: eventMessenger.email.cc
+        name: dictybase-configuration
+      domain:
+        key: eventMessenger.email.domain
+        name: dictybase-configuration
+      image:
+        name: dictybase/event-messenger
+        tag: latest
+      logLevel: debug
+      mailgunApiKey:
+        key: eventMessenger.email.apiKey
+        name: dictybase-configuration
+      name: event-messenger-email
+      nats:
+        subject: OrderService.Create
+      publicationApiEndpoint:
+        key: endpoints.publication
+        name: dictybase-configuration
+      sender:
+        key: eventMessenger.email.sender
+        name: dictybase-configuration
+      senderName:
+        key: eventMessenger.email.senderName
+        name: dictybase-configuration
+    issue:
+      githubSecrets:
+        name: dictybase-configuration
+        owner: eventMessenger.github.owner
+        repository: eventMessenger.github.repository
+        token: eventMessenger.github.token
+      image:
+        name: dictybase/event-messenger
+        tag: latest
+      name: event-messenger-issue
+      nats:
+        subject: OrderService.Create
