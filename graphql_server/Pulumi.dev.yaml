@@ -11,45 +11,29 @@ config:
       - "https://dictybase.dev"
       - "https://*.dictybase.dev"
       - "https://dictybase.dev*"
-    authAppId:
-      key: keyname
-      name: dictycr-secret
-    authAppSecret:
-      key: keyname
-      name: dictycr-secret
-    authEndpoint:
-      key: keyname
+    configMap:
       name: dictycr-configuration
+      keys:
+        authEndpoint: endpoints.auth
+        organismEndpoint: endpoints.organism
+        publicationApiEndpoint: endpoints.publication
+        s3StorageEndpoint: endpoints.s3
     image:
       Repository: dictybase/graphql-server
       tag: develop
-    jwksURI:
-      key: keyname
-      name: dictycr-secret
-    jwtAudience:
-      key: keyname
-      name: dictycr-secret
-    jwtIssuer:
-      key: keyname
-      name: dictycr-secret
     logLevel: error
-    minioAccess:
-      key: keyname
-      name: dictycr-secret
-    minioSecret:
-      key: keyname
-      name: dictycr-secret
     name: graphql
     namespace: dev
-    organismEndpoint:
-      key: keyname
-      name: dictycr-configuration
     port: 8080
-    publicationApiEndpoint:
-      key: keyname
-      name: dictycr-configuration
     s3Bucket: editor
     s3BucketPath: assets
-    s3StorageEndpoint:
-      key: keyname
-      name: dictycr-configuration
+    secrets:
+      name: dictycr-secret
+      keys:
+        authAppId: graphql.auth.appId
+        authAppSecret: graphql.auth.appSecret
+        jwksURI: graphql.auth.jwksURI
+        jwtAudience: graphql.auth.jwtAudience
+        jwtIssuer: graphql.auth.jwtIssuer
+        minioAccess: graphql.minio.access
+        minioSecret: graphql.minio.secret
