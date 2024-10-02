@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type EventMessengerIssueConfig struct {
-	LogLevel string
-  Namespace string
-	Nats     NatsProperties
-	Image    ImageConfig
-	Deployment    IssueDeployment
+	LogLevel   string
+	Namespace  string
+	Nats       NatsProperties
+	Image      ImageConfig
+	Deployment IssueDeployment
 }
 
 type IssueDeployment struct {
@@ -38,4 +39,3 @@ func ReadEventMessengerIssueConfig(ctx *pulumi.Context) (*EventMessengerIssueCon
 	}
 	return eventMessengerIssue, nil
 }
-

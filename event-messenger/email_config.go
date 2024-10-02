@@ -2,21 +2,22 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type EventMessengerEmailConfig struct {
-	LogLevel string
-  Namespace string
-	Nats     NatsProperties
-	Image    ImageConfig
-  Deployment EmailDeployment 
+	LogLevel   string
+	Namespace  string
+	Nats       NatsProperties
+	Image      ImageConfig
+	Deployment EmailDeployment
 }
 
 type EmailDeployment struct {
-	Name     string
-	Secrets  EmailSecrets
+	Name    string
+	Secrets EmailSecrets
 }
 
 type EmailSecrets struct {
@@ -41,4 +42,3 @@ func ReadEventMessengerEmailConfig(ctx *pulumi.Context) (*EventMessengerEmailCon
 	}
 	return eventMessengerEmail, nil
 }
-
