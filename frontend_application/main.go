@@ -13,7 +13,11 @@ type FrontendConfig struct {
 	Namespace string
 	Port      int
 	LogLevel  string
-	Apps      map[string]AppConfig
+	Apps      []AppConfig
+}
+
+type Frontend struct {
+  Config *FrontendConfig
 }
 
 type AppConfig struct {
@@ -41,14 +45,11 @@ func execute(ctx *pulumi.Context) error {
 		return fmt.Errorf("failed to read frontend config: %w", err)
 	}
 
-	for _, appName := range frontendConfig.Apps {
-		appConfig, ok := frontendConfig.Apps[appName]
-		if !ok {
-			return fmt.Errorf("app configuration for %s is missing", appName)
-		}
+	for _, app := range frontendConfig.Apps {
+		appConfig := app
 
-		deploymentName := fmt.Sprintf("%s-api-server", appName)
-		serviceName := fmt.Sprintf("%s-api", appName)
+		deploymentName := fmt.Sprintf("%s-api-server", app.Name)
+		serviceName := fmt.Sprintf("%s-api", app.Name)
 		
 		deployment, err := appsv1.NewDeployment(
 			ctx, deploymentName, deploymentSpec(&specProperties{
@@ -56,11 +57,10 @@ func execute(ctx *pulumi.Context) error {
 				serviceName:    serviceName,
 				port:           frontendConfig.Port,
 				app:            &appConfig,
-				appName:        appName,
 				namespace:      frontendConfig.Namespace,
 			}))
 		if err != nil {
-			return fmt.Errorf("error in running deployment for %s: %w", appName, err)
+			return fmt.Errorf("error in running deployment for %s: %w", app, err)
 		}
 
 		_, err = corev1.NewService(
@@ -72,14 +72,14 @@ func execute(ctx *pulumi.Context) error {
 					serviceName:    serviceName,
 					app:            &appConfig,
 					port:           frontendConfig.Port,
-					appName:        appName,
+					appName:        app,
 					namespace:      frontendConfig.Namespace,
 				},
 			),
 			pulumi.DependsOn([]pulumi.Resource{deployment}),
 		)
 		if err != nil {
-			return fmt.Errorf("error in running service for %s: %w", appName, err)
+			return fmt.Errorf("error in running service for %s: %w", app, err)
 		}
 	}
 
