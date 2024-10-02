@@ -2,12 +2,6 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnDYDJPAZKhz6baNl/eqeoJb8Lv/MMnz0t7k9vchYNk8SSQB2302FF7hfoCLHG7HF9V51Rhv7sywjMkfomQ2+hHOfKB9AHQAG+MkKr+nn9deJgIVNs9w+mpZLb0bMYA3ASrswxy8pizUhYTY=
 config:
   event-messenger:properties:
-    image:
-      name: dictybase/event-messenger
-      tag: latest
-    logLevel: debug
-    nats:
-      subject: OrderService.Create
     emailDeployment:
       name: event-messenger-email
       secrets:
@@ -19,6 +13,9 @@ config:
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
         name: dictybase-secrets
+    image:
+      name: dictybase/event-messenger
+      tag: latest
     issueDeployment:
       name: event-messenger-issue
       secrets:
@@ -27,3 +24,6 @@ config:
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
         name: dictybase-secrets
+    logLevel: debug
+    nats:
+      subject: OrderService.Create
