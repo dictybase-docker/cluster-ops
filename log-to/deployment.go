@@ -13,13 +13,21 @@ func (lt *Logto) CreateDeployment(
 	ctx *pulumi.Context,
 	claimName pulumi.StringInput,
 ) (*appsv1.Deployment, error) {
-	deployment, err := appsv1.NewDeployment(ctx, lt.Config.Name, &appsv1.DeploymentArgs{
-		Metadata: lt.CreateDeploymentMetadata(),
-		Spec:     lt.CreateDeploymentSpec(claimName),
-	})
+	deployment, err := appsv1.NewDeployment(
+		ctx,
+		lt.Config.Name,
+		&appsv1.DeploymentArgs{
+			Metadata: lt.CreateDeploymentMetadata(),
+			Spec:     lt.CreateDeploymentSpec(claimName),
+		},
+	)
 
 	if err != nil {
-		return nil, fmt.Errorf("error creating %s deployment: %w", lt.Config.Name, err)
+		return nil, fmt.Errorf(
+			"error creating %s deployment: %w",
+			lt.Config.Name,
+			err,
+		)
 	}
 
 	return deployment, nil
@@ -32,7 +40,9 @@ func (lt *Logto) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
 	}
 }
 
-func (lt *Logto) CreateDeploymentSpec(claimName pulumi.StringInput) *appsv1.DeploymentSpecArgs {
+func (lt *Logto) CreateDeploymentSpec(
+	claimName pulumi.StringInput,
+) *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
@@ -49,7 +59,9 @@ func (lt *Logto) CreateDeploymentSpec(claimName pulumi.StringInput) *appsv1.Depl
 				Containers: lt.ContainerArray(),
 				Volumes: corev1.VolumeArray{
 					&corev1.VolumeArgs{
-						Name: pulumi.String(fmt.Sprintf("%s-volume", lt.Config.Name)),
+						Name: pulumi.String(
+							fmt.Sprintf("%s-volume", lt.Config.Name),
+						),
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSourceArgs{
 							ClaimName: claimName,
 						},

@@ -34,7 +34,9 @@ type EmailSecretKeys struct {
 	SenderName             string
 }
 
-func ReadEventMessengerEmailConfig(ctx *pulumi.Context) (*EventMessengerEmailConfig, error) {
+func ReadEventMessengerEmailConfig(
+	ctx *pulumi.Context,
+) (*EventMessengerEmailConfig, error) {
 	conf := config.New(ctx, "event-messenger")
 	eventMessengerEmail := &EventMessengerEmailConfig{}
 	if err := conf.TryObject("properties", eventMessengerEmail); err != nil {

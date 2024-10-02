@@ -8,7 +8,10 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (gs *GraphqlServer) CreateService(ctx *pulumi.Context, deployment pulumi.Resource) error {
+func (gs *GraphqlServer) CreateService(
+	ctx *pulumi.Context,
+	deployment pulumi.Resource,
+) error {
 	config := gs.Config
 	serviceName := fmt.Sprintf("%s-api", config.Name)
 	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
@@ -34,7 +37,9 @@ func (gs *GraphqlServer) CreateServiceMetaData() *metav1.ObjectMetaArgs {
 	}
 }
 
-func (gs *GraphqlServer) CreateServiceSpec(deploymentName string) *corev1.ServiceSpecArgs {
+func (gs *GraphqlServer) CreateServiceSpec(
+	deploymentName string,
+) *corev1.ServiceSpecArgs {
 	config := gs.Config
 	return &corev1.ServiceSpecArgs{
 		Selector: pulumi.StringMap{

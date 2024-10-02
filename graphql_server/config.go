@@ -68,4 +68,3 @@ func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 	}
 	return graphqlConfig, nil
 }
-
