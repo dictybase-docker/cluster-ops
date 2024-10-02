@@ -9,7 +9,15 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type appProperties struct {
+type FrontendConfig struct {
+	Namespace string
+	Port      int
+	LogLevel  string
+	Apps      map[string]AppConfig
+}
+
+type AppConfig struct {
+  Name string
 	Image string
 	Tag   string
 }
@@ -17,10 +25,9 @@ type appProperties struct {
 type specProperties struct {
 	deploymentName string
 	serviceName    string
-	appName        string
 	namespace      string
 	port           int
-	app            *appProperties
+	app            *AppConfig
 }
 
 func main() {
@@ -29,40 +36,33 @@ func main() {
 
 func execute(ctx *pulumi.Context) error {
 	cfg := config.New(ctx, "")
-	appNames := make([]string, 0)
-	if err := cfg.TryObject("apps", &appNames); err != nil {
-		return fmt.Errorf(
-			"apps attribute is required in the configuration %s",
-			err,
-		)
+	frontendConfig := &FrontendConfig{}
+	if err := cfg.TryObject("properties", frontendConfig); err != nil {
+		return fmt.Errorf("failed to read frontend config: %w", err)
 	}
-	namespace, err := cfg.Try("namespace")
-	if err != nil {
-		return fmt.Errorf("attribute namespace is missing %s", err)
-	}
-	port, err := cfg.TryInt("port")
-	if err != nil {
-		return fmt.Errorf("attribute port is missing %s", err)
-	}
-	for _, key := range appNames {
-		app := &appProperties{}
-		if err := cfg.TryObject(key, app); err != nil {
-			return fmt.Errorf("app name %s is required %s", key, err)
+
+	for _, appName := range frontendConfig.Apps {
+		appConfig, ok := frontendConfig.Apps[appName]
+		if !ok {
+			return fmt.Errorf("app configuration for %s is missing", appName)
 		}
-		deploymentName := fmt.Sprintf("%s-api-server", key)
-		serviceName := fmt.Sprintf("%s-api", key)
+
+		deploymentName := fmt.Sprintf("%s-api-server", appName)
+		serviceName := fmt.Sprintf("%s-api", appName)
+		
 		deployment, err := appsv1.NewDeployment(
 			ctx, deploymentName, deploymentSpec(&specProperties{
 				deploymentName: deploymentName,
 				serviceName:    serviceName,
-				port:           port,
-				app:            app,
-				appName:        key,
-				namespace:      namespace,
+				port:           frontendConfig.Port,
+				app:            &appConfig,
+				appName:        appName,
+				namespace:      frontendConfig.Namespace,
 			}))
 		if err != nil {
-			return fmt.Errorf("error in running deployment %s", err)
+			return fmt.Errorf("error in running deployment for %s: %w", appName, err)
 		}
+
 		_, err = corev1.NewService(
 			ctx,
 			serviceName,
@@ -70,16 +70,16 @@ func execute(ctx *pulumi.Context) error {
 				&specProperties{
 					deploymentName: deploymentName,
 					serviceName:    serviceName,
-					app:            app,
-					port:           port,
-					appName:        key,
-					namespace:      namespace,
+					app:            &appConfig,
+					port:           frontendConfig.Port,
+					appName:        appName,
+					namespace:      frontendConfig.Namespace,
 				},
 			),
 			pulumi.DependsOn([]pulumi.Resource{deployment}),
 		)
 		if err != nil {
-			return fmt.Errorf("error in running service %s", err)
+			return fmt.Errorf("error in running service for %s: %w", appName, err)
 		}
 	}
 
