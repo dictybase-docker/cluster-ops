@@ -1,16 +1,16 @@
 secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
 encryptedkey: CiQAEYtTeuAPhBOFKaGzO+4mFV7jk4YtxBjtJVudWLTmCLUkYEMSSQCytYByoz9zXXX1h3UGCQfYVq74p0DWd4688l6Xqnv1ijw2WFkua/aEZFvqtaH2qiSHhsQPjkG1xrvp9gd7fSf+o8SXVThXehU=
 config:
-  frontend_application:apps: '["frontpage","publication","stockcenter"]'
-  frontend_application:frontpage:
-    image: dictybase/dicty-frontpage
-    tag: staging-f732922
-  frontend_application:log-level: debug
-  frontend_application:namespace: staging
-  frontend_application:port: "3000"
-  frontend_application:publication:
-    image: dictybase/publication
-    tag: staging-f732922
-  frontend_application:stockcenter:
-    image: dictybase/stock-center
-    tag: staging-f732922
+    apps:
+      - image: dictybase/dicty-frontpage
+        name: frontpage
+        tag: develop-f732922
+      - image: dictybase/publication
+        name: publication
+        tag: develop-f732922
+      - image: dictybase/stock-center
+        name: stock-center
+        tag: develop-f732922
+    log-level: debug
+    namespace: staging
+    port: "3000"
