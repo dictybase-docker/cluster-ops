@@ -13,7 +13,7 @@ config:
       - "https://dictybase.dev*"
     configMap:
       name: dictycr-configuration
-      keys:
+      endpointKeys:
         authEndpoint: endpoints.auth
         organismEndpoint: endpoints.organism
         publicationApiEndpoint: endpoints.publication
@@ -21,19 +21,21 @@ config:
     image:
       Repository: dictybase/graphql-server
       tag: develop
+    s3Bucket:
+      name: editor
+      path: assets
     logLevel: error
     name: graphql
     namespace: dev
     port: 8080
-    s3Bucket: editor
-    s3BucketPath: assets
     secrets:
       name: dictycr-secret
-      keys:
+      authKeys:
         authAppId: graphql.auth.appId
         authAppSecret: graphql.auth.appSecret
         jwksURI: graphql.auth.jwksURI
         jwtAudience: graphql.auth.jwtAudience
         jwtIssuer: graphql.auth.jwtIssuer
+      minioKeys:
         minioAccess: graphql.minio.access
         minioSecret: graphql.minio.secret
