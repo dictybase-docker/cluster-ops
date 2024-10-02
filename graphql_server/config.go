@@ -27,7 +27,7 @@ type ConfigMap struct {
 type EndpointKeysConfig struct {
 	AuthEndpoint           string
 	OrganismEndpoint       string
-	PublicationApiEndpoint string
+	PublicationAPIEndpoint string
 	S3StorageEndpoint      string
 }
 
