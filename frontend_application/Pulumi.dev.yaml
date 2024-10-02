@@ -2,16 +2,16 @@ secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRi
 encryptedkey: CiQAEYtTevXiVOneoU4Vi+c2aRf2cZXykitBNpcdiHj7Pquf9w0SSQCytYBytacswbF/vCNlgnJJsr5BfccLZVOxlkXlWPtPWhRdEqzsaVN7ZMkZL/h7gmk8xmnTEfkW+v6cKAd1h7g7Vq2SDWHemeU=
 config:
   frontend_application:properties:
-    apps: '["frontpage","publication","stockcenter"]'
-    frontpage:
-      image: dictybase/dicty-frontpage
-      tag: develop-f732922
+    apps:
+      - image: dictybase/dicty-frontpage
+        name: frontpage
+        tag: develop-f732922
+      - image: dictybase/publication
+        name: publication
+        tag: develop-f732922
+      - image: dictybase/stock-center
+        name: stock-center
+        tag: develop-f732922
     log-level: debug
     namespace: dev
     port: "3000"
-    publication:
-      image: dictybase/publication
-      tag: develop-f732922
-    stockcenter:
-      image: dictybase/stock-center
-      tag: develop-f732922
