@@ -22,6 +22,7 @@ func (eme *EventMessengerEmail) CreateDeployment(ctx *pulumi.Context) (*appsv1.D
 func (eme *EventMessengerEmail) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name: pulumi.String(eme.Config.Email.Name),
+		Namespace: pulumi.String(eme.Config.Namespace),
 		Labels: pulumi.StringMap{
 			"app": pulumi.String(eme.Config.Email.Name),
 		},
