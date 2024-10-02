@@ -11,7 +11,7 @@ type EventMessengerIssueConfig struct {
   Namespace string
 	Nats     NatsProperties
 	Image    ImageConfig
-	Issue    IssueDeployment
+	Deployment    IssueDeployment
 }
 
 type IssueDeployment struct {
