@@ -8,6 +8,7 @@ import (
 
 type EventMessengerIssueConfig struct {
 	LogLevel string
+  Namespace string
 	Nats     NatsProperties
 	Image    ImageConfig
 	Issue    IssueDeployment

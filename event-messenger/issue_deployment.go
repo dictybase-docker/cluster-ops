@@ -22,7 +22,7 @@ func (emi *EventMessengerIssue) CreateDeployment(ctx *pulumi.Context) (*appsv1.D
 func (emi *EventMessengerIssue) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Namespace: pulumi.String(emi.Config.Namespace),
-		Name:      pulumi.String(emi.Config.Name),
+		Name: pulumi.String(emi.Config.Issue.Name),
 	}
 }
 
