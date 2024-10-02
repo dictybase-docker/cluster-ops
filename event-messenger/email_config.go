@@ -1,31 +1,42 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type EventMessengerEmailConfig struct {
-  Name string
-	Namespace string
-	Replicas  int
-  LogLevel string
-  Nats NatsProperties 
-	Image     ImageConfig
-  MailgunApiKey SecretKeyPair
-  Domain ConfigMapPair
-  Sender ConfigMapPair
-  SenderName ConfigMapPair
-  Cc ConfigMapPair
-	PublicationApiEndpoint ConfigMapPair
+	LogLevel string
+	Nats     NatsProperties
+	Image    ImageConfig
+  Email EmailDeployment 
+}
+
+type EmailDeployment struct {
+	Name     string
+	Secrets  EmailSecrets
+}
+
+type EmailSecrets struct {
+	Name string
+	Keys EmailSecretKeys
+}
+
+type EmailSecretKeys struct {
+	Cc                     string
+	Domain                 string
+	MailgunApiKey          string
+	PublicationApiEndpoint string
+	Sender                 string
+	SenderName             string
 }
 
 func ReadEventMessengerEmailConfig(ctx *pulumi.Context) (*EventMessengerEmailConfig, error) {
-	conf := config.New(ctx, "event-messenger-email")
+	conf := config.New(ctx, "event-messenger")
 	eventMessengerEmail := &EventMessengerEmailConfig{}
 	if err := conf.TryObject("properties", eventMessengerEmail); err != nil {
-		return nil, fmt.Errorf("failed to read event-messenger-email config: %w", err)
+		return nil, fmt.Errorf("failed to read event-messenger config: %w", err)
 	}
 	return eventMessengerEmail, nil
 }
