@@ -1,44 +1,45 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 type LogtoConfig struct {
-  Name string
-  Namespace string
-  Image ImageConfig
-  StorageClass string
-  DiskSize int
-  Database DatabaseProperties
-  Endpoint string
-  ApiPort int
-  AdminPort int
+	Name         string
+	Namespace    string
+	Image        ImageConfig
+	StorageClass string
+	DiskSize     int
+	Database     DatabaseProperties
+	Endpoint     string
+	ApiPort      int
+	AdminPort    int
 }
 
 type DatabaseProperties struct {
-  Name string
-  User string
-  Host string
-  Port int
-  Password string
+	Name     string
+	User     string
+	Host     string
+	Port     int
+	Password string
 }
 
 type SecretKeyPair struct {
-  Name string
-  Key string
+	Name string
+	Key  string
 }
 
 type ConfigMapPair struct {
-  Name string
-  Key string
+	Name string
+	Key  string
 }
 
 type ImageConfig struct {
-  Name string
-  Tag string
+	Name string
+	Tag  string
 }
 
 func ReadConfig(ctx *pulumi.Context) (*LogtoConfig, error) {

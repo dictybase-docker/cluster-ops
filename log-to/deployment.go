@@ -1,14 +1,18 @@
 package main
 
 import (
-  "fmt"
+	"fmt"
+
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (lt *Logto) CreateDeployment(ctx *pulumi.Context, claimName pulumi.StringInput) (*appsv1.Deployment, error) {
+func (lt *Logto) CreateDeployment(
+	ctx *pulumi.Context,
+	claimName pulumi.StringInput,
+) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(ctx, lt.Config.Name, &appsv1.DeploymentArgs{
 		Metadata: lt.CreateDeploymentMetadata(),
 		Spec:     lt.CreateDeploymentSpec(claimName),
@@ -21,11 +25,11 @@ func (lt *Logto) CreateDeployment(ctx *pulumi.Context, claimName pulumi.StringIn
 	return deployment, nil
 }
 
-func (lt *Logto) CreateDeploymentMetadata() (*metav1.ObjectMetaArgs) {
-  return &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(lt.Config.Name),
-			Namespace: pulumi.String(lt.Config.Namespace),
-  }
+func (lt *Logto) CreateDeploymentMetadata() *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(lt.Config.Name),
+		Namespace: pulumi.String(lt.Config.Namespace),
+	}
 }
 
 func (lt *Logto) CreateDeploymentSpec(claimName pulumi.StringInput) *appsv1.DeploymentSpecArgs {
@@ -55,4 +59,3 @@ func (lt *Logto) CreateDeploymentSpec(claimName pulumi.StringInput) *appsv1.Depl
 		},
 	}
 }
-
