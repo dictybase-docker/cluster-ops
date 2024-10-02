@@ -72,7 +72,6 @@ func execute(ctx *pulumi.Context) error {
 					serviceName:    serviceName,
 					app:            &appConfig,
 					port:           frontendConfig.Port,
-					appName:        app,
 					namespace:      frontendConfig.Namespace,
 				},
 			),
