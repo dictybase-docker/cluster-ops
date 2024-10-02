@@ -8,7 +8,7 @@ import (
 
 func containerSpec(args *specProperties) corev1.ContainerArray {
 	return []corev1.ContainerInput{corev1.ContainerArgs{
-		Name:  k8s.Container(args.appName),
+		Name:  k8s.Container(args.app.Name),
 		Image: k8s.Image(args.app.Image, args.app.Tag),
 		Ports: containerPortSpec(args.port, args.serviceName),
 	}}
