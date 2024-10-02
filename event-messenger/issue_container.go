@@ -7,7 +7,7 @@ import (
 )
 
 func (emi *EventMessengerIssue) ContainerEnvArgsArray() corev1.EnvVarArray {
-	secrets := emi.Config.Issue.Secrets
+	secrets := emi.Config.Deployment.Secrets
 	var envVarArray corev1.EnvVarArray
 	
 	secretEnvVars := []struct {
@@ -54,7 +54,7 @@ func (emi *EventMessengerIssue) ContainerArray() corev1.ContainerArray {
 	config := emi.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
-			Name:            pulumi.String(config.Issue.Name),
+			Name:            pulumi.String(config.Deployment.Name),
 			Image:           pulumi.String(fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag)),
 			ImagePullPolicy: pulumi.String(config.Image.PullPolicy),
 			Args:            emi.ContainerArgs(),
