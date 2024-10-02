@@ -1,0 +1,14 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnD4vzMYVmNaXEHKGuSuuWkQKwLxb7JN9sbyq6Nank1ISSQB2302F5tNu6YEH+XBbHGeVvdZOb+ldAEYcDUFqhf/E29KJOJL7jWodxTgA+gDETk99PSjPS0IvQbJgfDnp8ilH9AbPgqJL/Jg=
+config:
+  modware-stock:properties:
+    appName: stock
+    arangodbSecret:
+      name: arangodb-pass
+      passkey: password
+      userkey: user
+    image:
+      name: dictybase/modware-stock
+      tag: develop-4d92815
+    namespace: dev
+    port: 9250
