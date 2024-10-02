@@ -7,6 +7,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
+// EventMessengerEmailConfig holds the configuration for the event messenger email service
 type EventMessengerEmailConfig struct {
 	LogLevel   string
 	Namespace  string
@@ -28,8 +29,8 @@ type EmailSecrets struct {
 type EmailSecretKeys struct {
 	Cc                     string
 	Domain                 string
-	MailgunApiKey          string
-	PublicationApiEndpoint string
+	MailgunAPIKey          string
+	PublicationAPIEndpoint string
 	Sender                 string
 	SenderName             string
 }

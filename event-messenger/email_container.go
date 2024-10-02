@@ -19,8 +19,8 @@ func (eme *EventMessengerEmail) ContainerEnvArgsArray() corev1.EnvVarArray {
 		{"EMAIL_SENDER_NAME", secrets.Keys.SenderName},
 		{"EMAIL_SENDER", secrets.Keys.Sender},
 		{"EMAIL_CC", secrets.Keys.Cc},
-		{"PUBLICATION_API_ENDPOINT", secrets.Keys.PublicationApiEndpoint},
-		{"MAILGUN_API_KEY", secrets.Keys.MailgunApiKey},
+		{"PUBLICATION_API_ENDPOINT", secrets.Keys.PublicationAPIEndpoint},
+		{"MAILGUN_API_KEY", secrets.Keys.MailgunAPIKey},
 	}
 
 	for _, envVar := range secretEnvVars {
