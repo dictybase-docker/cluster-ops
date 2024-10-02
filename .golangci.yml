@@ -1,10 +1,10 @@
 run:
-  timeout: 5m
+  timeout: 15m
   allow-parallel-runners: true
 linters-settings:
    errcheck:
      ignore: ""
-   funlen: 
+   funlen:
     lines: 80
    revive:
       rules:
@@ -21,7 +21,7 @@ linters:
     - asciicheck
     - bodyclose
     - bidichk
-    - cyclop 
+    - cyclop
     - decorder
     - dogsled
     # - dupl
@@ -56,4 +56,3 @@ linters:
 issues:
   exclude-dirs:
     - crds
-
