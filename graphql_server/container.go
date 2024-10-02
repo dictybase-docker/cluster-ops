@@ -8,17 +8,18 @@ import (
 )
 
 func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
+	secrets := gs.Config.Secrets
 	envVars := []struct {
 		name   string
-		secret SecretKeyPair
+		secret string
 	}{
-		{"SECRET_KEY", gs.Config.MinioSecret},
-		{"ACCESS_KEY", gs.Config.MinioAccess},
-		{"JWT_AUDIENCE", gs.Config.JwtAudience},
-		{"JWT_ISSUER", gs.Config.JwtIssuer},
-		{"JWKS_PUBLIC_URI", gs.Config.JwksURI},
-		{"APPLICATION_SECRET", gs.Config.AuthAppSecret},
-		{"APPLICATION_ID", gs.Config.AuthAppId},
+		{"SECRET_KEY", secrets.MinioKeys.MinioSecret},
+		{"ACCESS_KEY", secrets.MinioKeys.MinioAccess},
+		{"JWT_AUDIENCE", secrets.AuthKeys.JwtAudience},
+		{"JWT_ISSUER", secrets.AuthKeys.JwtIssuer},
+		{"JWKS_PUBLIC_URI", secrets.AuthKeys.JwksURI},
+		{"APPLICATION_SECRET", secrets.AuthKeys.AuthAppSecret},
+		{"APPLICATION_ID", secrets.AuthKeys.AuthAppId},
 	}
 
 	var envVarArray corev1.EnvVarArray
@@ -27,8 +28,8 @@ func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
 			Name: pulumi.String(envVar.name),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: pulumi.String(envVar.secret.name),
-					Key:  pulumi.String(envVar.secret.key),
+					Name: pulumi.String(secrets.Name),
+					Key:  pulumi.String(envVar.secret),
 				},
 			},
 		})
@@ -37,14 +38,15 @@ func (gs *GraphqlServer) SecretEnvArgsArray() corev1.EnvVarArray {
 }
 
 func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
+	configMap := gs.Config.ConfigMap
 	envVars := []struct {
-		name      string
-		configMap ConfigMapPair
+		name string
+		key  string
 	}{
-		{"PUBLICATION_API_ENDPOINT", gs.Config.PublicationApiEndpoint},
-		{"S3_STORAGE_ENDPOINT", gs.Config.S3StorageEndpoint},
-		{"AUTH_ENDPOINT", gs.Config.AuthEndpoint},
-		{"ORGANISM_API_ENDPOINT", gs.Config.OrganismEndpoint},
+		{"PUBLICATION_API_ENDPOINT", configMap.EndpointKeys.PublicationApiEndpoint},
+		{"S3_STORAGE_ENDPOINT", configMap.EndpointKeys.S3StorageEndpoint},
+		{"AUTH_ENDPOINT", configMap.EndpointKeys.AuthEndpoint},
+		{"ORGANISM_API_ENDPOINT", configMap.EndpointKeys.OrganismEndpoint},
 	}
 
 	var envVarArray corev1.EnvVarArray
@@ -53,8 +55,8 @@ func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 			Name: pulumi.String(envVar.name),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				ConfigMapKeyRef: &corev1.ConfigMapKeySelectorArgs{
-					Name: pulumi.String(envVar.configMap.name),
-					Key:  pulumi.String(envVar.configMap.key),
+					Name: pulumi.String(configMap.Name),
+					Key:  pulumi.String(envVar.key),
 				},
 			},
 		})
@@ -96,9 +98,9 @@ func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
 		pulumi.String("--log-level"),
 		pulumi.String(config.LogLevel),
 		pulumi.String("--s3-bucket"),
-		pulumi.String(config.S3Bucket),
+		pulumi.String(config.S3Bucket.Name),
 		pulumi.String("--s3-bucket-path"),
-		pulumi.String(config.S3BucketPath),
+		pulumi.String(config.S3Bucket.Path),
 	}
 	return append(args, gs.allowedOriginsFlags()...)
 }
