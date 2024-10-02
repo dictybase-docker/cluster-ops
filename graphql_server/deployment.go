@@ -10,15 +10,17 @@ import (
 )
 
 func (gs *GraphqlServer) CreateDeploymentMetaData() *metav1.ObjectMetaArgs {
-	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
+	config := gs.Config
+	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(deploymentName),
-		Namespace: pulumi.String(gs.Config.Namespace),
+		Namespace: pulumi.String(config.Namespace),
 	}
 }
 
 func (gs *GraphqlServer) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
-	deploymentName := fmt.Sprintf("%s-api-server", gs.Config.Name)
+	config := gs.Config
+	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
@@ -39,9 +41,10 @@ func (gs *GraphqlServer) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
 }
 
 func (gs *GraphqlServer) CreateDeployment(ctx *pulumi.Context) (*appsv1.Deployment, error) {
+	config := gs.Config
 	deployment, err := appsv1.NewDeployment(
 		ctx,
-		fmt.Sprintf("%s-api-server", gs.Config.Name),
+		fmt.Sprintf("%s-api-server", config.Name),
 		&appsv1.DeploymentArgs{
 			Metadata: gs.CreateDeploymentMetaData(),
 			Spec:     gs.CreateDeploymentSpec(),
