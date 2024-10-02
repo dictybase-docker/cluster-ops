@@ -13,6 +13,18 @@ config:
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
         name: dictybase-secrets
+        values:
+          cc:
+            secure: v1:7SG9UMjD82mmBWZj:5qTVeH2952pvxeo9/wKHxIag6L4O57VI0sw2RuiRWjeQkd/biLkOIzW0JbpWIATE
+          domain:
+            secure: v1:Lejvh3p1Hru59+NB:WTrhVz3DzX+i2WCuqQWkZ7KSY284FpuY3+wWeyrZtunmLw==
+          mailgunApiKey:
+            secure: v1:1873LLNBSUZaDLOF:JifXmxwMRTOKXMbqYjgd40S2HJ7sWUkzHjaiRky/tUrdqVws0HCcFkVRmstUUrkwbAbylHemoQm3KOgnRIVUAZOT
+          publicationApiEndpoint: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+          sender:
+            secure: v1:O3JURdaiWmT+KieY:N9mxX697W/N7m3GE+4DGfDtyZGexoqF/IPbX5YqCEIWBiOpWJhey3gRw
+          senderName:
+            secure: v1:k5OLLq8vfH6beHZh:RchuZSVF5GAFyWqDRME+ooMm/khGSx1GFRUJ
     image:
       name: dictybase/event-messenger
       tag: latest
