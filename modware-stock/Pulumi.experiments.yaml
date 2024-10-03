@@ -4,11 +4,11 @@ config:
   modware-stock:properties:
     appName: stock
     arangodbSecret:
-      name: arangodb-pass
+      name: backend
       passkey: password
       userkey: user
     image:
       name: dictybase/modware-stock
-      tag: develop-4d92815
+      tag: develop-6fafbf6
     namespace: dev
     port: 9250

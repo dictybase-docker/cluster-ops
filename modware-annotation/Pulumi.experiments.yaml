@@ -4,12 +4,12 @@ config:
   modware-annotation:properties:
     appName: annotation
     arangodbSecret:
-      name: arangodb-pass
+      name: backend
       passKey: password
       userKey: user
     image:
       name: dictybase/modware-annotation
-      tag: develop-4ac4801
+      tag: develop-04f370f
     logLevel: info
     namespace: dev
     port: 9250
