@@ -1,0 +1,20 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnOyJefIWmVUmazpIQG5MWjYd+VBGI+zdW7uabowdC/8SSQB2302FEKIbvemJYDOehzdYXcOV+HkqlufDmGRdYUNmJW6u/ALaKfguq6LE1fR190fynwJfSEx4N4PDcbht9OLS+HrCg4l1A6Q=
+config:
+  load-content-from-s3:properties:
+    appName: load-content
+    bucketPath:
+      - import/data/dsc-lexical
+      - import/data/frontpage-lexical
+    image:
+      name: dictybase/modware-import
+      tag: develop-e79fca8
+    logLevel: debug
+    minioSecret:
+      name: minio
+      passKey: pass
+      userKey: user
+    namespace: dev
+    runner:
+      command: /usr/local/bin/content
+      subcommand: content-data
