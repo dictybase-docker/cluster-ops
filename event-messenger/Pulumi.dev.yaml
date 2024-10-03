@@ -12,7 +12,7 @@ config:
           publcationApiEndpoint: endpoints.publication
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
-        name: dictybase-secrets
+        name: email-event
         values:
           cc:
             secure: v1:7SG9UMjD82mmBWZj:5qTVeH2952pvxeo9/wKHxIag6L4O57VI0sw2RuiRWjeQkd/biLkOIzW0JbpWIATE
@@ -27,7 +27,7 @@ config:
             secure: v1:k5OLLq8vfH6beHZh:RchuZSVF5GAFyWqDRME+ooMm/khGSx1GFRUJ
     image:
       name: dictybase/event-messenger
-      tag: latest
+      tag: develop-0217a41
     issueDeployment:
       name: event-messenger-issue
       secrets:
@@ -35,7 +35,7 @@ config:
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
-        name: dictybase-secrets
+        name: issue-event
     logLevel: debug
     namespace: dev
     nats:
