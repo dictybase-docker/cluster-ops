@@ -35,11 +35,18 @@ type IssueDeployment struct {
 }
 
 type IssueSecrets struct {
-	Name string
-	Keys IssueSecretKeys
+	Name   string
+	Keys   IssueSecretKeys
+	Values IssueSecretValues
 }
 
 type IssueSecretKeys struct {
+	Owner      string
+	Repository string
+	Token      string
+}
+
+type IssueSecretValues struct {
 	Owner      string
 	Repository string
 	Token      string

@@ -10,6 +10,30 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+func (emn *EventMessenger) CreateIssueSecret(
+	ctx *pulumi.Context,
+) (*corev1.Secret, error) {
+	config := emn.Config.IssueDeployment.Secrets
+	secretData := pulumi.StringMap{
+		config.Keys.Owner:      pulumi.String(config.Values.Owner),
+		config.Keys.Repository: pulumi.String(config.Values.Repository),
+		config.Keys.Token:      pulumi.String(config.Values.Token),
+	}
+
+	secret, err := corev1.NewSecret(ctx, config.Name, &corev1.SecretArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String(config.Name),
+			Namespace: pulumi.String(emn.Config.Namespace),
+		},
+		StringData: secretData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating issue secret: %w", err)
+	}
+
+	return secret, nil
+}
+
 func (emn *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
 	secrets := emn.Config.IssueDeployment.Secrets
 	var envVarArray corev1.EnvVarArray
@@ -71,6 +95,7 @@ func (emn *EventMessenger) IssueContainerArray() corev1.ContainerArray {
 
 func (emn *EventMessenger) CreateIssueDeployment(
 	ctx *pulumi.Context,
+	issueSecret *corev1.Secret,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
@@ -79,6 +104,7 @@ func (emn *EventMessenger) CreateIssueDeployment(
 			Metadata: emn.CreateIssueDeploymentMetadata(),
 			Spec:     emn.CreateIssueDeploymentSpec(),
 		},
+		pulumi.DependsOn([]pulumi.Resource{issueSecret}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
