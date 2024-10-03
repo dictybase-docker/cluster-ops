@@ -1,0 +1,22 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnPdliYF2WslGkV2Yr4t5YH1lZWYpTzY4xDTNOeZNjfsSSQB2302FXjcHJuRoota4CdO0YltvCQnioyKIWA5cDIcKDr9Ux1X98mwyB1isM3tYH8v4WaIhm8mwLTavz7FTNUx7a2ShWd6AFrw=
+config:
+  create-arangodb-databases:properties:
+    arangodbSecret:
+      name: backend
+      pass:
+        secure: v1:gvhgdrmGVSw/1Xke:5CDt9V1losq2TAYihjXOgLE7DZd+Vzl3P7Q=
+      passkey: password
+      user:
+        secure: v1:WHY2GIuQndjwcV8h:Ey9/s0/CK/sxtxKm4rsLoWcObYa6Rd4=
+      userkey: user
+    databases:
+      - annotation
+      - order
+      - stock
+      - content
+    grant: rw
+    image:
+      name: dictybase/arangoadmin
+      tag: develop-cdf7c20
+    namespace: dev
