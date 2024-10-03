@@ -2,13 +2,13 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnD4vzMYVmNaXEHKGuSuuWkQKwLxb7JN9sbyq6Nank1ISSQB2302F5tNu6YEH+XBbHGeVvdZOb+ldAEYcDUFqhf/E29KJOJL7jWodxTgA+gDETk99PSjPS0IvQbJgfDnp8ilH9AbPgqJL/Jg=
 config:
   modware-order:properties:
-    appName: stock
+    appName: order
     arangodbSecret:
-      name: arangodb-pass
+      name: backend
       passkey: password
       userkey: user
     image:
       name: dictybase/modware-order
-      tag: develop-4d92815
+      tag: develop-df45955
     namespace: dev
     port: 9250

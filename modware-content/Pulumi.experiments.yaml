@@ -4,11 +4,11 @@ config:
   modware-content:properties:
     appName: content
     arangodbSecret:
-      name: arangodb-pass
+      name: backend
       passkey: password
       userkey: user
     image:
       name: dictybase/modware-content
-      tag: develop-4d92815
+      tag: develop-58397d0
     namespace: dev
     port: 9250
