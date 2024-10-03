@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-  networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -25,10 +25,8 @@ type FrontendIngress struct {
 
 func (fi *FrontendIngress) CreateIngress(ctx *pulumi.Context) (*networkingv1.Ingress, error) {
 	ingress, err := networkingv1.NewIngress(ctx, fi.Config.Name, &networkingv1.IngressArgs{
-		ApiVersion: pulumi.String("networking.k8s.io/v1"),
-		Kind:       pulumi.String("Ingress"),
-		Metadata: fi.metadata(), 
-    Spec: fi.spec(),
+		Metadata: fi.Metadata(),
+		Spec:     fi.Spec(),
 	})
 
 	if err != nil {
@@ -38,66 +36,61 @@ func (fi *FrontendIngress) CreateIngress(ctx *pulumi.Context) (*networkingv1.Ing
 	return ingress, nil
 }
 
-// metadata returns the metadata for the Ingress resource.
-func (fi *FrontendIngress) metadata() *metav1.ObjectMetaArgs {
+// Metadata returns the Metadata for the Ingress resource.
+func (fi *FrontendIngress) Metadata() metav1.ObjectMetaPtrInput {
 	return &metav1.ObjectMetaArgs{
-			Name:      pulumi.String(fi.Config.Name),
-			Namespace: pulumi.String(fi.Config.Namespace),
-      Annotations: pulumi.StringMap{
-        "cert-manager.io/issuer": pulumi.String(fi.Config.Issuer),
-      },
-    }
-}
-
-// spec returns the spec for the Ingress resource.
-func (fi *FrontendIngress) spec() *networkingv1.IngressSpecArgs {
-	return &networkingv1.IngressSpecArgs{
-		IngressClassName: pulumi.String("nginx"),
-		Tls:              fi.tls(),
-		Rules:            fi.rules(),
+		Name:      pulumi.String(fi.Config.Name),
+		Namespace: pulumi.String(fi.Config.Namespace),
+		Annotations: pulumi.StringMap{
+			"cert-manager.io/issuer": pulumi.String(fi.Config.Issuer),
+		},
 	}
 }
 
-// tls returns the TLS configuration for the Ingress resource.
-func (fi *FrontendIngress) tls() *networkingv1.IngressTLSArray {
-	return &networkingv1.IngressTLSArray{
-		networkingv1.IngressTLSArgs{
+// Spec returns the Spec for the Ingress resource.
+func (fi *FrontendIngress) Spec() networkingv1.IngressSpecPtrInput {
+	return &networkingv1.IngressSpecArgs{
+		IngressClassName: pulumi.String("nginx"),
+		Tls:              fi.Tls(),
+		Rules:            fi.Rules(),
+	}
+}
+
+// Tls returns the TLS configuration for the Ingress resource.
+func (fi *FrontendIngress) Tls() networkingv1.IngressTLSArrayInput {
+	return networkingv1.IngressTLSArray{
+		&networkingv1.IngressTLSArgs{
 			SecretName: pulumi.String(fi.Config.Secret),
 			Hosts:      pulumi.ToStringArray(fi.Config.BackendHosts),
 		},
 	}
 }
 
-// rules returns the rules for the Ingress resource.
-func (fi *FrontendIngress) rules() []map[string]interface{} {
-	var result []map[string]interface{}
+// Rules returns the Rules for the Ingress resource.
+func (fi *FrontendIngress) Rules() networkingv1.IngressRuleArrayInput {
+	var rules networkingv1.IngressRuleArray
 	for _, h := range fi.Config.BackendHosts {
-		result = append(result, map[string]interface{}{
-			"host": h,
-			"http": fi.backendPaths(),
-		})
-	}
-	return result
-}
-
-// backendPaths returns the backend paths for the Ingress resource.
-func (fi *FrontendIngress) backendPaths() map[string]interface{} {
-	return map[string]interface{}{
-		"paths": []map[string]interface{}{
-			{
-				"pathType": "Prefix",
-				"path":     fi.Config.Path,
-				"backend": map[string]interface{}{
-					"service": map[string]interface{}{
-						"name": fi.Config.Service,
-						"port": map[string]interface{}{
-							"number": 3000,
+		rules = append(rules, &networkingv1.IngressRuleArgs{
+			Host: pulumi.String(h),
+			Http: &networkingv1.HTTPIngressRuleValueArgs{
+				Paths: networkingv1.HTTPIngressPathArray{
+					&networkingv1.HTTPIngressPathArgs{
+						Path:     pulumi.String(fi.Config.Path),
+						PathType: pulumi.String("Prefix"),
+						Backend: &networkingv1.IngressBackendArgs{
+							Service: &networkingv1.IngressServiceBackendArgs{
+								Name: pulumi.String(fi.Config.Service),
+								Port: &networkingv1.ServiceBackendPortArgs{
+									Number: pulumi.Int(3000),
+								},
+							},
 						},
 					},
 				},
 			},
-		},
+		})
 	}
+	return rules
 }
 
 func ReadConfig(ctx *pulumi.Context) (*Config, error) {
@@ -110,15 +103,18 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 }
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-    config, err := ReadConfig(ctx)
-    if err != nil {
-      return err
-    }
-    
+	pulumi.Run(Run)
+}
+
+func Run(ctx *pulumi.Context) error {
+		config, err := ReadConfig(ctx)
+		if err != nil {
+			return err
+		}
+
 		fe := &FrontendIngress{
 			Config: config,
-    }
+		}
 
 		ingress, err := fe.CreateIngress(ctx)
 		if err != nil {
@@ -127,5 +123,4 @@ func main() {
 
 		ctx.Export("ingressName", ingress.Metadata.Name())
 		return nil
-	})
-}
+	}
