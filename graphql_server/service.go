@@ -11,21 +11,24 @@ import (
 func (gs *GraphqlServer) CreateService(
 	ctx *pulumi.Context,
 	deployment pulumi.Resource,
-) error {
+) (*corev1.Service, error) {
 	config := gs.Config
 	serviceName := fmt.Sprintf("%s-api", config.Name)
 	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
 
-	_, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
+	service, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: gs.CreateServiceMetaData(),
 		Spec:     gs.CreateServiceSpec(deploymentName),
 	}, pulumi.DependsOn([]pulumi.Resource{deployment}))
 
 	if err != nil {
-		return err
+		return nil, fmt.Errorf(
+			"error creating graphql-server service: %w",
+			err,
+		)
 	}
 
-	return nil
+	return service, nil
 }
 
 func (gs *GraphqlServer) CreateServiceMetaData() *metav1.ObjectMetaArgs {
