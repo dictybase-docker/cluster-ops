@@ -21,6 +21,12 @@ config:
     image:
       name: dictybase/graphql-server
       tag: develop
+    ingress:
+      tlsSecret: tls-secret-name
+      issuer: issuer-name
+      path: /
+      backendHosts:
+        - "https://graphql.dictybase.dev"
     s3Bucket:
       name: editor
       path: assets
