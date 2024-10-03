@@ -75,9 +75,9 @@ func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 
 func (emn *EventMessenger) EmailContainerArgs() pulumi.StringArray {
 	args := []string{
-		"send-email",
 		"--log-level",
 		emn.Config.LogLevel,
+		"send-email",
 		"--subject",
 		emn.Config.Nats.Subject,
 		"--domain",

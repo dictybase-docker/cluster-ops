@@ -63,9 +63,9 @@ func (emn *EventMessenger) IssueContainerEnvArgsArray() corev1.EnvVarArray {
 
 func (emn *EventMessenger) IssueContainerArgs() pulumi.StringArray {
 	args := []string{
-		"gh-issue",
 		"--log-level",
 		emn.Config.LogLevel,
+		"gh-issue",
 		"--subject",
 		emn.Config.Nats.Subject,
 		"--token",
