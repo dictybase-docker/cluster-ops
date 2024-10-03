@@ -1,0 +1,42 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnA26q3fmL4ha05mj4mJyLv41cCoXVCkK8yw4XUFZQOcSSQB2302F8+UDM59eksWUBXxjJmRQeC6MOiA6tdrfrKR3ILvaj6VwA1yWIhxWRibvBbvuDNm9qjFoGDITGzaDGxib26aGZIL9PwY=
+config:
+  event-messenger:properties:
+    emailDeployment:
+      name: event-messenger-email
+      secrets:
+        keys:
+          cc: eventMessenger.email.cc
+          domain: eventMessenger.email.domain
+          mailgunApiKey: eventMessenger.email.apiKey
+          publcationApiEndpoint: endpoints.publication
+          sender: eventMessenger.email.sender
+          senderName: eventMessenger.email.senderName
+        name: email-event
+        values:
+          cc:
+            secure: v1:RCbzT46HzJXSH8Q8:7OJOSRSGka/sa9uJernZUKQGZN2ywReXX2Gc4VUrnnscF7Od4LrHBggHGGpdywGp
+          domain:
+            secure: v1:fbQMHz4hDBx8efCc:y9V7SFE4LEJqoF3pBTDSlZkE3nuhlmgsnDiwh8zwH8rzcw==
+          mailgunApiKey:
+            secure: v1:alw/5CPPDpL7fSfn:ZRhPeUhWSvVi4/QjYezIdmWjnBLk6HcOzTTUe88vIW4yW7ygELP2xtVuIU3ihiK9rk40TUzlJXxnIdf7zALRQHtf
+          publicationApiEndpoint: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+          sender:
+            secure: v1:zhss74IUkM+ROGqB:4ncul6PkwoIHWBVFEheYkl4JlpL5mWUv18dx0g+AqqGGzeQJU8+l5vcT
+          senderName:
+            secure: v1:iwl4KLKRfbym7jyO:mMyx/DlYbeEyz/J69meaj131Cv/ClgWNmpvy
+    image:
+      name: dictybase/event-messenger
+      tag: develop-0217a41
+    issueDeployment:
+      name: event-messenger-issue
+      secrets:
+        keys:
+          owner: eventMessenger.github.owner
+          repository: eventMessenger.github.repository
+          token: eventMessenger.github.token
+        name: issue-event
+    logLevel: debug
+    namespace: dev
+    nats:
+      subject: OrderService.Create
