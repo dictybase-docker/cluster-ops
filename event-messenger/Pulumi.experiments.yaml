@@ -9,10 +9,10 @@ config:
           cc: eventMessenger.email.cc
           domain: eventMessenger.email.domain
           mailgunApiKey: eventMessenger.email.apiKey
-          publcationApiEndpoint: endpoints.publication
+          publicationApiEndpoint: endpoint.publication
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
-        name: email-event
+        name: emailevent
         values:
           cc:
             secure: v1:RCbzT46HzJXSH8Q8:7OJOSRSGka/sa9uJernZUKQGZN2ywReXX2Gc4VUrnnscF7Od4LrHBggHGGpdywGp
@@ -20,7 +20,8 @@ config:
             secure: v1:fbQMHz4hDBx8efCc:y9V7SFE4LEJqoF3pBTDSlZkE3nuhlmgsnDiwh8zwH8rzcw==
           mailgunApiKey:
             secure: v1:alw/5CPPDpL7fSfn:ZRhPeUhWSvVi4/QjYezIdmWjnBLk6HcOzTTUe88vIW4yW7ygELP2xtVuIU3ihiK9rk40TUzlJXxnIdf7zALRQHtf
-          publicationApiEndpoint: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+          publicationApiEndpoint:
+            secure: v1:QJ0o9ipTbRZio1rM:G5tjvx6bPU+ePwcsZqCy+6xpkoeegjEs7G6/S95QpnDeiQmpH3XBaxY+cjMnik8q5rjbIQd/R2B3tCYy/iJF4wpOAXSZl3M=
           sender:
             secure: v1:zhss74IUkM+ROGqB:4ncul6PkwoIHWBVFEheYkl4JlpL5mWUv18dx0g+AqqGGzeQJU8+l5vcT
           senderName:
@@ -35,7 +36,7 @@ config:
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
-        name: issue-event
+        name: issueevent
     logLevel: debug
     namespace: dev
     nats:
