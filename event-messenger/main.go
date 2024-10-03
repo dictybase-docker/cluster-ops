@@ -23,12 +23,19 @@ func Run(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+
 	// Pass the email secret to CreateEmailDeployment
 	if _, err := eventMessenger.CreateEmailDeployment(ctx, emailSecret); err != nil {
 		return err
 	}
+	// Create the issue secret
+	issueSecret, err := eventMessenger.CreateIssueSecret(ctx)
+	if err != nil {
+		return err
+	}
 
-	if _, err := eventMessenger.CreateIssueDeployment(ctx); err != nil {
+	// Pass the issue secret to CreateIssueDeployment
+	if _, err := eventMessenger.CreateIssueDeployment(ctx, issueSecret); err != nil {
 		return err
 	}
 
