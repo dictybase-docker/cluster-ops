@@ -105,6 +105,7 @@ func (emn *EventMessenger) CreateIssueDeployment(
 			Spec:     emn.CreateIssueDeploymentSpec(),
 		},
 		pulumi.DependsOn([]pulumi.Resource{issueSecret}),
+		pulumi.Timeouts(&pulumi.CustomTimeouts{Create: "3m"}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
