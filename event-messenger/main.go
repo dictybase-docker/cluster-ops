@@ -17,10 +17,18 @@ func Run(ctx *pulumi.Context) error {
 		return err
 	}
 	eventMessenger := NewEventMessenger(emeConfig)
-	if _, err := eventMessenger.CreateIssueDeployment(ctx); err != nil {
+
+	// Create the email secret
+	emailSecret, err := eventMessenger.CreateEmailSecret(ctx)
+	if err != nil {
 		return err
 	}
-	if _, err := eventMessenger.CreateEmailDeployment(ctx); err != nil {
+	// Pass the email secret to CreateEmailDeployment
+	if _, err := eventMessenger.CreateEmailDeployment(ctx, emailSecret); err != nil {
+		return err
+	}
+
+	if _, err := eventMessenger.CreateIssueDeployment(ctx); err != nil {
 		return err
 	}
 
