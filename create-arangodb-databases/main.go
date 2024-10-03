@@ -54,18 +54,19 @@ func NewArangoDB(config *ArangoDBConfig) *ArangoDB {
 }
 
 func (adb *ArangoDB) Install(ctx *pulumi.Context) error {
-	if err := adb.createSecret(ctx); err != nil {
+	secret, err := adb.createSecret(ctx)
+	if err != nil {
 		return err
 	}
 
-	if err := adb.createJob(ctx); err != nil {
+	if err := adb.createJob(ctx, secret); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (adb *ArangoDB) createSecret(ctx *pulumi.Context) error {
+func (adb *ArangoDB) createSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
 	secretName := adb.Config.ArangodbSecret.Name
 	secretArgs := &corev1.SecretArgs{
 		Metadata: adb.createMetadata(secretName),
@@ -80,15 +81,15 @@ func (adb *ArangoDB) createSecret(ctx *pulumi.Context) error {
 		Type: pulumi.String("Opaque"),
 	}
 
-	_, err := corev1.NewSecret(ctx, secretName, secretArgs)
+	secret, err := corev1.NewSecret(ctx, secretName, secretArgs)
 	if err != nil {
-		return fmt.Errorf("error creating ArangoDB secret: %w", err)
+		return nil, fmt.Errorf("error creating ArangoDB secret: %w", err)
 	}
 
-	return nil
+	return secret, nil
 }
 
-func (adb *ArangoDB) createJob(ctx *pulumi.Context) error {
+func (adb *ArangoDB) createJob(ctx *pulumi.Context, secret *corev1.Secret) error {
 	jobName := fmt.Sprintf(
 		"%s-create-databases",
 		adb.Config.ArangodbSecret.Name,
@@ -97,7 +98,7 @@ func (adb *ArangoDB) createJob(ctx *pulumi.Context) error {
 	_, err := batchv1.NewJob(ctx, jobName, &batchv1.JobArgs{
 		Metadata: adb.createMetadata(jobName),
 		Spec:     adb.createJobSpec(),
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{secret}))
 	if err != nil {
 		return fmt.Errorf("error creating ArangoDB job: %w", err)
 	}
@@ -124,6 +125,36 @@ func (adb *ArangoDB) createPodSpec() *corev1.PodSpecArgs {
 	}
 }
 
+func (adb *ArangoDB) createContainerArgs() pulumi.StringArray {
+	// Create the dbnames slice
+	dbnames := make(pulumi.StringArray, 0, len(adb.Config.Databases)*2)
+	for _, name := range adb.Config.Databases {
+		dbnames = append(
+			dbnames,
+			pulumi.String("--database"),
+			pulumi.String(name),
+		)
+	}
+
+	args := pulumi.StringArray{
+		pulumi.String("--log-level"),
+		pulumi.String("info"),
+		pulumi.String("create-database"),
+		pulumi.String("--admin-user"),
+		pulumi.String("root"),
+		pulumi.String("--admin-password"),
+		pulumi.String("$(ARANGODB_PASSWORD)"),
+		pulumi.String("--user"),
+		pulumi.String(adb.Config.ArangodbSecret.User),
+		pulumi.String("--password"),
+		pulumi.String(adb.Config.ArangodbSecret.Pass),
+		pulumi.String("--grant"),
+		pulumi.String(adb.Config.Grant),
+	}
+	// Concatenate args and dbnames
+	return append(args, dbnames...)
+}
+
 func (adb *ArangoDB) createJobContainer() *corev1.ContainerArgs {
 	return &corev1.ContainerArgs{
 		Name: pulumi.String("create-databases"),
@@ -131,7 +162,7 @@ func (adb *ArangoDB) createJobContainer() *corev1.ContainerArgs {
 			fmt.Sprintf("%s:%s", adb.Config.Image.Name, adb.Config.Image.Tag),
 		),
 		Env:  adb.createEnvironmentVariables(),
-		Args: pulumi.StringArray{},
+		Args: adb.createContainerArgs(),
 	}
 }
 
