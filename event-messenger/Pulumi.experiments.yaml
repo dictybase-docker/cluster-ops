@@ -37,6 +37,13 @@ config:
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
         name: issueevent
+        values:
+          owner:
+            secure: v1:nX8zPACzkgIuNfYA:uM1XvJNHWTwaYcPM8yymvLOx4jG65IbJsLC6Upj7ikERYc0d
+          repository:
+            secure: v1:bn+WQdYfb00oja3H:fNFbB9Qq9cpo7zSCmqZTRXp9aWHgasZkPVS3vBBXinlulO4=
+          token:
+            secure: v1:w2LDUDTF9y9NkCdK:E9DmWFYIzIvOBhsNptzV108UkprzCzZ28tCZgPrZbTk4wYmxttvKCoKRzqgjfD/+gz4cpmXfTBM=
     logLevel: debug
     namespace: dev
     nats:
