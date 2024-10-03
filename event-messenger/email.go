@@ -122,6 +122,7 @@ func (emn *EventMessenger) CreateEmailDeployment(
 			Spec:     emn.CreateEmailDeploymentSpec(),
 		},
 		pulumi.DependsOn([]pulumi.Resource{emailSecret}),
+		pulumi.Timeouts(&pulumi.CustomTimeouts{Create: "3m"}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
