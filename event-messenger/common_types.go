@@ -6,11 +6,21 @@ type EmailDeployment struct {
 }
 
 type EmailSecrets struct {
-	Name string
-	Keys EmailSecretKeys
+	Name   string
+	Keys   EmailSecretKeys
+	Values EmailSecretValues
 }
 
 type EmailSecretKeys struct {
+	Cc                     string
+	Domain                 string
+	MailgunAPIKey          string
+	PublicationAPIEndpoint string
+	Sender                 string
+	SenderName             string
+}
+
+type EmailSecretValues struct {
 	Cc                     string
 	Domain                 string
 	MailgunAPIKey          string

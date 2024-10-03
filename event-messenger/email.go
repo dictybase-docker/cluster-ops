@@ -10,6 +10,39 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+func (emn *EventMessenger) CreateEmailSecret(
+	ctx *pulumi.Context,
+) (*corev1.Secret, error) {
+	config := emn.Config.EmailDeployment.Secrets
+	secretData := pulumi.StringMap{
+		config.Keys.Cc:     pulumi.String(config.Values.Cc),
+		config.Keys.Domain: pulumi.String(config.Values.Domain),
+		config.Keys.MailgunAPIKey: pulumi.String(
+			config.Values.MailgunAPIKey,
+		),
+		config.Keys.PublicationAPIEndpoint: pulumi.String(
+			config.Values.PublicationAPIEndpoint,
+		),
+		config.Keys.Sender: pulumi.String(config.Values.Sender),
+		config.Keys.SenderName: pulumi.String(
+			config.Values.SenderName,
+		),
+	}
+
+	secret, err := corev1.NewSecret(ctx, config.Name, &corev1.SecretArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Name:      pulumi.String(config.Name),
+			Namespace: pulumi.String(emn.Config.Namespace),
+		},
+		StringData: secretData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating email secret: %w", err)
+	}
+
+	return secret, nil
+}
+
 func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 	secrets := emn.Config.EmailDeployment.Secrets
 	var envVarArray corev1.EnvVarArray
@@ -79,6 +112,7 @@ func (emn *EventMessenger) EmailContainerArray() corev1.ContainerArray {
 
 func (emn *EventMessenger) CreateEmailDeployment(
 	ctx *pulumi.Context,
+	emailSecret *corev1.Secret,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
@@ -87,6 +121,7 @@ func (emn *EventMessenger) CreateEmailDeployment(
 			Metadata: emn.CreateEmailDeploymentMetadata(),
 			Spec:     emn.CreateEmailDeploymentSpec(),
 		},
+		pulumi.DependsOn([]pulumi.Resource{emailSecret}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
