@@ -47,7 +47,7 @@ create-sa-manager project_id:
         echo "Service account ${sa_name} already exists. Using existing account."
     else
         echo "Creating service account: ${sa_name}"
-        just gcp-sa create-sa {{ project_id }} ${sa_name} "${sa_display_name}"  
+        just gcp-sa create-sa {{ project_id }} ${sa_name} "${sa_display_name}"
 
         # create new configuration
         gcloud config configurations create {{ project_id }}-${sa_name}
@@ -137,7 +137,7 @@ create-hmac-key project sa_name output_file:
 
     # Create HMAC key and save full response to a temporary file
     temp_file=$(mktemp)
-    gcloud storage hmac create --project={{ project }} --service-account="$sa_email" --format=json > $temp_file
+    gcloud storage hmac create --project={{ project }} "$sa_email" --format=json > $temp_file
 
     # Extract accessId and secret, and create JSON output
     jq '{accessId: .metadata.accessId, secret: .secret}' "$temp_file" > "{{ output_file }}"
