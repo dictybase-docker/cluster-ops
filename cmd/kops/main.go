@@ -9,11 +9,15 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	app := &cli.App{
 		Name:   "kops-cluster-creator",
 		Usage:  "Create a Kubernetes cluster using kops",
 		Flags:  []cli.Flag{},
-		Action: kops.CreateCluster,
+		Action: func(c *cli.Context) error {
+			return kops.CreateCluster(c, logger)
+		},
 	}
 
 	// Combine all flag groups
@@ -32,7 +36,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error running application %s", err)
+		logger.Error("Error running application", "error", err)
 		os.Exit(1)
 	}
 }
