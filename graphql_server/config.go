@@ -17,7 +17,6 @@ type GraphqlServerConfig struct {
 	Port           int
 	S3Bucket       S3BucketConfig
 	Secrets        SecretsConfig
-  Ingress        IngressConfig
 }
 
 type ConfigMap struct {
