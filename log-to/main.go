@@ -48,7 +48,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	err = lt.CreateService(
+	apiService, err := lt.CreateService(
 		ctx,
 		deployment.Metadata.Name().Elem(),
 		fmt.Sprintf("%s-api", lt.Config.Name),
@@ -57,12 +57,18 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	err = lt.CreateService(
+
+	_, err = lt.CreateService(
 		ctx,
 		deployment.Metadata.Name().Elem(),
 		fmt.Sprintf("%s-admin", lt.Config.Name),
 		lt.Config.AdminPort,
 	)
+	if err != nil {
+		return err
+	}
+
+	_, err = lt.CreateIngress(ctx, apiService)
 	if err != nil {
 		return err
 	}
