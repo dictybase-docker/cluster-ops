@@ -17,6 +17,13 @@ type LogtoConfig struct {
 	Endpoint     string
 	APIPort      int
 	AdminPort    int
+	Ingress      IngressConfig
+}
+
+type IngressConfig struct {
+	TlsSecret   string
+	Issuer      string
+	BackendHosts []string
 }
 
 type DatabaseProperties struct {
