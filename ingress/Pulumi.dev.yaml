@@ -6,7 +6,7 @@ config:
     graphql:
       issuer: issuer-name 
       hosts:
-        - "https://logto.dictybase.dev"
+        - "https://graphql.dictybase.dev"
       services:
         - name: graphql_server-api
           port: 8080
