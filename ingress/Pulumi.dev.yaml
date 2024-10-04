@@ -2,6 +2,7 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnOuQ6//GrTvLEaxQEAHML3VPti3rKdjzNh/vWkvZ778SSQB2302FX4JUY4GbGcJM/nhHdHEathzbpXTrsA4gfjhd4cu/yvpxsvRiQYLGdqkgbsDBbmnUPFWnD03Offj+It7hAJ3uZjrOOPo=
 config:
   ingress:properties:
+    namespace: dev
     graphql:
       issuer: issuer-name 
       hosts:
