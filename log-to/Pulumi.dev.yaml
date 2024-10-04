@@ -11,8 +11,13 @@ config:
       user: user_secret
       host: host_secret
       port: 0
-    apiPort: 1
-    adminPort: 2
+    apiPort: 3001
+    adminPort: 3002
     image:
       name: svhd/logto
       tag: latest
+    ingress:
+      tlsSecret: logto-tls-secret
+      issuer: letsencrypt-prod
+      backendHosts:
+        - logto.example.com
