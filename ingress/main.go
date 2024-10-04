@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 )
 
 type Ingresses struct {
@@ -19,10 +20,10 @@ type Config struct {
 }
 
 type IngressConfig struct {
-	Issuer   string
-  TlsSecret string 
-	Hosts    []string
-	Services []struct {
+	Issuer    string
+	TlsSecret string
+	Hosts     []string
+	Services  []struct {
 		Name string
 		Port int
 		Path string
@@ -34,27 +35,27 @@ func main() {
 }
 
 func Run(ctx *pulumi.Context) error {
-  config, err := ReadConfig(ctx)
+	config, err := ReadConfig(ctx)
 
-  if err != nil {
-    return err
-  }
+	if err != nil {
+		return err
+	}
 
-  ingresses := &Ingresses{Config: config}
+	ingresses := &Ingresses{Config: config}
 
-  // Create GraphQL Ingress
-  if _, err := CreateIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
-    return err
-  }
+	// Create GraphQL Ingress
+	if _, err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
+		return err
+	}
 
-  // Create Frontend Ingress
-  if _, err := CreateIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
-    return err
-  }
+	// Create Frontend Ingress
+	if _, err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+		return err
+	}
 
-  return nil
+	return nil
 }
-  
+
 func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	conf := config.New(ctx, "ingress")
 	var ingressConfig Config
@@ -64,7 +65,9 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	return &ingressConfig, nil
 }
 
-func CreateIngressRuleArray(config IngressConfig) networkingv1.IngressRuleArray {
+func createIngressRuleArray(
+	config IngressConfig,
+) networkingv1.IngressRuleArray {
 	var rules networkingv1.IngressRuleArray
 
 	for _, host := range config.Hosts {
@@ -95,7 +98,11 @@ func CreateIngressRuleArray(config IngressConfig) networkingv1.IngressRuleArray 
 	return rules
 }
 
-func CreateIngressMetadata(name string, namespace string, issuer string) *metav1.ObjectMetaArgs {
+func createIngressMetadata(
+	name string,
+	namespace string,
+	issuer string,
+) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", name)),
 		Namespace: pulumi.String(namespace),
@@ -105,7 +112,7 @@ func CreateIngressMetadata(name string, namespace string, issuer string) *metav1
 	}
 }
 
-func CreateIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
+func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
 		Tls: networkingv1.IngressTLSArray{
@@ -114,15 +121,24 @@ func CreateIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 				SecretName: pulumi.String(config.TlsSecret),
 			},
 		},
-		Rules: CreateIngressRuleArray(config),
+		Rules: createIngressRuleArray(config),
 	}
 }
 
-func CreateIngress(ctx *pulumi.Context, name string, namespace string, config IngressConfig) (*networkingv1.Ingress, error) {
-	ingress, err := networkingv1.NewIngress(ctx, name, &networkingv1.IngressArgs{
-		Metadata: CreateIngressMetadata(name, namespace, config.Issuer),
-		Spec:     CreateIngressSpec(config),
-	})
+func createIngress(
+	ctx *pulumi.Context,
+	name string,
+	namespace string,
+	config IngressConfig,
+) (*networkingv1.Ingress, error) {
+	ingress, err := networkingv1.NewIngress(
+		ctx,
+		name,
+		&networkingv1.IngressArgs{
+			Metadata: createIngressMetadata(name, namespace, config.Issuer),
+			Spec:     createIngressSpec(config),
+		},
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
