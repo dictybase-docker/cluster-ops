@@ -4,6 +4,9 @@ config:
   gcp:project: dcr-experiments
   install-velero:properties:
     bucket: velero-k8s-backup-dcr-experiments
+    exclude:
+      - jobs
+      - cronjobs
     namespace: operators
     plugins:
       - velero/velero-plugin-for-gcp:v1.7.0
