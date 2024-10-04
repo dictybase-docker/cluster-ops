@@ -1,3 +1,6 @@
+# Set up service accounts for the project
+# Activates necessary APIs if specified
+# Usage: just sa-accounts-setup <project> [activate_api]
 [no-cd]
 sa-accounts-setup project activate_api="true":
     #!/usr/bin/env bash
@@ -31,6 +34,9 @@ sa-accounts-setup project activate_api="true":
 
     gcloud config set disable_prompts false
 
+# Create a kops cluster
+# Sets up the necessary bucket and initiates cluster creation
+# Usage: just create-kops-cluster <project> <bucket_name>
 [no-cd]
 create-kops-cluster project bucket_name:
     #!/usr/bin/env bash
@@ -57,18 +63,27 @@ create-kops-cluster project bucket_name:
     just validate-cluster
     just cluster-status
 
+# Update the kops cluster
+# Applies any pending changes to the cluster
+# Usage: just update-cluster
 [no-cd]
 update-cluster:
     #!/usr/bin/env bash
     set -euo pipefail
     kops update cluster --yes --admin
 
+# Validate the kops cluster
+# Checks if the cluster is correctly set up and running
+# Usage: just validate-cluster [waittime]
 [no-cd]
 validate-cluster waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
     kops validate cluster --wait {{ waittime }}m
 
+# Display the current status of the cluster
+# Shows version, cluster info, and nodes
+# Usage: just cluster-status
 [no-cd]
 cluster-status:
     #!/usr/bin/env bash
@@ -77,14 +92,43 @@ cluster-status:
     kubectl cluster-info
     kubectl get nodes
 
+# Launch the k9s terminal UI for cluster management
+# Usage: just k9s
 [no-cd]
 k9s:
     #!/usr/bin/env bash
     set -euo pipefail
     k9s
 
+# Export the kubeconfig for the current cluster
+# Usage: just export-kubeconfig
 [no-cd]
 export-kubeconfig:
     #!/usr/bin/env bash
     set -euo pipefail
     kops export kubeconfig --admin
+
+# Extract logs from pods in the cluster
+# Usage: just extract-logs <label> [namespace]
+[no-cd]
+extract-logs label namespace="dev":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if KUBECONFIG is exported
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set."
+        echo "Please set KUBECONFIG to the path of your Kubernetes config file."
+        exit 1
+    fi
+
+    # Build the custodian command
+    echo "Building custodian command..."
+    go build -o bin/custodian cmd/custodian/main.go
+
+    # Run the custodian command
+    echo "Extracting logs..."
+    ./bin/custodian  --kubeconfig "${KUBECONFIG}" extract-log --label "{{ label }}" --namespace "{{ namespace }}"
+
+    # Clean up the binary
+    rm bin/custodian
