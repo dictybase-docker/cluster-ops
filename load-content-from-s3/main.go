@@ -129,10 +129,14 @@ func (lc *LoadContent) generateContainerArgs(
 }
 
 func (lc *LoadContent) createJob(ctx *pulumi.Context) error {
-	_, err := batchv1.NewJob(ctx, lc.Config.AppName, &batchv1.JobArgs{
-		Metadata: lc.createJobMetadata(),
-		Spec:     lc.createJobSpec(),
-	})
+	_, err := batchv1.NewJob(
+		ctx,
+		fmt.Sprintf("%s-from-minio", lc.Config.AppName),
+		&batchv1.JobArgs{
+			Metadata: lc.createJobMetadata(),
+			Spec:     lc.createJobSpec(),
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
