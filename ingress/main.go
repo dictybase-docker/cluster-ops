@@ -1,3 +1,4 @@
+// Package main provides functionality to create and manage Kubernetes Ingress resources using Pulumi.
 package main
 
 import (
@@ -9,16 +10,19 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
+// Ingresses holds the configuration for multiple Ingress resources.
 type Ingresses struct {
 	Config *Config
 }
 
+// Config represents the overall configuration for the Ingress resources.
 type Config struct {
 	Namespace       string
 	GraphqlIngress  IngressConfig
 	FrontendIngress IngressConfig
 }
 
+// IngressConfig holds the configuration for a single Ingress resource.
 type IngressConfig struct {
 	Issuer    string
 	TlsSecret string
@@ -30,10 +34,12 @@ type IngressConfig struct {
 	}
 }
 
+// main is the entry point of the program.
 func main() {
 	pulumi.Run(Run)
 }
 
+// Run is the main function that creates the Ingress resources.
 func Run(ctx *pulumi.Context) error {
 	config, err := ReadConfig(ctx)
 
@@ -56,6 +62,7 @@ func Run(ctx *pulumi.Context) error {
 	return nil
 }
 
+// ReadConfig reads the configuration from Pulumi config and returns a Config struct.
 func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	conf := config.New(ctx, "ingress")
 	var ingressConfig Config
@@ -65,6 +72,7 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	return &ingressConfig, nil
 }
 
+// createIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
 func createIngressRuleArray(
 	config IngressConfig,
 ) networkingv1.IngressRuleArray {
@@ -98,6 +106,7 @@ func createIngressRuleArray(
 	return rules
 }
 
+// createIngressMetadata creates the metadata for an Ingress resource.
 func createIngressMetadata(
 	name string,
 	namespace string,
@@ -112,6 +121,7 @@ func createIngressMetadata(
 	}
 }
 
+// createIngressSpec creates the specification for an Ingress resource.
 func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
@@ -125,6 +135,7 @@ func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 	}
 }
 
+// createIngress creates a new Ingress resource with the given configuration.
 func createIngress(
 	ctx *pulumi.Context,
 	name string,
