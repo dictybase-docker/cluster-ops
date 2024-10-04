@@ -3,19 +3,30 @@ package main
 import (
 	"fmt"
 
-	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (lt *Logto) CreateIngress(ctx *pulumi.Context, service pulumi.Resource) (*networkingv1.Ingress, error) {
-	ingress, err := networkingv1.NewIngress(ctx, fmt.Sprintf("%s-ingress", lt.Config.Name), &networkingv1.IngressArgs{
-		Metadata: lt.IngressMetadata(),
-		Spec:     lt.IngressSpec(),
-	}, pulumi.DependsOn([]pulumi.Resource{service}))
+func (lt *Logto) CreateIngress(
+	ctx *pulumi.Context,
+	service pulumi.Resource,
+) (*networkingv1.Ingress, error) {
+	ingress, err := networkingv1.NewIngress(
+		ctx,
+		fmt.Sprintf("%s-ingress", lt.Config.Name),
+		&networkingv1.IngressArgs{
+			Metadata: lt.IngressMetadata(),
+			Spec:     lt.IngressSpec(),
+		},
+		pulumi.DependsOn([]pulumi.Resource{service}),
+	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Logto Ingress resource: %w", err)
+		return nil, fmt.Errorf(
+			"failed to create Logto Ingress resource: %w",
+			err,
+		)
 	}
 
 	return ingress, nil
@@ -60,7 +71,9 @@ func (lt *Logto) IngressRules() networkingv1.IngressRuleArrayInput {
 						PathType: pulumi.String("Prefix"),
 						Backend: &networkingv1.IngressBackendArgs{
 							Service: &networkingv1.IngressServiceBackendArgs{
-								Name: pulumi.String(fmt.Sprintf("%s-api", lt.Config.Name)),
+								Name: pulumi.String(
+									fmt.Sprintf("%s-api", lt.Config.Name),
+								),
 								Port: &networkingv1.ServiceBackendPortArgs{
 									Number: pulumi.Int(lt.Config.APIPort),
 								},
