@@ -122,6 +122,7 @@ func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 		Rules: createIngressRuleArray(config),
 	}
 }
+
 // createIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
 func createIngressRuleArray(
 	config IngressConfig,
