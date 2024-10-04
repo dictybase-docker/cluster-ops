@@ -1,0 +1,10 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnAsCqCZmpBuEhun0Jw4of0FVuWzcRHo21tm1s5lsQNUSSQB2302FUAbqLWSgxFRR3hB2/TgKxsw3cYfG0VWXElh07GB3bQF5ASERja53eeizDQ9roB+kI8ZIEpfgzTlXVn7IKYLh+Vau2GI=
+config:
+  install-velero:properties:
+    bucket: velero-k8s-backup-dcr-experiments
+    namespace: operators
+    plugins:
+      - velero/velero-plugin-for-gcp:v1.7.0
+    provider: gcp
+    serviceAccountJson: ../credentials/dcr-experiments-database-backup.json
