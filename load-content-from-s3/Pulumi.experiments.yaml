@@ -8,7 +8,7 @@ config:
       - import/data/frontpage-lexical
     image:
       name: dictybase/modware-import
-      tag: develop-e79fca8
+      tag: develop-84eea25
     logLevel: debug
     minioSecret:
       name: minio
@@ -16,5 +16,5 @@ config:
       userKey: user
     namespace: dev
     runner:
-      command: /usr/local/bin/content
+      command: /usr/local/bin/dataloader
       subcommand: content-data

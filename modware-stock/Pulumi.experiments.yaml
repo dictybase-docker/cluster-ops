@@ -9,6 +9,7 @@ config:
       userkey: user
     image:
       name: dictybase/modware-stock
-      tag: develop-6fafbf6
+      tag: develop-2985bd5
+    logLevel: debug
     namespace: dev
-    port: 9250
+    port: 9345
