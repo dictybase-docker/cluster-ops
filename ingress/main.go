@@ -43,12 +43,12 @@ func Run(ctx *pulumi.Context) error {
   ingresses := &Ingresses{Config: config}
 
   // Create GraphQL Ingress
-  if _, err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
+  if _, err := CreateIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
     return err
   }
 
   // Create Frontend Ingress
-  if _, err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+  if _, err := CreateIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
     return err
   }
 
@@ -64,7 +64,7 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	return &ingressConfig, nil
 }
 
-func createIngress(ctx *pulumi.Context, name string, namespace string, config IngressConfig) (*networkingv1.Ingress, error) {
+func CreateIngressRuleArray(config IngressConfig) networkingv1.IngressRuleArray {
 	var rules networkingv1.IngressRuleArray
 
 	for _, host := range config.Hosts {
@@ -92,27 +92,40 @@ func createIngress(ctx *pulumi.Context, name string, namespace string, config In
 		})
 	}
 
-  ingress, err := networkingv1.NewIngress(ctx, fmt.Sprintf("%s-ingress", name), &networkingv1.IngressArgs{
-		Metadata: &metav1.ObjectMetaArgs{
-			Name: pulumi.String(fmt.Sprintf("%s-ingress", name)),
-      Namespace: pulumi.String(namespace),
-			Annotations: pulumi.StringMap{
-				"cert-manager.io/cluster-issuer": pulumi.String(config.Issuer),
+	return rules
+}
+
+func CreateIngressMetadata(name string, namespace string, issuer string) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(fmt.Sprintf("%s-ingress", name)),
+		Namespace: pulumi.String(namespace),
+		Annotations: pulumi.StringMap{
+			"cert-manager.io/cluster-issuer": pulumi.String(issuer),
+		},
+	}
+}
+
+func CreateIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
+	return &networkingv1.IngressSpecArgs{
+		IngressClassName: pulumi.String("nginx"),
+		Tls: networkingv1.IngressTLSArray{
+			&networkingv1.IngressTLSArgs{
+				Hosts:      pulumi.ToStringArray(config.Hosts),
+				SecretName: pulumi.String(config.TlsSecret),
 			},
 		},
-		Spec: &networkingv1.IngressSpecArgs{
-      IngressClassName: pulumi.String("nginx"),
-			Tls: networkingv1.IngressTLSArray{
-				&networkingv1.IngressTLSArgs{
-					Hosts:      pulumi.ToStringArray(config.Hosts),
-					SecretName: pulumi.String(config.TlsSecret),
-				},
-			},
-			Rules: rules,
-		},
+		Rules: CreateIngressRuleArray(config),
+	}
+}
+
+func CreateIngress(ctx *pulumi.Context, name string, namespace string, config IngressConfig) (*networkingv1.Ingress, error) {
+	ingress, err := networkingv1.NewIngress(ctx, name, &networkingv1.IngressArgs{
+		Metadata: CreateIngressMetadata(name, namespace, config.Issuer),
+		Spec:     CreateIngressSpec(config),
 	})
-  if err != nil {
+
+	if err != nil {
 		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
-  }
-  return ingress, nil
+	}
+	return ingress, nil
 }
