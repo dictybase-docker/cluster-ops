@@ -1,4 +1,3 @@
-// Package main provides functionality to create and manage Kubernetes Ingress resources using Pulumi.
 package main
 
 import (
