@@ -72,6 +72,56 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	return &ingressConfig, nil
 }
 
+// createIngress creates a new Ingress resource with the given configuration.
+func createIngress(
+	ctx *pulumi.Context,
+	name string,
+	namespace string,
+	config IngressConfig,
+) (*networkingv1.Ingress, error) {
+	ingress, err := networkingv1.NewIngress(
+		ctx,
+		fmt.Sprintf("%s-ingress", name),
+		&networkingv1.IngressArgs{
+			Metadata: createIngressMetadata(name, namespace, config.Issuer),
+			Spec:     createIngressSpec(config),
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
+	}
+	return ingress, nil
+}
+
+// createIngressMetadata creates the metadata for an Ingress resource.
+func createIngressMetadata(
+	name string,
+	namespace string,
+	issuer string,
+) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(fmt.Sprintf("%s-ingress", name)),
+		Namespace: pulumi.String(namespace),
+		Annotations: pulumi.StringMap{
+			"cert-manager.io/cluster-issuer": pulumi.String(issuer),
+		},
+	}
+}
+
+// createIngressSpec creates the specification for an Ingress resource.
+func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
+	return &networkingv1.IngressSpecArgs{
+		IngressClassName: pulumi.String("nginx"),
+		Tls: networkingv1.IngressTLSArray{
+			&networkingv1.IngressTLSArgs{
+				Hosts:      pulumi.ToStringArray(config.Hosts),
+				SecretName: pulumi.String(config.TlsSecret),
+			},
+		},
+		Rules: createIngressRuleArray(config),
+	}
+}
 // createIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
 func createIngressRuleArray(
 	config IngressConfig,
@@ -104,55 +154,4 @@ func createIngressRuleArray(
 	}
 
 	return rules
-}
-
-// createIngressMetadata creates the metadata for an Ingress resource.
-func createIngressMetadata(
-	name string,
-	namespace string,
-	issuer string,
-) *metav1.ObjectMetaArgs {
-	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String(fmt.Sprintf("%s-ingress", name)),
-		Namespace: pulumi.String(namespace),
-		Annotations: pulumi.StringMap{
-			"cert-manager.io/cluster-issuer": pulumi.String(issuer),
-		},
-	}
-}
-
-// createIngressSpec creates the specification for an Ingress resource.
-func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
-	return &networkingv1.IngressSpecArgs{
-		IngressClassName: pulumi.String("nginx"),
-		Tls: networkingv1.IngressTLSArray{
-			&networkingv1.IngressTLSArgs{
-				Hosts:      pulumi.ToStringArray(config.Hosts),
-				SecretName: pulumi.String(config.TlsSecret),
-			},
-		},
-		Rules: createIngressRuleArray(config),
-	}
-}
-
-// createIngress creates a new Ingress resource with the given configuration.
-func createIngress(
-	ctx *pulumi.Context,
-	name string,
-	namespace string,
-	config IngressConfig,
-) (*networkingv1.Ingress, error) {
-	ingress, err := networkingv1.NewIngress(
-		ctx,
-		name,
-		&networkingv1.IngressArgs{
-			Metadata: createIngressMetadata(name, namespace, config.Issuer),
-			Spec:     createIngressSpec(config),
-		},
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
-	}
-	return ingress, nil
 }
