@@ -8,4 +8,8 @@ config:
     plugins:
       - velero/velero-plugin-for-gcp:v1.7.0
     provider: gcp
+    schedule:
+      name: k8s-dcr-experiments
+      run: '@every 8h'
+      ttl: 720h
     serviceAccountJson: ../credentials/dcr-experiments-database-backup.json
