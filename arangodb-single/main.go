@@ -57,6 +57,9 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(adp.Config.Secret.Name),
 			Namespace: pulumi.String(adp.Config.Namespace),
+			Labels: pulumi.StringMap{
+				"velero.io/exclude-from-backup": pulumi.String("true"),
+			},
 		},
 		StringData: pulumi.StringMap{
 			"password": pulumi.String(adp.Config.Secret.Password),
@@ -88,6 +91,9 @@ func (adp *ArangoDeployment) createMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String("arangodb"),
 		Namespace: pulumi.String(adp.Config.Namespace),
+		Labels: pulumi.StringMap{
+			"velero.io/exclude-from-backup": pulumi.String("true"),
+		},
 	}
 }
 
