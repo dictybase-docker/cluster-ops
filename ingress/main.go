@@ -32,26 +32,28 @@ type IngressConfig struct {
 func main() {
 	pulumi.Run(Run)
 }
+
 func Run(ctx *pulumi.Context) error {
-		config, err := ReadConfig(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to read config: %w", err)
-		}
+  config, err := ReadConfig(ctx)
 
-		ingresses := &Ingresses{Config: config}
+  if err != nil {
+    return err
+  }
 
-		// Create GraphQL Ingress
-		if _, err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
-			return err
-		}
+  ingresses := &Ingresses{Config: config}
 
-		// Create Frontend Ingress
-		if _, err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
-			return err
-		}
+  // Create GraphQL Ingress
+  if _, err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
+    return err
+  }
 
-		return nil
-	}
+  // Create Frontend Ingress
+  if _, err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+    return err
+  }
+
+  return nil
+}
   
 func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 	conf := config.New(ctx, "ingress")
@@ -90,23 +92,27 @@ func createIngress(ctx *pulumi.Context, name string, namespace string, config In
 		})
 	}
 
-	return networkingv1.NewIngress(ctx, fmt.Sprintf("%s-ingress", name), &networkingv1.IngressArgs{
+  ingress, err := networkingv1.NewIngress(ctx, fmt.Sprintf("%s-ingress", name), &networkingv1.IngressArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: pulumi.String(fmt.Sprintf("%s-ingress", name)),
       Namespace: pulumi.String(namespace),
 			Annotations: pulumi.StringMap{
-				"kubernetes.io/ingress.class":    pulumi.String("nginx"),
 				"cert-manager.io/cluster-issuer": pulumi.String(config.Issuer),
 			},
 		},
 		Spec: &networkingv1.IngressSpecArgs{
+      IngressClassName: pulumi.String("nginx"),
 			Tls: networkingv1.IngressTLSArray{
 				&networkingv1.IngressTLSArgs{
 					Hosts:      pulumi.ToStringArray(config.Hosts),
-					SecretName: pulumi.String(fmt.Sprintf("%s-tls-secret", name)),
+					SecretName: pulumi.String(config.TlsSecret),
 				},
 			},
 			Rules: rules,
 		},
 	})
+  if err != nil {
+		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
+  }
+  return ingress, nil
 }
