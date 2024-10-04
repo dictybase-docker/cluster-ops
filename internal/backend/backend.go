@@ -187,8 +187,10 @@ func (bck *Backend) createImageName() pulumi.StringInput {
 }
 
 func (bck *Backend) createContainerPorts() corev1.ContainerPortArray {
+	serviceName := fmt.Sprintf("%s-api", bck.Config.AppName)
 	return corev1.ContainerPortArray{
 		&corev1.ContainerPortArgs{
+			Name:          pulumi.String(serviceName),
 			ContainerPort: pulumi.Int(bck.Config.Port),
 		},
 	}
@@ -227,7 +229,7 @@ func (bck *Backend) createServiceSpec(
 	return &corev1.ServiceSpecArgs{
 		Selector: bck.createLabels(deploymentName),
 		Ports:    bck.createServicePorts(serviceName),
-		Type:     pulumi.String("NodePort"),
+		Type:     pulumi.String("ClusterIP"),
 	}
 }
 
