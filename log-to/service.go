@@ -13,21 +13,21 @@ func (lt *Logto) CreateService(
 	deploymentName pulumi.StringInput,
 	serviceName string,
 	port int,
-) error {
-	_, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
+) (*corev1.Service, error) {
+	service, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: lt.CreateServiceMetaData(serviceName),
 		Spec:     lt.CreateServiceSpec(deploymentName, serviceName, port),
 	})
 
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"error creating %s service: %w",
 			serviceName,
 			err,
 		)
 	}
 
-	return nil
+	return service, nil
 }
 
 func (lt *Logto) CreateServiceMetaData(
