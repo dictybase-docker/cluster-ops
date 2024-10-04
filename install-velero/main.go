@@ -16,6 +16,11 @@ type VeleroConfig struct {
 	Plugins            []string
 	Provider           string
 	ServiceAccountJSON string
+	Schedule           struct {
+		Name string
+		Run  string
+		TTL  string
+	}
 }
 
 type Velero struct {
@@ -44,7 +49,12 @@ func (vel *Velero) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	err = vel.runVeleroInstallCommand(ctx, bucket)
+	installCommand, err := vel.runVeleroInstallCommand(ctx, bucket)
+	if err != nil {
+		return err
+	}
+
+	err = vel.createVeleroSchedule(ctx, installCommand)
 	if err != nil {
 		return err
 	}
@@ -52,7 +62,25 @@ func (vel *Velero) Install(ctx *pulumi.Context) error {
 	return nil
 }
 
-func (vel *Velero) runVeleroInstallCommand(ctx *pulumi.Context, bucket *storage.Bucket) error {
+func (vel *Velero) createVeleroSchedule(ctx *pulumi.Context, installCommand *local.Command) error {
+	command := fmt.Sprintf(
+		"velero schedule create %s --schedule=\"%s\" --ttl %s",
+		vel.Config.Schedule.Name,
+		vel.Config.Schedule.Run,
+		vel.Config.Schedule.TTL,
+	)
+
+	_, err := local.NewCommand(ctx, "velero-schedule", &local.CommandArgs{
+		Create: pulumi.String(command),
+	}, pulumi.DependsOn([]pulumi.Resource{installCommand}))
+	if err != nil {
+		return fmt.Errorf("error creating Velero schedule: %w", err)
+	}
+
+	return nil
+}
+
+func (vel *Velero) runVeleroInstallCommand(ctx *pulumi.Context, bucket *storage.Bucket) (*local.Command, error) {
 	plugins := strings.Join(vel.Config.Plugins, ",")
 	command := fmt.Sprintf(
 		"velero install --provider %s --plugins %s --bucket %s --secret-file %s --namespace %s --wait",
@@ -63,14 +91,14 @@ func (vel *Velero) runVeleroInstallCommand(ctx *pulumi.Context, bucket *storage.
 		vel.Config.Namespace,
 	)
 
-	_, err := local.NewCommand(ctx, "velero-install", &local.CommandArgs{
+	cmd, err := local.NewCommand(ctx, "velero-install", &local.CommandArgs{
 		Create: pulumi.String(command),
 	}, pulumi.DependsOn([]pulumi.Resource{bucket}))
 	if err != nil {
-		return fmt.Errorf("error running Velero install command: %w", err)
+		return nil, fmt.Errorf("error running Velero install command: %w", err)
 	}
 
-	return nil
+	return cmd, nil
 }
 
 func (vel *Velero) createGCSBucket(
