@@ -128,7 +128,7 @@ extract-logs label namespace="dev":
 
     # Run the custodian command
     echo "Extracting logs..."
-    ./bin/custodian  --kubeconfig "${KUBECONFIG}" extract-log --label "{{ label }}" --namespace "{{ namespace }}"
+    ./bin/custodian extract-log --label "{{ label }}" --namespace "{{ namespace }}"
 
     # Clean up the binary
     rm bin/custodian
