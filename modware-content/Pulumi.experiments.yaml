@@ -9,6 +9,6 @@ config:
       userkey: user
     image:
       name: dictybase/modware-content
-      tag: develop-58397d0
+      tag: develop-f582476
     namespace: dev
     port: 9250
