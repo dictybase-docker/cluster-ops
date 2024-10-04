@@ -1,0 +1,26 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnOuQ6//GrTvLEaxQEAHML3VPti3rKdjzNh/vWkvZ778SSQB2302FX4JUY4GbGcJM/nhHdHEathzbpXTrsA4gfjhd4cu/yvpxsvRiQYLGdqkgbsDBbmnUPFWnD03Offj+It7hAJ3uZjrOOPo=
+config:
+  ingress:properties:
+    graphql:
+      issuer: issuer-name 
+      hosts:
+        - "https://logto.dictybase.dev"
+      services:
+        - name: graphql_server-api
+          port: 8080
+          path: "/"
+    frontend:
+      issuer: issuer-name 
+      hosts:
+        - "https://dictybase.dev"
+      services:
+        - name: frontpage-api
+          port: 3004
+          path: "/"
+        - name: stock-center-api
+          port: 3003
+          path: "/stockcenter"
+        - name: publication-api
+          port: 3000
+          path: "/publication"
