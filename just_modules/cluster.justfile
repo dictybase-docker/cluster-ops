@@ -132,3 +132,28 @@ extract-logs label namespace="dev":
 
     # Clean up the binary
     rm bin/custodian
+
+# Exclude resources from backup by adding label 'velero.io/exclude-from-backup=true'
+# Usage: just exclude-from-backup [namespace]
+[no-cd]
+exclude-from-backup namespace="dev":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if KUBECONFIG is exported
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set."
+        echo "Please set KUBECONFIG to the path of your Kubernetes config file."
+        exit 1
+    fi
+
+    # Build the custodian binary
+    echo "Building custodian command..."
+    go build -o bin/custodian cmd/custodian/main.go
+
+    # Run the exclude-from-backup subcommand
+    echo "Running exclude-from-backup..."
+    ./bin/custodian exclude-from-backup --namespace "{{ namespace }}"
+
+    # Clean up the binary
+    rm bin/custodian
