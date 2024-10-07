@@ -49,12 +49,12 @@ func Run(ctx *pulumi.Context) error {
 	ingresses := &Ingresses{Config: config}
 
 	// Create GraphQL Ingress
-	if  err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
+	if err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
 		return err
 	}
 
 	// Create Frontend Ingress
-	if  err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+	if err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
 		return err
 	}
 
