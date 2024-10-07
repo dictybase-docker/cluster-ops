@@ -59,7 +59,7 @@ func Run(ctx *pulumi.Context) error {
 
 func (fe *Frontend) Install(ctx *pulumi.Context) error {
 	for _, app := range fe.Config.Apps {
-    appCopy := app
+		appCopy := app
 		deploymentName := fmt.Sprintf("%s-api-server", app.Name)
 		serviceName := fmt.Sprintf("%s-api", app.Name)
 
