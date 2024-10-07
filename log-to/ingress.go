@@ -45,15 +45,15 @@ func (lt *Logto) IngressMetadata() metav1.ObjectMetaPtrInput {
 func (lt *Logto) IngressSpec() networkingv1.IngressSpecPtrInput {
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
-		Tls:              lt.IngressTls(),
+		Tls:              lt.IngressTLS(),
 		Rules:            lt.IngressRules(),
 	}
 }
 
-func (lt *Logto) IngressTls() networkingv1.IngressTLSArrayInput {
+func (lt *Logto) IngressTLS() networkingv1.IngressTLSArrayInput {
 	return networkingv1.IngressTLSArray{
 		&networkingv1.IngressTLSArgs{
-			SecretName: pulumi.String(lt.Config.Ingress.TlsSecret),
+			SecretName: pulumi.String(lt.Config.Ingress.TLSSecret),
 			Hosts:      pulumi.ToStringArray(lt.Config.Ingress.BackendHosts),
 		},
 	}
