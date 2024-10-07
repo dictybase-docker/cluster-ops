@@ -41,9 +41,9 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 
 	_, err = gs.CreateService(ctx, deployment)
 
-  if err != nil {
+	if err != nil {
 		return err
 	}
-  
+
 	return nil
 }
