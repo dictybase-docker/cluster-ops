@@ -49,12 +49,12 @@ func Run(ctx *pulumi.Context) error {
 	ingresses := &Ingresses{Config: config}
 
 	// Create GraphQL Ingress
-	if _, err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
+	if  err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
 		return err
 	}
 
 	// Create Frontend Ingress
-	if _, err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+	if  err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
 		return err
 	}
 
@@ -77,8 +77,8 @@ func createIngress(
 	name string,
 	namespace string,
 	config IngressConfig,
-) (*networkingv1.Ingress, error) {
-	ingress, err := networkingv1.NewIngress(
+) error {
+	_, err := networkingv1.NewIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", name),
 		&networkingv1.IngressArgs{
@@ -88,9 +88,9 @@ func createIngress(
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s ingress: %w", name, err)
+		return fmt.Errorf("failed to create %s ingress: %w", name, err)
 	}
-	return ingress, nil
+	return nil
 }
 
 // createIngressMetadata creates the metadata for an Ingress resource.
