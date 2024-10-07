@@ -54,7 +54,12 @@ func (vel *Velero) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	err = vel.createVeleroSchedule(ctx, installCommand)
+	scheduleCommand, err := vel.createVeleroSchedule(ctx, installCommand)
+	if err != nil {
+		return err
+	}
+
+	err = vel.createImmediateBackup(ctx, scheduleCommand)
 	if err != nil {
 		return err
 	}
@@ -62,7 +67,7 @@ func (vel *Velero) Install(ctx *pulumi.Context) error {
 	return nil
 }
 
-func (vel *Velero) createVeleroSchedule(ctx *pulumi.Context, installCommand *local.Command) error {
+func (vel *Velero) createVeleroSchedule(ctx *pulumi.Context, installCommand *local.Command) (*local.Command, error) {
 	command := fmt.Sprintf(
 		"velero schedule create %s --schedule=\"%s\" --ttl %s",
 		vel.Config.Schedule.Name,
@@ -70,14 +75,14 @@ func (vel *Velero) createVeleroSchedule(ctx *pulumi.Context, installCommand *loc
 		vel.Config.Schedule.TTL,
 	)
 
-	_, err := local.NewCommand(ctx, "velero-schedule", &local.CommandArgs{
+	cmd, err := local.NewCommand(ctx, "velero-schedule", &local.CommandArgs{
 		Create: pulumi.String(command),
 	}, pulumi.DependsOn([]pulumi.Resource{installCommand}))
 	if err != nil {
-		return fmt.Errorf("error creating Velero schedule: %w", err)
+		return nil, fmt.Errorf("error creating Velero schedule: %w", err)
 	}
 
-	return nil
+	return cmd, nil
 }
 
 func (vel *Velero) runVeleroInstallCommand(ctx *pulumi.Context, bucket *storage.Bucket) (*local.Command, error) {
@@ -123,6 +128,24 @@ func (vel *Velero) createGCSBucket(
 		return nil, fmt.Errorf("error creating GCS bucket: %w", err)
 	}
 	return bucket, nil
+}
+
+func (vel *Velero) createImmediateBackup(ctx *pulumi.Context, scheduleCommand *local.Command) error {
+	backupName := fmt.Sprintf("%s-initial", vel.Config.Schedule.Name)
+	command := fmt.Sprintf(
+		"velero backup create %s --from-schedule=%s",
+		backupName,
+		vel.Config.Schedule.Name,
+	)
+
+	_, err := local.NewCommand(ctx, "velero-immediate-backup", &local.CommandArgs{
+		Create: pulumi.String(command),
+	}, pulumi.DependsOn([]pulumi.Resource{scheduleCommand}))
+	if err != nil {
+		return fmt.Errorf("error creating immediate Velero backup: %w", err)
+	}
+
+	return nil
 }
 
 func Run(ctx *pulumi.Context) error {
