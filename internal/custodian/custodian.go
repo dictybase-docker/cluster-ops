@@ -11,6 +11,7 @@ import (
 	"github.com/urfave/cli/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -192,35 +193,17 @@ func (cus *Custodian) ExcludeFromBackup() error {
 	for _, list := range resources {
 		gv, err := schema.ParseGroupVersion(list.GroupVersion)
 		if err != nil {
-			cus.logger.Warn(
-				"Skipping invalid groupVersion",
-				"groupVersion",
+			return fmt.Errorf(
+				"Skipping invalid groupVersion %s with error %w",
 				list.GroupVersion,
-				"error",
 				err,
 			)
-			continue
 		}
 
 		for _, resource := range list.APIResources {
 			err := cus.processAPIResource(gv, resource)
 			if err != nil {
-				cus.logger.Warn(
-					"Failed to process API resource",
-					"groupVersion",
-					gv.String(),
-					"resource",
-					resource.Name,
-					"error",
-					err,
-				)
-				// Decide whether to continue or return the error
-				// continue // To proceed with the next resource
-				return fmt.Errorf(
-					"failed to process API resource %s: %w",
-					resource.Name,
-					err,
-				) // To stop processing on error
+				return err
 			}
 		}
 	}
@@ -248,6 +231,16 @@ func (cus *Custodian) processAPIResource(
 			LabelSelector: "app.kubernetes.io/name=kube-arangodb",
 		})
 	if err != nil {
+		// Log a warning if the resource is not found and return
+		if apierrors.IsNotFound(err) {
+			cus.logger.Warn(
+				"Resource not found",
+				"resource", resource.Name,
+				"group", gv.Group,
+				"version", gv.Version,
+			)
+			return nil
+		}
 		return fmt.Errorf(
 			"failed to list resources for %s: %w",
 			resource.Name,
