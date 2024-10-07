@@ -55,6 +55,30 @@ func main() {
 					return cus.SearchAndExtractLogs(cliCtx)
 				},
 			},
+			{
+				Name:  "exclude-from-backup",
+				Usage: "Add 'velero.io/exclude-from-backup=true' label to resources with label 'app.kubernetes.io/name=kube-arangodb'",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "namespace",
+						Aliases: []string{"n"},
+						Usage:   "Kubernetes namespace to search in",
+						Value:   "dev",
+					},
+				},
+				Action: func(cliCtx *cli.Context) error {
+					config := custodian.CustodianConfig{
+						KubeconfigPath: cliCtx.String("kubeconfig"),
+						Namespace:      cliCtx.String("namespace"),
+						Logger:         logger,
+					}
+					cus, err := custodian.NewCustodian(config)
+					if err != nil {
+						return err
+					}
+					return cus.ExcludeFromBackup()
+				},
+			},
 		},
 	}
 
