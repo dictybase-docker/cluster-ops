@@ -24,7 +24,7 @@ type Config struct {
 // IngressConfig holds the configuration for a single Ingress resource.
 type IngressConfig struct {
 	Issuer    string
-	TlsSecret string
+	TLSSecret string
 	Hosts     []string
 	Services  []struct {
 		Name string
@@ -115,7 +115,7 @@ func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 		Tls: networkingv1.IngressTLSArray{
 			&networkingv1.IngressTLSArgs{
 				Hosts:      pulumi.ToStringArray(config.Hosts),
-				SecretName: pulumi.String(config.TlsSecret),
+				SecretName: pulumi.String(config.TLSSecret),
 			},
 		},
 		Rules: createIngressRuleArray(config),
