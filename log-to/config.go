@@ -21,7 +21,7 @@ type LogtoConfig struct {
 }
 
 type IngressConfig struct {
-	TlsSecret    string
+	TLSSecret    string
 	Issuer       string
 	BackendHosts []string
 }
