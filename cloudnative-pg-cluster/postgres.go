@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	cnpgv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
@@ -92,8 +93,8 @@ func (prop *Properties) buildClusterSpec(
 				cluster.Image.Tag,
 			),
 		),
-		Storage:               prop.buildStorageArgs(cluster),
-		WalStorage:            prop.buildWalStorageArgs(cluster),
+		Storage: prop.buildStorageArgs(cluster),
+		// WalStorage:            prop.buildWalStorageArgs(cluster),
 		Postgresql:            prop.buildPostgresqlArgs(cluster),
 		Bootstrap:             prop.buildBootstrapArgs(cluster),
 		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
@@ -117,7 +118,7 @@ func (prop *Properties) buildBackupArgs(
 		BarmanObjectStore: &cnpgv1.ClusterSpecBackupBarmanObjectStoreArgs{
 			DestinationPath: pulumi.String(
 				fmt.Sprintf(
-					"%s/%s",
+					"gs://%s/%s",
 					cluster.Backup.Bucket,
 					cluster.Backup.BucketPath,
 				),
@@ -154,13 +155,12 @@ func (prop *Properties) buildBootstrapArgs(
 func (prop *Properties) buildPostgresqlArgs(
 	cluster Cluster,
 ) *cnpgv1.ClusterSpecPostgresqlArgs {
+	maxConn := strconv.Itoa(cluster.PgConfig.MaxConnections)
 	return &cnpgv1.ClusterSpecPostgresqlArgs{
 		Parameters: pulumi.StringMap{
-			"max_connections": pulumi.String(
-				cluster.PgConfig.MaxConnections,
-			),
+			"max_connections": pulumi.String(maxConn),
 			"shared_buffers": pulumi.String(
-				cluster.PgConfig.SharedBuffer,
+				cluster.PgConfig.SharedBuffers,
 			),
 			"max_locks_per_transaction":      pulumi.String("640"),
 			"max_pred_locks_per_transaction": pulumi.String("640"),
@@ -182,7 +182,6 @@ func (prop *Properties) buildPostgresqlArgs(
 			"geqo_threshold":                 pulumi.String("14"),
 			"from_collapse_limit":            pulumi.String("14"),
 			"join_collapse_limit":            pulumi.String("14"),
-			"log_destination":                pulumi.String("stderr"),
 			"logging_collector":              pulumi.String("on"),
 			"log_min_messages":               pulumi.String("warning"),
 			"log_min_error_statement":        pulumi.String("warning"),
@@ -201,7 +200,7 @@ func (prop *Properties) buildPostgresqlArgs(
 			"autovacuum":                     pulumi.String("on"),
 			"autovacuum_vacuum_scale_factor": pulumi.String("0.1"),
 			"autovacuum_max_workers":         pulumi.String("4"),
-			"datestyle":                      pulumi.String("iso mdy"),
+			"datestyle":                      pulumi.String("mdy"),
 			"timezone":                       pulumi.String("US/Central"),
 			"lc_messages":                    pulumi.String("C"),
 			"lc_monetary":                    pulumi.String("C"),
@@ -223,11 +222,11 @@ func (prop *Properties) buildStorageArgs(
 	}
 }
 
-func (prop *Properties) buildWalStorageArgs(
+/* func (prop *Properties) buildWalStorageArgs(
 	cluster Cluster,
 ) *cnpgv1.ClusterSpecWalStorageArgs {
 	return &cnpgv1.ClusterSpecWalStorageArgs{
 		StorageClass: pulumi.String(cluster.WalStorage.Class),
 		Size:         pulumi.String(cluster.WalStorage.Size),
 	}
-}
+} */
