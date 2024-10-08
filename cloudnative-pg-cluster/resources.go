@@ -75,10 +75,14 @@ func createBackupGCSBucket(
 	location string,
 ) (*storage.Bucket, error) {
 	bucket, err := storage.NewBucket(ctx, name, &storage.BucketArgs{
-		Name:     pulumi.String(name),
-		Location: pulumi.String(location),
+		Name:         pulumi.String(name),
+		ForceDestroy: pulumi.Bool(true),
+		Location:     pulumi.String(location),
 		Versioning: &storage.BucketVersioningArgs{
 			Enabled: pulumi.Bool(true),
+		},
+		SoftDeletePolicy: &storage.BucketSoftDeletePolicyArgs{
+			RetentionDurationSeconds: pulumi.Int(5011200), // 58 days in seconds
 		},
 		LifecycleRules: storage.BucketLifecycleRuleArray{
 			&storage.BucketLifecycleRuleArgs{
@@ -86,15 +90,18 @@ func createBackupGCSBucket(
 					Type: pulumi.String("Delete"),
 				},
 				Condition: &storage.BucketLifecycleRuleConditionArgs{
-					Age:              pulumi.Int(90),
+					Age: pulumi.Int(65), // 65 days
+				},
+			},
+			&storage.BucketLifecycleRuleArgs{
+				Action: &storage.BucketLifecycleRuleActionArgs{
+					Type: pulumi.String("Delete"),
+				},
+				Condition: &storage.BucketLifecycleRuleConditionArgs{
+					WithState:        pulumi.String("ARCHIVED"),
 					NumNewerVersions: pulumi.Int(1),
 				},
 			},
-		},
-		SoftDeletePolicy: &storage.BucketSoftDeletePolicyArgs{
-			RetentionDurationSeconds: pulumi.Int(
-				30 * 24 * 60 * 60,
-			), // 30 days in seconds
 		},
 	})
 	if err != nil {
