@@ -134,6 +134,7 @@ extract-logs label namespace="dev":
     rm bin/custodian
 
 # Exclude resources from backup by adding label 'velero.io/exclude-from-backup=true'
+# and exclude volumes from backup by adding 'backup.velero.io/backup-volumes-excludes' annotation
 # Usage: just exclude-from-backup [namespace]
 [no-cd]
 exclude-from-backup namespace="dev":
@@ -154,6 +155,10 @@ exclude-from-backup namespace="dev":
     # Run the exclude-from-backup subcommand
     echo "Running exclude-from-backup..."
     ./bin/custodian exclude-from-backup --namespace "{{ namespace }}"
+
+    # Run the exclude-volumes-from-backup subcommand
+    echo "Running exclude-volumes-from-backup..."
+    ./bin/custodian exclude-volumes-from-backup --namespace "{{ namespace }}"
 
     # Clean up the binary
     rm bin/custodian
