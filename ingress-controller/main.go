@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -37,23 +39,46 @@ func ReadConfig(ctx *pulumi.Context) (*IngressControllerConfig, error) {
 
 func (ic *IngressController) Install(ctx *pulumi.Context) error {
 	config := ic.Config
-	_, err := helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
+
+	// Create the namespace
+	namespace, err := corev1.NewNamespace(
+		ctx,
+		config.Namespace,
+		&corev1.NamespaceArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name: pulumi.String(config.Namespace),
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to create namespace %s: %w",
+			config.Namespace,
+			err,
+		)
+	}
+
+	// Install the Helm chart
+	_, err = helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
 		Chart:     pulumi.String(config.Chart.Name),
 		Version:   pulumi.String(config.Chart.Version),
-		Namespace: pulumi.String(config.Namespace),
+		Namespace: namespace.Metadata.Name().Elem(),
 		RepositoryOpts: helm.RepositoryOptsArgs{
 			Repo: pulumi.String(config.Chart.Repository),
 		},
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{namespace}))
 	if err != nil {
-		return fmt.Errorf("failed to install %s Helm chart: %w", config.Chart.Name, err)
+		return fmt.Errorf(
+			"failed to install %s Helm chart: %w",
+			config.Chart.Name,
+			err,
+		)
 	}
 	return nil
 }
 
 func Run(ctx *pulumi.Context) error {
 	config, err := ReadConfig(ctx)
-
 	if err != nil {
 		return err
 	}
