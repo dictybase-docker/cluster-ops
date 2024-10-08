@@ -9,18 +9,18 @@ import (
 )
 
 type IngressController struct {
-  Config *IngressControllerConfig
+	Config *IngressControllerConfig
 }
 
 type IngressControllerConfig struct {
-  Namespace string
-  Chart ChartConfig
+	Namespace string
+	Chart     ChartConfig
 }
 
 type ChartConfig struct {
-  Name string
-  Repository string
-  Version string
+	Name       string
+	Repository string
+	Version    string
 }
 
 func ReadConfig(ctx *pulumi.Context) (*IngressControllerConfig, error) {
@@ -36,8 +36,8 @@ func ReadConfig(ctx *pulumi.Context) (*IngressControllerConfig, error) {
 }
 
 func (ic *IngressController) Install(ctx *pulumi.Context) error {
-  config := ic.Config
-  _, err := helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
+	config := ic.Config
+	_, err := helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
 		Chart:     pulumi.String(config.Chart.Name),
 		Version:   pulumi.String(config.Chart.Version),
 		Namespace: pulumi.String(config.Namespace),
@@ -48,19 +48,23 @@ func (ic *IngressController) Install(ctx *pulumi.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to install %s Helm chart: %w", config.Chart.Name, err)
 	}
-  return nil
+	return nil
 }
 
 func Run(ctx *pulumi.Context) error {
-  config, err := ReadConfig(ctx)
+	config, err := ReadConfig(ctx)
 
-  ic := &IngressController{
-    Config: config,
+  if err != nil {
+    return err
   }
 
-  if err = ic.Install(ctx); err != nil {
+	ic := &IngressController{
+		Config: config,
+	}
+
+	if err = ic.Install(ctx); err != nil {
 		return err
-  }
+	}
 
 	return nil
 }
