@@ -39,7 +39,7 @@ func run(ctx *pulumi.Context) error {
 }
 
 func loadConfig(ctx *pulumi.Context) (PgOperatorConfig, error) {
-	conf := config.New(ctx, "pg-operator")
+	conf := config.New(ctx, "")
 	var pgConfig PgOperatorConfig
 	if err := conf.TryObject("properties", &pgConfig); err != nil {
 		return PgOperatorConfig{}, fmt.Errorf(
