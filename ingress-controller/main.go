@@ -8,7 +8,11 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type IngressConfig struct {
+type IngressController struct {
+  Config *IngressControllerConfig
+}
+
+type IngressControllerConfig struct {
   Namespace string
   Chart ChartConfig
 }
@@ -19,9 +23,9 @@ type ChartConfig struct {
   Version string
 }
 
-func ReadConfig(ctx *pulumi.Context) (*IngressConfig, error) {
+func ReadConfig(ctx *pulumi.Context) (*IngressControllerConfig, error) {
 	conf := config.New(ctx, "")
-	cfg := &IngressConfig{}
+	cfg := &IngressControllerConfig{}
 	if err := conf.TryObject("properties", cfg); err != nil {
 		return nil, fmt.Errorf(
 			"failed to read ingress-controller config: %w",
@@ -31,10 +35,9 @@ func ReadConfig(ctx *pulumi.Context) (*IngressConfig, error) {
 	return cfg, nil
 }
 
-func Run(ctx *pulumi.Context) error {
-  config, err := ReadConfig(ctx)
-
-	_, err = helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
+func (ic *IngressController) Install(ctx *pulumi.Context) error {
+  config := ic.Config
+  _, err := helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
 		Chart:     pulumi.String(config.Chart.Name),
 		Version:   pulumi.String(config.Chart.Version),
 		Namespace: pulumi.String(config.Namespace),
@@ -45,6 +48,19 @@ func Run(ctx *pulumi.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to install %s Helm chart: %w", config.Chart.Name, err)
 	}
+  return nil
+}
+
+func Run(ctx *pulumi.Context) error {
+  config, err := ReadConfig(ctx)
+
+  ic := &IngressController{
+    Config: config,
+  }
+
+  if err = ic.Install(ctx); err != nil {
+		return err
+  }
 
 	return nil
 }
