@@ -1,0 +1,51 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnHMtV9jyir6Q4ZAsbsO3Z2t6CCgxTib7xcYQhbmn5lUSSQB2302FumRLriG3yH6ThJ0iSg2svzwSavCFaOJzzMEjV0KCPVWcQlFSMjI4h2PFLISM1EqMa9vG2WUofHM4NVnTfoxm0ttZMjE=
+config:
+  cloudnative-pg-cluster:properties:
+    backupSecret:
+      filepath:
+        secure: v1:QF2r1QfL/ItOm0S+:8p+ZhpD5oU5T38nfYHHFoBicgVAlwmS/fj9ku3Y4K2WeqJwJhzVeBT3TntTpMuzy11ht/71TQ9OU6VNXoAJ9hkS7dQ==
+      key:
+        secure: v1:ismNp7JKf6+UlIhL:n1+ZLKSaiJjgrLQYoJi58j+pt8owEHqm0Rjdpr/89Q==
+      name:
+        secure: v1:zkZLAi/Jtq+aicOI:KsQzFCiD8IigONbAQlLRoWJuz4jQzC/1XF4pfQMOwBA=
+    clusters:
+      - cluster:
+          backup:
+            bucket: cloudnative-pg-backup-dcr-experiments
+            bucketLocation: US
+            bucketPath: logto
+            name: logto
+            retention: 60d
+            schedule: 0 0 0 * * *
+            target: primary
+          bootstrap:
+            database:
+              secure: v1:cF/qIFp2VGWEEUkC:3Y/2zivC2mIFKChIp0uLSi38vYAm
+            owner:
+              secure: v1:D6BVSObUPcrCEZB+:tR9CvDZ3N+qDVPwMpdsRA3tLtqPp
+            userSecret:
+              name:
+                secure: v1:caUNV5nmdWj6U/L4:z7xO1ExlIjj0+2L+DBuEBUTiY+jD
+              password:
+                secure: v1:OYNZ8vddjPLKLI1t:f9HFGVOW6AAi1v5uKfNK/nYmvXogJ/ns2AXU/FM8l01gRvbYjw==
+          image:
+            name: ghcr.io/cloudnative-pg/postgresql
+            tag: 14.13-8
+          instances: 1
+          name: logto
+          namespace: dev
+          pgconfig:
+            maxConnections: 100
+            sharedBuffers: 128MB
+          storage:
+            class: dictycr-balanced
+            size: 75Gi
+          superuser: true
+          walBackup:
+            compression: gzip
+            maxParallel: 3
+          walStorage:
+            class: dictycr-balanced
+            size: 100Gi
+  gcp:project: dcr-experiments
