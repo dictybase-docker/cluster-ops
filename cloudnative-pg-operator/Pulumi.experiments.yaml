@@ -1,0 +1,11 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnKXDywufBEmxsJZ1g4DT+jdqrlnUT5GoP/iBy3RXH18SSQB2302F9WkR7zGbFAO80TDtGV83vrkCITpS4kfxjubFGk24tr8p+OGhgj81PcfqHdzOeeBFJMfgkW/S7WRZvYpi6FrpjjiT9pI=
+config:
+  pg-operator:properties:
+    chart:
+      name: cloudnative-pg
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.22.0
+    image:
+      tag: 1.24.0
+    namespace: operators
