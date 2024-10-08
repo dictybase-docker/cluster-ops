@@ -68,8 +68,8 @@ type BootstrapSecret struct {
 }
 
 type PostgresqlConfig struct {
-	MaxConnections string `pulumi:"max_connections"`
-	SharedBuffer   string `pulumi:"shared_buffer"`
+	MaxConnections int    `pulumi:"maxConnections"`
+	SharedBuffers  string `pulumi:"sharedBuffers"`
 }
 
 type Properties struct {
