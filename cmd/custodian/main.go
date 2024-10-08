@@ -13,6 +13,32 @@ func initLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, nil))
 }
 
+func excludeVolumesFromBackupCommand(logger *slog.Logger) *cli.Command {
+	return &cli.Command{
+		Name:  "exclude-volumes-from-backup",
+		Usage: "Add 'backup.velero.io/backup-volumes-excludes' annotation to pods",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "namespace",
+				Aliases: []string{"n"},
+				Usage:   "Kubernetes namespace to search in",
+				Value:   "dev",
+			},
+		},
+		Action: func(cliCtx *cli.Context) error {
+			config := newCustodianConfig(cliCtx, logger)
+			cus, err := custodian.NewCustodian(config)
+			if err != nil {
+				return cli.Exit(err.Error(), 2)
+			}
+			if err := cus.ExcludeVolumesFromBackup(); err != nil {
+				return cli.Exit(err.Error(), 2)
+			}
+			return nil
+		},
+	}
+}
+
 func newCustodianConfig(
 	cliCtx *cli.Context,
 	logger *slog.Logger,
@@ -101,6 +127,7 @@ func main() {
 		Commands: []*cli.Command{
 			extractLogCommand(logger),
 			excludeFromBackupCommand(logger),
+			excludeVolumesFromBackupCommand(logger),
 		},
 	}
 
