@@ -3,18 +3,25 @@ package main
 import (
 	"fmt"
 
-	nginxingress "github.com/pulumi/pulumi-kubernetes-ingress-nginx/sdk/go/kubernetes-ingress-nginx"
+	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type Config struct {
-	// Add fields here as needed
+type IngressConfig struct {
+  Namespace string
+  Chart ChartConfig
 }
 
-func ReadConfig(ctx *pulumi.Context) (*Config, error) {
+type ChartConfig struct {
+  Name string
+  Repository string
+  Version string
+}
+
+func ReadConfig(ctx *pulumi.Context) (*IngressConfig, error) {
 	conf := config.New(ctx, "")
-	cfg := &Config{}
+	cfg := &IngressConfig{}
 	if err := conf.TryObject("properties", cfg); err != nil {
 		return nil, fmt.Errorf(
 			"failed to read ingress-controller config: %w",
@@ -25,20 +32,18 @@ func ReadConfig(ctx *pulumi.Context) (*Config, error) {
 }
 
 func Run(ctx *pulumi.Context) error {
-	// Create an NGINX Ingress Controller
-	_, err := nginxingress.NewIngressController(
-		ctx,
-		"nginx-ingress",
-		&nginxingress.IngressControllerArgs{
-			Controller: &nginxingress.ControllerArgs{
-				PublishService: &nginxingress.ControllerPublishServiceArgs{
-					Enabled: pulumi.Bool(true),
-				},
-			},
+  config, err := ReadConfig(ctx)
+
+	_, err = helm.NewRelease(ctx, config.Chart.Name, &helm.ReleaseArgs{
+		Chart:     pulumi.String(config.Chart.Name),
+		Version:   pulumi.String(config.Chart.Version),
+		Namespace: pulumi.String(config.Namespace),
+		RepositoryOpts: helm.RepositoryOptsArgs{
+			Repo: pulumi.String(config.Chart.Repository),
 		},
-	)
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to install %s Helm chart: %w", config.Chart.Name, err)
 	}
 
 	return nil
