@@ -165,6 +165,17 @@ exclude-from-backup namespace="dev":
 
 [no-cd]
 setup-cluster-backup:
-	just gcp-cluster exclude-from-backup dev
-	just gcp-pulumi preview install-velero experients
-	just gcp-pulumi create-resource install-velero expreriments
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if Velero is installed
+    if ! command -v velero &> /dev/null; then
+        echo "Error: Velero is not installed or not in the PATH."
+        echo "Please install Velero and make sure it's accessible in your PATH."
+        exit 1
+    fi
+
+    # If Velero is installed, proceed with the setup
+    just gcp-cluster exclude-from-backup dev
+    just gcp-pulumi preview install-velero experiments
+    just gcp-pulumi create-resource install-velero experiments
