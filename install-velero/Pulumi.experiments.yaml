@@ -15,4 +15,5 @@ config:
       name: k8s-dcr-experiments
       run: '@every 8h'
       ttl: 720h
-    serviceAccountJson: ../credentials/dcr-experiments-database-backup.json
+    serviceAccountJson:
+      secure: v1:LIFbbuogSVg5kNYT:6v/RcOjVGMqVZDsN+HbGCoAfmPFR1RZUxYZq9K4ofvVcT4tgiUiXJfIHa68tzO+5rQKmtLZmd2PdC35JWv5t817X
