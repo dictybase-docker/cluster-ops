@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 
 	"github.com/urfave/cli/v2"
 	batchv1 "k8s.io/api/batch/v1"
@@ -15,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -306,4 +308,77 @@ func (cus *Custodian) hasVerbs(
 		}
 	}
 	return true
+}
+
+func (cus *Custodian) ExcludeVolumesFromBackup() error {
+	pods, err := cus.listPods()
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for i := range pods.Items {
+		pod := &pods.Items[i] // Create a new variable for each iteration
+		if err := cus.excludeVolumesForPod(pod); err != nil {
+			return fmt.Errorf(
+				"failed to exclude volumes for pod %s: %w",
+				pod.Name,
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (cus *Custodian) listPods() (*corev1.PodList, error) {
+	return cus.clientset.CoreV1().
+		Pods(cus.namespace).
+		List(context.Background(), metav1.ListOptions{})
+}
+
+func (cus *Custodian) excludeVolumesForPod(pod *corev1.Pod) error {
+	volumeNames := cus.getVolumeNames(pod)
+	if len(volumeNames) == 0 {
+		return nil // No volumes to exclude
+	}
+
+	annotationValue := strings.Join(volumeNames, ",")
+	patchData := []byte(
+		fmt.Sprintf(
+			`{"metadata":{"annotations":{"backup.velero.io/backup-volumes-excludes":"%s"}}}`,
+			annotationValue,
+		),
+	)
+
+	_, err := cus.clientset.CoreV1().Pods(cus.namespace).Patch(
+		context.Background(),
+		pod.Name,
+		types.StrategicMergePatchType,
+		patchData,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to add annotation to pod %s: %w",
+			pod.Name,
+			err,
+		)
+	}
+
+	cus.logger.Info(
+		"Added backup volume exclude annotation",
+		"pod",
+		pod.Name,
+		"volumes",
+		annotationValue,
+	)
+	return nil
+}
+
+func (cus *Custodian) getVolumeNames(pod *corev1.Pod) []string {
+	var volumeNames []string
+	for _, volume := range pod.Spec.Volumes {
+		volumeNames = append(volumeNames, volume.Name)
+	}
+	return volumeNames
 }
