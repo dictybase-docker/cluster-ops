@@ -1,0 +1,9 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnLTtzSqznIsDI+TwCCXAJP5g2ppOH+40tGsLOvRmNBYSSQB2302F2t5bgg5FLUsn5QVXJ0qjwv2hhYGOApMhbAp6eYluc5sZGaR188GHRRnGuEdtx+Np0BuuWVpBn9/91YVBFUBXeNLMueE=
+config:
+  ingress-controller:properties:
+    chart:
+      name: ingress-nginx
+      repository: https://kubernetes.github.io/ingress-nginx
+      version: 4.11.2
+    namespace: ingress
