@@ -157,3 +157,9 @@ exclude-from-backup namespace="dev":
 
     # Clean up the binary
     rm bin/custodian
+
+[no-cd]
+setup-cluster-backup:
+	just gcp-cluster exclude-from-backup dev
+	just gcp-pulumi preview install-velero experients
+	just gcp-pulumi create-resource install-velero expreriments
