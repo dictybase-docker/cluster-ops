@@ -54,9 +54,9 @@ func (ic *IngressController) Install(ctx *pulumi.Context) error {
 func Run(ctx *pulumi.Context) error {
 	config, err := ReadConfig(ctx)
 
-  if err != nil {
-    return err
-  }
+	if err != nil {
+		return err
+	}
 
 	ic := &IngressController{
 		Config: config,
