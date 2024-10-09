@@ -12,7 +12,7 @@ type LogtoConfig struct {
 	Namespace    string
 	Image        ImageConfig
 	StorageClass string
-	DiskSize     int
+	DiskSize     string
 	Database     DatabaseProperties
 	Endpoint     string
 	APIPort      int

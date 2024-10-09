@@ -27,15 +27,12 @@ func (lt *Logto) CreatePersistentVolumeClaim(
 				},
 				Resources: corev1.ResourceRequirementsArgs{
 					Requests: &pulumi.StringMap{
-						"storage": pulumi.String(
-							fmt.Sprintf("%dGi", lt.Config.DiskSize),
-						),
+						"storage": pulumi.String(lt.Config.DiskSize),
 					},
 				},
 			},
 		},
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating %s PersistentVolumeClaim: %w",
