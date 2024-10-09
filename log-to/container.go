@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func (lt *Logto) ContainerArray() corev1.ContainerArray {
+func (lt *Logto) ContainerArray(
+	dbSecretName string,
+) corev1.ContainerArray {
 	config := lt.Config
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
@@ -19,7 +22,7 @@ func (lt *Logto) ContainerArray() corev1.ContainerArray {
 			),
 			Command:      pulumi.StringArray{pulumi.String("/bin/sh")},
 			Args:         lt.ContainerArgs(),
-			Env:          lt.ContainerEnvArgsArray(),
+			Env:          lt.ContainerEnvArgsArray(dbSecretName),
 			Ports:        lt.ContainerPortArray(),
 			VolumeMounts: lt.ContainerVolumeMountArray(),
 		},
@@ -39,23 +42,28 @@ func (lt *Logto) ContainerArgs() pulumi.StringArray {
 	}
 }
 
-func (lt *Logto) ContainerEnvArgsArray() corev1.EnvVarArray {
+func (lt *Logto) ContainerEnvArgsArray(
+	dbSecretName string,
+) corev1.EnvVarArray {
 	config := lt.Config
-	dbURL := fmt.Sprintf("postgresql://%s@%s:%d/%s?sslmode=no-verify",
-		config.Database.User,
-		config.Database.Host,
-		config.Database.Port,
-		config.Database.Name,
-	)
-
-	return corev1.EnvVarArray{
+	envArr := corev1.EnvVarArray{
 		&corev1.EnvVarArgs{
-			Name:  pulumi.String("DB_URL"),
-			Value: pulumi.String(dbURL),
+			Name: pulumi.String("PGPASSWORD"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(dbSecretName),
+					Key:  pulumi.String("password"),
+				},
+			},
 		},
 		&corev1.EnvVarArgs{
-			Name:  pulumi.String("PGPASSWORD"),
-			Value: pulumi.String(config.Database.Password),
+			Name: pulumi.String("DBUSER"),
+			ValueFrom: &corev1.EnvVarSourceArgs{
+				SecretKeyRef: &corev1.SecretKeySelectorArgs{
+					Name: pulumi.String(dbSecretName),
+					Key:  pulumi.String("username"),
+				},
+			},
 		},
 		&corev1.EnvVarArgs{
 			Name:  pulumi.String("ENDPOINT"),
@@ -66,6 +74,18 @@ func (lt *Logto) ContainerEnvArgsArray() corev1.EnvVarArray {
 			Value: pulumi.String("1"),
 		},
 	}
+
+	dbURL := fmt.Sprintf(
+		"postgresql://%s@%s:%s/%s?sslmode=no-verify",
+		os.Getenv("DBUSER"),
+		os.Getenv("LOGTO_RW_SERVICE_HOST"),
+		os.Getenv("LOGTO_RW_SERVICE_PORT"),
+		config.Name,
+	)
+	return append(envArr, &corev1.EnvVarArgs{
+		Name:  pulumi.String("DB_URL"),
+		Value: pulumi.String(dbURL),
+	})
 }
 
 func (lt *Logto) ContainerPortArray() corev1.ContainerPortArray {
@@ -89,6 +109,11 @@ func (lt *Logto) ContainerVolumeMountArray() corev1.VolumeMountArray {
 		&corev1.VolumeMountArgs{
 			Name:      pulumi.String(fmt.Sprintf("%s-volume", lt.Config.Name)),
 			MountPath: pulumi.String("/etc/logto/packages/core/connectors"),
+		},
+		&corev1.VolumeMountArgs{
+			Name:      pulumi.String("db-secret"),
+			MountPath: pulumi.String("/etc/secrets/db"),
+			ReadOnly:  pulumi.Bool(true),
 		},
 	}
 }

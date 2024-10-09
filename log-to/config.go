@@ -8,16 +8,17 @@ import (
 )
 
 type LogtoConfig struct {
-	Name         string
-	Namespace    string
-	Image        ImageConfig
-	StorageClass string
-	DiskSize     string
-	Database     DatabaseProperties
-	Endpoint     string
-	APIPort      int
-	AdminPort    int
-	Ingress      IngressConfig
+	Name           string
+	Namespace      string
+	Image          ImageConfig
+	StorageClass   string
+	DiskSize       string
+	Database       DatabaseProperties
+	DatabaseSecret string
+	Endpoint       string
+	APIPort        int
+	AdminPort      int
+	Ingress        IngressConfig
 }
 
 type IngressConfig struct {
