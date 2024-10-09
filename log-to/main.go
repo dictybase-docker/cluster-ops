@@ -47,6 +47,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 		ctx,
 		claimName,
 		lt.Config.DatabaseSecret,
+		pvc,
 	)
 	if err != nil {
 		return err
@@ -57,6 +58,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 		deployment.Metadata.Name().Elem(),
 		fmt.Sprintf("%s-api", lt.Config.Name),
 		lt.Config.APIPort,
+		deployment,
 	)
 	if err != nil {
 		return err
@@ -67,6 +69,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 		deployment.Metadata.Name().Elem(),
 		fmt.Sprintf("%s-admin", lt.Config.Name),
 		lt.Config.AdminPort,
+		deployment,
 	)
 	if err != nil {
 		return err
@@ -75,7 +78,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 	// TODO: Implement CreateIngress function
 	// _, err = lt.CreateIngress(ctx, apiService)
 	// if err != nil {
-	// 	return err
+	//     return err
 	// }
 
 	return nil
