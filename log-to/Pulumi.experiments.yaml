@@ -1,0 +1,22 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnP4Mt8dMwMCUZlaQybjPXGdm2QPC+MOnn/yHm9s4/28SSQB2302Fxx+/iY11YGhBNs7wjU0we+7qLb1dIat+G6EWy5zqOegXy2r6PDyyrPiqjSUkbCiCt4D9LmiSbKIOKQ+a93GyV2kDgGA=
+config:
+  log-to:properties:
+    adminPort: 3002
+    apiPort: 3001
+    databaseSecret:
+      secure: v1:iY83bl5AHaKQZczS:awap6imfaVZeIdz3cQST/PfbEO1I
+    diskSize: 50Gi
+    endpoint: https://logto.dictybase.dev
+    image:
+      name: svhd/logto
+      tag: 1.10.1
+    ingress:
+      backendHosts:
+        - secure: v1:3Zz2DonNxslE3Neb:9kXkq0sHvhO1f+AY8SqqwEI16wpwc0xPn345oOHC4jvtfA0=
+      issue: letsencrypt-issuer
+      tlsSecret:
+        secure: v1:Wus7DxAqlbcEV81a:ASHjn9LaXQP3uAfiqydaB1ki1EpKdDB+0ccINpBNuLDC
+    name: logto
+    namespace: dev
+    storageClass: dictycr-balanced
