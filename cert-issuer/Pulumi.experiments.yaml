@@ -1,0 +1,10 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnG5dUKJBJw0vR88wa3p6hgoNujGL4ZR+jvoBKvGXDSgSSQB2302Fy1Bdgtm7lfieORcxVYfiSCDgk7lcfS97KueAM3PhkQ2ydL/VCrp0/3GQh+k7eOKM8dMY21P6HkUWSBFbBY3m4HJxbD0=
+config:
+  cert-issuer:properties:
+    email:
+      secure: v1:0S0ZOm6sh9Q8fHFm:HhsgevnL/bbqPv0C4qrvVzNelAz+KBVOlEiUPD3C/FgNcrfv+0PfvfysB/WyMD6a
+    namespace: dev
+    secretName:
+      secure: v1:ImN9c6BoZgBbBglS:WYqrJTlZ4DDroT1ki4cJFGIx/WvBsKGZvyo9t7vIQ3fnHhiiQA==
+    server: https://acme-v02.api.letsencrypt.org/directory
