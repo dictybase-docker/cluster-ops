@@ -93,12 +93,22 @@ func (prop *Properties) buildClusterSpec(
 				cluster.Image.Tag,
 			),
 		),
-		Storage: prop.buildStorageArgs(cluster),
-		// WalStorage:            prop.buildWalStorageArgs(cluster),
+		Storage:               prop.buildStorageArgs(cluster),
 		Postgresql:            prop.buildPostgresqlArgs(cluster),
 		Bootstrap:             prop.buildBootstrapArgs(cluster),
 		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
 		Backup:                prop.buildBackupArgs(cluster),
+		Managed: &cnpgv1.ClusterSpecManagedArgs{
+			Roles: cnpgv1.ClusterSpecManagedRolesArray{
+				&cnpgv1.ClusterSpecManagedRolesArgs{
+					Name:       pulumi.String(cluster.Bootstrap.Owner),
+					Ensure:     pulumi.String("present"),
+					Login:      pulumi.Bool(true),
+					Createdb:   pulumi.Bool(true),
+					Createrole: pulumi.Bool(true),
+				},
+			},
+		},
 	}
 }
 
