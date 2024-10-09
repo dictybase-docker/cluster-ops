@@ -179,3 +179,7 @@ setup-cluster-backup:
     just gcp-cluster exclude-from-backup dev
     just gcp-pulumi preview install-velero experiments
     just gcp-pulumi create-resource install-velero experiments
+
+[no-cd]
+edit-cluster:
+	kops edit cluster
