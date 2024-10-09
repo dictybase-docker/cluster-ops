@@ -13,6 +13,7 @@ func (lt *Logto) CreateDeployment(
 	ctx *pulumi.Context,
 	claimName pulumi.StringInput,
 	dbSecretName string,
+	pvc *corev1.PersistentVolumeClaim,
 ) (*appsv1.Deployment, error) {
 	deployment, err := appsv1.NewDeployment(
 		ctx,
@@ -21,6 +22,7 @@ func (lt *Logto) CreateDeployment(
 			Metadata: lt.CreateDeploymentMetadata(),
 			Spec:     lt.CreateDeploymentSpec(claimName, dbSecretName),
 		},
+		pulumi.DependsOn([]pulumi.Resource{pvc}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -70,7 +72,7 @@ func (lt *Logto) CreateDeploymentSpec(
 					&corev1.VolumeArgs{
 						Name: pulumi.String("db-secret"),
 						Secret: &corev1.SecretVolumeSourceArgs{
-							SecretName: dbSecretName,
+							SecretName: pulumi.String(dbSecretName),
 						},
 					},
 				},
@@ -115,6 +117,7 @@ func (lt *Logto) CreateService(
 	appName pulumi.StringInput,
 	serviceName string,
 	port int,
+	deployment *appsv1.Deployment, // Add this parameter
 ) (*corev1.Service, error) {
 	service, err := corev1.NewService(ctx, serviceName, &corev1.ServiceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
@@ -132,7 +135,7 @@ func (lt *Logto) CreateService(
 				},
 			},
 		},
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{deployment})) // Add this line
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating service %s: %w",
