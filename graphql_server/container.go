@@ -50,6 +50,14 @@ func (gs *GraphqlServer) ConfigMapEnvArgsArray() corev1.EnvVarArray {
 		{"S3_STORAGE_ENDPOINT", configMap.EndpointKeys.S3StorageEndpoint},
 		{"AUTH_ENDPOINT", configMap.EndpointKeys.AuthEndpoint},
 		{"ORGANISM_API_ENDPOINT", configMap.EndpointKeys.OrganismEndpoint},
+		{"STOCK_API_SERVICE_HOST", configMap.GRPCKeys.StockHost},
+		{"STOCK_API_SERVICE_PORT", configMap.GRPCKeys.StockPort},
+		{"ORDER_API_SERVICE_HOST", configMap.GRPCKeys.OrderHost},
+		{"ORDER_API_SERVICE_PORT", configMap.GRPCKeys.OrderPort},
+		{"ANNOTATION_API_SERVICE_HOST", configMap.GRPCKeys.AnnotationHost},
+		{"ANNOTATION_API_SERVICE_PORT", configMap.GRPCKeys.AnnotationPort},
+		{"CONTENT_API_SERVICE_HOST", configMap.GRPCKeys.ContentHost},
+		{"CONTENT_API_SERVICE_PORT", configMap.GRPCKeys.ContentPort},
 	}
 
 	var envVarArray corev1.EnvVarArray
@@ -97,9 +105,21 @@ func (gs *GraphqlServer) allowedOriginsFlags() pulumi.StringArray {
 func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
 	config := gs.Config
 	args := pulumi.StringArray{
-		pulumi.String("start-server"),
 		pulumi.String("--log-level"),
 		pulumi.String(config.LogLevel),
+    pulumi.String("start-server"),
+		// pulumi.String("--stock-grpc-host"),
+		// pulumi.String("test"),
+		// pulumi.String("--stock-grpc-port"),
+		// pulumi.String("3000"),
+		// pulumi.String("--order-grpc-host"),
+		// pulumi.String("test"),
+		// pulumi.String("--order-grpc-port"),
+		// pulumi.String("3000"),
+		// pulumi.String("--annotation-grpc-host"),
+		// pulumi.String("test"),
+		// pulumi.String("--annotation-grpc-port"),
+		// pulumi.String("3000"),
 		pulumi.String("--s3-bucket"),
 		pulumi.String(config.S3Bucket.Name),
 		pulumi.String("--s3-bucket-path"),
@@ -117,7 +137,7 @@ func (gs *GraphqlServer) ContainerArray() corev1.ContainerArray {
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
 			Args:  gs.ContainerArgs(),
-			Env:   gs.ContainerEnvArgsArray(),
+      Env:   gs.ContainerEnvArgsArray(),
 			Ports: gs.ContainerPortArray(),
 		},
 	}
