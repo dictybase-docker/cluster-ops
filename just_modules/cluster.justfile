@@ -183,3 +183,11 @@ setup-cluster-backup:
 [no-cd]
 edit-cluster:
 	kops edit cluster
+
+[no-cd]
+cluster-info:
+	kops get cluster -o yaml
+
+[no-cd]
+cluster-dump:
+	kops get all --v 9
