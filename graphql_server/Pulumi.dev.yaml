@@ -31,6 +31,8 @@ config:
         annotationPort: grpc.annotation.port
         contentHost: grpc.content.host
         contentPort: grpc.content.port
+        redisHost: grpc.redis.host
+        redisPort: grpc.redis.port
       GRPCValues:
         stockHost: stock
         stockPort: 443
@@ -40,16 +42,12 @@ config:
         annotationPort: 443
         contentHost: content
         contentPort: 443
+        redisHost: redis
+        redisPort: 443
       name: dictycr-configuration
     image:
       name: dictybase/graphql-server
       tag: develop
-    ingress:
-      backendHosts:
-        - "https://graphql.dictybase.dev"
-      issuer: issuer-name
-      path: /
-      tlsSecret: tls-secret-name
     logLevel: error
     name: graphql
     namespace: dev

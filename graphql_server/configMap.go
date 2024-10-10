@@ -23,6 +23,8 @@ func (gs *GraphqlServer) CreateConfigMap (ctx *pulumi.Context) (*corev1.ConfigMa
     config.ConfigMap.GRPCKeys.AnnotationPort: pulumi.String(config.ConfigMap.GRPCValues.AnnotationPort),
     config.ConfigMap.GRPCKeys.ContentHost: pulumi.String(config.ConfigMap.GRPCValues.ContentHost),
     config.ConfigMap.GRPCKeys.ContentPort: pulumi.String(config.ConfigMap.GRPCValues.ContentPort),
+    config.ConfigMap.GRPCKeys.RedisHost: pulumi.String(config.ConfigMap.GRPCValues.RedisHost),
+    config.ConfigMap.GRPCKeys.RedisPort: pulumi.String(config.ConfigMap.GRPCValues.RedisPort),
   }
 
   configMap, err := corev1.NewConfigMap(ctx, config.ConfigMap.Name, &corev1.ConfigMapArgs{

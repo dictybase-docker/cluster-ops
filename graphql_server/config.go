@@ -50,6 +50,8 @@ type GRPCKeysConfig struct {
   AnnotationPort string
   ContentHost string
   ContentPort string
+  RedisHost string
+  RedisPort string
 }
 
 type GRPCValuesConfig struct {
@@ -61,6 +63,8 @@ type GRPCValuesConfig struct {
   AnnotationPort int
   ContentHost string
   ContentPort int
+  RedisHost string
+  RedisPort int
 }
 
 type ImageConfig struct {
