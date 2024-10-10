@@ -9,7 +9,7 @@ config:
         name: publication
         tag: develop-f732922
       - image: dictybase/stock-center
-        name: stock-center
+        name: stockcenter
         tag: develop-f732922
     log-level: debug
     namespace: dev
