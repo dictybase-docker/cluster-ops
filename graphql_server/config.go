@@ -20,11 +20,11 @@ type GraphqlServerConfig struct {
 }
 
 type ConfigMap struct {
-	Name         string
-	EndpointKeys EndpointKeysConfig
-  EndpointValues EndpointValuesConfig 
-  GRPCKeys GRPCKeysConfig
-  GRPCValues GRPCValuesConfig
+	Name           string
+	EndpointKeys   EndpointKeysConfig
+	EndpointValues EndpointValuesConfig
+	GRPCKeys       GRPCKeysConfig
+	GRPCValues     GRPCValuesConfig
 }
 
 type EndpointKeysConfig struct {
@@ -42,29 +42,29 @@ type EndpointValuesConfig struct {
 }
 
 type GRPCKeysConfig struct {
-  StockHost string
-  StockPort string
-  OrderHost string
-  OrderPort string
-  AnnotationHost string
-  AnnotationPort string
-  ContentHost string
-  ContentPort string
-  RedisHost string
-  RedisPort string
+	StockHost      string
+	StockPort      string
+	OrderHost      string
+	OrderPort      string
+	AnnotationHost string
+	AnnotationPort string
+	ContentHost    string
+	ContentPort    string
+	RedisHost      string
+	RedisPort      string
 }
 
 type GRPCValuesConfig struct {
-  StockHost string
-  StockPort int
-  OrderHost string
-  OrderPort int
-  AnnotationHost string
-  AnnotationPort int
-  ContentHost string
-  ContentPort int
-  RedisHost string
-  RedisPort int
+	StockHost      string
+	StockPort      string
+	OrderHost      string
+	OrderPort      string
+	AnnotationHost string
+	AnnotationPort string
+	ContentHost    string
+	ContentPort    string
+	RedisHost      string
+	RedisPort      string
 }
 
 type ImageConfig struct {
@@ -78,9 +78,9 @@ type S3BucketConfig struct {
 }
 
 type SecretsConfig struct {
-	Name      string
-	AuthKeys  AuthKeysConfig
-	MinioKeys MinioKeysConfig
+	Name        string
+	AuthKeys    AuthKeysConfig
+	MinioKeys   MinioKeysConfig
 	AuthValues  AuthValuesConfig
 	MinioValues MinioValuesConfig
 }
@@ -92,7 +92,6 @@ type AuthKeysConfig struct {
 	JwtAudience   string
 	JwtIssuer     string
 }
-
 
 type AuthValuesConfig struct {
 	AuthAppId     string
