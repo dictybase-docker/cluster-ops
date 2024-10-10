@@ -1,5 +1,4 @@
-secretsprovider: gcpkms://projects/solid-topic-90123/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi-key
-encryptedkey: CiQAEYtTevXiVOneoU4Vi+c2aRf2cZXykitBNpcdiHj7Pquf9w0SSQCytYBytacswbF/vCNlgnJJsr5BfccLZVOxlkXlWPtPWhRdEqzsaVN7ZMkZL/h7gmk8xmnTEfkW+v6cKAd1h7g7Vq2SDWHemeU=
+encryptionsalt: v1:WCxDp5JTeOE=:v1:mcEnjENd3MH2qQz0:JuhZUbXmBJKWkZWdQVRJn6OLlSv6+A==
 config:
   frontend_application:properties:
     apps:
@@ -14,4 +13,4 @@ config:
         tag: develop-f732922
     log-level: debug
     namespace: dev
-    port: "3000"
+    port: 3000

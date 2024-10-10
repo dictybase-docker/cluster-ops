@@ -13,4 +13,4 @@ config:
         tag: develop-f732922
     log-level: debug
     namespace: staging
-    port: "3000"
+    port: 3000
