@@ -35,15 +35,15 @@ config:
         redisPort: grpc.redis.port
       GRPCValues:
         stockHost: stock
-        stockPort: 443
+        stockPort: "443"
         orderHost: order
-        orderPort: 443
+        orderPort: "443"
         annotationHost: annotation
-        annotationPort: 443
+        annotationPort: "443"
         contentHost: content
-        contentPort: 443
+        contentPort: "443"
         redisHost: redis
-        redisPort: 443
+        redisPort: "443"
       name: dictycr-configuration
     image:
       name: dictybase/graphql-server
