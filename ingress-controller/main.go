@@ -66,6 +66,13 @@ func (ic *IngressController) Install(ctx *pulumi.Context) error {
 		RepositoryOpts: helm.RepositoryOptsArgs{
 			Repo: pulumi.String(config.Chart.Repository),
 		},
+		Values: pulumi.Map{
+			"controller": pulumi.Map{
+				"service": pulumi.Map{
+					"externalTrafficPolicy": pulumi.String("Local"),
+				},
+			},
+		},
 	}, pulumi.DependsOn([]pulumi.Resource{namespace}))
 	if err != nil {
 		return fmt.Errorf(
