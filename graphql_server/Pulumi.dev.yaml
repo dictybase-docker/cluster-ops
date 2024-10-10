@@ -12,36 +12,65 @@ config:
       - "https://*.dictybase.dev"
       - "https://dictybase.dev*"
     configMap:
-      name: dictycr-configuration
       endpointKeys:
         authEndpoint: endpoints.auth
         organismEndpoint: endpoints.organism
         publicationApiEndpoint: endpoints.publication
         s3StorageEndpoint: endpoints.s3
+      endpointValues:
+        authEndpoint: "https://logto.dictybase.dev"
+        organismEndpoint: "organism-endpoint"
+        publicationAPIEndpoint: "publication-endpoint"
+        s3StorageEndpoint: "storage-endpoint"
+      GRPCKeys:
+        stockHost: grpc.stock.host
+        stockPort: grpc.stock.port
+        orderHost: grpc.order.host
+        orderPort: grpc.order.port
+        annotationHost: grpc.annotation.host
+        annotationPort: grpc.annotation.port
+        contentHost: grpc.content.host
+        contentPort: grpc.content.port
+      GRPCValues:
+        stockHost: stock
+        stockPort: 443
+        orderHost: order
+        orderPort: 443
+        annotationHost: annotation
+        annotationPort: 443
+        contentHost: content
+        contentPort: 443
+      name: dictycr-configuration
     image:
       name: dictybase/graphql-server
       tag: develop
     ingress:
-      tlsSecret: tls-secret-name
-      issuer: issuer-name
-      path: /
       backendHosts:
         - "https://graphql.dictybase.dev"
-    s3Bucket:
-      name: editor
-      path: assets
+      issuer: issuer-name
+      path: /
+      tlsSecret: tls-secret-name
     logLevel: error
     name: graphql
     namespace: dev
     port: 8080
+    s3Bucket:
+      name: editor
+      path: assets
     secrets:
-      name: dictycr-secret
       authKeys:
         authAppId: graphql.auth.appId
         authAppSecret: graphql.auth.appSecret
         jwksURI: graphql.auth.jwksURI
         jwtAudience: graphql.auth.jwtAudience
         jwtIssuer: graphql.auth.jwtIssuer
+      authValues:
+        authAppId: appId
+        authAppSecret: appSecret
+        jwksURI: uri
+        jwtAudience: audience
+        jwtIssuer: issuer
       minioKeys:
-        minioAccess: graphql.minio.access
-        minioSecret: graphql.minio.secret
+        minioAccess: access
+        minioSecret: secret
+      name: dictycr-secret
