@@ -14,7 +14,7 @@ config:
     ingress:
       backendHosts:
         - secure: v1:3Zz2DonNxslE3Neb:9kXkq0sHvhO1f+AY8SqqwEI16wpwc0xPn345oOHC4jvtfA0=
-      issue: letsencrypt-issuer
+      issuer: letsencrypt-issuer
       tlsSecret:
         secure: v1:Wus7DxAqlbcEV81a:ASHjn9LaXQP3uAfiqydaB1ki1EpKdDB+0ccINpBNuLDC
     name: logto
