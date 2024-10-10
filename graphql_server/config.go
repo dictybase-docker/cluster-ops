@@ -22,6 +22,9 @@ type GraphqlServerConfig struct {
 type ConfigMap struct {
 	Name         string
 	EndpointKeys EndpointKeysConfig
+  EndpointValues EndpointValuesConfig 
+  GRPCKeys GRPCKeysConfig
+  GRPCValues GRPCValuesConfig
 }
 
 type EndpointKeysConfig struct {
@@ -29,6 +32,35 @@ type EndpointKeysConfig struct {
 	OrganismEndpoint       string
 	PublicationAPIEndpoint string
 	S3StorageEndpoint      string
+}
+
+type EndpointValuesConfig struct {
+	AuthEndpoint           string
+	OrganismEndpoint       string
+	PublicationAPIEndpoint string
+	S3StorageEndpoint      string
+}
+
+type GRPCKeysConfig struct {
+  StockHost string
+  StockPort string
+  OrderHost string
+  OrderPort string
+  AnnotationHost string
+  AnnotationPort string
+  ContentHost string
+  ContentPort string
+}
+
+type GRPCValuesConfig struct {
+  StockHost string
+  StockPort int
+  OrderHost string
+  OrderPort int
+  AnnotationHost string
+  AnnotationPort int
+  ContentHost string
+  ContentPort int
 }
 
 type ImageConfig struct {
@@ -45,6 +77,8 @@ type SecretsConfig struct {
 	Name      string
 	AuthKeys  AuthKeysConfig
 	MinioKeys MinioKeysConfig
+	AuthValues  AuthValuesConfig
+	MinioValues MinioValuesConfig
 }
 
 type AuthKeysConfig struct {
@@ -55,7 +89,21 @@ type AuthKeysConfig struct {
 	JwtIssuer     string
 }
 
+
+type AuthValuesConfig struct {
+	AuthAppId     string
+	AuthAppSecret string
+	JwksURI       string
+	JwtAudience   string
+	JwtIssuer     string
+}
+
 type MinioKeysConfig struct {
+	MinioAccess string
+	MinioSecret string
+}
+
+type MinioValuesConfig struct {
 	MinioAccess string
 	MinioSecret string
 }
