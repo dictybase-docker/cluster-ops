@@ -39,7 +39,7 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-  secret, err := gs.CreateSecret(ctx)
+	secret, err := gs.CreateSecret(ctx)
 	if err != nil {
 		return err
 	}

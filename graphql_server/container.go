@@ -107,7 +107,7 @@ func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
 	args := pulumi.StringArray{
 		pulumi.String("--log-level"),
 		pulumi.String(config.LogLevel),
-    pulumi.String("start-server"),
+		pulumi.String("start-server"),
 		pulumi.String("--s3-bucket"),
 		pulumi.String(config.S3Bucket.Name),
 		pulumi.String("--s3-bucket-path"),
@@ -125,7 +125,7 @@ func (gs *GraphqlServer) ContainerArray() corev1.ContainerArray {
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
 			Args:  gs.ContainerArgs(),
-      Env:   gs.ContainerEnvArgsArray(),
+			Env:   gs.ContainerEnvArgsArray(),
 			Ports: gs.ContainerPortArray(),
 		},
 	}
