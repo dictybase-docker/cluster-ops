@@ -48,6 +48,14 @@ config:
     image:
       name: dictybase/graphql-server
       tag: develop
+    ingress:
+      issuer: issuer-name 
+      hosts:
+        - "https://graphql.dictybase.dev"
+      services:
+        - name: graphql_server-api
+          port: 8080
+          path: "/"
     logLevel: error
     name: graphql
     namespace: dev

@@ -17,6 +17,7 @@ type GraphqlServerConfig struct {
 	Port           int
 	S3Bucket       S3BucketConfig
 	Secrets        SecretsConfig
+  Ingress        IngressConfig
 }
 
 type ConfigMap struct {
@@ -109,6 +110,17 @@ type MinioKeysConfig struct {
 type MinioValuesConfig struct {
 	MinioAccess string
 	MinioSecret string
+}
+
+type IngressConfig struct {
+	Issuer    string
+	TLSSecret string
+	Hosts     []string
+	Services  []struct {
+		Name string
+		Port int
+		Path string
+	}
 }
 
 func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
