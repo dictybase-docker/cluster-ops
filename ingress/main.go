@@ -17,7 +17,6 @@ type Ingresses struct {
 // Config represents the overall configuration for the Ingress resources.
 type Config struct {
 	Namespace       string
-	GraphqlIngress  IngressConfig
 	FrontendIngress IngressConfig
 }
 
@@ -47,11 +46,6 @@ func Run(ctx *pulumi.Context) error {
 	}
 
 	ingresses := &Ingresses{Config: config}
-
-	// Create GraphQL Ingress
-	if err := createIngress(ctx, "graphql", ingresses.Config.Namespace, ingresses.Config.GraphqlIngress); err != nil {
-		return err
-	}
 
 	// Create Frontend Ingress
 	if err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
