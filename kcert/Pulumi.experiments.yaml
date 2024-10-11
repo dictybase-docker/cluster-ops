@@ -1,0 +1,15 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnNXwlRCUGxqrjdqNKFfszBTijJXspCMJ24+IqFPQSIUSSQB2302Fdz/x2zfxFa1iam3+YyyriesU19Zvt33lGR0cslowh54up+Cu9aev3RN5Jid28WFYg83i9mga2FYnheP+Mfhi60RpHHE=
+config:
+  kcert:properties:
+    chart:
+      name: kcert
+      repository: https://nabsul.github.io/helm
+      values:
+        acmeDirUrl: https://acme-v02.api.letsencrypt.org/directory
+        acmeEmail:
+          secure: v1:gTeHYsVEB8CFFRu+:mgTi6g1EDO9xLT+X3WTkqX4vrpz5vnGtU4lVlpOhhGiL2o+9hUhH2TD6Suaw1978
+        acmeTermsAccepted: true
+        debug: true
+      version: 1.0.7
+    namespace: dev
