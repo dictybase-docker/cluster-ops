@@ -17,8 +17,8 @@ func (gs *GraphqlServer) CreateIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", config.Name),
 		&networkingv1.IngressArgs{
-			Metadata: createIngressMetadata(config.Name, config.Namespace, config.Ingress.Issuer),
-			Spec:     createIngressSpec(fmt.Sprintf("%s-api", config.Name), config.Ingress),
+			Metadata: gs.createIngressMetadata(),
+			Spec:     gs.createIngressSpec(),
 		},
 	)
 
@@ -29,49 +29,46 @@ func (gs *GraphqlServer) CreateIngress(
 }
 
 // createIngressMetadata creates the metadata for an Ingress resource.
-func createIngressMetadata(
-	ingressName string,
-	namespace string,
-	issuer string,
-) *metav1.ObjectMetaArgs {
+func (gs *GraphqlServer) createIngressMetadata() *metav1.ObjectMetaArgs {
+  config := gs.Config
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String(fmt.Sprintf("%s-ingress", ingressName)),
-		Namespace: pulumi.String(namespace),
+		Name:      pulumi.String(fmt.Sprintf("%s-ingress", config.Name)),
+		Namespace: pulumi.String(config.Namespace),
 		Annotations: pulumi.StringMap{
-			"cert-manager.io/cluster-issuer": pulumi.String(issuer),
+			"cert-manager.io/cluster-issuer": pulumi.String(config.Ingress.Issuer),
 		},
 	}
 }
 
 // createIngressSpec creates the specification for an Ingress resource.
-func createIngressSpec(serviceName string, config IngressConfig) *networkingv1.IngressSpecArgs {
+func (gs *GraphqlServer) createIngressSpec() *networkingv1.IngressSpecArgs {
+  config := gs.Config
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
 		Tls: networkingv1.IngressTLSArray{
 			&networkingv1.IngressTLSArgs{
-				Hosts:      pulumi.ToStringArray(config.Hosts),
-				SecretName: pulumi.String(config.TLSSecret),
+				Hosts:      pulumi.ToStringArray(config.Ingress.Hosts),
+				SecretName: pulumi.String(config.Ingress.TLSSecret),
 			},
 		},
-		Rules: createIngressRuleArray(serviceName, config),
+		Rules: gs.createIngressRuleArray(),
 	}
 }
 
 // createIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
-func createIngressRuleArray(
-  serviceName string,
-	config IngressConfig,
+func (gs *GraphqlServer) createIngressRuleArray(
 ) networkingv1.IngressRuleArray {
 	var rules networkingv1.IngressRuleArray
+  config := gs.Config
 
-	for _, host := range config.Hosts {
+	for _, host := range config.Ingress.Hosts {
 		var paths networkingv1.HTTPIngressPathArray
 			paths = append(paths, &networkingv1.HTTPIngressPathArgs{
-				Path:     pulumi.String(config.Path),
+				Path:     pulumi.String(config.Ingress.Path),
 				PathType: pulumi.String("Prefix"),
 				Backend: &networkingv1.IngressBackendArgs{
 					Service: &networkingv1.IngressServiceBackendArgs{
-						Name: pulumi.String(serviceName),
+						Name: pulumi.String(fmt.Sprintf("%s-api", config.Name)),
 						Port: &networkingv1.ServiceBackendPortArgs{
 							Number: pulumi.Int(config.Port),
 						},
