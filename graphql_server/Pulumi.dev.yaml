@@ -12,6 +12,28 @@ config:
       - "https://*.dictybase.dev"
       - "https://dictybase.dev*"
     configMap:
+      GRPCKeys:
+        annotationHost: grpc.annotation.host
+        annotationPort: grpc.annotation.port
+        contentHost: grpc.content.host
+        contentPort: grpc.content.port
+        orderHost: grpc.order.host
+        orderPort: grpc.order.port
+        redisHost: grpc.redis.host
+        redisPort: grpc.redis.port
+        stockHost: grpc.stock.host
+        stockPort: grpc.stock.port
+      GRPCValues:
+        annotationHost: annotation
+        annotationPort: "443"
+        contentHost: content
+        contentPort: "443"
+        orderHost: order
+        orderPort: "443"
+        redisHost: redis
+        redisPort: "443"
+        stockHost: stock
+        stockPort: "443"
       endpointKeys:
         authEndpoint: endpoints.auth
         organismEndpoint: endpoints.organism
@@ -22,38 +44,16 @@ config:
         organismEndpoint: "organism-endpoint"
         publicationAPIEndpoint: "publication-endpoint"
         s3StorageEndpoint: "storage-endpoint"
-      GRPCKeys:
-        stockHost: grpc.stock.host
-        stockPort: grpc.stock.port
-        orderHost: grpc.order.host
-        orderPort: grpc.order.port
-        annotationHost: grpc.annotation.host
-        annotationPort: grpc.annotation.port
-        contentHost: grpc.content.host
-        contentPort: grpc.content.port
-        redisHost: grpc.redis.host
-        redisPort: grpc.redis.port
-      GRPCValues:
-        stockHost: stock
-        stockPort: "443"
-        orderHost: order
-        orderPort: "443"
-        annotationHost: annotation
-        annotationPort: "443"
-        contentHost: content
-        contentPort: "443"
-        redisHost: redis
-        redisPort: "443"
       name: dictycr-configuration
     image:
       name: dictybase/graphql-server
       tag: develop
     ingress:
-      issuer: issuer-name 
       hosts:
         - "graphql.dictybase.dev"
-      port: 8080
+      issuer: issuer-name
       path: "/"
+      port: 8080
     logLevel: error
     name: graphql
     namespace: dev
