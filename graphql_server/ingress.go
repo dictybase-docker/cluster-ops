@@ -17,8 +17,8 @@ func (gs *GraphqlServer) CreateIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", config.Name),
 		&networkingv1.IngressArgs{
-			Metadata: gs.createIngressMetadata(),
-			Spec:     gs.createIngressSpec(),
+			Metadata: gs.CreateIngressMetadata(),
+			Spec:     gs.CreateIngressSpec(),
 		},
 	)
 
@@ -28,8 +28,8 @@ func (gs *GraphqlServer) CreateIngress(
 	return nil
 }
 
-// createIngressMetadata creates the metadata for an Ingress resource.
-func (gs *GraphqlServer) createIngressMetadata() *metav1.ObjectMetaArgs {
+// CreateIngressMetadata creates the metadata for an Ingress resource.
+func (gs *GraphqlServer) CreateIngressMetadata() *metav1.ObjectMetaArgs {
   config := gs.Config
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", config.Name)),
@@ -40,8 +40,8 @@ func (gs *GraphqlServer) createIngressMetadata() *metav1.ObjectMetaArgs {
 	}
 }
 
-// createIngressSpec creates the specification for an Ingress resource.
-func (gs *GraphqlServer) createIngressSpec() *networkingv1.IngressSpecArgs {
+// CreateIngressSpec creates the specification for an Ingress resource.
+func (gs *GraphqlServer) CreateIngressSpec() *networkingv1.IngressSpecArgs {
   config := gs.Config
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
@@ -51,12 +51,12 @@ func (gs *GraphqlServer) createIngressSpec() *networkingv1.IngressSpecArgs {
 				SecretName: pulumi.String(config.Ingress.TLSSecret),
 			},
 		},
-		Rules: gs.createIngressRuleArray(),
+		Rules: gs.CreateIngressRuleArray(),
 	}
 }
 
-// createIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
-func (gs *GraphqlServer) createIngressRuleArray(
+// CreateIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
+func (gs *GraphqlServer) CreateIngressRuleArray(
 ) networkingv1.IngressRuleArray {
 	var rules networkingv1.IngressRuleArray
   config := gs.Config
