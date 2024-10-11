@@ -12,7 +12,7 @@ import (
 func (gs *GraphqlServer) CreateIngress(
 	ctx *pulumi.Context,
 ) error {
-  config := gs.Config
+	config := gs.Config
 	_, err := networkingv1.NewIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", config.Name),
