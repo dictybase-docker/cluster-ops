@@ -7,4 +7,4 @@ config:
     namespace: dev
     secretName:
       secure: v1:ImN9c6BoZgBbBglS:WYqrJTlZ4DDroT1ki4cJFGIx/WvBsKGZvyo9t7vIQ3fnHhiiQA==
-    server: https://acme-v02.api.letsencrypt.org/directory
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
