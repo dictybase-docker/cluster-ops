@@ -53,7 +53,7 @@ func (lt *Logto) IngressTLS() networkingv1.IngressTLSArrayInput {
 	return networkingv1.IngressTLSArray{
 		&networkingv1.IngressTLSArgs{
 			SecretName: pulumi.String(lt.Config.Ingress.TLSSecret),
-			Hosts:      pulumi.ToStringArray(lt.Config.Ingress.BackendHosts),
+			Hosts:      pulumi.ToStringArray(lt.Config.Ingress.Hosts),
 		},
 	}
 }
