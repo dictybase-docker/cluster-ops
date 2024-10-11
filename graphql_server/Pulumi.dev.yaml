@@ -53,7 +53,6 @@ config:
         - "graphql.dictybase.dev"
       issuer: issuer-name
       path: "/"
-      port: 8080
     logLevel: error
     name: graphql
     namespace: dev
