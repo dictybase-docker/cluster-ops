@@ -30,7 +30,7 @@ func (gs *GraphqlServer) CreateIngress(
 
 // CreateIngressMetadata creates the metadata for an Ingress resource.
 func (gs *GraphqlServer) CreateIngressMetadata() *metav1.ObjectMetaArgs {
-  config := gs.Config
+	config := gs.Config
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", config.Name)),
 		Namespace: pulumi.String(config.Namespace),
@@ -42,7 +42,7 @@ func (gs *GraphqlServer) CreateIngressMetadata() *metav1.ObjectMetaArgs {
 
 // CreateIngressSpec creates the specification for an Ingress resource.
 func (gs *GraphqlServer) CreateIngressSpec() *networkingv1.IngressSpecArgs {
-  config := gs.Config
+	config := gs.Config
 	return &networkingv1.IngressSpecArgs{
 		IngressClassName: pulumi.String("nginx"),
 		Tls: networkingv1.IngressTLSArray{
@@ -56,25 +56,24 @@ func (gs *GraphqlServer) CreateIngressSpec() *networkingv1.IngressSpecArgs {
 }
 
 // CreateIngressRuleArray creates an array of IngressRule objects based on the provided IngressConfig.
-func (gs *GraphqlServer) CreateIngressRuleArray(
-) networkingv1.IngressRuleArray {
+func (gs *GraphqlServer) CreateIngressRuleArray() networkingv1.IngressRuleArray {
 	var rules networkingv1.IngressRuleArray
-  config := gs.Config
+	config := gs.Config
 
 	for _, host := range config.Ingress.Hosts {
 		var paths networkingv1.HTTPIngressPathArray
-			paths = append(paths, &networkingv1.HTTPIngressPathArgs{
-				Path:     pulumi.String(config.Ingress.Path),
-				PathType: pulumi.String("Prefix"),
-				Backend: &networkingv1.IngressBackendArgs{
-					Service: &networkingv1.IngressServiceBackendArgs{
-						Name: pulumi.String(fmt.Sprintf("%s-api", config.Name)),
-						Port: &networkingv1.ServiceBackendPortArgs{
-							Number: pulumi.Int(config.Port),
-						},
+		paths = append(paths, &networkingv1.HTTPIngressPathArgs{
+			Path:     pulumi.String(config.Ingress.Path),
+			PathType: pulumi.String("Prefix"),
+			Backend: &networkingv1.IngressBackendArgs{
+				Service: &networkingv1.IngressServiceBackendArgs{
+					Name: pulumi.String(fmt.Sprintf("%s-api", config.Name)),
+					Port: &networkingv1.ServiceBackendPortArgs{
+						Number: pulumi.Int(config.Port),
 					},
 				},
-			})
+			},
+		})
 
 		rules = append(rules, &networkingv1.IngressRuleArgs{
 			Host: pulumi.String(host),
