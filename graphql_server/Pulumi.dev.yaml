@@ -69,6 +69,9 @@ config:
         jwtAudience: audience
         jwtIssuer: issuer
       minioKeys:
+        minioAccess: graphql.minio.access
+        minioSecret: graphql.minio.secret
+      minioValues:
         minioAccess: access
         minioSecret: secret
       name: dictycr-secret
