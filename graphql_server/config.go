@@ -116,7 +116,6 @@ type IngressConfig struct {
 	Issuer    string
 	TLSSecret string
 	Hosts     []string
-  Port int
   Path string
 }
 
