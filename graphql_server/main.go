@@ -54,6 +54,10 @@ func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
+  
+  if err = gs.CreateIngress(ctx); err != nil {
+		return err
+  } 
 
 	return nil
 }
