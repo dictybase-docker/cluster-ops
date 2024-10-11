@@ -53,7 +53,7 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	_, err = lt.CreateService(
+	apiService, err := lt.CreateService(
 		ctx,
 		deployment.Metadata.Name().Elem(),
 		fmt.Sprintf("%s-api", lt.Config.Name),
@@ -76,10 +76,10 @@ func (lt *Logto) Install(ctx *pulumi.Context) error {
 	}
 
 	// TODO: Implement CreateIngress function
-	// _, err = lt.CreateIngress(ctx, apiService)
-	// if err != nil {
-	//     return err
-	// }
+	_, err = lt.CreateIngress(ctx, apiService)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

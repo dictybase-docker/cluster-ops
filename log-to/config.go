@@ -13,7 +13,6 @@ type LogtoConfig struct {
 	Image          ImageConfig
 	StorageClass   string
 	DiskSize       string
-	Database       DatabaseProperties
 	DatabaseSecret string
 	Endpoint       string
 	APIPort        int
@@ -23,26 +22,13 @@ type LogtoConfig struct {
 
 type IngressConfig struct {
 	TLSSecret    string
-	Issuer       string
 	BackendHosts []string
+	Label        LabelConfig
 }
 
-type DatabaseProperties struct {
-	Name     string
-	User     string
-	Host     string
-	Port     int
-	Password string
-}
-
-type SecretKeyPair struct {
-	Name string
-	Key  string
-}
-
-type ConfigMapPair struct {
-	Name string
-	Key  string
+type LabelConfig struct {
+	Name  string
+	Value string
 }
 
 type ImageConfig struct {

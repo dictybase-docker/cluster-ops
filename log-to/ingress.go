@@ -21,7 +21,6 @@ func (lt *Logto) CreateIngress(
 		},
 		pulumi.DependsOn([]pulumi.Resource{service}),
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create Logto Ingress resource: %w",
@@ -36,8 +35,8 @@ func (lt *Logto) IngressMetadata() metav1.ObjectMetaPtrInput {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", lt.Config.Name)),
 		Namespace: pulumi.String(lt.Config.Namespace),
-		Annotations: pulumi.StringMap{
-			"cert-manager.io/issuer": pulumi.String(lt.Config.Ingress.Issuer),
+		Labels: pulumi.StringMap{
+			lt.Config.Ingress.Label.Name: pulumi.String(lt.Config.Ingress.Label.Value),
 		},
 	}
 }
@@ -61,28 +60,40 @@ func (lt *Logto) IngressTLS() networkingv1.IngressTLSArrayInput {
 
 func (lt *Logto) IngressRules() networkingv1.IngressRuleArrayInput {
 	var rules networkingv1.IngressRuleArray
-	for _, h := range lt.Config.Ingress.BackendHosts {
-		rules = append(rules, &networkingv1.IngressRuleArgs{
-			Host: pulumi.String(h),
-			Http: &networkingv1.HTTPIngressRuleValueArgs{
-				Paths: networkingv1.HTTPIngressPathArray{
-					&networkingv1.HTTPIngressPathArgs{
-						Path:     pulumi.String("/"),
-						PathType: pulumi.String("Prefix"),
-						Backend: &networkingv1.IngressBackendArgs{
-							Service: &networkingv1.IngressServiceBackendArgs{
-								Name: pulumi.String(
-									fmt.Sprintf("%s-api", lt.Config.Name),
-								),
-								Port: &networkingv1.ServiceBackendPortArgs{
-									Number: pulumi.Int(lt.Config.APIPort),
-								},
-							},
-						},
-					},
-				},
-			},
-		})
+	for _, host := range lt.Config.Ingress.BackendHosts {
+		rules = append(rules, lt.createIngressRule(host))
 	}
 	return rules
+}
+
+func (lt *Logto) createIngressRule(host string) *networkingv1.IngressRuleArgs {
+	return &networkingv1.IngressRuleArgs{
+		Host: pulumi.String(host),
+		Http: &networkingv1.HTTPIngressRuleValueArgs{
+			Paths: networkingv1.HTTPIngressPathArray{
+				lt.createHTTPIngressPath(),
+			},
+		},
+	}
+}
+
+func (lt *Logto) createHTTPIngressPath() *networkingv1.HTTPIngressPathArgs {
+	return &networkingv1.HTTPIngressPathArgs{
+		Path:     pulumi.String("/"),
+		PathType: pulumi.String("Prefix"),
+		Backend:  lt.createIngressBackend(),
+	}
+}
+
+func (lt *Logto) createIngressBackend() *networkingv1.IngressBackendArgs {
+	return &networkingv1.IngressBackendArgs{
+		Service: &networkingv1.IngressServiceBackendArgs{
+			Name: pulumi.String(
+				fmt.Sprintf("%s-api", lt.Config.Name),
+			),
+			Port: &networkingv1.ServiceBackendPortArgs{
+				Number: pulumi.Int(lt.Config.APIPort),
+			},
+		},
+	}
 }
