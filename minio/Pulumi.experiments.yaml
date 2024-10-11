@@ -2,6 +2,21 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnFu36q4adZ+3ZtyW1LHl1O2ZxaE2JzPxtsWXcl4ycGcSSQB2302FjJFcWEEKxFSolYbSSYyKwt2gZ5e6HZ5VfsXronaW5e/5mjLhghOKEfT1omPu74GqRIOBu4xoDzC5gE+Dl7iIR7SrVIk=
 config:
   minio:properties:
+    apiIngress:
+      enabled: true
+      hostname: storage.dictybase.dev
+      ingressClassName: nginx
+      label:
+        name: kcert.dev/ingress
+        value: managed
+      service:
+        name: minio
+        port: 9000
+      tls:
+        hosts:
+          - storage.dictybase.dev
+        secretName:
+          secure: v1:Ot7inebjFq8oe2Nv:a12+sQMJR7Gln9PMyLni5BOdLe2CH3sbizgxaEU=
     chart:
       name: minio
       repository: https://charts.bitnami.com/bitnami
