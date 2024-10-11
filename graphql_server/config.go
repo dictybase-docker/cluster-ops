@@ -116,11 +116,8 @@ type IngressConfig struct {
 	Issuer    string
 	TLSSecret string
 	Hosts     []string
-	Services  []struct {
-		Name string
-		Port int
-		Path string
-	}
+  Port int
+  Path string
 }
 
 func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
