@@ -6,6 +6,7 @@ import (
 	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -33,13 +34,32 @@ type StorageConfig struct {
 	Size  string
 }
 
+type APIIngressConfig struct {
+	Enabled          bool
+	Hostname         string
+	IngressClassName string
+	Label            struct {
+		Name  string
+		Value string
+	}
+	Service struct {
+		Name string
+		Port int
+	}
+	TLS struct {
+		Hosts      []string
+		SecretName string
+	}
+}
+
 type MinioConfig struct {
-	Chart     ChartConfig
-	Image     ImageConfig
-	Namespace string
-	Secret    SecretConfig
-	Storage   StorageConfig
-	WebUI     bool `json:"webui"`
+	Chart      ChartConfig
+	Image      ImageConfig
+	Namespace  string
+	Secret     SecretConfig
+	Storage    StorageConfig
+	WebUI      bool `json:"webui"`
+	APIIngress APIIngressConfig
 }
 
 type Minio struct {
@@ -120,6 +140,79 @@ func (mno *Minio) installHelmChart(
 	return nil
 }
 
+func (mno *Minio) createIngress(ctx *pulumi.Context) error {
+	if !mno.Config.APIIngress.Enabled {
+		return nil
+	}
+
+	ingressName := "minio-api-ingress"
+	_, err := networkingv1.NewIngress(ctx, ingressName, &networkingv1.IngressArgs{
+		Metadata: mno.createIngressMetadata(ingressName),
+		Spec:     mno.createIngressSpec(),
+	})
+
+	return err
+}
+
+func (mno *Minio) createIngressMetadata(name string) *metav1.ObjectMetaArgs {
+	return &metav1.ObjectMetaArgs{
+		Name:      pulumi.String(name),
+		Namespace: pulumi.String(mno.Config.Namespace),
+		Labels: pulumi.StringMap{
+			mno.Config.APIIngress.Label.Name: pulumi.String(mno.Config.APIIngress.Label.Value),
+		},
+	}
+}
+
+func (mno *Minio) createIngressSpec() *networkingv1.IngressSpecArgs {
+	return &networkingv1.IngressSpecArgs{
+		IngressClassName: pulumi.String(mno.Config.APIIngress.IngressClassName),
+		Rules:            mno.createIngressRules(),
+		Tls:              mno.createIngressTLS(),
+	}
+}
+
+func (mno *Minio) createIngressRules() networkingv1.IngressRuleArray {
+	return networkingv1.IngressRuleArray{
+		&networkingv1.IngressRuleArgs{
+			Host: pulumi.String(mno.Config.APIIngress.Hostname),
+			Http: &networkingv1.HTTPIngressRuleValueArgs{
+				Paths: mno.createIngressPaths(),
+			},
+		},
+	}
+}
+
+func (mno *Minio) createIngressPaths() networkingv1.HTTPIngressPathArray {
+	return networkingv1.HTTPIngressPathArray{
+		&networkingv1.HTTPIngressPathArgs{
+			Path:     pulumi.String("/"),
+			PathType: pulumi.String("Prefix"),
+			Backend:  mno.createIngressBackend(),
+		},
+	}
+}
+
+func (mno *Minio) createIngressBackend() *networkingv1.IngressBackendArgs {
+	return &networkingv1.IngressBackendArgs{
+		Service: &networkingv1.IngressServiceBackendArgs{
+			Name: pulumi.String(mno.Config.APIIngress.Service.Name),
+			Port: &networkingv1.ServiceBackendPortArgs{
+				Number: pulumi.Int(mno.Config.APIIngress.Service.Port),
+			},
+		},
+	}
+}
+
+func (mno *Minio) createIngressTLS() networkingv1.IngressTLSArray {
+	return networkingv1.IngressTLSArray{
+		&networkingv1.IngressTLSArgs{
+			Hosts:      pulumi.ToStringArray(mno.Config.APIIngress.TLS.Hosts),
+			SecretName: pulumi.String(mno.Config.APIIngress.TLS.SecretName),
+		},
+	}
+}
+
 func (mno *Minio) Install(ctx *pulumi.Context) error {
 	secret, err := mno.createSecret(ctx)
 	if err != nil {
@@ -128,6 +221,10 @@ func (mno *Minio) Install(ctx *pulumi.Context) error {
 
 	if err := mno.installHelmChart(ctx, secret); err != nil {
 		return err
+	}
+
+	if err := mno.createIngress(ctx); err != nil {
+		return fmt.Errorf("failed to create Minio API ingress: %w", err)
 	}
 
 	return nil
