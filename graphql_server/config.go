@@ -9,68 +9,37 @@ import (
 
 type GraphqlServerConfig struct {
 	AllowedOrigins []string
-	ConfigMap      ConfigMap
+	Endpoints      EndpointsConfig
 	Image          ImageConfig
+	Ingress        IngressConfig
 	LogLevel       string
 	Name           string
 	Namespace      string
 	Port           int
 	S3Bucket       S3BucketConfig
 	Secrets        SecretsConfig
-	Ingress        IngressConfig
 }
 
-type ConfigMap struct {
-	Name           string
-	EndpointKeys   EndpointKeysConfig
-	EndpointValues EndpointValuesConfig
-	GRPCKeys       GRPCKeysConfig
-	GRPCValues     GRPCValuesConfig
-}
-
-type EndpointKeysConfig struct {
-	AuthEndpoint           string
-	OrganismEndpoint       string
-	PublicationAPIEndpoint string
-	S3StorageEndpoint      string
-}
-
-type EndpointValuesConfig struct {
-	AuthEndpoint           string
-	OrganismEndpoint       string
-	PublicationAPIEndpoint string
-	S3StorageEndpoint      string
-}
-
-type GRPCKeysConfig struct {
-	StockHost      string
-	StockPort      string
-	OrderHost      string
-	OrderPort      string
-	AnnotationHost string
-	AnnotationPort string
-	ContentHost    string
-	ContentPort    string
-	RedisHost      string
-	RedisPort      string
-}
-
-type GRPCValuesConfig struct {
-	StockHost      string
-	StockPort      string
-	OrderHost      string
-	OrderPort      string
-	AnnotationHost string
-	AnnotationPort string
-	ContentHost    string
-	ContentPort    string
-	RedisHost      string
-	RedisPort      string
+type EndpointsConfig struct {
+	Auth        string
+	Organism    string
+	Publication string
+	Store       string
 }
 
 type ImageConfig struct {
 	Name string
 	Tag  string
+}
+
+type IngressConfig struct {
+	Hosts     []string
+	Path      string
+	Label     struct {
+		Name  string
+		Value string
+	}
+	TLSSecret string
 }
 
 type S3BucketConfig struct {
@@ -79,44 +48,26 @@ type S3BucketConfig struct {
 }
 
 type SecretsConfig struct {
-	Name        string
-	AuthKeys    AuthKeysConfig
-	MinioKeys   MinioKeysConfig
-	AuthValues  AuthValuesConfig
-	MinioValues MinioValuesConfig
+	Auth  AuthConfig
+	Minio MinioConfig
 }
 
-type AuthKeysConfig struct {
-	AuthAppId     string
-	AuthAppSecret string
-	JwksURI       string
-	JwtAudience   string
-	JwtIssuer     string
+type AuthConfig struct {
+	AppId       string
+	AppSecret   string
+	JwksURI     string
+	JwtAudience string
+	JwtIssuer   string
 }
 
-type AuthValuesConfig struct {
-	AuthAppId     string
-	AuthAppSecret string
-	JwksURI       string
-	JwtAudience   string
-	JwtIssuer     string
+type MinioConfig struct {
+	Name    string
+	PassKey string
+	UserKey string
 }
 
-type MinioKeysConfig struct {
-	MinioAccess string
-	MinioSecret string
-}
-
-type MinioValuesConfig struct {
-	MinioAccess string
-	MinioSecret string
-}
-
-type IngressConfig struct {
-	Issuer    string
-	TLSSecret string
-	Hosts     []string
-	Path      string
+type SecureString struct {
+	Secure string
 }
 
 func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
