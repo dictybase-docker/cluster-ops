@@ -1,0 +1,49 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnJ561SXJBe6ErGk/P2nNnNY6CZgUdnbGiJCGF30CkWUSSAB2302FVMIf8aOlKfO0sZoJxdHbXCSUoTbOlM/5BES/sq9O3Qd8z2TjL/JtflHuaUw1ctyQNIW8pBIdhdaZW5qr63pQnUd7FA==
+config:
+  graphql_server:properties:
+    allowedOrigins:
+      - http://localhost:*
+      - http://*.dictybase.dev
+      - http://dictybase.dev*
+    endpoints:
+      auth: https://logto.dictybase.org
+      organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
+      publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+      store: https://storage.dictybase.dev
+    image:
+      name: dictybase/graphql-server
+      tag: develop-615c758
+    ingress:
+      hosts:
+        - graphql.dictybase.dev
+      label:
+        name: kcert.dev/ingress
+        value: managed
+      path: /
+      tlsSecret: graphql-tls-secret
+    logLevel: error
+    name: graphql
+    namespace: dev
+    port: 8080
+    s3Bucket:
+      name: editor
+      path: assets
+    secrets:
+      auth:
+        appId:
+          secure: v1:3B5Tm6On/EyvO1zT:EuHxPOiOqsW58UJsqkp7Av5QpHAvecn1WrLOo8ke6lbJRsJCxw==
+        appSecret:
+          secure: v1:WtZzWSLQsCVpYLjR:s1XoIJAAWlOOqGhLefc2+Hk2ejBZeQGu+C6ViILDHR8R9wBaMV1FcvZ/HOh8Jpfj
+        jwksURI:
+          secure: v1:YvqfCuVIJRwTikc+:A/kyuGtKlbvKjO76dl8CLl4u8tEWGfp/p8p7sDG7V7vvUoU3jQ8U48MvU40yXST6kCt3tus=
+        jwtAudience:
+          secure: v1:XCzWmM+YIE22u+os:BOGNX7A3iaX/1JzLTayJ5weKiLq7JD7kpbSn98O/Gx8uwqcArQ==
+        jwtIssuer:
+          secure: v1:VakDAqh/MXFQh+ZR:Q5Eb3mokry7P7lIU+rtJs7eYmQv0fQvxrE/5YAiG03Q/Kh9cm5VO0vpCZrRy4vCx
+      minio:
+        name:
+          secure: v1:jyFsZ0fratO9ZfIO:GDyxNrDPR01+mVUF7jyz8aNbzbkz
+        passKey: pass
+        userKey:
+          secure: v1:eaOSgPjTZtDr9fPs:2s7WdKD6WkzPkzfWXj6onWH0hBE=
