@@ -1,0 +1,17 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnN1Aqvrlwfic66GCdZh8MGtZvhoXbP6YgJg+DbrSu0MSSQB2302Fcjgo0p8XVBbbGP20Wg7aspI6UBNLgMEOBeYhhqYnnjp9Ku8SeFa2FQDBXnoEGtllh8tEOQpfehU/Q/sNrWUL2rePUe8=
+config:
+  frontend_application:properties:
+    apps:
+      - image: dictybase/dicty-frontpage
+        name: frontpage
+        tag: develop-1eb6cde
+      - image: dictybase/publication
+        name: publication
+        tag: develop-1eb6cde
+      - image: dictybase/stock-center
+        name: stockcenter
+        tag: develop-1eb6cde
+    logLevel: debug
+    namespace: dev
+    port: 3000
