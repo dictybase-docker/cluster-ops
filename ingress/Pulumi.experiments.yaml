@@ -1,0 +1,23 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnA4ND+oowTG1ROyWFu8fS0Q4dT6Wkhln4PqeU3lDibYSSQB2302FpGp6T4d06psnTufd/gas5gv/XiA1USgrxvQgxLbeWuXsaTwp/yk15r19KJoAVxv6GPtAvedAwL9rslSLaoMvs5vB+Ec=
+config:
+  ingress:properties:
+    frontend:
+      hosts:
+        - dictybase.dev
+      label:
+        name: kcert.dev/ingress
+        value: managed
+      secret:
+        secure: v1:iz8iYdro2SzVQl+p:Pc9SAq5HqF8Cahm6VoYLEQ8x+sDIrlN7emzaqA==
+      services:
+        - name: frontpage-api
+          path: /
+          port: 3000
+        - name: stockcenter-api
+          path: /stockcenter
+          port: 3000
+        - name: publication-api
+          path: /publication
+          port: 3000
+    namespace: dev
