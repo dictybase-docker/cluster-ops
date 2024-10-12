@@ -34,8 +34,8 @@ func (gs *GraphqlServer) CreateIngressMetadata() *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", config.Name)),
 		Namespace: pulumi.String(config.Namespace),
-		Annotations: pulumi.StringMap{
-			"cert-manager.io/cluster-issuer": pulumi.String(config.Ingress.Issuer),
+		Labels: pulumi.StringMap{
+			config.Ingress.Label.Name: pulumi.String(config.Ingress.Label.Value),
 		},
 	}
 }

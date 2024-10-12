@@ -34,23 +34,12 @@ func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
 }
 
 func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
-	configMap, err := gs.CreateConfigMap(ctx)
-	if err != nil {
-		return err
-	}
-
-	secret, err := gs.CreateSecret(ctx)
-	if err != nil {
-		return err
-	}
-
-	deployment, err := gs.CreateDeployment(ctx, configMap, secret)
+	deployment, err := gs.CreateDeployment(ctx)
 	if err != nil {
 		return err
 	}
 
 	_, err = gs.CreateService(ctx, deployment)
-
 	if err != nil {
 		return err
 	}
