@@ -16,16 +16,19 @@ type Ingresses struct {
 
 // Config represents the overall configuration for the Ingress resources.
 type Config struct {
-	Namespace       string
-	FrontendIngress IngressConfig
+	Namespace string
+	Frontend  IngressConfig
 }
 
 // IngressConfig holds the configuration for a single Ingress resource.
 type IngressConfig struct {
-	Issuer    string
-	TLSSecret string
-	Hosts     []string
-	Services  []struct {
+	Hosts []string
+	Label struct {
+		Name  string
+		Value string
+	}
+	Secret   string
+	Services []struct {
 		Name string
 		Port int
 		Path string
@@ -40,7 +43,6 @@ func main() {
 // Run is the main function that creates the Ingress resources.
 func Run(ctx *pulumi.Context) error {
 	config, err := ReadConfig(ctx)
-
 	if err != nil {
 		return err
 	}
@@ -48,7 +50,10 @@ func Run(ctx *pulumi.Context) error {
 	ingresses := &Ingresses{Config: config}
 
 	// Create Frontend Ingress
-	if err := createIngress(ctx, "frontend", ingresses.Config.Namespace, ingresses.Config.FrontendIngress); err != nil {
+	if err := createIngress(
+		ctx, "frontend", ingresses.Config.Namespace,
+		ingresses.Config.Frontend,
+	); err != nil {
 		return err
 	}
 
@@ -57,7 +62,7 @@ func Run(ctx *pulumi.Context) error {
 
 // ReadConfig reads the configuration from Pulumi config and returns a Config struct.
 func ReadConfig(ctx *pulumi.Context) (*Config, error) {
-	conf := config.New(ctx, "ingress")
+	conf := config.New(ctx, "")
 	var ingressConfig Config
 	if err := conf.TryObject("properties", &ingressConfig); err != nil {
 		return nil, fmt.Errorf("failed to read ingress config: %w", err)
@@ -76,11 +81,10 @@ func createIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", name),
 		&networkingv1.IngressArgs{
-			Metadata: createIngressMetadata(name, namespace, config.Issuer),
+			Metadata: createIngressMetadata(name, namespace, config),
 			Spec:     createIngressSpec(config),
 		},
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to create %s ingress: %w", name, err)
 	}
@@ -91,13 +95,13 @@ func createIngress(
 func createIngressMetadata(
 	name string,
 	namespace string,
-	issuer string,
+	config IngressConfig,
 ) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", name)),
 		Namespace: pulumi.String(namespace),
-		Annotations: pulumi.StringMap{
-			"cert-manager.io/cluster-issuer": pulumi.String(issuer),
+		Labels: pulumi.StringMap{
+			config.Label.Name: pulumi.String(config.Label.Value),
 		},
 	}
 }
@@ -109,7 +113,7 @@ func createIngressSpec(config IngressConfig) *networkingv1.IngressSpecArgs {
 		Tls: networkingv1.IngressTLSArray{
 			&networkingv1.IngressTLSArgs{
 				Hosts:      pulumi.ToStringArray(config.Hosts),
-				SecretName: pulumi.String(config.TLSSecret),
+				SecretName: pulumi.String(config.Secret),
 			},
 		},
 		Rules: createIngressRuleArray(config),
