@@ -42,8 +42,6 @@ func (gs *GraphqlServer) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
 
 func (gs *GraphqlServer) CreateDeployment(
 	ctx *pulumi.Context,
-	configMap *corev1.ConfigMap,
-	secret *corev1.Secret,
 ) (*appsv1.Deployment, error) {
 	config := gs.Config
 	deployment, err := appsv1.NewDeployment(
@@ -52,9 +50,7 @@ func (gs *GraphqlServer) CreateDeployment(
 		&appsv1.DeploymentArgs{
 			Metadata: gs.CreateDeploymentMetaData(),
 			Spec:     gs.CreateDeploymentSpec(),
-		},
-		pulumi.DependsOn([]pulumi.Resource{configMap, secret}),
-	)
+		})
 	if err != nil {
 		return nil, fmt.Errorf(
 			"error creating graphql-server deployment: %w",
