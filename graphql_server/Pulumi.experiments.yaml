@@ -7,7 +7,7 @@ config:
       - http://*.dictybase.dev
       - http://dictybase.dev*
     endpoints:
-      auth: https://logto.dictybase.org
+      auth: https://logto.dictybase.dev
       organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
       publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
       store: https://storage.dictybase.dev
