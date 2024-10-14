@@ -1,0 +1,16 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnKMLtk8PWgGGlhXqd4U6IYDxWuBubjajxV9Qd0hKbhISSQB2302F5QcAh+ngvBSJ2dh6GPMKadiF/x+qaSMCXr+6YZazMnppnJDiF2CbpI1YZ9mFWvH7FaNvs8Mx52xBEmb5pwrrvu9xYXs=
+config:
+  redirect-ingress:properties:
+    dummyService:
+      name: frontpage-api
+      port: 3000
+    hosts:
+      destination: dictybase.dev
+      from: dictycr.org
+    label:
+      name: kcert.dev/ingress
+      value: managed
+    name: dictycr-redirect
+    namespace: dev
+    tlsName: dictycr-redirection-tls
