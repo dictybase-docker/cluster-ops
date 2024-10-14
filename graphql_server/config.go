@@ -33,9 +33,9 @@ type ImageConfig struct {
 }
 
 type IngressConfig struct {
-	Hosts     []string
-	Path      string
-	Label     struct {
+	Hosts []string
+	Path  string
+	Label struct {
 		Name  string
 		Value string
 	}
