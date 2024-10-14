@@ -38,7 +38,7 @@ config:
         jwksURI:
           secure: v1:YvqfCuVIJRwTikc+:A/kyuGtKlbvKjO76dl8CLl4u8tEWGfp/p8p7sDG7V7vvUoU3jQ8U48MvU40yXST6kCt3tus=
         jwtAudience:
-          secure: v1:XCzWmM+YIE22u+os:BOGNX7A3iaX/1JzLTayJ5weKiLq7JD7kpbSn98O/Gx8uwqcArQ==
+          secure: v1:o0ufGtriDdBx+RJg:MIQEjLePNQmX6RoeWL1bAJ1vqyAwS9veaMtc6QjeWKpVwicgErZQVUjcvPuRMvnCZQ==
         jwtIssuer:
           secure: v1:VakDAqh/MXFQh+ZR:Q5Eb3mokry7P7lIU+rtJs7eYmQv0fQvxrE/5YAiG03Q/Kh9cm5VO0vpCZrRy4vCx
       minio:
