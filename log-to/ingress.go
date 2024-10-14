@@ -36,7 +36,9 @@ func (lt *Logto) IngressMetadata() metav1.ObjectMetaPtrInput {
 		Name:      pulumi.String(fmt.Sprintf("%s-ingress", lt.Config.Name)),
 		Namespace: pulumi.String(lt.Config.Namespace),
 		Labels: pulumi.StringMap{
-			lt.Config.Ingress.Label.Name: pulumi.String(lt.Config.Ingress.Label.Value),
+			lt.Config.Ingress.Label.Name: pulumi.String(
+				lt.Config.Ingress.Label.Value,
+			),
 		},
 	}
 }
@@ -53,7 +55,7 @@ func (lt *Logto) IngressTLS() networkingv1.IngressTLSArrayInput {
 	return networkingv1.IngressTLSArray{
 		&networkingv1.IngressTLSArgs{
 			SecretName: pulumi.String(lt.Config.Ingress.TLSSecret),
-			Hosts:      pulumi.ToStringArray(lt.Config.Ingress.Hosts),
+			Hosts:      pulumi.ToStringArray(lt.Config.Ingress.BackendHosts),
 		},
 	}
 }
