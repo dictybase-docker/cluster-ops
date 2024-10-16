@@ -1,0 +1,13 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnEPThsK5vmVLBwVmGafC5Q6KWQJ9QzGishvL1Loq4q8SSQB2302FC0BLMFYqdKCDQx/70Ru0xqhR20u2sG0vQawSX+uveUGnIqdPA4+HMXUPPu+4tn+IdogqED7qEARp0EwCfrNDusyvSvI=
+config:
+  load-uniprot-mapping:properties:
+    appName: load-uniprot-mapping
+    image:
+      name: dictybase/modware-import
+      tag: develop-1b2b3e0
+    logLevel: debug
+    namespace: dev
+    runner:
+      command: /usr/local/bin/dataloader
+      subcommand: uniprot-mappings
