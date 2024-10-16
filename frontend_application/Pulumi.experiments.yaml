@@ -5,13 +5,13 @@ config:
     apps:
       - image: dictybase/dicty-frontpage
         name: frontpage
-        tag: develop-95d2de3
+        tag: develop-1eb6cde
       - image: dictybase/publication
         name: publication
         tag: develop-95d2de3
       - image: dictybase/stock-center
         name: stockcenter
-        tag: develop-95d2de3
+        tag: develop-1eb6cde
     logLevel: debug
     namespace: dev
     port: 3000
