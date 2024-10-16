@@ -98,7 +98,10 @@ func (rb *RedisBackup) createImmediateBackupJob(
 	jobName := "redis-immediate-backup-job"
 	jobArgs := &batchv1.JobArgs{
 		Metadata: rb.createJobMetadata(jobName),
-		Spec:     rb.createJobSpec(bucket, true), // Pass true for immediate backup
+		Spec: rb.createJobSpec(
+			bucket,
+			true,
+		), // Pass true for immediate backup
 	}
 
 	_, err := batchv1.NewJob(

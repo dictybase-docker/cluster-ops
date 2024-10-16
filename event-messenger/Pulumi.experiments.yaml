@@ -25,7 +25,7 @@ config:
           sender:
             secure: v1:zhss74IUkM+ROGqB:4ncul6PkwoIHWBVFEheYkl4JlpL5mWUv18dx0g+AqqGGzeQJU8+l5vcT
           senderName:
-            secure: v1:iwl4KLKRfbym7jyO:mMyx/DlYbeEyz/J69meaj131Cv/ClgWNmpvy
+            secure: v1:xpR0EyAlz2e0Qgq1:nyVocTYP5bVLF8AuM7vLuVcF072hxAhD
     image:
       name: dictybase/event-messenger
       tag: develop-0217a41
