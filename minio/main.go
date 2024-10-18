@@ -50,6 +50,7 @@ type APIIngressConfig struct {
 		Hosts      []string
 		SecretName string
 	}
+	ProxySize string
 }
 
 type MinioConfig struct {
@@ -160,6 +161,9 @@ func (mno *Minio) createIngressMetadata(name string) *metav1.ObjectMetaArgs {
 		Namespace: pulumi.String(mno.Config.Namespace),
 		Labels: pulumi.StringMap{
 			mno.Config.APIIngress.Label.Name: pulumi.String(mno.Config.APIIngress.Label.Value),
+		},
+		Annotations: pulumi.StringMap{
+			"nginx.ingress.kubernetes.io/proxy-body-size": pulumi.String(mno.Config.APIIngress.ProxySize),
 		},
 	}
 }

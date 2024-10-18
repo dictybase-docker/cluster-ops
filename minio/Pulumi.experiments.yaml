@@ -9,6 +9,7 @@ config:
       label:
         name: kcert.dev/ingress
         value: managed
+      proxySize: 400m
       service:
         name: minio
         port: 9000
