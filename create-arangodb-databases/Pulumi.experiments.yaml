@@ -18,6 +18,8 @@ config:
       - order
       - stock
       - content
+      - cgm_ddb
+      - chado
     grant: rw
     image:
       name: dictybase/arangoadmin
