@@ -12,6 +12,9 @@ config:
       - image: dictybase/stock-center
         name: stockcenter
         tag: develop-1eb6cde
+      - image: dictybase/genomepage
+        name: genomepage
+        tag: develop-92164c7
     logLevel: debug
     namespace: dev
     port: 3000
