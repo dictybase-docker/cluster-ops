@@ -20,4 +20,7 @@ config:
         - name: publication-api
           path: /publication
           port: 3000
+        - name: genomepage-api
+          path: /gene
+          port: 3000
     namespace: dev
