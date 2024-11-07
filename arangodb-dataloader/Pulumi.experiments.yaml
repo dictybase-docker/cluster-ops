@@ -1,0 +1,2 @@
+secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
+encryptedkey: CiQALAIOnC9KkgFIOdu+fCcL1g9SfFNNZUwVgEuSm3xDBAuLRDkSSQB2302FK7vQoPxB6h+JS0BnkPKrJOHsQAFmNu8WY55oJuPATKsASG7xmGPmxEOx9/FJGOXZH22yNMEgpYwzKzfmAH4cXFdE6y4=
