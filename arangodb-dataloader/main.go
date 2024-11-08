@@ -170,7 +170,7 @@ func (adl *ArangodbDataloader) createDataloaderEnv() corev1.EnvVarArray {
 			},
 		},
 		&corev1.EnvVarArgs{
-			Name: pulumi.String("MINIO_USER"),
+			Name: pulumi.String("ACCESS_KEY"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
 					Name: pulumi.String(adl.Config.MinioSecret.Name),
@@ -179,7 +179,7 @@ func (adl *ArangodbDataloader) createDataloaderEnv() corev1.EnvVarArray {
 			},
 		},
 		&corev1.EnvVarArgs{
-			Name: pulumi.String("MINIO_PASS"),
+			Name: pulumi.String("SECRET_KEY"),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
 					Name: pulumi.String(adl.Config.MinioSecret.Name),
