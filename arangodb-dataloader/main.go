@@ -14,6 +14,7 @@ type DataloaderConfig struct {
 	Namespace      string
 	LogLevel       string
 	Import         []ImportConfig
+	Folder         string
 	ArangodbSecret struct {
 		Name    string
 		UserKey string
@@ -23,6 +24,11 @@ type DataloaderConfig struct {
 		Name    string
 		UserKey string
 		PassKey string
+	}
+	Storage struct {
+		Class string
+		Name  string
+		Size  string
 	}
 	Image ImageConfig
 }
@@ -115,6 +121,9 @@ func (adl *ArangodbDataloader) createPodTemplateSpec(
 				adl.createDataloaderContainer(imp),
 			},
 			RestartPolicy: pulumi.String("Never"),
+			Volumes: corev1.VolumeArray{
+				adl.createBackupVolume(),
+			},
 		},
 	}
 }
@@ -134,6 +143,12 @@ func (adl *ArangodbDataloader) createDataloaderContainer(
 		},
 		Args: adl.createDataloaderArgs(imp),
 		Env:  adl.createDataloaderEnv(),
+		VolumeMounts: corev1.VolumeMountArray{
+			&corev1.VolumeMountArgs{
+				Name:      pulumi.String(adl.Config.Storage.Name),
+				MountPath: pulumi.String(adl.Config.Folder),
+			},
+		},
 	}
 }
 
@@ -148,6 +163,38 @@ func (adl *ArangodbDataloader) createDataloaderArgs(
 		pulumi.String("--arangodb-pass"), pulumi.String("$(ARANGODB_PASS)"),
 		pulumi.String("--s3-bucket-path"), pulumi.String(imp.BucketPath),
 		pulumi.String("--output-dir"), pulumi.String(imp.OutputDir),
+	}
+}
+
+func (adl *ArangodbDataloader) createBackupVolume() *corev1.VolumeArgs {
+	return &corev1.VolumeArgs{
+		Name: pulumi.String(adl.Config.Storage.Name),
+		Ephemeral: &corev1.EphemeralVolumeSourceArgs{
+			VolumeClaimTemplate: adl.createVolumeClaimTemplate(),
+		},
+	}
+}
+
+func (adl *ArangodbDataloader) createVolumeClaimTemplate() *corev1.PersistentVolumeClaimTemplateArgs {
+	return &corev1.PersistentVolumeClaimTemplateArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Labels: pulumi.StringMap{
+				"type": pulumi.String("arangodb-dataloader-ephemeral"),
+			},
+		},
+		Spec: adl.createPersistentVolumeClaimSpec(),
+	}
+}
+
+func (adl *ArangodbDataloader) createPersistentVolumeClaimSpec() *corev1.PersistentVolumeClaimSpecArgs {
+	return &corev1.PersistentVolumeClaimSpecArgs{
+		AccessModes:      pulumi.StringArray{pulumi.String("ReadWriteOnce")},
+		StorageClassName: pulumi.String(adl.Config.Storage.Class),
+		Resources: &corev1.VolumeResourceRequirementsArgs{
+			Requests: pulumi.StringMap{
+				"storage": pulumi.String(adl.Config.Storage.Size),
+			},
+		},
 	}
 }
 
