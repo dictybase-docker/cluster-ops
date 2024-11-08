@@ -144,6 +144,8 @@ func (adl *ArangodbDataloader) createDataloaderArgs(
 		pulumi.String("--log-level"), pulumi.String(adl.Config.LogLevel),
 		pulumi.String("load-arangodb"),
 		pulumi.String("--arangodb-database"), pulumi.String(imp.Database),
+		pulumi.String("--arangodb-user"), pulumi.String("$(ARANGODB_USER)"),
+		pulumi.String("--arangodb-pass"), pulumi.String("$(ARANGODB_PASS)"),
 		pulumi.String("--s3-bucket-path"), pulumi.String(imp.BucketPath),
 		pulumi.String("--output-dir"), pulumi.String(imp.OutputDir),
 	}
