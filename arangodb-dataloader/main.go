@@ -37,6 +37,7 @@ type ImportConfig struct {
 	Database   string
 	BucketPath string
 	OutputDir  string
+	Name       string
 }
 
 type ImageConfig struct {
@@ -76,7 +77,7 @@ func (adl *ArangodbDataloader) createDataloaderJob(
 	ctx *pulumi.Context,
 	imp ImportConfig,
 ) error {
-	jobName := fmt.Sprintf("arangodb-dataloader-%s", imp.Database)
+	jobName := fmt.Sprintf("arangodb-dataloader-%s", imp.Name)
 	jobArgs := &batchv1.JobArgs{
 		Metadata: adl.createJobMetadata(jobName),
 		Spec:     adl.createJobSpec(imp),
