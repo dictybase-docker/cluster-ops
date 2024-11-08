@@ -1,2 +1,30 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
 encryptedkey: CiQALAIOnC9KkgFIOdu+fCcL1g9SfFNNZUwVgEuSm3xDBAuLRDkSSQB2302FK7vQoPxB6h+JS0BnkPKrJOHsQAFmNu8WY55oJuPATKsASG7xmGPmxEOx9/FJGOXZH22yNMEgpYwzKzfmAH4cXFdE6y4=
+config:
+  arangodb-dataloader:properties:
+    arangodbSecret:
+      name:
+        secure: v1:XsHiaaANusI3jsQ2:7kBtPSXV+izXqhHBZv1d9bTBa3DUqqM=
+      passkey:
+        secure: v1:YsbZvPNqH1bfpKq/:VBst5t/p+4EYvIj/x5R75b76c+o0EK6l
+      userkey:
+        secure: v1:TFJhiDSM2Wn6QcwA:iQ43hRpE4vFAywRa5XZJkEjm5mE=
+    image:
+      name: dictybase/modware-dataloader
+      tag: develop-2993354
+    import:
+      - bucketPath: export/chado
+        database: chado
+        outputDir: chado_data
+      - bucketPath: export/cgm_ddb
+        database: cgm_ddb
+        outputDir: cgm_ddb_data
+    logLevel: info
+    minioSecret:
+      name:
+        secure: v1:LbvnE0uhaw7n2e0I:G3O7U2IWFwkAxYmuqH0zBWmeFWtR
+      passKey:
+        secure: v1:7hjG+sQImOspGIWG:OUHroPFhupCfTRZ36mJcJ/NZlcY=
+      userKey:
+        secure: v1:B8onbfirxRtxf8Sa:HQrHxOnAVmJfFVw9UyVrhRVFbf0=
+    namespace: dev
