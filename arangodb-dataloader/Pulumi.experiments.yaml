@@ -9,6 +9,7 @@ config:
         secure: v1:YsbZvPNqH1bfpKq/:VBst5t/p+4EYvIj/x5R75b76c+o0EK6l
       userkey:
         secure: v1:TFJhiDSM2Wn6QcwA:iQ43hRpE4vFAywRa5XZJkEjm5mE=
+    folder: /data
     image:
       name: dictybase/modware-dataloader
       tag: develop-2993354
@@ -28,3 +29,7 @@ config:
       userKey:
         secure: v1:B8onbfirxRtxf8Sa:HQrHxOnAVmJfFVw9UyVrhRVFbf0=
     namespace: dev
+    storage:
+      class: dictycr-balanced
+      name: arangodb-dataloader-ephemeral
+      size: 50Gi
