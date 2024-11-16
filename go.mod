@@ -6,7 +6,7 @@ toolchain go1.21.8
 
 require (
 	cloud.google.com/go/kms v1.20.1
-	cloud.google.com/go/storage v1.46.0
+	cloud.google.com/go/storage v1.47.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
