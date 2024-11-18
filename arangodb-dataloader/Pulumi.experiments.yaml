@@ -12,7 +12,7 @@ config:
     folder: /data
     image:
       name: dictybase/modware-dataloader
-      tag: develop-2993354
+      tag: develop-e33989e
     import:
       - bucketPath: export/chado
         database: chado
