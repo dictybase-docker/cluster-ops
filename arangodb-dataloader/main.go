@@ -82,8 +82,11 @@ func (adl *ArangodbDataloader) createDataloaderJob(
 		Metadata: adl.createJobMetadata(jobName),
 		Spec:     adl.createJobSpec(imp),
 	}
-
-	_, err := batchv1.NewJob(ctx, jobName, jobArgs)
+	_, err := batchv1.NewJob(
+		ctx,
+		jobName,
+		jobArgs,
+	)
 	if err != nil {
 		return fmt.Errorf(
 			"error creating Kubernetes Job for database %s: %w",
@@ -108,7 +111,7 @@ func (adl *ArangodbDataloader) createJobSpec(
 ) *batchv1.JobSpecArgs {
 	return &batchv1.JobSpecArgs{
 		Template:                adl.createPodTemplateSpec(imp),
-		BackoffLimit:            pulumi.Int(0),
+		BackoffLimit:            pulumi.Int(3),
 		TtlSecondsAfterFinished: pulumi.Int(900), // 15 minutes
 	}
 }
