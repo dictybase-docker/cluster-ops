@@ -34,3 +34,5 @@ gcs-files/service-accounts
 config.json.old
 scratch
 .env.dev.dcr-experiments
+.env
+.zsh_config
