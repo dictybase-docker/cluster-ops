@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go/kms v1.20.1
 	cloud.google.com/go/storage v1.47.0
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/deckarep/golang-set/v2 v2.6.0
+	github.com/deckarep/golang-set/v2 v2.7.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.18.3
