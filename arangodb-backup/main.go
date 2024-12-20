@@ -82,7 +82,10 @@ func (ab *ArangoBackup) createBackupJob(
 	jobName := "arangodb-backup-job"
 	jobArgs := &batchv1.JobArgs{
 		Metadata: ab.createJobMetadata(jobName),
-		Spec:     ab.createJobSpec(bucket, true), // Pass true for immediate backup
+		Spec: ab.createJobSpec(
+			bucket,
+			true,
+		), // Pass true for immediate backup
 	}
 
 	_, err := batchv1.NewJob(
@@ -148,14 +151,6 @@ func (ab *ArangoBackup) createGCSBucket(
 
 func (ab *ArangoBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
 	return storage.BucketLifecycleRuleArray{
-		&storage.BucketLifecycleRuleArgs{
-			Action: &storage.BucketLifecycleRuleActionArgs{
-				Type: pulumi.String("Delete"),
-			},
-			Condition: &storage.BucketLifecycleRuleConditionArgs{
-				Age: pulumi.Int(65), // 65 days
-			},
-		},
 		&storage.BucketLifecycleRuleArgs{
 			Action: &storage.BucketLifecycleRuleActionArgs{
 				Type: pulumi.String("Delete"),
