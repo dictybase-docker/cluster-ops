@@ -175,14 +175,6 @@ func (rb *RedisBackup) createLifecycleRules() storage.BucketLifecycleRuleArray {
 				Type: pulumi.String("Delete"),
 			},
 			Condition: &storage.BucketLifecycleRuleConditionArgs{
-				Age: pulumi.Int(65), // 65 days
-			},
-		},
-		&storage.BucketLifecycleRuleArgs{
-			Action: &storage.BucketLifecycleRuleActionArgs{
-				Type: pulumi.String("Delete"),
-			},
-			Condition: &storage.BucketLifecycleRuleConditionArgs{
 				WithState:        pulumi.String("ARCHIVED"),
 				NumNewerVersions: pulumi.Int(3),
 			},
