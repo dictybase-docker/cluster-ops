@@ -60,4 +60,5 @@ aider:
                    --no-auto-commits \
                    --no-auto-lint \
                    --vim --cache-prompts \
-                   --cache-keepalive-pings 3
+                   --cache-keepalive-pings 3 \
+                   --watch-files
