@@ -46,7 +46,7 @@ func setupResticPassword(resticPassword string) error {
 }
 
 func initializeResticRepository(repository string) error {
-	cmd := exec.Command("restic", "-r", repository, "snapshots")
+	cmd := exec.Command("restic", "-r", repository, "cat", "config")
 	if err := cmd.Run(); err != nil {
 		cmd = exec.Command("restic", "-r", repository, "init")
 		if err := cmd.Run(); err != nil {
