@@ -108,6 +108,17 @@ export-kubeconfig:
     set -euo pipefail
     kops export kubeconfig --admin
 
+# Export a kubeconfig file with a custom name and duration
+# Usage: just export-named-kubeconfig <name> [duration_hours]
+[no-cd]
+export-named-kubeconfig name duration_hours="24":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kops export kubeconfig --kubeconfig="{{ name }}.yaml" \
+        --admin={{ duration_hours }}h
+
+# Export a kubeconfig file with a given name and custom hour duration
+
 # Extract logs from pods in the cluster
 # Usage: just extract-logs <label> [namespace]
 [no-cd]
