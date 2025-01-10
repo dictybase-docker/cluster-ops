@@ -1,6 +1,6 @@
 # Enabling APIs
 
-To run the cluster use the follow command to enable the necessary APIs in the Google Cloud Project:
+Run the follow command to enable the APIs necessary to run a cluster in GCP:
 ```
 just gcp-api enable-apis PROJECT gcs-files/apis/enabled_apis.txt`
 ```
