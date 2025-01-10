@@ -1,5 +1,4 @@
-# Creating a Service Account for a Project
+# Getting Started
 
-```
-just gcp-sa create-sa PROJECT SERVICE_ACCOUNT_NAME SERVICE_ACCOUNT_DESCRIPTION
-```
+[Enabling/Disabling APIs](docs/api.md)
+[Service Account](docs/sa.md)
