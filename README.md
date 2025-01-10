@@ -1,4 +1,4 @@
 # Getting Started
 
-[Enabling/Disabling APIs](docs/api.md)
-[Service Account](docs/sa.md)
+- [Enabling/Disabling APIs](docs/api.md)
+- [Service Account](docs/sa.md)
