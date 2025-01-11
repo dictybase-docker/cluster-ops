@@ -1,11 +1,10 @@
 module github.com/dictybase-docker/cluster-ops
 
 go 1.21
-
-toolchain go1.21.8
+toolchain go1.22.5
 
 require (
-	cloud.google.com/go/kms v1.20.4
+	cloud.google.com/go/kms v1.20.5
 	cloud.google.com/go/storage v1.49.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/deckarep/golang-set/v2 v2.7.0
