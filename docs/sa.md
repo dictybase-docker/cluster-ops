@@ -1,19 +1,33 @@
-# Creating a Service Account for a Project
+# Service Account Reference
+Below are the various service accounts defined in the project and how they're meant to be used.
 
+## cloud-manager
+
+## cluster-backup 
+
+## database-backup
+
+## deploy-manager
+
+## kops-cluster-creator
+
+# Creating a Service Account Manager Service Account for a Project
+The Service Account Manager Service Account can create and manage other service accounts
+
+Running the following command will:
+
+1. Create the Service Account Manager Service Account
+2. Generate the Service Account Key in the `credentials` folder
+3. Authenticate gcloud with the Service Account
 ```
-just gcp-sa create-sa PROJECT SERVICE_ACCOUNT_NAME SERVICE_ACCOUNT_DESCRIPTION
+just gcp-sa create-sa-manager PROJECT_ID
 ```
 
-# Granting Cloud Manager Role to Service Account
+# Creating the Service Accounts for the Cluster
 
-The Cloud Manager role provides the necessary permissions to a service account to start up and administer a cluster.
+Running the following command will:
+1. Create the service accounts required to set up and run the cluster:
+2. Activate the GCP APIs required for the cluster
 ```
-just gcp-sa assign-roles-to-sa PROJECT SERVICE_ACCOUNT_NAME gcs-files/roles-permissions/cloud-manager-roles.txt
-```
-
-# Generating a Service Key
-
-Once the Service Account is created and the Cloud Manager Role is assigned, use the following command to generate a service key and output it to the desired file:
-```
-just gcp-sa create-sa-key PROJECT SERVICE_ACCOUNT_NAME OUTPUT_FILE_PATH
+just gcp-cluster sa-accounts-setup PROJECT:
 ```
