@@ -2,3 +2,6 @@
 
 - [Enabling/Disabling APIs](docs/api.md)
 - [Service Account](docs/sa.md)
+- [Starting the Cluster](docs/cluster.md)
+
+
