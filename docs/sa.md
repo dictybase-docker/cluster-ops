@@ -1,16 +1,3 @@
-# Service Account Reference
-Below are the various service accounts defined in the project and how they're meant to be used.
-
-## cloud-manager
-
-## cluster-backup 
-
-## database-backup
-
-## deploy-manager
-
-## kops-cluster-creator
-
 # Creating a Service Account Manager Service Account for a Project
 The Service Account Manager Service Account can create and manage other service accounts
 
@@ -31,3 +18,17 @@ Running the following command will:
 ```
 just gcp-cluster sa-accounts-setup PROJECT:
 ```
+
+# Service Account Reference
+Below are the various service accounts defined in the project and how they're meant to be used.
+
+## cloud-manager
+
+## cluster-backup 
+
+## database-backup
+
+## deploy-manager
+
+## kops-cluster-creator
+
