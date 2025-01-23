@@ -14,7 +14,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
   saName := cliContext.String("name")
   saDisplayName := cliContext.String("display-name")
   saDescription := cliContext.String("description")
-  projectName := fmt.Sprintf("projects/%s", cliContext.String("project"))
+  projectName := cliContext.String("project")
 
   slog.Info(fmt.Sprintf("Creating service account %s in %s...", saName, projectName))
   
@@ -32,7 +32,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 		},
 	}
 
-	_, err = service.Projects.ServiceAccounts.Create(projectName, request).Do()
+	_, err = service.Projects.ServiceAccounts.Create(fmt.Sprintf("projects/%s", projectName), request).Do()
 	if err != nil {
     slog.Error("Error creating service account", "error", err)
 		return fmt.Errorf("Projects.ServiceAccounts.Create: %w", err)
