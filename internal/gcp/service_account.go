@@ -1,5 +1,4 @@
 package gcp
-
 import (
 	"context"
 	"fmt"
@@ -12,7 +11,12 @@ import (
 // createServiceAccount creates a service account.
 func CreateServiceAccount(cliContext *cli.Context) error {
 	ctx := context.Background()
-  slog.Info("Creating Service Account...")
+  saName := cliContext.String("name")
+  saDisplayName := cliContext.String("display-name")
+  saDescription := cliContext.String("description")
+  projectName := fmt.Sprintf("projects/%s", cliContext.String("project"))
+
+  slog.Info(fmt.Sprintf("Creating service account %s in %s...", saName, projectName))
   
 	service, err := iam.NewService(ctx)
 	if err != nil {
@@ -21,13 +25,13 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	}
 
 	request := &iam.CreateServiceAccountRequest{
-		AccountId: cliContext.String("sa-name"),
+		AccountId: saName,
 		ServiceAccount: &iam.ServiceAccount{
-			DisplayName: cliContext.String("sa-description"),
+			DisplayName: saDisplayName,
+      Description: saDescription,
 		},
 	}
 
-  projectName := fmt.Sprintf("projects/%s", cliContext.String("project"))
 	_, err = service.Projects.ServiceAccounts.Create(projectName, request).Do()
 	if err != nil {
     slog.Error("Error creating service account", "error", err)
