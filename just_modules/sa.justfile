@@ -8,16 +8,16 @@ create-sa project sa_name sa_description:
     go build -o ./bin/gcp-tools ./cmd/gcp
 
     ./bin/gcp-tools create-sa \
-      --name={{ sa_name }}} \
-      --project={{ project }}} \
+      --name={{ sa_name }} \
+      --project={{ project }} \
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
 
     # Verify the service account was created
     # echo "Verifying service account creation..."
     ./bin/gcp-tools describe-sa \
-      --name={{ sa_name }}} \
-      --project={{ project }}} \
+      --name={{ sa_name }} \
+      --project={{ project }} \
 
 # Create service account manager and assign predefined roles
 [group('service-account-management')]
