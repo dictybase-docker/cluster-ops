@@ -156,7 +156,7 @@ func createServiceAccountCommand() *cli.Command {
       },
       &cli.StringFlag{
         Name: "project",
-        Usage: "The resource name of the project associated with the service accounts",
+        Usage: "The resource name of the project associated with the service account",
         Required: true,
       },
       &cli.StringFlag{
@@ -168,6 +168,26 @@ func createServiceAccountCommand() *cli.Command {
         Name: "display-name",
         Usage: "A human-readable name for the service account",
         Required: false,
+      },
+    },
+  }
+}
+
+func describeServiceAccountCommand() *cli.Command {
+  return &cli.Command{
+    Name: "describe-sa",
+    Usage: "Describe a service account",
+		Action: gcp.CreateServiceAccount,
+    Flags: []cli.Flag{
+      &cli.StringFlag{
+        Name: "name",
+        Usage: "The identifier for the service account you want to fetch",
+        Required: true,
+      },
+      &cli.StringFlag{
+        Name: "project",
+        Usage: "The resource name of the project associated with the service account",
+        Required: true,
       },
     },
   }
