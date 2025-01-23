@@ -3,20 +3,21 @@
 create-sa project sa_name sa_description:
     #!/usr/bin/env bash
     set -euo pipefail
-    # disable prompt
-    gcloud config set disable_prompts true
 
-    echo "Creating service account '{{ sa_name }}' in project {{ project }}"
-    gcloud iam service-accounts create {{ sa_name }} \
-        --project={{ project }} \
-        --display-name="{{ sa_name }}" \
-        --description="{{ sa_description }}"
+    # Build the binary
+    go build -o ./bin/gcp-tools ./cmd/gcp
+
+    ./bin/gcp-tools create-sa \
+      --name={{ sa_name }}} \
+      --project={{ project }}} \
+      --description={{ sa_name }} \
+      --display-name={{ sa_name }} \
 
     # Verify the service account was created
-    echo "Verifying service account creation..."
-    gcloud iam service-accounts describe {{ sa_name }}@{{ project }}.iam.gserviceaccount.com \
-        --project={{ project }} \
-        --format="table(displayName,email,description)"
+    # echo "Verifying service account creation..."
+    ./bin/gcp-tools describe-sa \
+      --name={{ sa_name }}} \
+      --project={{ project }}} \
 
 # Create service account manager and assign predefined roles
 [group('service-account-management')]
