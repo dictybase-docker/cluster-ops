@@ -150,17 +150,22 @@ func createServiceAccountCommand() *cli.Command {
 		Action: gcp.CreateServiceAccount,
     Flags: []cli.Flag{
       &cli.StringFlag{
-        Name: "sa-name",
-        Usage: "The name for the service account to be created",
+        Name: "name",
+        Usage: "The identifier for the service account to be created",
         Required: true,
       },
       &cli.StringFlag{
-        Name: "project-id",
+        Name: "project",
         Usage: "The resource name of the project associated with the service accounts",
         Required: true,
       },
       &cli.StringFlag{
-        Name: "sa-descripton",
+        Name: "description",
+        Usage: "A human-readable description for the service account",
+        Required: false,
+      },
+      &cli.StringFlag{
+        Name: "display-name",
         Usage: "A human-readable name for the service account",
         Required: false,
       },
