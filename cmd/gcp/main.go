@@ -141,3 +141,28 @@ func findOrCreateKopsBucketCommand() *cli.Command {
 		},
 	}
 }
+
+func createServiceAccountCommand() *cli.Command {
+  return &cli.Command{
+    Name: "create-sa",
+    Usage: "Create a service account",
+		Action: gcp.CreateServiceAccount,
+    Flags: []cli.Flag{
+      &cli.StringFlag{
+        Name: "sa-name",
+        Usage: "The name for the service account to be created",
+        Required: true,
+      },
+      &cli.StringFlag{
+        Name: "project-id",
+        Usage: "The resource name of the project associated with the service accounts",
+        Required: true,
+      },
+      &cli.StringFlag{
+        Name: "sa-descripton",
+        Usage: "A human-readable name for the service account",
+        Required: false,
+      },
+    },
+  }
+}
