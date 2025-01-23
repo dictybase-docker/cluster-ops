@@ -33,6 +33,7 @@ func getCommands() []*cli.Command {
 		findOrCreateKopsBucketCommand(),
 		createKeyringAndKeyCommand(),
     createServiceAccountCommand(),
+    describeServiceAccountCommand(),
 	}
 }
 
