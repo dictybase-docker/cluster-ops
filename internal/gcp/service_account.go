@@ -41,3 +41,22 @@ func CreateServiceAccount(cliContext *cli.Context) error {
   slog.Info("Service Account successfully created")
 	return nil
 }
+
+func VerifyServiceAccount(cliContext *cli.Context) error {
+	ctx := context.Background()
+  saName := cliContext.String("name")
+  projectName := fmt.Sprintf("projects/%s", cliContext.String("project"))
+   
+	service, err := iam.NewService(ctx)
+	if err != nil {
+    slog.Error("Error creating client", "error", err)
+		return fmt.Errorf("iam.NewService: %w", err)
+	}
+  resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectName, saName)
+	_, err = service.Projects.ServiceAccounts.Get(resourceName).Do()
+	if err != nil {
+    slog.Error("Could not find requested service account", "error", err)
+		return fmt.Errorf("Projects.ServiceAccounts.Get: %w", err)
+	}
+  return nil
+}
