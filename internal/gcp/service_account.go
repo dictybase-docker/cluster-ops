@@ -16,6 +16,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
   
 	service, err := iam.NewService(ctx)
 	if err != nil {
+    slog.Error("Error creating client", "error", err)
 		return fmt.Errorf("iam.NewService: %w", err)
 	}
 
@@ -29,6 +30,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
   projectName := fmt.Sprintf("projects/%s", cliContext.String("project"))
 	_, err = service.Projects.ServiceAccounts.Create(projectName, request).Do()
 	if err != nil {
+    slog.Error("Error creating service account", "error", err)
 		return fmt.Errorf("Projects.ServiceAccounts.Create: %w", err)
 	}
 
