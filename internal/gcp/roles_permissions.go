@@ -3,9 +3,9 @@ package gcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
-  "log/slog"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"google.golang.org/api/cloudresourcemanager/v1"
@@ -20,51 +20,51 @@ type AnalysisResult struct {
 }
 
 func addRoles(projectId string, saName string, roles ...string) error {
-  ctx := context.Background()
-  resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectId, saName)
+	ctx := context.Background()
+	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectId, saName)
 
 	service, err := iam.NewService(ctx)
 	if err != nil {
-    slog.Error("Error creating client", "error", err)
+		slog.Error("Error creating client", "error", err)
 		return fmt.Errorf("iam.NewService: %w", err)
 	}
-  // Get IAM Policy
-  iamPolicy, err := service.Projects.ServiceAccounts.GetIamPolicy(resourceName).Do()
+	// Get IAM Policy
+	iamPolicy, err := service.Projects.ServiceAccounts.GetIamPolicy(resourceName).Do()
 	if err != nil {
-    slog.Error("Error fetching IAM policy", "error", err)
+		slog.Error("Error fetching IAM policy", "error", err)
 		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
 	}
-  // Edit IAM Policy
-  newBindings := iamPolicy.Bindings
-  for _, role := range roles {
-    found := false
-    for _, binding := range newBindings {
-      if binding.Role == role {
-        found = true
-        break
-      }
-    }
-    if found {
-      newBindings = append(newBindings, &iam.Binding{
-        Role: role,
-        Members: []string{
-          fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, projectId), 
-        },
-      })
-    }
-  }
-  // Set IAM Policy
-  iamPolicy.Bindings = newBindings
-  request := iam.SetIamPolicyRequest{
-    Policy: iamPolicy,
-  }
-  _, err = service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).Do()
+	// Edit IAM Policy
+	newBindings := iamPolicy.Bindings
+	for _, role := range roles {
+		found := false
+		for _, binding := range newBindings {
+			if binding.Role == role {
+				found = true
+				break
+			}
+		}
+		if found {
+			newBindings = append(newBindings, &iam.Binding{
+				Role: role,
+				Members: []string{
+					fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, projectId),
+				},
+			})
+		}
+	}
+	// Set IAM Policy
+	iamPolicy.Bindings = newBindings
+	request := iam.SetIamPolicyRequest{
+		Policy: iamPolicy,
+	}
+	_, err = service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).Do()
 	if err != nil {
-    slog.Error("Error setting IAM policy", "error", err)
+		slog.Error("Error setting IAM policy", "error", err)
 		return fmt.Errorf("service.Projects.ServiceAccounts.SetIamPolicy: %w", err)
 	}
 
-  return nil
+	return nil
 }
 
 func findUniquePermissions(
