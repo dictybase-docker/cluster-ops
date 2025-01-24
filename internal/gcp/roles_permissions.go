@@ -19,9 +19,9 @@ type AnalysisResult struct {
 	UniquePermissions []string
 }
 
-func addRoles(projectName string, saName string, roles ...string) error {
+func addRoles(projectId string, saName string, roles ...string) error {
   ctx := context.Background()
-  resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectName, saName)
+  resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectId, saName)
 
 	service, err := iam.NewService(ctx)
 	if err != nil {
@@ -34,10 +34,36 @@ func addRoles(projectName string, saName string, roles ...string) error {
     slog.Error("Error fetching IAM policy", "error", err)
 		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
 	}
-  previousBindings := iamPolicy.Bindings
-  // Edit IAM Policy with desired roles
-  // Get array of bindings
-  
+  // Edit IAM Policy
+  newBindings := iamPolicy.Bindings
+  for _, role := range roles {
+    found := false
+    for _, binding := range newBindings {
+      if binding.Role == role {
+        found = true
+        break
+      }
+    }
+    if found {
+      newBindings = append(newBindings, &iam.Binding{
+        Role: role,
+        Members: []string{
+          fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", saName, projectId), 
+        },
+      })
+    }
+  }
+  // Set IAM Policy
+  iamPolicy.Bindings = newBindings
+  request := iam.SetIamPolicyRequest{
+    Policy: iamPolicy,
+  }
+  _, err = service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).Do()
+	if err != nil {
+    slog.Error("Error setting IAM policy", "error", err)
+		return fmt.Errorf("service.Projects.ServiceAccounts.SetIamPolicy: %w", err)
+	}
+
   return nil
 }
 
