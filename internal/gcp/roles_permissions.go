@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+  "log/slog"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"google.golang.org/api/cloudresourcemanager/v1"
@@ -16,6 +17,28 @@ type AnalysisResult struct {
 	PredefinedRoles   []string
 	CustomRoles       []string
 	UniquePermissions []string
+}
+
+func addRoles(projectName string, saName string, roles ...string) error {
+  ctx := context.Background()
+  resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectName, saName)
+
+	service, err := iam.NewService(ctx)
+	if err != nil {
+    slog.Error("Error creating client", "error", err)
+		return fmt.Errorf("iam.NewService: %w", err)
+	}
+  // Get IAM Policy
+  iamPolicy, err := service.Projects.ServiceAccounts.GetIamPolicy(resourceName).Do()
+	if err != nil {
+    slog.Error("Error fetching IAM policy", "error", err)
+		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
+	}
+  previousBindings := iamPolicy.Bindings
+  // Edit IAM Policy with desired roles
+  // Get array of bindings
+  
+  return nil
 }
 
 func findUniquePermissions(
