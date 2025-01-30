@@ -16,6 +16,7 @@ type BackendConfig struct {
 	Namespace      string
 	Port           int
 	LogLevel       string
+  Command        string
 	ArangodbSecret struct {
 		Name    string
 		PassKey string
@@ -169,7 +170,7 @@ func (bck *Backend) containerArgs() pulumi.StringArrayInput {
 		[]string{
 			"--log-level",
 			bck.Config.LogLevel,
-			"start-server",
+			bck.Config.Command,
 			"--user",
 			"$(ARANGODB_USER)",
 			"--pass",
