@@ -16,7 +16,7 @@ type BackendConfig struct {
 	Namespace      string
 	Port           int
 	LogLevel       string
-  Command        string
+	Command        string
 	ArangodbSecret struct {
 		Name    string
 		PassKey string
