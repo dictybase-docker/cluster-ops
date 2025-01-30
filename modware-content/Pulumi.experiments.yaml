@@ -7,6 +7,7 @@ config:
       name: backend
       passkey: password
       userkey: user
+    command: start-server
     image:
       name: dictybase/modware-content
       tag: develop-f582476
