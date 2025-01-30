@@ -2,7 +2,9 @@ package gcp
 import (
 	"context"
 	"fmt"
-  "log/slog"
+	"log/slog"
+	"bufio"
+	"os"
 
 	"github.com/urfave/cli/v2"
 	iam "google.golang.org/api/iam/v1"
@@ -39,13 +41,43 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	}
 
   // Read roles from file
+  roles, err := readRolesFromFile(rolesFilePath)
+  if err != nil {
+    slog.Error("Error reading roles from file", "error", err)
+    return err
+  }
 
-  slog.Info(fmt.Sprintf("Assign roles to service account %s in %s...", saName, client.projectId))
-  // err = client.addRolesToServiceAccount(sa.Name) 
+  slog.Info(fmt.Sprintf("Assign roles to %s ", sa.Name))
+  err = client.addRolesToServiceAccount(sa.Name, roles) 
+  if err != nil {
+    slog.Error("Error assigning roles to service account", "error", err)
+    return err
+  }
 
   // Output credentials
 
+
   return nil
+}
+
+func readRolesFromFile(filePath string) ([]string, error) {
+  file, err := os.Open(filePath)
+  if err != nil {
+    return nil, err
+  }
+  defer file.Close()
+
+  var roles []string
+  scanner := bufio.NewScanner(file)
+  for scanner.Scan() {
+    roles = append(roles, scanner.Text())
+  }
+
+  if err := scanner.Err(); err != nil {
+    return nil, err
+  }
+
+  return roles, nil
 }
 
 func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) error {
