@@ -1,5 +1,4 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
-encryptedkey: CiQALAIOnKEo12dP/ay+rTIa3cchugQTdFsB6OzgJgb4MfaMhRgSSQB2302Fsuwx1IYI77m31YgFEmO+/HfPUWvttfU1KqT+QOw3NBFUxLPRYOJjQC+IEMIj5UDv9U/BrchW8tDiJpdGpemH+YGTWvc=
 config:
   modware-annotation-feature:properties:
     appName: annotation-feature 
@@ -14,3 +13,4 @@ config:
     logLevel: info
     namespace: dev
     port: 9250
+encryptedkey: CiQALAIOnLpqAYgP4Iz5yrY3SBSplOZUlMiuZcmKxzx2/ZCy6YASSQB2302F7bWxbF9QNIa2O4FWuQNY+vqWaW1GB94XkTlasW+n/5+EHhJnUIXv1dBRIcY0JXYJ9PNVOaN39hmqH9WKuU7Ima5S2Ms=
