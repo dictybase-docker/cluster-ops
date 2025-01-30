@@ -1,4 +1,4 @@
-name: modware-annotation
+name: modware-annotation-feature
 runtime: go
 description: A minimal Go Pulumi program
 config:
