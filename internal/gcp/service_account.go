@@ -34,7 +34,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 
   // Create Service Account
   slog.Info(fmt.Sprintf("Creating service account %s in %s...", saName, client.projectId))
-  sa, err := client.createServiceAccount(saName, projectName, saDisplayName, saDescription)
+  sa, err := client.createServiceAccount(saName, saDisplayName, saDescription)
 	if err != nil {
     slog.Error("Error creating service account", "error", err)
 		return err
@@ -173,7 +173,7 @@ func VerifyServiceAccount(cliContext *cli.Context) error {
   return nil
 }
 
-func (c *IAMClient) createServiceAccount(name string, project string, displayName string, description string) (*iam.ServiceAccount, error) {
+func (c *IAMClient) createServiceAccount(name string, displayName string, description string) (*iam.ServiceAccount, error) {
 	request := &iam.CreateServiceAccountRequest{
 		AccountId: name,
 		ServiceAccount: &iam.ServiceAccount{
@@ -182,7 +182,7 @@ func (c *IAMClient) createServiceAccount(name string, project string, displayNam
 		},
 	}
 
-  serviceAccount, err := c.service.Projects.ServiceAccounts.Create(fmt.Sprintf("projects/%s", project), request).Do()
+  serviceAccount, err := c.service.Projects.ServiceAccounts.Create(fmt.Sprintf("projects/%s", c.projectId), request).Do()
 	if err != nil {
 		return nil, fmt.Errorf("Projects.ServiceAccounts.Create: %w", err)
 	}
