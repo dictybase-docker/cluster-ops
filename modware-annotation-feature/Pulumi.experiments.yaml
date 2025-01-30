@@ -2,7 +2,7 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnKEo12dP/ay+rTIa3cchugQTdFsB6OzgJgb4MfaMhRgSSQB2302Fsuwx1IYI77m31YgFEmO+/HfPUWvttfU1KqT+QOw3NBFUxLPRYOJjQC+IEMIj5UDv9U/BrchW8tDiJpdGpemH+YGTWvc=
 config:
   modware-annotation-feature:properties:
-    appName: feature-annotation
+    appName: annotation-feature 
     arangodbSecret:
       name: backend
       passKey: password
