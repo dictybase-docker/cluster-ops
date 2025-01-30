@@ -54,8 +54,13 @@ func CreateServiceAccount(cliContext *cli.Context) error {
     return err
   }
 
-  // Output credentials
-
+  // Create Service Account Key
+  slog.Info(fmt.Sprintf("Creating service account key for %s", sa.Name))
+  err = client.createServiceAccountKey(sa.Email, credentialOutputPath)
+  if err != nil {
+    slog.Error("Error creating service account key", "error", err)
+    return err
+  }
 
   return nil
 }
@@ -119,6 +124,33 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 		return fmt.Errorf("service.Projects.ServiceAccounts.SetIamPolicy: %w", err)
 	}
 
+	return nil
+}
+
+func (c *IAMClient) createServiceAccountKey(saEmail, outputPath string) error {
+	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", c.projectId, saEmail)
+	request := &iam.CreateServiceAccountKeyRequest{}
+	key, err := c.service.Projects.ServiceAccounts.Keys.Create(resourceName, request).Do()
+	if err != nil {
+		slog.Error("Error creating service account key", "error", err)
+		return fmt.Errorf("service.Projects.ServiceAccounts.Keys.Create: %w", err)
+	}
+
+	// Write key to file
+	file, err := os.Create(outputPath)
+	if err != nil {
+		slog.Error("Error creating file", "error", err)
+		return fmt.Errorf("os.Create: %w", err)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(key.PrivateKeyData)
+	if err != nil {
+		slog.Error("Error writing to file", "error", err)
+		return fmt.Errorf("file.WriteString: %w", err)
+	}
+
+	slog.Info(fmt.Sprintf("Service account key written to %s", outputPath))
 	return nil
 }
 
