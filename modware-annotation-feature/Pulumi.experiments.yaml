@@ -7,6 +7,7 @@ config:
       name: backend
       passKey: password
       userKey: user
+    command: start-feature-server
     image:
       name: dictybase/modware-annotation
       tag: develop-04f370f
