@@ -25,7 +25,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	rolesFilePath := cliContext.String("roles-file")
 	credentialOutputPath := cliContext.String("output-file")
 
-	// Create Service
+	// Create IAM Service
 	ctx := context.Background()
 	newService, err := iam.NewService(ctx)
 	client := &IAMClient{
