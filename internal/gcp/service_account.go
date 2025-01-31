@@ -52,6 +52,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 		return err
 	}
 
+  // Assign roles to service account
 	slog.Info(fmt.Sprintf("Assign roles to %s ", sa.Name))
 	err = client.addRolesToServiceAccount(sa.Name, roles)
 	if err != nil {
