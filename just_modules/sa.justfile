@@ -1,6 +1,6 @@
 # Create a new service account
 [group('service-account-management')]
-create-sa project sa_name sa_description:
+create-sa project sa_name roles_file:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -10,6 +10,7 @@ create-sa project sa_name sa_description:
     ./bin/gcp-tools create-sa \
       --name={{ sa_name }} \
       --project={{ project }} \
+      --roles-file={{ roles_file }} \
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
 
