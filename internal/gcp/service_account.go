@@ -52,7 +52,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 		return err
 	}
 
-  // Assign roles to service account
+	// Assign roles to service account
 	slog.Info(fmt.Sprintf("Assign roles to %s ", sa.Name))
 	err = client.addRolesToServiceAccount(sa.Name, roles)
 	if err != nil {
@@ -122,7 +122,7 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
 	}
 	// Edit IAM Policy
-  // Initialize new bindings with existing bindings.
+	// Initialize new bindings with existing bindings.
 	newBindings := iamPolicy.Bindings
 	for _, role := range roles {
 		found := false
