@@ -120,6 +120,7 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
 	}
 	// Edit IAM Policy
+  // Initialize new bindings with existing bindings.
 	newBindings := iamPolicy.Bindings
 	for _, role := range roles {
 		found := false
