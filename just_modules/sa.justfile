@@ -12,7 +12,6 @@ create-sa project sa_name roles_file output_file="":
       --project={{ project }} \
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
-      --display-name={{ sa_name }} \
       --roles-file={{ roles_file }} \
       --output-file={{ output_file}} \
 
