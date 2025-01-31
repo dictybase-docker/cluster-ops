@@ -124,14 +124,18 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 	// Edit IAM Policy
 	// Initialize new bindings with existing bindings.
 	newBindings := iamPolicy.Bindings
+  // Check desired roles slice for collision with existing bindings.
 	for _, role := range roles {
 		found := false
+    // Iterate through existing bindings.
 		for _, binding := range newBindings {
+      // If the role is already in the existing bindings, do nothing.
 			if binding.Role == role {
 				found = true
 				break
 			}
 		}
+    // If the role is not in the existing bindings, create a binding and append it.
 		if !found {
 			newBindings = append(newBindings, &iam.Binding{
 				Role: role,
