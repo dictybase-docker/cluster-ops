@@ -32,6 +32,10 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 		service:   newService,
 		projectId: projectName,
 	}
+	if err != nil {
+		slog.Error("Error creating service account", "error", err)
+		return err
+	}
 
 	// Create Service Account
 	slog.Info(fmt.Sprintf("Creating service account %s in %s...", saName, client.projectId))
