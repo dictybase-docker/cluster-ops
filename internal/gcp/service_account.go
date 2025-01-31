@@ -27,9 +27,9 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 
 	// Create IAM Service
 	ctx := context.Background()
-	newService, err := iam.NewService(ctx)
+	svc, err := iam.NewService(ctx)
 	client := &IAMClient{
-		service:   newService,
+		service:   svc,
 		projectId: projectName,
 	}
 	if err != nil {
