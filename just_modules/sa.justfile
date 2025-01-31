@@ -1,6 +1,7 @@
 # Create a new service account
 [group('service-account-management')]
 create-sa project sa_name roles_file:
+create-sa project sa_name roles_file output_file="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -13,6 +14,7 @@ create-sa project sa_name roles_file:
       --roles-file={{ roles_file }} \
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
+      --output-file={{ output_file}} \
 
     # Verify the service account was created
     # echo "Verifying service account creation..."
