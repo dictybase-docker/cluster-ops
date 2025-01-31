@@ -22,8 +22,8 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	saDisplayName := cliContext.String("display-name")
 	saDescription := cliContext.String("description")
 	projectName := cliContext.String("project")
-	rolesFilePath := cliContext.String("roles-path")
-	credentialOutputPath := cliContext.String("output-path")
+	rolesFilePath := cliContext.String("roles-file")
+	credentialOutputPath := cliContext.String("output-file")
 
 	// Create Service
 	ctx := context.Background()
