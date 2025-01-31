@@ -161,6 +161,12 @@ func createServiceAccountCommand() *cli.Command {
         Required: true,
       },
       &cli.StringFlag{
+        Name: "roles-file",
+				Aliases:  []string{"-r"},
+        Usage: "A path to the roles file for the service account.",
+        Required: true,
+      },
+      &cli.StringFlag{
         Name: "description",
         Usage: "A human-readable description for the service account",
         Required: false,
@@ -168,6 +174,12 @@ func createServiceAccountCommand() *cli.Command {
       &cli.StringFlag{
         Name: "display-name",
         Usage: "A human-readable name for the service account",
+        Required: false,
+      },
+      &cli.StringFlag{
+        Name: "output-file",
+				Aliases:  []string{"o"},
+        Usage: "A path to the desired output file for the service account key. If not provided, a service key will not be created",
         Required: false,
       },
     },
