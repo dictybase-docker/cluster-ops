@@ -132,7 +132,7 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 				break
 			}
 		}
-		if found {
+		if !found {
 			newBindings = append(newBindings, &iam.Binding{
 				Role: role,
 				Members: []string{
