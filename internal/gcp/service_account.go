@@ -92,6 +92,30 @@ func VerifyServiceAccount(cliContext *cli.Context) error {
 	return nil
 }
 
+func CreateServiceAccountKey(cliContext *cli.Context) error {
+	ctx := context.Background()
+	saName := cliContext.String("name")
+	projectName := cliContext.String("project")
+	credentialOutputPath := cliContext.String("output-file")
+
+	svc, err := iam.NewService(ctx)
+	client := &IAMClient{
+		service:   svc,
+		projectId: projectName,
+	}
+	// Create Service Account Key
+	if credentialOutputPath != "" {
+		slog.Info(fmt.Sprintf("Creating service account key for %s", saName))
+		err = client.createServiceAccountKey(saName, credentialOutputPath)
+		if err != nil {
+			slog.Error("Error creating service account key", "error", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func readRolesFromFile(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
