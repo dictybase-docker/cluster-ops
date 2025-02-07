@@ -205,3 +205,29 @@ func describeServiceAccountCommand() *cli.Command {
     },
   }
 }
+
+func createServiceAccountKey() *cli.Command {
+  return &cli.Command{
+    Name: "create-sa-key",
+    Usage: "Create a key for a service account",
+		Action: gcp.CreateServiceAccountKey,
+    Flags: []cli.Flag{
+      &cli.StringFlag{
+        Name: "name",
+        Usage: "The identifier for the service account you want to fetch",
+        Required: true,
+      },
+      &cli.StringFlag{
+        Name: "project",
+        Usage: "The resource name of the project associated with the service account",
+        Required: true,
+      },
+      &cli.StringFlag{
+        Name: "output-file",
+				Aliases:  []string{"o"},
+        Usage: "A path to the desired output file for the service account key.",
+        Required: true,
+      },
+    },
+  }
+}
