@@ -13,10 +13,10 @@ create-sa project sa_name roles_file output_file="":
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
       --roles-file={{ roles_file }} \
-      --output-file={{ output_file}} \
+      --output-file={{ output_file }} \
 
     # Verify the service account was created
-    # echo "Verifying service account creation..."
+    echo "Verifying service account creation..."
     ./bin/gcp-tools describe-sa \
       --name={{ sa_name }} \
       --project={{ project }} \
@@ -94,14 +94,15 @@ create-sa-manager project_id:
 create-sa-key project sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
-    # disable prompt
-    gcloud config set disable_prompts true
-    sa_email="{{ sa_name }}@{{ project }}.iam.gserviceaccount.com"
-    echo "Creating service account key for $sa_email in project {{ project }}"
-    gcloud iam service-accounts keys create {{ key_file }} \
-        --iam-account="$sa_email" \
-        --project={{ project }} \
-        --key-file-type=json
+
+    # Build the binary
+    go build -o ./bin/gcp-tools ./cmd/gcp
+    
+    ./bin/gcp-tools create-sa-key \
+      --name={{ sa_name }} \
+      --project={{ project }} \
+      --output-file={{ key_file }} \
+
     echo "Service account key created and saved to {{ key_file }}"
 
 # Output service account details in JSON format
