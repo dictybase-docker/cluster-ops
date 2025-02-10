@@ -6,6 +6,7 @@
 
 ## Prerequisites
 
+- [just](https://github.com/casey/just?tab=readme-ov-file#installation)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [kops](https://kops.sigs.k8s.io/getting_started/install/)
 - [gcloud](https://cloud.google.com/sdk/docs/install)
