@@ -52,7 +52,11 @@ func CreateKeyringAndKey(cltx *cli.Context) error {
 	}
 	defer client.Close()
 
-	parentName := fmt.Sprintf("projects/%s/locations/%s", params.ProjectID, params.Location)
+	parentName := fmt.Sprintf(
+		"projects/%s/locations/%s",
+		params.ProjectID,
+		params.Location,
+	)
 
 	keyringParams := KeyringParams{
 		Ctx:         ctx,
@@ -106,10 +110,13 @@ func createKeyringIfNotExists(params KeyringParams) error {
 
 	if !keyringExists {
 		slog.Info("Creating keyring", "keyring", params.KeyringName)
-		_, err = params.Client.CreateKeyRing(params.Ctx, &kmspb.CreateKeyRingRequest{
-			Parent:    params.ParentName,
-			KeyRingId: params.KeyringName,
-		})
+		_, err = params.Client.CreateKeyRing(
+			params.Ctx,
+			&kmspb.CreateKeyRingRequest{
+				Parent:    params.ParentName,
+				KeyRingId: params.KeyringName,
+			},
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create keyring: %v", err)
 		}
@@ -120,9 +127,12 @@ func createKeyringIfNotExists(params KeyringParams) error {
 }
 
 func checkKeyringExists(params KeyringParams) (bool, error) {
-	keyringIterator := params.Client.ListKeyRings(params.Ctx, &kmspb.ListKeyRingsRequest{
-		Parent: params.ParentName,
-	})
+	keyringIterator := params.Client.ListKeyRings(
+		params.Ctx,
+		&kmspb.ListKeyRingsRequest{
+			Parent: params.ParentName,
+		},
+	)
 	for {
 		keyring, err := keyringIterator.Next()
 		if err == iterator.Done {
@@ -144,13 +154,20 @@ func checkKeyringExists(params KeyringParams) (bool, error) {
 
 func createKey(params KeyParams) error {
 	slog.Info("Creating key", "key", params.KeyName)
-	_, err := params.Client.CreateCryptoKey(params.Ctx, &kmspb.CreateCryptoKeyRequest{
-		Parent:      fmt.Sprintf("%s/keyRings/%s", params.ParentName, params.KeyringName),
-		CryptoKeyId: params.KeyName,
-		CryptoKey: &kmspb.CryptoKey{
-			Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
+	_, err := params.Client.CreateCryptoKey(
+		params.Ctx,
+		&kmspb.CreateCryptoKeyRequest{
+			Parent: fmt.Sprintf(
+				"%s/keyRings/%s",
+				params.ParentName,
+				params.KeyringName,
+			),
+			CryptoKeyId: params.KeyName,
+			CryptoKey: &kmspb.CryptoKey{
+				Purpose: kmspb.CryptoKey_ENCRYPT_DECRYPT,
+			},
 		},
-	})
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create key: %v", err)
 	}
