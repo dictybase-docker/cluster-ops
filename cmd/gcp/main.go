@@ -33,6 +33,7 @@ func getCommands() []*cli.Command {
 		findOrCreateKopsBucketCommand(),
 		createKeyringAndKeyCommand(),
 		createServiceAccountCommand(),
+		createServiceAccountKeyCommand(),
 		describeServiceAccountCommand(),
 	}
 }
@@ -206,7 +207,7 @@ func describeServiceAccountCommand() *cli.Command {
 	}
 }
 
-func createServiceAccountKey() *cli.Command {
+func createServiceAccountKeyCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "create-sa-key",
 		Usage:  "Create a key for a service account",
