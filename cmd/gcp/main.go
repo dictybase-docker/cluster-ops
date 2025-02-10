@@ -179,7 +179,7 @@ func createServiceAccountCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:     "output-file",
 				Aliases:  []string{"o"},
-				Usage:    "A path to the desired output file for the service account key. If not provided, a service key will not be created",
+				Usage:    "A path to the desired output file for the service account key.",
 				Required: false,
 			},
 		},
