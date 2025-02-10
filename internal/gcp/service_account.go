@@ -38,7 +38,13 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	}
 
 	// Create Service Account
-	slog.Info(fmt.Sprintf("Creating service account %s in %s...", saName, client.projectId))
+	slog.Info(
+		fmt.Sprintf(
+			"Creating service account %s in %s...",
+			saName,
+			client.projectId,
+		),
+	)
 	sa, err := client.createServiceAccount(saName, saDisplayName, saDescription)
 	if err != nil {
 		slog.Error("Error creating service account", "error", err)
@@ -83,7 +89,11 @@ func VerifyServiceAccount(cliContext *cli.Context) error {
 		slog.Error("Error creating client", "error", err)
 		return fmt.Errorf("iam.NewService: %w", err)
 	}
-	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectName, saName)
+	resourceName := fmt.Sprintf(
+		"projects/%s/serviceAccounts/%s",
+		projectName,
+		saName,
+	)
 	_, err = service.Projects.ServiceAccounts.Get(resourceName).Do()
 	if err != nil {
 		slog.Error("Could not find requested service account", "error", err)
@@ -136,14 +146,25 @@ func readRolesFromFile(filePath string) ([]string, error) {
 	return roles, nil
 }
 
-func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) error {
-	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", c.projectId, saName)
+func (c *IAMClient) addRolesToServiceAccount(
+	saName string,
+	roles []string,
+) error {
+	resourceName := fmt.Sprintf(
+		"projects/%s/serviceAccounts/%s",
+		c.projectId,
+		saName,
+	)
 
 	// Get IAM Policy
-	iamPolicy, err := c.service.Projects.ServiceAccounts.GetIamPolicy(resourceName).Do()
+	iamPolicy, err := c.service.Projects.ServiceAccounts.GetIamPolicy(resourceName).
+		Do()
 	if err != nil {
 		slog.Error("Error fetching IAM policy", "error", err)
-		return fmt.Errorf("service.Projects.ServiceAccounts.GetIamPolicy: %w", err)
+		return fmt.Errorf(
+			"service.Projects.ServiceAccounts.GetIamPolicy: %w",
+			err,
+		)
 	}
 	// Edit IAM Policy
 	// Initialize new bindings with existing bindings.
@@ -178,22 +199,34 @@ func (c *IAMClient) addRolesToServiceAccount(saName string, roles []string) erro
 	request := iam.SetIamPolicyRequest{
 		Policy: iamPolicy,
 	}
-	_, err = c.service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).Do()
+	_, err = c.service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).
+		Do()
 	if err != nil {
 		slog.Error("Error setting IAM policy", "error", err)
-		return fmt.Errorf("service.Projects.ServiceAccounts.SetIamPolicy: %w", err)
+		return fmt.Errorf(
+			"service.Projects.ServiceAccounts.SetIamPolicy: %w",
+			err,
+		)
 	}
 
 	return nil
 }
 
 func (c *IAMClient) createServiceAccountKey(saEmail, outputPath string) error {
-	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", c.projectId, saEmail)
+	resourceName := fmt.Sprintf(
+		"projects/%s/serviceAccounts/%s",
+		c.projectId,
+		saEmail,
+	)
 	request := &iam.CreateServiceAccountKeyRequest{}
-	key, err := c.service.Projects.ServiceAccounts.Keys.Create(resourceName, request).Do()
+	key, err := c.service.Projects.ServiceAccounts.Keys.Create(resourceName, request).
+		Do()
 	if err != nil {
 		slog.Error("Error creating service account key", "error", err)
-		return fmt.Errorf("service.Projects.ServiceAccounts.Keys.Create: %w", err)
+		return fmt.Errorf(
+			"service.Projects.ServiceAccounts.Keys.Create: %w",
+			err,
+		)
 	}
 
 	// Write key to file

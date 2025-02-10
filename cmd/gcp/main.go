@@ -32,8 +32,8 @@ func getCommands() []*cli.Command {
 		analyzeRolesCommand(),
 		findOrCreateKopsBucketCommand(),
 		createKeyringAndKeyCommand(),
-    createServiceAccountCommand(),
-    describeServiceAccountCommand(),
+		createServiceAccountCommand(),
+		describeServiceAccountCommand(),
 	}
 }
 
@@ -145,89 +145,89 @@ func findOrCreateKopsBucketCommand() *cli.Command {
 }
 
 func createServiceAccountCommand() *cli.Command {
-  return &cli.Command{
-    Name: "create-sa",
-    Usage: "Create a service account",
+	return &cli.Command{
+		Name:   "create-sa",
+		Usage:  "Create a service account",
 		Action: gcp.CreateServiceAccount,
-    Flags: []cli.Flag{
-      &cli.StringFlag{
-        Name: "name",
-        Usage: "The identifier for the service account to be created",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "project",
-        Usage: "The resource name of the project associated with the service account",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "roles-file",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Usage:    "The identifier for the service account to be created",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "project",
+				Usage:    "The resource name of the project associated with the service account",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "roles-file",
 				Aliases:  []string{"-r"},
-        Usage: "A path to the roles file for the service account.",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "description",
-        Usage: "A human-readable description for the service account",
-        Required: false,
-      },
-      &cli.StringFlag{
-        Name: "display-name",
-        Usage: "A human-readable name for the service account",
-        Required: false,
-      },
-      &cli.StringFlag{
-        Name: "output-file",
+				Usage:    "A path to the roles file for the service account.",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "description",
+				Usage:    "A human-readable description for the service account",
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "display-name",
+				Usage:    "A human-readable name for the service account",
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "output-file",
 				Aliases:  []string{"o"},
-        Usage: "A path to the desired output file for the service account key. If not provided, a service key will not be created",
-        Required: false,
-      },
-    },
-  }
+				Usage:    "A path to the desired output file for the service account key. If not provided, a service key will not be created",
+				Required: false,
+			},
+		},
+	}
 }
 
 func describeServiceAccountCommand() *cli.Command {
-  return &cli.Command{
-    Name: "describe-sa",
-    Usage: "Describe a service account",
+	return &cli.Command{
+		Name:   "describe-sa",
+		Usage:  "Describe a service account",
 		Action: gcp.CreateServiceAccount,
-    Flags: []cli.Flag{
-      &cli.StringFlag{
-        Name: "name",
-        Usage: "The identifier for the service account you want to fetch",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "project",
-        Usage: "The resource name of the project associated with the service account",
-        Required: true,
-      },
-    },
-  }
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Usage:    "The identifier for the service account you want to fetch",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "project",
+				Usage:    "The resource name of the project associated with the service account",
+				Required: true,
+			},
+		},
+	}
 }
 
 func createServiceAccountKey() *cli.Command {
-  return &cli.Command{
-    Name: "create-sa-key",
-    Usage: "Create a key for a service account",
+	return &cli.Command{
+		Name:   "create-sa-key",
+		Usage:  "Create a key for a service account",
 		Action: gcp.CreateServiceAccountKey,
-    Flags: []cli.Flag{
-      &cli.StringFlag{
-        Name: "name",
-        Usage: "The identifier for the service account you want to fetch",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "project",
-        Usage: "The resource name of the project associated with the service account",
-        Required: true,
-      },
-      &cli.StringFlag{
-        Name: "output-file",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Usage:    "The identifier for the service account you want to fetch",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "project",
+				Usage:    "The resource name of the project associated with the service account",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "output-file",
 				Aliases:  []string{"o"},
-        Usage: "A path to the desired output file for the service account key.",
-        Required: true,
-      },
-    },
-  }
+				Usage:    "A path to the desired output file for the service account key.",
+				Required: true,
+			},
+		},
+	}
 }
