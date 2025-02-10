@@ -113,6 +113,10 @@ func CreateServiceAccountKey(cliContext *cli.Context) error {
 		service:   svc,
 		projectId: projectName,
 	}
+	if err != nil {
+		slog.Error("Error creating client", "error", err)
+		return fmt.Errorf("iam.NewService: %w", err)
+	}
 	// Create Service Account Key
 	if credentialOutputPath != "" {
 		slog.Info(fmt.Sprintf("Creating service account key for %s", saName))
