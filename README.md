@@ -72,9 +72,13 @@ This will create a service account named `sa-manager` and create a JSON key file
 
 Have the project owner send the key file to you. Place it in your `./credentials` directory.
 
+From here, you will be able to continue with the cluster setup on your own.
+
 ### 2. Enable Required APIs
 
-Enable all required Google Cloud APIs using the predefined list:
+To create the cluster and run all the `dictyBase` applications, certain Google Cloud APIs first need to be enabled. 
+
+running the following command will enable the APIs from the list defined in `enabled_apis.txt`
 
 ```sh
 just gcp-api enable-apis <project_id> gcs-files/apis/enabled_apis.txt
@@ -107,7 +111,7 @@ Set the key file as the Google Application Default Credentials in your environme
 ```
 export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
 ```
-This provides authentication to the Go Google Cloud client library.
+This provides authentication to the Go Google Cloud client library, which is used to manage resources on the Google Cloud Platform project
 
 ### 5. Set Up kops State Store and Initialize the Cluster
 
