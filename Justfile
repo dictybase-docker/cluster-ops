@@ -62,3 +62,10 @@ aider:
                    --vim --cache-prompts \
                    --cache-keepalive-pings 3 \
                    --watch-files
+
+install-asdf-plugins:
+  asdf plugin add gcloud
+  asdf plugin add kubectl
+  asdf plugin add kops
+  asdf plugin add pulumi
+  asdf install
