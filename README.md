@@ -59,6 +59,7 @@ This command will install the following binaries:
 You must acquire a key of the `Service Account Manager` service account from the owner of the Google Cloud Project where the cluster will be set up.
 
 The Service Account Manager service account is needed to:
+
 - create all other services accounts needed to create and manage the cluster
 - enable the required Google Cloud APIs to create and manage the cluster
 
