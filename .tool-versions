@@ -3,3 +3,4 @@ kops v1.27.1
 gcloud 475.0.0
 just 1.35.0
 pulumi v3.134.0
+direnv 2.34.0
