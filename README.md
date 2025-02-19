@@ -8,7 +8,7 @@
 
 This documentation provides instructions on how to a start up a Kubernetes cluster on Google Cloud Platform for _dictyBase applications_
 
-## Prerequisites
+## Required Binaries
 
 ### asdf
 
@@ -19,7 +19,7 @@ https://asdf-vm.com/guide/getting-started.html#_1-install-asdf)
 
 ### just
 
-just is used to run the various commands defined in the project.
+`just` is used to run the various commands defined in the project. These include commands for setting up Google Cloud Platform resources and initializing the kubernetes cluster with kops.
 
 First, install the `just` plugin for `asdf`:
 
@@ -31,11 +31,7 @@ Now, to install just, simply run:
 ```
 asdf install just
 ```
-The versions of the binaries used for the project is specified in the `.tool-versions` file, and will be picked up by `asdf`.
-
-### Install direnv
-
-- [direnv v2.34.0]()
+The versions of `just` and the other required binaries used for the project are specified in the `.tool-versions` file, and will be picked up by `asdf`.
 
 ### Remaining binaries
 
@@ -47,10 +43,15 @@ just install-asdf-plugins
 
 This command will install the following binaries:
 
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [kops](https://kops.sigs.k8s.io/getting_started/install/)
-- [gcloud](https://cloud.google.com/sdk/docs/install)
-- [pulumi](https://www.pulumi.com/docs/get-started/install/)
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/)
+- [kops](https://kops.sigs.k8s.io/)
+- [gcloud](https://cloud.google.com/sdk/gcloud)
+- [pulumi](https://www.pulumi.com/docs/)
+
+## Environmental Variables
+
+Environmental variables for the project are managed by `direnv`, which will load the variables defined in the `.envrc` file at the root of the project.
+Create the `.envrc` file if it does not exist. 
 
 ## Cluster Setup
 
@@ -71,13 +72,21 @@ just create-sa-manager <project_id>
 
 This will create a service account named `sa-manager` and create a JSON key file for the service account in their `./credentials` directory.
 
-Have the project owner send the key file to you. Place it in your `./credentials` directory.
+Have the project owner send the key file to you. Save it as `./credentials/sa-manager.json` directory.
+
+Then, add the following line to your `.envrc` file:
+```
+export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/sa-manager.json"
+```
+Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the prescribed method of setting up ADC.
+
+[reference](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key)
 
 From here, you will be able to continue with the cluster setup on your own.
 
 ### 2. Enable Required APIs
 
-To create the cluster and run all the `dictyBase` applications, certain Google Cloud APIs first need to be enabled. 
+To create the kubernetes cluster and run all the `dictyBase` applications, certain Google Cloud APIs need to be enabled first. 
 
 running the following command will enable the APIs from the list defined in `enabled_apis.txt`
 
@@ -85,17 +94,17 @@ running the following command will enable the APIs from the list defined in `ena
 just gcp-api enable-apis <project_id> gcs-files/apis/enabled_apis.txt
 ```
 
-Disable unnecessary Cloud APIs using the predefined list:
+While not required for running the cluster, it is helpful to disable unneeded Google Cloud APIs.
+
+running the following command will disable unnecessary Cloud APIs using the predefined list:
 
 ```sh
 just gcp-api disable-apis <project_id> gcs-files/apis/disable_enabled_apis.txt
 ```
 
-See [API Management documentation](docs/api.md) for details on enabling/disabling APIs.
-
 ### 3. Create the `kops cluster creator` Service Account
 
-The `kops cluster creator` service account is a dedicated service account with the necessary permissions to create and manage the Kubernetes cluster using the kops tool.
+The `kops cluster creator` service account is a dedicated service account with the necessary permissions to create and manage the Kubernetes cluster using the `kops` tool.
 
 Create this service account with:
 
@@ -105,9 +114,9 @@ just gcp-sa create-sa <project_id> kops-cluster-creator gcs-files/roles-permissi
 
 This will create a service account named `kops-cluster-creator` with the roles defined in `gcs-files/roles-permissions/kops-cluster-creator-roles.txt`, and save the JSON key file to `credentials/kops-cluster-creator.json`.
 
-### 4. Set Application Default Credentials
+### 4. Change Application Default Credentials
 
-Set the key file as the Google Application Default Credentials in your environmental variables:
+
 
 ```
 export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
