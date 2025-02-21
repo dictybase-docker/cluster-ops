@@ -8,24 +8,11 @@ enable-apis project api_file:
     
     echo "Enabling APIs for project {{project}} from file {{api_file}}"
     
-    # Check if the file exists
-    if [ ! -f "{{api_file}}" ]; then
-        echo "Error: File {{api_file}} not found"
-        exit 1
-    fi
+    # Build the Go binary
+    go build -o bin/gcp-tools cmd/gcp/main.go
     
-    # Read the file and enable each API
-    while IFS= read -r api || [ -n "$api" ]; do
-        # Trim whitespace
-        api=$(echo "$api" | xargs)
-        
-        # Skip empty lines
-        [ -z "$api" ] && continue
-        
-        echo "Enabling API: $api"
-        gcloud services enable "$api" --project="{{project}}" --async
-    done < "{{api_file}}"
-    
+    # Run the Go command to enable required Google Cloud APIs
+    ./bin/gcp-tools enable-apis --project {{ project }} --api-file-path {{ api_file }}
     echo "Finished enabling APIs"
     
     # List enabled APIs
@@ -65,28 +52,12 @@ disable-apis project api_file:
     
     echo "Disabling APIs for project {{project}} from file {{api_file}}"
     
-    # Check if the file exists
-    if [ ! -f "{{api_file}}" ]; then
-        echo "Error: File {{api_file}} not found"
-        exit 1
-    fi
+    # Build the Go binary
+    go build -o bin/gcp-tools cmd/gcp/main.go
     
-    # Read the file and disable each API
-    while IFS= read -r api || [ -n "$api" ]; do
-        # Trim whitespace
-        api=$(echo "$api" | xargs)
-        
-        # Skip empty lines
-        [ -z "$api" ] && continue
-        
-        echo "Disabling API: $api"
-        if gcloud services disable "$api" --project="{{project}}" --force; then
-            echo "Successfully disabled $api"
-        else
-            echo "Failed to disable $api"
-        fi
-    done < "{{api_file}}"
-    
+    # Run the Go command to enable required Google Cloud APIs
+    ./bin/gcp-tools disable-apis --project {{ project }} --api-file-path {{ api_file }}
+
     echo "Finished disabling APIs"
     
     # List remaining enabled APIs
