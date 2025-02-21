@@ -13,7 +13,7 @@ import (
 )
 
 func EnableAPIs(cliContext *cli.Context) error {
-	projectId := cliContext.String("project-id")
+	projectId := cliContext.String("project")
 	apiFilePath := cliContext.String("api-file-path")
 	ctx := context.Background()
 
