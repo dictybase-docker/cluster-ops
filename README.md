@@ -78,9 +78,15 @@ Then, add the following line to your `.envrc` file:
 ```
 export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/sa-manager.json"
 ```
+
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the prescribed method of setting up ADC.
 
 [reference](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key)
+
+Next, load your environmental variables by running:
+```sh
+direnv allow
+```
 
 From here, you will be able to continue with the cluster setup on your own.
 
@@ -96,7 +102,7 @@ just gcp-api enable-apis <project_id> gcs-files/apis/enabled_apis.txt
 
 While not required for running the cluster, it is helpful to disable unneeded Google Cloud APIs.
 
-running the following command will disable unnecessary Cloud APIs using the predefined list:
+running the following command will disable unnecessary Google Cloud APIs using the predefined list:
 
 ```sh
 just gcp-api disable-apis <project_id> gcs-files/apis/disable_enabled_apis.txt
@@ -115,13 +121,19 @@ just gcp-sa create-sa <project_id> kops-cluster-creator gcs-files/roles-permissi
 This will create a service account named `kops-cluster-creator` with the roles defined in `gcs-files/roles-permissions/kops-cluster-creator-roles.txt`, and save the JSON key file to `credentials/kops-cluster-creator.json`.
 
 ### 4. Change Application Default Credentials
+After creating the `kops-cluster-creator` key, you will need to update the value of the `GOOGLE_APPLICATION_CREDENTIAL` environmental variable to point to the key.
 
+In the `.envrc` file, change
+```
+export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/sa-manager.json"
+```
 
-
+to: 
 ```
 export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
 ```
-This provides authentication to the Go Google Cloud client library, which is used to manage resources on the Google Cloud Platform project
+
+Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` service key, 
 
 ### 5. Set Up kops State Store and Initialize the Cluster
 
