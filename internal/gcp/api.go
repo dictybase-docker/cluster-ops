@@ -7,11 +7,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/urfave/cli/v2"
 	"cloud.google.com/go/serviceusage/apiv1"
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
 )
 
-func EnableAPIs(projectId, apiFilePath string) error {
+func EnableAPIs(cliContext *cli.Context) error {
+	projectId := cliContext.String("project-id")
+	apiFilePath := cliContext.String("api-file-path")
 	ctx := context.Background()
 
 	// Check if the API file exists
@@ -54,7 +57,9 @@ func EnableAPIs(projectId, apiFilePath string) error {
 	return nil
 }
 
-func DisableAPIs(projectId, apiFilePath string) error {
+func DisableAPIs(cliContext *cli.Context) error {
+	projectId := cliContext.String("project-id")
+	apiFilePath := cliContext.String("api-file-path")
 	ctx := context.Background()
 
 	// Check if the API file exists
