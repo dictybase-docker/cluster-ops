@@ -18,6 +18,7 @@ func EnableAPIs(projectId, apiFilePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create Service Usage service: %v", err)
 	}
+	defer c.Close()
 
 	services, err := readAPIsFromFile(apiFilePath)
 	if err != nil {
@@ -48,6 +49,39 @@ func EnableAPIs(projectId, apiFilePath string) error {
 	return nil
 }
 
+func DisableAPIs(projectId, apiFilePath string) error {
+	ctx := context.Background()
+
+	c, err := serviceusage.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create Service Usage service: %v", err)
+	}
+	defer c.Close()
+
+	services, err := readAPIsFromFile(apiFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read APIs file: %v", err)
+	}
+
+	for _, service := range services {
+		req := &serviceusagepb.DisableServiceRequest{
+			Name: fmt.Sprintf("projects/%s/services/%s", projectId, service),
+		}
+
+		op, err := c.DisableService(ctx, req)
+
+		if err != nil {
+			return fmt.Errorf("failed to enable APIs: %v", err)
+		}
+
+		if _, err := op.Wait(ctx); err != nil {
+			return fmt.Errorf("failed to wait for API enabling: %v", err)
+		}
+	}
+
+	return nil
+}
+
 func readAPIsFromFile(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -58,9 +92,9 @@ func readAPIsFromFile(filePath string) ([]string, error) {
 	var apis []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-    // Trim whitespace.
+		// Trim whitespace.
 		api := strings.TrimSpace(scanner.Text())
-    // Ignore empty lines.
+		// Ignore empty lines.
 		if api != "" {
 			apis = append(apis, api)
 		}
