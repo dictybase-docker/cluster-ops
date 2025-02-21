@@ -1,0 +1,86 @@
+package gcp
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"cloud.google.com/go/serviceusage/apiv1"
+	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
+)
+
+func EnableAPIs(projectId, apiFilePath string) error {
+	ctx := context.Background()
+
+	c, err := serviceusage.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create Service Usage service: %v", err)
+	}
+
+	services, err := readAPIsFromFile(apiFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read APIs file: %v", err)
+	}
+
+	// A single request can enable a maximum of 20 services at a time. If more
+	// than 20 services are specified, the request will fail, and no state changes
+	// will occur.
+	serviceChunks := chunkServices(services, 20)
+
+	for _, chunk := range serviceChunks {
+		req := &serviceusagepb.BatchEnableServicesRequest{
+			Parent:     fmt.Sprintf("projects/%s", projectId),
+			ServiceIds: chunk,
+		}
+
+		op, err := c.BatchEnableServices(ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to enable APIs: %v", err)
+		}
+
+		if _, err := op.Wait(ctx); err != nil {
+			return fmt.Errorf("failed to wait for API enabling: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func readAPIsFromFile(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var apis []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+    // Trim whitespace.
+		api := strings.TrimSpace(scanner.Text())
+    // Ignore empty lines.
+		if api != "" {
+			apis = append(apis, api)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
+func chunkServices(services []string, chunkSize int) [][]string {
+	var chunks [][]string
+	for i := 0; i < len(services); i += chunkSize {
+		end := i + chunkSize
+		if end > len(services) {
+			end = len(services)
+		}
+		chunks = append(chunks, services[i:end])
+	}
+	return chunks
+}
