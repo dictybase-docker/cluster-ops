@@ -14,6 +14,11 @@ import (
 func EnableAPIs(projectId, apiFilePath string) error {
 	ctx := context.Background()
 
+	// Check if the API file exists
+	if _, err := os.Stat(apiFilePath); os.IsNotExist(err) {
+		return fmt.Errorf("API file %s does not exist", apiFilePath)
+	}
+
 	c, err := serviceusage.NewClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create Service Usage service: %v", err)
@@ -51,6 +56,11 @@ func EnableAPIs(projectId, apiFilePath string) error {
 
 func DisableAPIs(projectId, apiFilePath string) error {
 	ctx := context.Background()
+
+	// Check if the API file exists
+	if _, err := os.Stat(apiFilePath); os.IsNotExist(err) {
+		return fmt.Errorf("API file %s does not exist", apiFilePath)
+	}
 
 	c, err := serviceusage.NewClient(ctx)
 	if err != nil {
