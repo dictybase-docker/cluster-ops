@@ -35,6 +35,8 @@ func getCommands() []*cli.Command {
 		createServiceAccountCommand(),
 		createServiceAccountKeyCommand(),
 		describeServiceAccountCommand(),
+		enableAPIsCommand(),
+		disableAPIsCommand(),
 	}
 }
 
@@ -140,6 +142,50 @@ func findOrCreateKopsBucketCommand() *cli.Command {
 				Name:  "region",
 				Value: "US",
 				Usage: "Region name for the bucket",
+			},
+		},
+	}
+}
+
+func enableAPIsCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "enable-apis",
+		Usage:  "Enable APIs in a Google Cloud Project",
+		Action: gcp.EnableAPIs,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "project",
+				Aliases:  []string{"p"},
+				Usage:    "Google Cloud project ID",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "api-file-path",
+				Aliases:  []string{"f"},
+				Usage:    "Path to the file that specifies the APIs to enable",
+				Required: true,
+			},
+		},
+	}
+}
+
+func disableAPIsCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "disable-apis",
+		Usage:  "Disable APIs in a Google Cloud Project",
+		Action: gcp.DisableAPIs,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "project",
+				Aliases:  []string{"p"},
+				Usage:    "Google Cloud project ID",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "api-file-path",
+				Aliases:  []string{"f"},
+				Usage:    "Path to the file that specifies the APIs to disable",
+				Required: true,
 			},
 		},
 	}
