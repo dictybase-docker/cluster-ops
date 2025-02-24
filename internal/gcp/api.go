@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/urfave/cli/v2"
 	"cloud.google.com/go/serviceusage/apiv1"
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
+	"github.com/urfave/cli/v2"
 )
 
 func EnableAPIs(cliContext *cli.Context) error {
@@ -125,10 +125,7 @@ func readAPIsFromFile(filePath string) ([]string, error) {
 func chunkServices(services []string, chunkSize int) [][]string {
 	var chunks [][]string
 	for i := 0; i < len(services); i += chunkSize {
-		end := i + chunkSize
-		if end > len(services) {
-			end = len(services)
-		}
+		end := min(i + chunkSize, len(services))
 		chunks = append(chunks, services[i:end])
 	}
 	return chunks
