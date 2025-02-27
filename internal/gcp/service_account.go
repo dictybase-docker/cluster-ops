@@ -200,9 +200,7 @@ func (c *IAMClient) addRolesToServiceAccount(
 		}
 	}
 	// Set IAM Policy
-  slog.Info(fmt.Sprintf("%v\n", iamPolicy)) 
 	iamPolicy.Bindings = newBindings
-  slog.Info(fmt.Sprintf("%v\n", iamPolicy)) 
 	request := iam.SetIamPolicyRequest{
 		Policy: iamPolicy,
 	}
