@@ -209,7 +209,7 @@ func createServiceAccountCommand() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:     "roles-file",
-				Aliases:  []string{"-r"},
+				Aliases:  []string{"r"},
 				Usage:    "A path to the roles file for the service account.",
 				Required: true,
 			},
