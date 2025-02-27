@@ -36,22 +36,25 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 		slog.Error("Error creating service account", "error", err)
 		return err
 	}
-
-	// Create Service Account
-	slog.Info(
-		fmt.Sprintf(
-			"Creating service account %s in %s...",
-			saName,
-			client.projectId,
-		),
-	)
-	sa, err := client.createServiceAccount(saName, saDisplayName, saDescription)
-	if err != nil {
-		slog.Error("Error creating service account", "error", err)
-		return err
+	// Check if Service Account exists.
+	sa := client.getServiceAccount(projectName, saName)
+	if sa == nil {
+		// Create Service Account if it does not exist.
+		slog.Info(
+			fmt.Sprintf(
+				"Creating service account %s in %s...",
+				saName,
+				client.projectId,
+			),
+		)
+		sa, err = client.createServiceAccount(saName, saDisplayName, saDescription)
+		if err != nil {
+			slog.Error("Error creating service account", "error", err)
+			return err
+		}
 	}
 
-	// Read roles from file
+	// Read roles from file.
 	roles, err := readRolesFromFile(rolesFilePath)
 	if err != nil {
 		slog.Error("Error reading roles from file", "error", err)
@@ -60,7 +63,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 
 	// Assign roles to service account
 	slog.Info(fmt.Sprintf("Assigning roles to %s ", sa.Name))
-	err = client.addRolesToServiceAccount(sa.Name, roles)
+	err = client.addRolesToServiceAccount(saName, roles)
 	if err != nil {
 		slog.Error("Error assigning roles to service account", "error", err)
 		return err
@@ -154,17 +157,16 @@ func (c *IAMClient) addRolesToServiceAccount(
 	saName string,
 	roles []string,
 ) error {
+	// Get IAM Policy
 	resourceName := fmt.Sprintf(
-		"projects/%s/serviceAccounts/%s",
+		"projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com",
 		c.projectId,
 		saName,
+		c.projectId,
 	)
-
-	// Get IAM Policy
 	iamPolicy, err := c.service.Projects.ServiceAccounts.GetIamPolicy(resourceName).
 		Do()
 	if err != nil {
-		slog.Error("Error fetching IAM policy", "error", err)
 		return fmt.Errorf(
 			"service.Projects.ServiceAccounts.GetIamPolicy: %w",
 			err,
@@ -190,8 +192,7 @@ func (c *IAMClient) addRolesToServiceAccount(
 				Role: role,
 				Members: []string{
 					fmt.Sprintf(
-						"serviceAccount:%s@%s.iam.gserviceaccount.com",
-						saName,
+						"serviceAccount:%s@%siam.gserviceaccount.com", saName,
 						c.projectId,
 					),
 				},
@@ -199,7 +200,9 @@ func (c *IAMClient) addRolesToServiceAccount(
 		}
 	}
 	// Set IAM Policy
+  slog.Info(fmt.Sprintf("%v\n", iamPolicy)) 
 	iamPolicy.Bindings = newBindings
+  slog.Info(fmt.Sprintf("%v\n", iamPolicy)) 
 	request := iam.SetIamPolicyRequest{
 		Policy: iamPolicy,
 	}
@@ -272,4 +275,16 @@ func (c *IAMClient) createServiceAccount(
 
 	slog.Info("Service Account successfully created")
 	return serviceAccount, nil
+}
+
+func (c *IAMClient) getServiceAccount(projectName string, saName string) *iam.ServiceAccount {
+	resourceName := fmt.Sprintf(
+		"projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com",
+		projectName,
+		saName,
+		projectName,
+	)
+	sa, _ := c.service.Projects.ServiceAccounts.Get(resourceName).Do()
+
+	return sa
 }
