@@ -1,5 +1,6 @@
 # Create a new service account
 [group('service-account-management')]
+[no-cd]
 create-sa project sa_name roles_file output_file="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -42,49 +43,16 @@ create-sa-manager project_id:
         exit 1
     fi
 
+    echo "Settings application default credentials"
+    gcloud auth application-default login --project={{ project_id }}
+
     sa_name="sa-manager"
     sa_display_name="service account manager"
+    roles_file="./gcs-files/roles-permissions/service-account-manager-roles.txt"
+    output_file="./credentials/{{ project_id }}-.json"
 
-    # Check if the service account already exists
-    if gcloud iam service-accounts describe ${sa_name}@{{ project_id }}.iam.gserviceaccount.com --project={{ project_id }} &>/dev/null; then
-        echo "Service account ${sa_name} already exists. Using existing account."
-    else
-        echo "Creating service account: ${sa_name}"
-        just gcp-sa create-sa {{ project_id }} ${sa_name} "${sa_display_name}"
-
-        # create new configuration
-        gcloud config configurations create {{ project_id }}-${sa_name}
-    fi
-
-    # Create the service account key file path
-    key_file="credentials/{{ project_id }}-${sa_name}.json"
-
-    echo "Creating/updating service account key..."
-    just gcp-sa create-sa-key {{ project_id }} ${sa_name} $key_file
-
-    echo "Assigning roles to ${sa_name}"
-    for role in roles/iam.serviceAccountAdmin \
-                roles/iam.serviceAccountCreator \
-                roles/iam.roleAdmin \
-                roles/iam.serviceAccountKeyAdmin \
-                roles/resourcemanager.projectIamAdmin \
-                roles/storage.hmacKeyAdmin \
-                roles/storage.admin \
-                roles/compute.instanceAdmin.v1 \
-                roles/cloudkms.cryptoOperator \
-                roles/cloudkms.admin \
-                roles/serviceusage.serviceUsageAdmin
-    do
-        gcloud projects add-iam-policy-binding {{ project_id }} \
-            --member="serviceAccount:${sa_name}@{{ project_id }}.iam.gserviceaccount.com" \
-            --role="$role"
-    done
-
-
-    # Activate the service account
-    echo "Activating service account..."
-    gcloud auth activate-service-account --key-file="$key_file" --project {{ project_id }}
-    gcloud config set compute/zone us-central1-c
+    echo "Creating service account: ${sa_name}"
+    just gcp-sa create-sa {{ project_id }} ${sa_name} ${roles_file} ${output_file}
 
     echo "Service account creation, key generation, and role assignment completed."
 
