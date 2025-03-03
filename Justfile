@@ -69,3 +69,20 @@ install-asdf-plugins:
   asdf plugin add kops
   asdf plugin add pulumi
   asdf install
+
+# Initialize a Kubernetes cluster with kops
+init-kops-cluster project_id bucket_name:
+    # Enable required APIs
+    just gcp-api enable-apis {{ project_id }} gcs-files/apis/enabled_apis.txt
+    
+    # Disable unnecessary APIs  
+    just gcp-api disable-apis {{ project_id }} gcs-files/apis/disable_enabled_apis.txt
+    
+    # Create kops cluster creator service account
+    just gcp-sa create-sa {{ project_id }} kops-cluster-creator gcs-files/roles-permissions/kops-cluster-creator-roles.txt credentials/kops-cluster-creator.json
+    
+    # Update GOOGLE_APPLICATION_CREDENTIALS env var
+    export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
+    
+    # Set up kops state store and initialize cluster
+    just create-kops-cluster {{ project_id }} {{ bucket_name }}
