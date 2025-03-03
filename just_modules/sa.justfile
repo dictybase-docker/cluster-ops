@@ -31,18 +31,6 @@ create-sa-manager project_id:
 
     # disable prompt
     gcloud config set disable_prompts true
-
-    # Check if the current active configuration is an owner
-    echo "Verifying if the current active configuration is a project owner..."
-    current_account=$(gcloud config get-value account)
-    if ! gcloud projects get-iam-policy {{ project_id }} \
-        --format="value(bindings.members)" \
-        --filter="bindings.role:roles/owner" | \
-        grep -q "$current_account"; then
-        echo "Error: The current active account ($current_account) is not an owner of the project {{ project_id }}."
-        exit 1
-    fi
-
     echo "Settings application default credentials"
     gcloud auth application-default login --project={{ project_id }}
 
