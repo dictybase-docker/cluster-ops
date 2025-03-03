@@ -125,7 +125,7 @@ func readAPIsFromFile(filePath string) ([]string, error) {
 func chunkServices(services []string, chunkSize int) [][]string {
 	var chunks [][]string
 	for i := 0; i < len(services); i += chunkSize {
-		end := min(i + chunkSize, len(services))
+		end := min(i+chunkSize, len(services))
 		chunks = append(chunks, services[i:end])
 	}
 	return chunks
