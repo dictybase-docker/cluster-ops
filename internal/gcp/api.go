@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"cloud.google.com/go/serviceusage/apiv1"
+	serviceusage "cloud.google.com/go/serviceusage/apiv1"
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
 	"github.com/urfave/cli/v2"
 )
