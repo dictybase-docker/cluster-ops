@@ -69,8 +69,6 @@ The Service Account Manager service account is needed to:
 - create all other services accounts needed to create and manage the cluster
 - enable the required Google Cloud APIs to create and manage the cluster
 
-The project owner must have adc set with their owner account -> can be done in just recipe
-ensure iam is enabled on project -> can be done in just recipe
 The project owner must run:
 ```sh
 just create-sa-manager <project_id>
