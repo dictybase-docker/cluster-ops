@@ -70,6 +70,21 @@ install-asdf-plugins:
   asdf plugin add pulumi
   asdf install
 
+set-env-var name value:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Build the binary
+    go build -o ./bin/util ./cmd/util
+
+    ./bin/util set-env-var \
+      --name={{ name }} \
+      --value={{ value }} \
+
+    direnv allow
+    # Verify the service account was created
+    echo "Environmental variable {{ name }} has been set to {{ value }}"
+
 # Initialize a Kubernetes cluster with kops
 init-kops-cluster project_id bucket_name:
     # Enable required APIs
