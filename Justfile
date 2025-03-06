@@ -87,6 +87,7 @@ set-env-var name value:
 
 # Initialize a Kubernetes cluster with kops
 init-kops-cluster project_id bucket_name:
+    just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
     # Enable required APIs
     just gcp-api enable-apis {{ project_id }} gcs-files/apis/enabled_apis.txt
     
@@ -97,7 +98,7 @@ init-kops-cluster project_id bucket_name:
     just gcp-sa create-sa {{ project_id }} kops-cluster-creator gcs-files/roles-permissions/kops-cluster-creator-roles.txt credentials/kops-cluster-creator.json
     
     # Update GOOGLE_APPLICATION_CREDENTIALS env var
-    export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
+    just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
     
     # Set up kops state store and initialize cluster
     just create-kops-cluster {{ project_id }} {{ bucket_name }}
