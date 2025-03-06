@@ -36,13 +36,13 @@ func getCommands() []*cli.Command {
 func setEnvironmentalVariableCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "set-env-var",
-		Usage:  "set an enviromental variable in your .envrc file and load it",
+		Usage:  "set an environmental variable in your .envrc file and load it",
 		Action: util.SetEnvironmentalVariable,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "name",
 				Aliases:  []string{"n"},
-				Usage:    "Name of Enviromental Variable",
+				Usage:    "Name of Environmental Variable",
 				Required: true,
 			},
 			&cli.StringFlag{
