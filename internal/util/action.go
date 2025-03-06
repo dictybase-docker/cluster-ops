@@ -9,9 +9,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-/* The SetEnvironmentalVariable function modifies the `.envrc` file at the root of the project. 
-It first checks whether the environmental variable is defined in the `.envrc` file. 
-If it is not defined, the function simply appends the environmental variable definition on a new line in the file. 
+/*
+	The SetEnvironmentalVariable function modifies the `.envrc` file at the root of the project.
+
+It first checks whether the environmental variable is defined in the `.envrc` file.
+If it is not defined, the function simply appends the environmental variable definition on a new line in the file.
 If it already defined, the function will update the value of that environmental variable
 */
 func SetEnvironmentalVariable(cltx *cli.Context) error {
