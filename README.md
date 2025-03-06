@@ -56,7 +56,8 @@ This command will install the following binaries:
 ## Environmental Variables
 
 Environmental variables for the project are managed by `direnv`, which will load the variables defined in the `.envrc` file at the root of the project.
-Create the `.envrc` file if it does not exist. 
+
+This file will be created automatically when running the `just set-env-var` just recipe later on, so there is no need to create it yourself.
 
 ## Cluster Setup
 
@@ -78,9 +79,9 @@ This will create a service account named `sa-manager` and create a JSON key file
 
 Have the project owner send the key file to you. Save it as `./credentials/sa-manager.json` directory.
 
-Then, add the following line to your `.envrc` file:
+Then, you can set the `GOOGLE_APPLICATION_CREDENTIALS` environmental variable by running 
 ```
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/sa-manager.json"
+just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
 ```
 
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the prescribed method of setting up ADC.
@@ -127,14 +128,11 @@ This will create a service account named `kops-cluster-creator` with the roles d
 ### 4. Change Application Default Credentials
 After creating the `kops-cluster-creator` key, you will need to update the value of the `GOOGLE_APPLICATION_CREDENTIAL` environmental variable to point to the key.
 
-In the `.envrc` file, change
-```
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/sa-manager.json"
-```
 
-to: 
+Run:
+
 ```
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
+just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
 ```
 
 Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` service key, 
