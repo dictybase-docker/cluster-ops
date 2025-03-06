@@ -10,6 +10,10 @@ import (
 
 var logger *slog.Logger
 
+func init() {
+	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+}
+
 func main() {
 	app := &cli.App{
 		Name:     "cluster-ops-utils",
