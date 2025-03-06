@@ -62,8 +62,14 @@ func SetEnvironmentalVariable(cltx *cli.Context) error {
 	}
 
 	// Truncate the file and write the updated lines
-	file.Truncate(0)
-	file.Seek(0, 0)
+	err = file.Truncate(0)
+	if err != nil {
+		return err
+	}
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return err
+	}
 	for _, line := range lines {
 		fmt.Fprintln(file, line)
 	}
