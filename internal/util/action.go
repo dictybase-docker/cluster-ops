@@ -17,10 +17,12 @@ If it already defined, the function will update the value of that environmental 
 func SetEnvironmentalVariable(cltx *cli.Context) error {
 	envName := cltx.String("name")
 	envValue := cltx.String("value")
-
 	envrcPath := ".envrc"
+
+	// Check if the environmental configuration file exists.
 	_, err := os.Stat(envrcPath)
 	if os.IsNotExist(err) {
+		// Create the file if it does not exist.
 		file, err := os.Create(envrcPath)
 		if err != nil {
 			return err
@@ -28,7 +30,8 @@ func SetEnvironmentalVariable(cltx *cli.Context) error {
 		file.Close()
 	}
 
-	file, err := os.Open(envrcPath)
+	// Open the file.
+	file, err := os.OpenFile(envrcPath, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
@@ -37,25 +40,28 @@ func SetEnvironmentalVariable(cltx *cli.Context) error {
 	scanner := bufio.NewScanner(file)
 	lines := []string{}
 	found := false
+	// This loop reads each line from the file.
 	for scanner.Scan() {
 		line := scanner.Text()
+		// This condition checks if the current line starts with "export {envName}=".
+		// If it does, it means the environment variable is already defined in the file.
 		if strings.HasPrefix(line, fmt.Sprintf("export %s=", envName)) {
+			// In this case, we update the line with the new value.
 			line = fmt.Sprintf("export %s=%s", envName, envValue)
 			found = true
 		}
+		// We append the current line (either the original or the updated one) to the lines slice.
 		lines = append(lines, line)
 	}
 
+	// If the environment variable was not found in the file, we append a new line to define it.
 	if !found {
 		lines = append(lines, fmt.Sprintf("export %s=%s", envName, envValue))
 	}
 
-	file.Close()
-	file, err = os.OpenFile(envrcPath, os.O_RDWR|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-
+	// Truncate the file and write the updated lines
+	file.Truncate(0)
+	file.Seek(0, 0)
 	for _, line := range lines {
 		fmt.Fprintln(file, line)
 	}
