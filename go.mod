@@ -15,7 +15,7 @@ require (
 	github.com/pulumi/pulumi/sdk/v3 v3.146.0
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/stretchr/testify v1.10.0
-	github.com/urfave/cli/v2 v2.27.5
+	github.com/urfave/cli/v2 v2.27.6
 	google.golang.org/api v0.214.0
 )
 
