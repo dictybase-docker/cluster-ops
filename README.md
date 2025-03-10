@@ -52,6 +52,7 @@ This command will install the following binaries:
 - [kops](https://kops.sigs.k8s.io/)
 - [gcloud](https://cloud.google.com/sdk/gcloud)
 - [pulumi](https://www.pulumi.com/docs/)
+- [direnv](https://direnv.net/)
 
 ## Environmental Variables
 
@@ -61,7 +62,7 @@ This file will be created automatically when running the `just set-env-var` just
 
 ## Cluster Setup
 
-### 1. Acquire the Service Account Manager Key
+### Acquire the Service Account Manager Key
 
 You must acquire a key of the `Service Account Manager` service account from the owner of the Google Cloud Project where the cluster will be set up.
 
@@ -84,18 +85,20 @@ Then, you can set the `GOOGLE_APPLICATION_CREDENTIALS` environmental variable by
 just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
 ```
 
-Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the prescribed method of setting up ADC.
-
-[reference](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key)
-
-Next, load your environmental variables by running:
-```sh
-direnv allow
-```
+Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the [prescribed method](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key) of setting up ADC.
 
 From here, you will be able to continue with the cluster setup on your own.
 
-### 2. Enable Required APIs
+### Set up Cluster with a Single Command
+
+This command can be used to initialize the required Google Cloud services and set up the `kops` cluster.
+
+Running this command will complete all of the steps below
+```sh
+just init-kops-cluster <project_id> <bucket_name>:
+```
+
+### 1. Enable Required APIs
 
 To create the kubernetes cluster and run all the `dictyBase` applications, certain Google Cloud APIs need to be enabled first. 
 
@@ -105,7 +108,7 @@ running the following command will enable the APIs from the list defined in `ena
 just gcp-api enable-apis <project_id> gcs-files/apis/enabled_apis.txt
 ```
 
-While not required for running the cluster, it is helpful to disable unneeded Google Cloud APIs.
+While not required for running the cluster, it is helpful to disable unneeded Google Cloud APIs to prevent unwanted charges to the GCP account.
 
 running the following command will disable unnecessary Google Cloud APIs using the predefined list:
 
@@ -113,7 +116,7 @@ running the following command will disable unnecessary Google Cloud APIs using t
 just gcp-api disable-apis <project_id> gcs-files/apis/disable_enabled_apis.txt
 ```
 
-### 3. Create the `kops cluster creator` Service Account
+### 2. Create the `kops cluster creator` Service Account
 
 The `kops cluster creator` service account is a dedicated service account with the necessary permissions to create and manage the Kubernetes cluster using the `kops` tool.
 
@@ -125,7 +128,7 @@ just gcp-sa create-sa <project_id> kops-cluster-creator gcs-files/roles-permissi
 
 This will create a service account named `kops-cluster-creator` with the roles defined in `gcs-files/roles-permissions/kops-cluster-creator-roles.txt`, and save the JSON key file to `credentials/kops-cluster-creator.json`.
 
-### 4. Change Application Default Credentials
+### 3. Change Application Default Credentials
 After creating the `kops-cluster-creator` key, you will need to update the value of the `GOOGLE_APPLICATION_CREDENTIAL` environmental variable to point to the key.
 
 
@@ -137,7 +140,7 @@ just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster
 
 Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` service key, 
 
-### 5. Set Up kops State Store and Initialize the Cluster
+### 4. Set Up kops State Store and Initialize the Cluster
 
 The `create-kops-cluster` recipe sets up the state store bucket and initializes the Kubernetes cluster:
 
