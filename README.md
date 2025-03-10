@@ -91,12 +91,13 @@ From here, you will be able to continue with the cluster setup on your own.
 
 ### Set up Cluster with a Single Command
 
-This command can be used to initialize the required Google Cloud services and set up the `kops` cluster.
+A single command can be used to initialize the required Google Cloud services and set up the `kops` cluster.
 
-Running this command will complete all of the steps below
+Running the following:
 ```sh
-just init-kops-cluster <project_id> <bucket_name>:
+just init-kops-cluster <project_id> <bucket_name>
 ```
+will execute the steps listed below. There is no need to run them individually. They have been preserved here for documentation.
 
 ### 1. Enable Required APIs
 
