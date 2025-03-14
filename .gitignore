@@ -35,3 +35,4 @@ scratch
 .env.dev.dcr-experiments
 .env
 .zsh_config
+.tool-versions
