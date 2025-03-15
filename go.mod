@@ -1,7 +1,6 @@
 module github.com/dictybase-docker/cluster-ops
 
 go 1.21
-
 require (
 	cloud.google.com/go/kms v1.20.4
 	cloud.google.com/go/storage v1.49.0
@@ -10,7 +9,7 @@ require (
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.21.1
-	github.com/pulumi/pulumi/sdk/v3 v3.146.0
+	github.com/pulumi/pulumi/sdk/v3 v3.150.0
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.6
@@ -168,7 +167,7 @@ require (
 
 require (
 	cloud.google.com/go/serviceusage v1.9.3
-	github.com/pulumi/pulumi-command/sdk v1.0.1
+	github.com/pulumi/pulumi-command/sdk v1.0.2
 	k8s.io/api v0.28.8
 	k8s.io/apimachinery v0.28.8
 	k8s.io/client-go v0.28.8
