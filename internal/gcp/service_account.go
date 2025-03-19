@@ -77,7 +77,7 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 
 	// Create Service Account Key
 	slog.Info(fmt.Sprintf("Creating service account key for %s", sa.Name))
-	err = client.createServiceAccountKey(sa.Email, credentialOutputPath)
+	err = client.createServiceAccountKey(saName, credentialOutputPath)
 	if err != nil {
 		slog.Error("Error creating service account key", "error", err)
 		return err
