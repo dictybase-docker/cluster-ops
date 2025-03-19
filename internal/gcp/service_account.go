@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/urfave/cli/v2"
+	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	iam "google.golang.org/api/iam/v1"
 )
 
@@ -47,7 +48,11 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 				client.projectId,
 			),
 		)
-		sa, err = client.createServiceAccount(saName, saDisplayName, saDescription)
+		sa, err = client.createServiceAccount(
+			saName,
+			saDisplayName,
+			saDescription,
+		)
 		if err != nil {
 			slog.Error("Error creating service account", "error", err)
 			return err
@@ -157,63 +162,117 @@ func (c *IAMClient) addRolesToServiceAccount(
 	saName string,
 	roles []string,
 ) error {
-	// Get IAM Policy
-	resourceName := fmt.Sprintf(
-		"projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com",
-		c.projectId,
+	// Create Resource Manager service for project-level IAM operations
+	ctx := context.Background()
+	resourceManagerService, err := cloudresourcemanager.NewService(ctx)
+	if err != nil {
+		return fmt.Errorf("cloudresourcemanager.NewService: %w", err)
+	}
+	// Get IAM Policy for the project
+	policy, err := c.getProjectIAMPolicy(resourceManagerService)
+	if err != nil {
+		return err
+	}
+
+	// Create the service account member string
+	member := fmt.Sprintf(
+		"serviceAccount:%s@%s.iam.gserviceaccount.com",
 		saName,
 		c.projectId,
 	)
-	iamPolicy, err := c.service.Projects.ServiceAccounts.GetIamPolicy(resourceName).
-		Do()
+
+	// Update policy with new role bindings
+	policy = c.updatePolicyBindings(policy, roles, member)
+
+	// Set the updated IAM policy
+	err = c.setProjectIAMPolicy(resourceManagerService, policy)
 	if err != nil {
-		return fmt.Errorf(
-			"service.Projects.ServiceAccounts.GetIamPolicy: %w",
+		return err
+	}
+
+	return nil
+}
+
+// getProjectIAMPolicy retrieves the current IAM policy for the project
+func (c *IAMClient) getProjectIAMPolicy(
+	rmService *cloudresourcemanager.Service,
+) (*cloudresourcemanager.Policy, error) {
+	policy, err := rmService.Projects.GetIamPolicy(c.projectId,
+		&cloudresourcemanager.GetIamPolicyRequest{}).Do()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"resourceManagerService.Projects.GetIamPolicy: %w",
 			err,
 		)
 	}
-	// Edit IAM Policy
-	// Initialize new bindings with existing bindings.
-	newBindings := iamPolicy.Bindings
-	// Check desired roles slice for collision with existing bindings.
+	return policy, nil
+}
+
+// updatePolicyBindings adds the service account member to the specified roles
+func (c *IAMClient) updatePolicyBindings(
+	policy *cloudresourcemanager.Policy,
+	roles []string,
+	member string,
+) *cloudresourcemanager.Policy {
 	for _, role := range roles {
 		found := false
-		// Iterate through existing bindings.
-		for _, binding := range newBindings {
-			// If the role is already in the existing bindings, do nothing.
+		// Iterate through existing bindings
+		for _, binding := range policy.Bindings {
 			if binding.Role == role {
+				// Check if member already exists
+				if !c.memberExistsInBinding(binding, member) {
+					binding.Members = append(binding.Members, member)
+				}
 				found = true
 				break
 			}
 		}
-		// If the role is not in the existing bindings, create a binding and append it.
+
+		// If role not found, create new binding
 		if !found {
-			newBindings = append(newBindings, &iam.Binding{
-				Role: role,
-				Members: []string{
-					fmt.Sprintf(
-						"serviceAccount:%s@%siam.gserviceaccount.com", saName,
-						c.projectId,
-					),
+			policy.Bindings = append(
+				policy.Bindings,
+				&cloudresourcemanager.Binding{
+					Role:    role,
+					Members: []string{member},
 				},
-			})
+			)
 		}
 	}
-	// Set IAM Policy
-	iamPolicy.Bindings = newBindings
-	request := iam.SetIamPolicyRequest{
-		Policy: iamPolicy,
+	return policy
+}
+
+// memberExistsInBinding checks if a member already exists in a binding
+func (c *IAMClient) memberExistsInBinding(
+	binding *cloudresourcemanager.Binding,
+	member string,
+) bool {
+	for _, existingMember := range binding.Members {
+		if existingMember == member {
+			return true
+		}
 	}
-	_, err = c.service.Projects.ServiceAccounts.SetIamPolicy(resourceName, &request).
+	return false
+}
+
+// setProjectIAMPolicy applies the updated policy to the project
+func (c *IAMClient) setProjectIAMPolicy(
+	rmService *cloudresourcemanager.Service,
+	policy *cloudresourcemanager.Policy,
+) error {
+	setIamPolicyRequest := &cloudresourcemanager.SetIamPolicyRequest{
+		Policy: policy,
+	}
+
+	_, err := rmService.Projects.SetIamPolicy(c.projectId, setIamPolicyRequest).
 		Do()
 	if err != nil {
 		slog.Error("Error setting IAM policy", "error", err)
 		return fmt.Errorf(
-			"service.Projects.ServiceAccounts.SetIamPolicy: %w",
+			"resourceManagerService.Projects.SetIamPolicy: %w",
 			err,
 		)
 	}
-
 	return nil
 }
 
@@ -275,7 +334,10 @@ func (c *IAMClient) createServiceAccount(
 	return serviceAccount, nil
 }
 
-func (c *IAMClient) getServiceAccount(projectName string, saName string) *iam.ServiceAccount {
+func (c *IAMClient) getServiceAccount(
+	projectName string,
+	saName string,
+) *iam.ServiceAccount {
 	resourceName := fmt.Sprintf(
 		"projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com",
 		projectName,
