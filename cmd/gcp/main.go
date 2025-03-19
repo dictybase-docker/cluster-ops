@@ -224,10 +224,10 @@ func createServiceAccountCommand() *cli.Command {
 				Required: false,
 			},
 			&cli.StringFlag{
-				Name:     "output-file",
-				Aliases:  []string{"o"},
-				Usage:    "A path to the desired output file for the service account key.",
-				Required: false,
+				Name:    "output-file",
+				Aliases: []string{"o"},
+				Usage:   "A path to the desired output file for the service account key.",
+				Value:   "key.json",
 			},
 		},
 	}
@@ -270,10 +270,10 @@ func createServiceAccountKeyCommand() *cli.Command {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "output-file",
-				Aliases:  []string{"o"},
-				Usage:    "A path to the desired output file for the service account key.",
-				Required: true,
+				Name:    "output-file",
+				Aliases: []string{"o"},
+				Usage:   "A path to the desired output file for the service account key.",
+				Value:   "key.json",
 			},
 		},
 	}
