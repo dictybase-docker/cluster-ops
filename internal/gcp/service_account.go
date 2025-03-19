@@ -3,6 +3,7 @@ package gcp
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -278,8 +279,15 @@ func (c *IAMClient) createServiceAccountKey(sa, outputPath string) error {
 		c.projectId,
 		sa, c.projectId,
 	)
-	request := &iam.CreateServiceAccountKeyRequest{}
-	key, err := c.service.Projects.ServiceAccounts.Keys.Create(resourceName, request).
+	request := &iam.CreateServiceAccountKeyRequest{
+		PrivateKeyType: "TYPE_GOOGLE_CREDENTIALS_FILE",
+	}
+	key, err := c.
+		service.
+		Projects.
+		ServiceAccounts.
+		Keys.
+		Create(resourceName, request).
 		Do()
 	if err != nil {
 		slog.Error("Error creating service account key", "error", err)
@@ -288,21 +296,15 @@ func (c *IAMClient) createServiceAccountKey(sa, outputPath string) error {
 			err,
 		)
 	}
-
-	// Write key to file
-	file, err := os.Create(outputPath)
+	// Decode the base64-encoded private key
+	decodedKey, err := base64.StdEncoding.DecodeString(key.PrivateKeyData)
 	if err != nil {
-		slog.Error("Error creating file", "error", err)
-		return fmt.Errorf("os.Create: %w", err)
+		return fmt.Errorf("failed to decode private key: %v", err)
 	}
-	defer file.Close()
-
-	_, err = file.WriteString(key.PrivateKeyData)
-	if err != nil {
+	if err := os.WriteFile(outputPath, decodedKey, 0600); err != nil {
 		slog.Error("Error writing to file", "error", err)
-		return fmt.Errorf("file.WriteString: %w", err)
+		return fmt.Errorf("error writing to file: %w", err)
 	}
-
 	slog.Info(fmt.Sprintf("Service account key written to %s", outputPath))
 	return nil
 }
