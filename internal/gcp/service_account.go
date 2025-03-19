@@ -75,13 +75,11 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	}
 
 	// Create Service Account Key
-	if credentialOutputPath != "" {
-		slog.Info(fmt.Sprintf("Creating service account key for %s", sa.Name))
-		err = client.createServiceAccountKey(sa.Email, credentialOutputPath)
-		if err != nil {
-			slog.Error("Error creating service account key", "error", err)
-			return err
-		}
+	slog.Info(fmt.Sprintf("Creating service account key for %s", sa.Name))
+	err = client.createServiceAccountKey(sa.Email, credentialOutputPath)
+	if err != nil {
+		slog.Error("Error creating service account key", "error", err)
+		return err
 	}
 
 	return nil
@@ -126,13 +124,11 @@ func CreateServiceAccountKey(cliContext *cli.Context) error {
 		return fmt.Errorf("iam.NewService: %w", err)
 	}
 	// Create Service Account Key
-	if credentialOutputPath != "" {
-		slog.Info(fmt.Sprintf("Creating service account key for %s", saName))
-		err = client.createServiceAccountKey(saName, credentialOutputPath)
-		if err != nil {
-			slog.Error("Error creating service account key", "error", err)
-			return err
-		}
+	slog.Info(fmt.Sprintf("Creating service account key for %s", saName))
+	err = client.createServiceAccountKey(saName, credentialOutputPath)
+	if err != nil {
+		slog.Error("Error creating service account key", "error", err)
+		return err
 	}
 
 	return nil
@@ -276,11 +272,11 @@ func (c *IAMClient) setProjectIAMPolicy(
 	return nil
 }
 
-func (c *IAMClient) createServiceAccountKey(saEmail, outputPath string) error {
+func (c *IAMClient) createServiceAccountKey(sa, outputPath string) error {
 	resourceName := fmt.Sprintf(
-		"projects/%s/serviceAccounts/%s",
+		"projects/%s/serviceAccounts/%s@%s.iam.gserviceAccount.com",
 		c.projectId,
-		saEmail,
+		sa, c.projectId,
 	)
 	request := &iam.CreateServiceAccountKeyRequest{}
 	key, err := c.service.Projects.ServiceAccounts.Keys.Create(resourceName, request).
