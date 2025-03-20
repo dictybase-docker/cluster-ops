@@ -17,11 +17,11 @@ Below is a list of variables that these projects retrieve from Kubernetes Secret
 - `GITHUB_REPOSITORY` - from secret key `eventMessenger.github.repository`
 - `GITHUB_TOKEN` - from secret key `eventMessenger.github.token`
 
-### Logto
+### Logto [Uses existing secrets]
 - `PGPASSWORD` - from secret key `password`
 - `DBUSER` - from secret key `username`
 
-### GraphQL Server
+### GraphQL Server [Uses existing secrets]
 - Variables related to authentication:
   - Auth app ID from secret key `graphql.auth.appId`
   - Auth app secret from secret key `graphql.auth.appSecret`
@@ -32,26 +32,26 @@ Below is a list of variables that these projects retrieve from Kubernetes Secret
   - `SECRET_KEY` - from secret key specified in `secrets.minio.passKey`
   - `ACCESS_KEY` - from secret key specified in `secrets.minio.userKey`
 
-### Redis Backup
+### Redis Backup [Uses existing secrets]
 - `RESTIC_PASSWORD` - from secret key `resticPass`
 - `GOOGLE_PROJECT_ID` - from secret key `gcsProject`
 - GCS credentials from a mounted secret volume
 
-### ArangoDB Backup
+### ArangoDB Backup [Uses existing secrets]
 - `PASSWORD` - from secret key `password` (ArangoDB password)
 - `RESTIC_PASSWORD` - from secret key `resticPass`
 - `GOOGLE_PROJECT_ID` - from secret key `gcsProject`
 - GCS credentials from a mounted secret volume
 
-### Load Content from S3
+### Load Content from S3 [Uses existing secrets]
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
 - `SECRET_KEY` - from secret key specified in `minioSecret.passKey`
 
-### ArangoDB Dataloader
+### ArangoDB Dataloader [Uses existing secrets]
 - `ARANGODB_USER` - from secret key specified in `arangodbSecret.userKey`
 - `ARANGODB_PASS` - from secret key specified in `arangodbSecret.passKey`
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
 - `SECRET_KEY` - from secret key specified in `minioSecret.passKey`
 
-### Create ArangoDB Databases
+### Create ArangoDB Databases [Secrets are created in the pulumi project]
 - `ARANGODB_PASSWORD` - from secret key specified in `arangodbCredentials.passKey`
