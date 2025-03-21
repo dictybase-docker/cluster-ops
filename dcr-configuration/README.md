@@ -17,11 +17,11 @@ Below is a list of variables that these projects retrieve from Kubernetes Secret
 - `GITHUB_REPOSITORY` - from secret key `eventMessenger.github.repository`
 - `GITHUB_TOKEN` - from secret key `eventMessenger.github.token`
 
-### Logto [Uses existing secrets]
+### Logto [Uses existing secrets] -> Postgres Secret
 - `PGPASSWORD` - from secret key `password`
 - `DBUSER` - from secret key `username`
 
-### GraphQL Server [Uses existing secrets]
+### GraphQL Server [Uses existing secrets] -> Auth Secret, Minio Secret
 - Variables related to authentication:
   - Auth app ID from secret key `graphql.auth.appId`
   - Auth app secret from secret key `graphql.auth.appSecret`
@@ -32,22 +32,22 @@ Below is a list of variables that these projects retrieve from Kubernetes Secret
   - `SECRET_KEY` - from secret key specified in `secrets.minio.passKey`
   - `ACCESS_KEY` - from secret key specified in `secrets.minio.userKey`
 
-### Redis Backup [Uses existing secrets]
+### Redis Backup [Uses existing secrets] -> Backup Secret
 - `RESTIC_PASSWORD` - from secret key `resticPass`
 - `GOOGLE_PROJECT_ID` - from secret key `gcsProject`
 - GCS credentials from a mounted secret volume
 
-### ArangoDB Backup [Uses existing secrets]
+### ArangoDB Backup [Uses existing secrets] -> Backup Secret
 - `PASSWORD` - from secret key `password` (ArangoDB password)
 - `RESTIC_PASSWORD` - from secret key `resticPass`
 - `GOOGLE_PROJECT_ID` - from secret key `gcsProject`
 - GCS credentials from a mounted secret volume
 
-### Load Content from S3 [Uses existing secrets]
+### Load Content from S3 [Uses existing secrets] -> Minio Secret
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
 - `SECRET_KEY` - from secret key specified in `minioSecret.passKey`
 
-### ArangoDB Dataloader [Uses existing secrets]
+### ArangoDB Dataloader [Uses existing secrets] -> ArangoSecret
 - `ARANGODB_USER` - from secret key specified in `arangodbSecret.userKey`
 - `ARANGODB_PASS` - from secret key specified in `arangodbSecret.passKey`
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
