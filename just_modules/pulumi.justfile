@@ -92,3 +92,14 @@ cleanup-resource folder stack:
 	set -euo pipefail
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} stack rm -s {{ stack }} --preserve-config --force
+
+[no-cd]
+create-resources-with-secrets stack:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+  just create-resource arangodb-single {{ stack }}
+  just create-resource create-arangodb-databases {{ stack }}
+  just create-resource minio {{ stack }}
+  just create-resource cloudnative-pg-operator {{ stack }}
+  just create-resource backup_secrets {{ stack }}
