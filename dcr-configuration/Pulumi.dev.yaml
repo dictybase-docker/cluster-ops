@@ -1,2 +1,56 @@
 secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRings/dictycr/cryptoKeys/pulumi
 encryptedkey: CiQALAIOnE4NU6kaint8tJj+Zhqp+BMpMV8mLzk4pVAbU6N6G5YSSQB2302F5aNu3dahnoK7w+71A9a5N5xDyl3NNGHzu5r+NkPolWh3mMuk0+mTJqUcXv/YExv5NWyibzNMq+daVIYXPZ9tg/nlx9M=
+config:
+  dcr-configuration:properties:
+    namespace: dev
+    secrets:
+      # Postgres Secret for Logto
+      - name: postgres-secret
+        data:
+          username: postgres_user
+          password: postgres_password
+      
+      # Event Messenger Secrets
+      - name: email-event
+        data:
+          eventMessenger.email.domain: mail.example.com
+          eventMessenger.email.senderName: DictyBase Notifications
+          eventMessenger.email.sender: no-reply@example.com
+          eventMessenger.email.cc: admin@example.com
+          endpoints.publication: https://api.example.com/publications
+          eventMessenger.email.apiKey: dummy_mailgun_api_key_12345
+      
+      - name: issue-event
+        data:
+          eventMessenger.github.owner: dictyBase
+          eventMessenger.github.repository: migration-data
+          eventMessenger.github.token: github_pat_dummy_token_12345
+      
+      # Auth Secret for GraphQL Server
+      - name: auth-secret
+        data:
+          graphql.auth.appId: dummy_app_id
+          graphql.auth.appSecret: dummy_app_secret
+          graphql.auth.jwksURI: https://logto.example.com/.well-known/jwks.json
+          graphql.auth.jwtAudience: api.example.com
+          graphql.auth.jwtIssuer: logto.example.com
+      
+      # Minio Secret
+      - name: minio-secret
+        data:
+          access: minio_access_key
+          secret: minio_secret_key
+      
+      # Backup Secret
+      - name: backup-secret
+        data:
+          resticPass: dummy_restic_password
+          gcsProject: dcr-experiments
+          gcsCredentials: '{"type":"service_account","project_id":"dummy-project","private_key_id":"dummy","private_key":"dummy-key"}'
+      
+      # ArangoDB Secret
+      - name: arangodb-secret
+        data:
+          password: arango_password
+          user: arango_user
+
