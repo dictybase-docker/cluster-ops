@@ -47,7 +47,7 @@ Below is a list of variables that these projects retrieve from Kubernetes Secret
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
 - `SECRET_KEY` - from secret key specified in `minioSecret.passKey`
 
-### ArangoDB Dataloader [Uses existing secrets] -> ArangoSecret
+### ArangoDB Dataloader [Uses existing secrets] -> ArangoSecret, Minio Secret
 - `ARANGODB_USER` - from secret key specified in `arangodbSecret.userKey`
 - `ARANGODB_PASS` - from secret key specified in `arangodbSecret.passKey`
 - `ACCESS_KEY` - from secret key specified in `minioSecret.userKey`
