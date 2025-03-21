@@ -10,22 +10,6 @@ config:
           username: postgres_user
           password: postgres_password
       
-      # Event Messenger Secrets
-      - name: email-event
-        data:
-          eventMessenger.email.domain: mail.example.com
-          eventMessenger.email.senderName: DictyBase Notifications
-          eventMessenger.email.sender: no-reply@example.com
-          eventMessenger.email.cc: admin@example.com
-          endpoints.publication: https://api.example.com/publications
-          eventMessenger.email.apiKey: dummy_mailgun_api_key_12345
-      
-      - name: issue-event
-        data:
-          eventMessenger.github.owner: dictyBase
-          eventMessenger.github.repository: migration-data
-          eventMessenger.github.token: github_pat_dummy_token_12345
-      
       # Auth Secret for GraphQL Server
       - name: auth-secret
         data:
