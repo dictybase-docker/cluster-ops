@@ -103,3 +103,10 @@ init-kops-cluster project_id bucket_name:
     
     # Set up kops state store and initialize cluster
     just create-kops-cluster {{ project_id }} {{ bucket_name }}
+
+create-resources-with-secrets stack:
+    just create-resource arangodb-single {{ stack }}
+    just create-resource create-arangodb-databases {{ stack }}
+    just create-resource minio {{ stack }}
+    just create-resource cloudnative-pg-operator {{ stack }}
+    just create-resource backup_secrets {{ stack }}
