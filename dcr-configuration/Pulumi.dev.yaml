@@ -5,36 +5,23 @@ config:
     namespace: dev
     secrets:
       # Postgres Secret for Logto
-      - name: postgres-secret
-        data:
-          username: postgres_user
+      - data:
           password: postgres_password
-      
-      # Auth Secret for GraphQL Server
-      - name: auth-secret
-        data:
-          graphql.auth.appId: dummy_app_id
-          graphql.auth.appSecret: dummy_app_secret
-          graphql.auth.jwksURI: https://logto.example.com/.well-known/jwks.json
-          graphql.auth.jwtAudience: api.example.com
-          graphql.auth.jwtIssuer: logto.example.com
-      
+          username: postgres_user
+        name: pg-secret
       # Minio Secret
-      - name: minio-secret
-        data:
+      - data:
           access: minio_access_key
           secret: minio_secret_key
-      
+        name: minio-secret
       # Backup Secret
-      - name: backup-secret
-        data:
-          resticPass: dummy_restic_password
-          gcsProject: dcr-experiments
+      - data:
           gcsCredentials: '{"type":"service_account","project_id":"dummy-project","private_key_id":"dummy","private_key":"dummy-key"}'
-      
+          gcsProject: dcr-experiments
+          resticPass: dummy_restic_password
+        name: backup-secret
       # ArangoDB Secret
-      - name: arangodb-secret
-        data:
+      - data:
           password: arango_password
           user: arango_user
-
+        name: arangodb-secret
