@@ -180,7 +180,12 @@ Arguments:
 - `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
 - `lifecycle_config`: optional. path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
 
-### 4. Initial Deployments
+### 4. Initialize Pulumi Stack 
+```
+just gcp-pulumi new-stack <folder> <stack>
+```
+
+### 5. Initial Deployments
 
 Certain pulumi project resources need to be created first because they create [secrets](https://kubernetes.io/docs/concepts/configuration/secret/) that other projects rely on.
 
@@ -194,5 +199,5 @@ These projects are:
 
 To create these resources, run
 ```sh
-just gcp-pulumi
+just create-resources-with-secrets <stack>
 ```
