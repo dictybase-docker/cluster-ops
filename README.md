@@ -153,18 +153,22 @@ just create-kops-cluster <project_id> <bucket_name>
 Applications are deployed to the Kubernetes cluster using [Pulumi](https://www.pulumi.com/), an infrastructure as code tool. Pulumi allows us to define, deploy, and manage cloud resources using familiar programming languages like Go.
 
 ### 1. Create Pulumi Manager Service Account Key
-
 ```sh
 just gcp-sa create-sa <project_id> pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
 ```
 
 ### 2. Set the PULUMI_GCP_CREDENTIALS environmental variable
-```
+```sh
 just set-env-var PULUMI_GCP_CREDENTIALS "${PWD}/credentials/pulumi-manager.json"
 ```
 
-### 3. Initialize Pulumi State Store
+### 3. Create Key Ring and Key
+Creates a Google Cloud Key used to encrypt secrets in a Pulumi project's stack
+```sh
+create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
+```
 
+### 4. Initialize Pulumi State Store
 The following command sets up a Google Cloud Storage bucket to store Pulumi state:
 
 ```sh
@@ -173,17 +177,8 @@ just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json <pulumi_bucket_
 
 Arguments:
 - `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
-- `lifecycle_config`: optional. path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
+- `lifecycle_config`: Optional. Path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
-
-Arguments:
-- `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
-- `lifecycle_config`: optional. path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
-
-### 4. Initialize Pulumi Stack 
-```
-just gcp-pulumi new-stack <folder> <stack>
-```
 
 ### 5. Initial Deployments
 
