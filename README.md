@@ -168,6 +168,9 @@ Creates a Google Cloud Key used to encrypt secrets in a Pulumi project's stack
 create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
 ```
 
+Arguments:
+- `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
+
 ### 4. Initialize Pulumi State Store
 The following command sets up a Google Cloud Storage bucket to store Pulumi state:
 
@@ -176,7 +179,7 @@ just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json <pulumi_bucket_
 ```
 
 Arguments:
-- `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
+- `pulumi_bucket_name`: Name of the gcs bucket to create for storing pulumi state
 - `lifecycle_config`: Optional. Path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
 
