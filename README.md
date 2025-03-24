@@ -148,3 +148,51 @@ The `create-kops-cluster` recipe sets up the state store bucket and initializes 
 ```sh
 just create-kops-cluster <project_id> <bucket_name>
 ```
+## Deploying Applications
+
+Applications are deployed to the Kubernetes cluster using [Pulumi](https://www.pulumi.com/), an infrastructure as code tool. Pulumi allows us to define, deploy, and manage cloud resources using familiar programming languages like Go.
+
+### 1. Create Pulumi Manager Service Account Key
+
+```sh
+just gcp-sa create-sa <project_id> pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
+```
+
+### 2. Set the PULUMI_GCP_CREDENTIALS environmental variable
+```
+just set-env-var PULUMI_GCP_CREDENTIALS "${PWD}/credentials/pulumi-manager.json"
+```
+
+### 3. Initialize Pulumi State Store
+
+The following command sets up a Google Cloud Storage bucket to store Pulumi state:
+
+```sh
+just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json <pulumi_bucket_name> <lifecycle_config> <location>
+```
+
+Arguments:
+- `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
+- `lifecycle_config`: optional. path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
+- `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
+
+Arguments:
+- `pulumi_bucket_name`: name of the gcs bucket to create for storing pulumi state
+- `lifecycle_config`: optional. path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
+
+### 4. Initial Deployments
+
+Certain pulumi project resources need to be created first because they create [secrets](https://kubernetes.io/docs/concepts/configuration/secret/) that other projects rely on.
+
+These projects are:
+    - arangodb-single
+    - create-arangodb-databases
+    - minio
+    - cloudnative-pg-operator
+    - backup_secrets
+    - event-messenger
+
+To create these resources, run
+```sh
+just gcp-pulumi
+```
