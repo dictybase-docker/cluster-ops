@@ -102,11 +102,12 @@ init-kops-cluster project_id bucket_name:
     just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
     
     # Set up kops state store and initialize cluster
-    just create-kops-cluster {{ project_id }} {{ bucket_name }}
+    just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
 create-resources-with-secrets stack:
-    just create-resource arangodb-single {{ stack }}
-    just create-resource create-arangodb-databases {{ stack }}
-    just create-resource minio {{ stack }}
-    just create-resource cloudnative-pg-operator {{ stack }}
-    just create-resource backup_secrets {{ stack }}
+    just gcp-pulumi create-resource arangodb-single {{ stack }}
+    just gcp-pulumi create-resource create-arangodb-databases {{ stack }}
+    just gcp-pulumi create-resource minio {{ stack }}
+    just gcp-pulumi create-resource cloudnative-pg-operator {{ stack }}
+    just gcp-pulumi create-resource backup_secrets {{ stack }}
+    just gcp-pulumi create-resource event-messenger {{ stack }}
