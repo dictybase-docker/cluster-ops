@@ -172,7 +172,6 @@ Then,
 export PULUMI_SECRET_PROVIDER=<GCLOUD_KMS_KEY>
 ```
 
-
 Arguments:
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
 
@@ -203,21 +202,4 @@ This would initialize a new stack called `production` in the `graphql_server` pr
 Create the project resources for the desired stack
 ```
 just gcp-pulumi create-resource <folder> <stack>
-```
-
-### 7. Initial Deployments
-
-Certain pulumi project resources need to be created first because they create [secrets](https://kubernetes.io/docs/concepts/configuration/secret/) that other projects rely on.
-
-These projects are:
-    - arangodb-single
-    - create-arangodb-databases
-    - minio
-    - cloudnative-pg-operator
-    - backup_secrets
-    - event-messenger
-
-To create these resources, run
-```sh
-just create-resources-with-secrets <stack>
 ```
