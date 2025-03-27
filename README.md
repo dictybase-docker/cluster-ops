@@ -159,7 +159,7 @@ just gcp-sa create-sa <project_id> pulumi-manager gcs-files/roles-permissions/pu
 
 ### 2. Set the PULUMI_GCP_CREDENTIALS environmental variable
 ```sh
-just set-env-var PULUMI_GCP_CREDENTIALS "${PWD}/credentials/pulumi-manager.json"
+export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 ```
 
 ### 3. Create Key Ring and Key
@@ -183,7 +183,28 @@ Arguments:
 - `lifecycle_config`: Optional. Path to a lifecycle configuration file for the bucket (controls object retention/deletion policies)
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
 
-### 5. Initial Deployments
+### 5. Initialize Project Stack
+We use Google Cloud KMS [Keys](https://cloud.google.com/kms/docs/resource-hierarchy#keys) to encrypt the secrets for a pulumi project's config. Use a Google KMS provided by the project owner to initialize a stack. 
+
+```
+export PULUMI_SECRET_PROVIDER=<GOOGLE_KMS_KEY>
+```
+
+Initialize stack:
+
+```
+just gcp-pulumi new-stack-from <folder> <stack> <from-stack>
+```
+
+Example: 
+```
+just gcp-pulumi new-stack from graphql_server production staging
+```
+This would initialize a new stack called `production` in the `graphql_server` project. It will copy the configuration from the `staging` stack, if it exists.
+
+### 6. Create Pulumi Resources
+
+### 7. Initial Deployments
 
 Certain pulumi project resources need to be created first because they create [secrets](https://kubernetes.io/docs/concepts/configuration/secret/) that other projects rely on.
 
