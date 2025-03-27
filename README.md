@@ -187,7 +187,7 @@ Arguments:
 We use Google Cloud KMS [Keys](https://cloud.google.com/kms/docs/resource-hierarchy#keys) to encrypt the secrets for a pulumi project's config. Use a Google KMS provided by the project owner to initialize a stack. 
 
 ```
-export PULUMI_SECRET_PROVIDER=<GOOGLE_KMS_KEY>
+export PULUMI_SECRET_PROVIDER=<GCLOUD_KMS_KEY>
 ```
 
 Initialize stack:
