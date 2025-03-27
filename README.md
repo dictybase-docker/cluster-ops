@@ -165,7 +165,7 @@ export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 ### 3. Create Key Ring and Key
 Creates a Google Cloud Key used to encrypt secrets in a Pulumi project's stack
 ```sh
-create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
+just gcp-kms create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
 ```
 
 Arguments:
