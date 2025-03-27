@@ -104,24 +104,6 @@ init-kops-cluster project_id bucket_name:
     # Set up kops state store and initialize cluster
     just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
-create-initial-resources stack from-stack:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    
-    # Read each line from the initial-resources.txt file
-    while IFS= read -r project || [[ -n "$project" ]]; do
-        # Skip empty lines
-        if [[ -z "$project" ]]; then
-            continue
-        fi
-        
-        echo "Creating stack {{ stack }} for project $project from {{ from-stack }}"
-        just gcp-pulumi new-stack-from "$project" "{{ stack }}" "{{ from-stack }}"
-        
-        echo "Creating resources for project $project in stack {{ stack }}"
-        just gcp-pulumi create-resource "$project" "{{ stack }}"
-    done < initial-resources.txt
-
 # Setup Pulumi deployment environment
 # Parameters:
 #   project_id: GCP project ID
@@ -129,7 +111,7 @@ create-initial-resources stack from-stack:
 #   key_name: Name of the KMS key
 #   bucket_name: Name of the GCS bucket for Pulumi state
 #   location: Google Cloud region (optional, defaults to us-central1)
-setup-pulumi-deployment project_id keyring_name key_name bucket_name location="us-central1":
+initialize-pulumi project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
     
@@ -141,8 +123,23 @@ setup-pulumi-deployment project_id keyring_name key_name bucket_name location="u
     
     echo "Step 3: Creating Key Ring and Key for Pulumi secrets encryption"
     just gcp-kms create-keyring-and-key {{ project_id }} {{ keyring_name }} {{ key_name }} credentials/pulumi-manager.json {{ location }}
+    export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
     
     echo "Step 4: Initializing Pulumi State Store"
     just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json {{ bucket_name }} "" {{ location }}
-    
     echo "Pulumi deployment environment setup completed successfully!"
+
+# Setup Pulumi deployment environment
+# Parameters:
+#   project_id: GCP project ID
+#   keyring_name: Name of the KMS keyring
+#   key_name: Name of the KMS key
+#   bucket_name: Name of the GCS bucket for Pulumi state
+#   location: Google Cloud region (optional, defaults to us-central1)
+pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_name location="us-central1":
+    #!/usr/bin/env bash
+    just initialize-pulumi {{ project_id }} {{ keyring_name }} {{ key_name }} {{ bucket_name }} {{ location }}
+    export PULUMI_SECRET_PROVIDER="gcpkms://projects/{{ project_id }}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
+    
+    echo Creating Initial Resources"
+    just gcp-pulumi create-initial-resources {{ stack }} {{ from-stack }}
