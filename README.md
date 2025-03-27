@@ -203,6 +203,10 @@ just gcp-pulumi new-stack from graphql_server production staging
 This would initialize a new stack called `production` in the `graphql_server` project. It will copy the configuration from the `staging` stack, if it exists.
 
 ### 6. Create Pulumi Resources
+Create the project resources for the desired stack
+```
+just gcp-pulumi create-resource <folder> <stack>
+```
 
 ### 7. Initial Deployments
 
