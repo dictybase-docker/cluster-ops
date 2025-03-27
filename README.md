@@ -163,10 +163,15 @@ export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 ```
 
 ### 3. Create Key Ring and Key
-Creates a Google Cloud Key used to encrypt secrets in a Pulumi project's stack
+Creates a Google [Cloud Key](https://cloud.google.com/kms/docs/resource-hierarchy#keys) used to encrypt secrets in a Pulumi project's stack
 ```sh
 just gcp-kms create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
 ```
+Then,
+```
+export PULUMI_SECRET_PROVIDER=<GCLOUD_KMS_KEY>
+```
+
 
 Arguments:
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
@@ -184,18 +189,10 @@ Arguments:
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"
 
 ### 5. Initialize Project Stack
-We use Google Cloud KMS [Keys](https://cloud.google.com/kms/docs/resource-hierarchy#keys) to encrypt the secrets for a pulumi project's config. Use a Google KMS provided by the project owner to initialize a stack. 
-
-```
-export PULUMI_SECRET_PROVIDER=<GCLOUD_KMS_KEY>
-```
-
 Initialize stack:
-
 ```
 just gcp-pulumi new-stack-from <folder> <stack> <from-stack>
 ```
-
 Example: 
 ```
 just gcp-pulumi new-stack from graphql_server production staging
