@@ -104,10 +104,20 @@ init-kops-cluster project_id bucket_name:
     # Set up kops state store and initialize cluster
     just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
-create-resources-with-secrets stack:
-    just gcp-pulumi create-resource arangodb-single {{ stack }}
-    just gcp-pulumi create-resource create-arangodb-databases {{ stack }}
-    just gcp-pulumi create-resource minio {{ stack }}
-    just gcp-pulumi create-resource cloudnative-pg-operator {{ stack }}
-    just gcp-pulumi create-resource backup_secrets {{ stack }}
-    just gcp-pulumi create-resource event-messenger {{ stack }}
+create-initial-resources stack from-stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Read each line from the initial-resources.txt file
+    while IFS= read -r project || [[ -n "$project" ]]; do
+        # Skip empty lines
+        if [[ -z "$project" ]]; then
+            continue
+        fi
+        
+        echo "Creating stack {{ stack }} for project $project from {{ from-stack }}"
+        just gcp-pulumi new-stack-from "$project" "{{ stack }}" "{{ from-stack }}"
+        
+        echo "Creating resources for project $project in stack {{ stack }}"
+        just gcp-pulumi create-resource "$project" "{{ stack }}"
+    done < initial-resources.txt
