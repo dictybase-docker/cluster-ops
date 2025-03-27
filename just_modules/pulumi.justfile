@@ -71,6 +71,18 @@ new-stack folder stack="dev":
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} stack init {{ stack }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
 
+# This target creates a new Pulumi stack in a given folder using a copy of `from-stack`'s config
+# Parameters:
+#   folder: The folder containing the Pulumi project
+#   stack: The name of the new Pulumi stack (default: dev)
+#   from-stack: The name of the stack to copy config from
+[no-cd]
+new-stack-from folder stack="dev" from-stack="experiments":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+	pulumi -C {{ folder }} stack init {{ stack }} --copy-config-from {{ from-stack }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
+
 [no-cd]
 create-resource folder stack:
 	#!/usr/bin/env bash
