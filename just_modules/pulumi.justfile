@@ -104,3 +104,23 @@ cleanup-resource folder stack:
 	set -euo pipefail
 	export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 	pulumi -C {{ folder }} stack rm -s {{ stack }} --preserve-config --force
+
+[no-cd]
+create-initial-resources stack from-stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Read each line from the initial-resources.txt file
+    while IFS= read -r project || [[ -n "$project" ]]; do
+        # Skip empty lines
+        if [[ -z "$project" ]]; then
+            continue
+        fi
+        
+        echo "Creating stack {{ stack }} for project $project from {{ from-stack }}"
+        just new-stack-from "$project" "{{ stack }}" "{{ from-stack }}"
+        
+        echo "Creating resources for project $project in stack {{ stack }}"
+        just create-resource "$project" "{{ stack }}"
+    done < initial-resources.txt
+
