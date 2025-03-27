@@ -136,7 +136,7 @@ After creating the `kops-cluster-creator` key, you will need to update the value
 Run:
 
 ```
-just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
+export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
 ```
 
 Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` service key, 
