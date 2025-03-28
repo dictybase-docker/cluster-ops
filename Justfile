@@ -140,5 +140,5 @@ pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_
     just initialize-pulumi {{ project_id }} {{ keyring_name }} {{ key_name }} {{ bucket_name }} {{ location }}
     export PULUMI_SECRET_PROVIDER="gcpkms://projects/{{ project_id }}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
     
-    echo Creating Initial Resources"
-    just gcp-pulumi create-initial-resources {{ stack }} {{ from-stack }}
+    echo "Creating Multiple Resources"
+    just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }}
