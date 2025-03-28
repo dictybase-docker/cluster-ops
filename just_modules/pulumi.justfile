@@ -106,21 +106,46 @@ cleanup-resource folder stack:
 	pulumi -C {{ folder }} stack rm -s {{ stack }} --preserve-config --force
 
 [no-cd]
-create-initial-resources stack from-stack:
+create-initial-resources stack from-stack resources_file:
     #!/usr/bin/env bash
     set -euo pipefail
     
-    # Read each line from the initial-resources.txt file
+    # Check if the resources file exists
+    if [[ ! -f "{{ resources_file }}" ]]; then
+        echo "Error: Resources file '{{ resources_file }}' not found"
+        exit 1
+    fi
+    
+    echo "Reading resources from: {{ resources_file }}"
+    
+    # Count total projects for progress reporting
+    total_projects=$(grep -v "^$" "{{ resources_file }}" | wc -l)
+    current=0
+    
+    # Read each line from the resources file
     while IFS= read -r project || [[ -n "$project" ]]; do
-        # Skip empty lines
-        if [[ -z "$project" ]]; then
+        # Skip empty lines and comments
+        if [[ -z "$project" || "${project:0:1}" == "#" ]]; then
             continue
         fi
         
+        ((current++))
+        echo "[${current}/${total_projects}] Processing project: $project"
+        
         echo "Creating stack {{ stack }} for project $project from {{ from-stack }}"
-        just new-stack-from "$project" "{{ stack }}" "{{ from-stack }}"
+        if ! just new-stack-from "$project" "{{ stack }}" "{{ from-stack }}"; then
+            echo "Failed to create stack for $project. Continuing with next project..."
+            continue
+        fi
         
         echo "Creating resources for project $project in stack {{ stack }}"
-        just create-resource "$project" "{{ stack }}"
-    done < initial-resources.txt
+        if ! just create-resource "$project" "{{ stack }}"; then
+            echo "Failed to create resources for $project. Continuing with next project..."
+            continue
+        fi
+        
+        echo "Successfully deployed $project"
+    done < "{{ resources_file }}"
+    
+    echo "Deployment process completed!"
 
