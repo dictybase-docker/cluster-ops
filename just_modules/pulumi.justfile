@@ -106,7 +106,7 @@ cleanup-resource folder stack:
 	pulumi -C {{ folder }} stack rm -s {{ stack }} --preserve-config --force
 
 [no-cd]
-create-initial-resources stack from-stack resources_file:
+create-multiple-resources stack from-stack resources_file:
     #!/usr/bin/env bash
     set -euo pipefail
     
