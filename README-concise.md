@@ -51,3 +51,48 @@ If needed, perform steps individually:
    ```bash
    just create-kops-cluster <project_id> <bucket_name>
    ```
+
+## Application Deployment with Pulumi
+
+### Quick Setup (Recommended)
+```bash
+# Initialize Pulumi environment and deploy the initial required resources in one command
+just pulumi-init-and-deploy <stack> <from-stack> <project_id> <keyring_name> <key_name> <bucket_name> [location]
+```
+
+### Manual Setup
+If needed, perform steps individually:
+
+1. Create Pulumi Manager Service Account:
+   ```bash
+   just gcp-sa create-sa <project_id> pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
+   ```
+
+2. Set the PULUMI_GCP_CREDENTIALS environment variable:
+   ```bash
+   just set-env-var PULUMI_GCP_CREDENTIALS "${PWD}/credentials/pulumi-manager.json"
+   ```
+
+3. Create Key Ring and Key for Pulumi secrets:
+   ```bash
+   just gcp-kms create-keyring-and-key <project_id> <keyring_name> <key_name> credentials/pulumi-manager.json [location]
+   ```
+
+4. Initialize Pulumi State Store:
+   ```bash
+   just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json <bucket_name> "" [location]
+   ```
+
+5. Initialize Project Stack:
+   ```bash
+   # Set the PULUMI_SECRET_PROVIDER environment variable
+   export PULUMI_SECRET_PROVIDER="gcpkms://projects/<project_id>/locations/<location>/keyRings/<keyring_name>/cryptoKeys/<key_name>"
+   
+   # Initialize a new stack from an existing one
+   just gcp-pulumi new-stack-from <folder> <stack> <from-stack>
+   ```
+
+6. Create Pulumi Resources:
+   ```bash
+   just gcp-pulumi create-resource <folder> <stack>
+   ```
