@@ -1,0 +1,8 @@
+arangodb-backup
+arangodb-dataloader
+arangodb-operator
+cloudnative-pg-cluster
+backup_application
+install-velero
+redis-standalone
+storage_class
