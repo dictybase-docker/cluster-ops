@@ -203,3 +203,58 @@ Create the project resources for the desired stack
 ```
 just gcp-pulumi create-resource <folder> <stack>
 ```
+
+## Simplified Pulumi Setup and Deployment
+
+For convenience, we provide two just recipes that simplify the Pulumi setup and deployment process:
+
+### Initialize Pulumi Environment
+
+The `initialize-pulumi` recipe combines steps 1-4 of the Deploying Applications section into a single command:
+
+```sh
+just initialize-pulumi <project_id> <keyring_name> <key_name> <bucket_name> [location]
+```
+
+Arguments:
+- `project_id`: Your GCP project ID
+- `keyring_name`: Name for the KMS keyring to create
+- `key_name`: Name for the KMS key to create
+- `bucket_name`: Name for the GCS bucket to store Pulumi state
+- `location`: (Optional) Google Cloud region. Defaults to "us-central1"
+
+This command will:
+1. Create the Pulumi Manager service account with necessary permissions
+2. Set the PULUMI_GCP_CREDENTIALS environment variable
+3. Create a KMS keyring and key for Pulumi secrets encryption
+4. Initialize the Pulumi state store in GCS
+
+### Initialize and Deploy Initial Resources
+
+The `pulumi-init-and-deploy` recipe combines the Pulumi environment setup with deploying the initial resources:
+
+```sh
+just pulumi-init-and-deploy <stack> <from-stack> <project_id> <keyring_name> <key_name> <bucket_name> [location]
+```
+
+Arguments:
+- `stack`: Name of the stack to create
+- `from-stack`: Name of the existing stack to copy configuration from
+- `project_id`: Your GCP project ID
+- `keyring_name`: Name for the KMS keyring to create
+- `key_name`: Name for the KMS key to create
+- `bucket_name`: Name for the GCS bucket to store Pulumi state
+- `location`: (Optional) Google Cloud region. Defaults to "us-central1"
+
+This command will:
+1. Set up the complete Pulumi environment (steps 1-4)
+2. Set the PULUMI_SECRET_PROVIDER environment variable
+3. Create initial resources for all projects listed in the initial-resources.txt file
+
+The initial resources are defined in the `initial-resources.txt` file and include:
+- ArangoDB single instance
+- ArangoDB database creation
+- MinIO object storage
+- CloudNative PostgreSQL operator
+- Backup secrets
+- Event messenger
