@@ -243,13 +243,12 @@ Arguments:
 - `keyring_name`: Name for the KMS keyring to create
 - `key_name`: Name for the KMS key to create
 - `bucket_name`: Name for the GCS bucket to store Pulumi state
-- `resources_file`: (Optional) Path to a file containing the list of resources to create. Defaults to "initial-resources.txt"
 - `location`: (Optional) Google Cloud region. Defaults to "us-central1"
 
 This command will:
 1. Set up the complete Pulumi environment (steps 1-4)
 2. Set the PULUMI_SECRET_PROVIDER environment variable
-3. Create initial resources for all projects listed in the specified resources file
+3. Create resources for all projects listed in the specified resources files
 
 The initial resources are defined in the `initial-resources.txt` file and include:
 - ArangoDB single instance
@@ -258,3 +257,12 @@ The initial resources are defined in the `initial-resources.txt` file and includ
 - CloudNative PostgreSQL operator
 - Backup secrets
 - Event messenger
+
+The database and storage management resources are defined in the `database-and-storage-resources.txt` file and include:
+- ArangoDB Backup
+- ArangoDB Data Loader
+- ArangoDB Operation
+- CloudNative PostgreSQL cluster
+- Velero Installation
+- Redis Standalone
+- Storage Class
