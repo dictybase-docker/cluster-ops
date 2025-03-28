@@ -123,7 +123,6 @@ initialize-pulumi project_id keyring_name key_name bucket_name location="us-cent
     
     echo "Step 3: Creating Key Ring and Key for Pulumi secrets encryption"
     just gcp-kms create-keyring-and-key {{ project_id }} {{ keyring_name }} {{ key_name }} credentials/pulumi-manager.json {{ location }}
-    export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
     
     echo "Step 4: Initializing Pulumi State Store"
     just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json {{ bucket_name }} "" {{ location }}
