@@ -130,6 +130,8 @@ initialize-pulumi project_id keyring_name key_name bucket_name location="us-cent
 
 # Setup Pulumi deployment environment
 # Parameters:
+#   stack: Name of desired stack for initial pulumi projects
+#   from-stack: Name of stack whose config to copy in the new stack
 #   project_id: GCP project ID
 #   keyring_name: Name of the KMS keyring
 #   key_name: Name of the KMS key
@@ -142,3 +144,4 @@ pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_
     
     echo "Creating Initial Resources"
     just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/initial-resources.txt"
+    just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/database-and-storage-resources.txt"
