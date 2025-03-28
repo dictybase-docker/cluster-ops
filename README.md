@@ -134,7 +134,6 @@ After creating the `kops-cluster-creator` key, you will need to update the value
 
 
 Run:
-
 ```
 export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
 ```
@@ -148,7 +147,7 @@ The `create-kops-cluster` recipe sets up the state store bucket and initializes 
 ```sh
 just create-kops-cluster <project_id> <bucket_name>
 ```
-## Deploying Applications
+## Application Deployment with Pulumi
 
 Applications are deployed to the Kubernetes cluster using [Pulumi](https://www.pulumi.com/), an infrastructure as code tool. Pulumi allows us to define, deploy, and manage cloud resources using familiar programming languages like Go.
 
@@ -210,7 +209,7 @@ For convenience, we provide two just recipes that simplify the Pulumi setup and 
 
 ### Initialize Pulumi Environment
 
-The `initialize-pulumi` recipe combines steps 1-4 of the Deploying Applications section into a single command:
+The `initialize-pulumi` recipe combines steps 1-4 of the `Application Deployment with Pulumi` section into a single command:
 
 ```sh
 just initialize-pulumi <project_id> <keyring_name> <key_name> <bucket_name> [location]
