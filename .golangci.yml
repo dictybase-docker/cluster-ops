@@ -3,7 +3,7 @@ run:
   allow-parallel-runners: true
 linters-settings:
    errcheck:
-     ignore: ''
+     check-type-assertions: true
    funlen:
     lines: 80
    revive:
