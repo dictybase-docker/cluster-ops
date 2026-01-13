@@ -1,6 +1,6 @@
 module github.com/dictybase-docker/cluster-ops
 
-go 1.25.0
+go 1.24.0
 
 require (
 	cloud.google.com/go/kms v1.23.0
@@ -172,7 +172,7 @@ require (
 require (
 	cloud.google.com/go/serviceusage v1.9.3
 	github.com/pulumi/pulumi-command/sdk v1.0.1
-	k8s.io/api v0.35.0
-	k8s.io/apimachinery v0.35.0
-	k8s.io/client-go v0.35.0
+	k8s.io/api v0.34.0
+	k8s.io/apimachinery v0.34.0
+	k8s.io/client-go v0.34.0
 )
