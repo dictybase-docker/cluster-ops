@@ -196,7 +196,7 @@ func (cus *Custodian) ExcludeFromBackup() error {
 		gv, err := schema.ParseGroupVersion(list.GroupVersion)
 		if err != nil {
 			return fmt.Errorf(
-				"Skipping invalid groupVersion %s with error %w",
+				"skipping invalid groupVersion %s with error %w",
 				list.GroupVersion,
 				err,
 			)
