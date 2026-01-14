@@ -201,4 +201,4 @@ cluster-info:
 
 [no-cd]
 cluster-dump:
-	kops get all --v 9
+	kops toolbox dump -v 9 --k8s-resources
