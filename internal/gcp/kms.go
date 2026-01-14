@@ -94,7 +94,7 @@ func createKMSClient(
 ) (*kms.KeyManagementClient, error) {
 	client, err := kms.NewKeyManagementClient(
 		ctx,
-		option.WithCredentialsFile(credentialsFile),
+		option.WithAuthCredentialsFile(option.ServiceAccount, credentialsFile),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KMS client: %v", err)
