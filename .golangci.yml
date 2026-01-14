@@ -1,39 +1,21 @@
+version: "2"
 run:
-  timeout: 15m
   allow-parallel-runners: true
-linters-settings:
-   errcheck:
-     check-type-assertions: true
-   funlen:
-    lines: 80
-   revive:
-      rules:
-        - name: var-naming
-          arguments: [["ID"]]
-   gosec:
-      excludes:
-        - G404
-        - G402
 linters:
-  # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
-  disable-all: true
+  default: none
   enable:
     - asciicheck
-    - bodyclose
     - bidichk
+    - bodyclose
     - cyclop
     - decorder
     - dogsled
-    # - dupl
     - errcheck
     - funlen
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -41,18 +23,44 @@ linters:
     - nakedret
     - revive
     - staticcheck
-    - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
-
-  # don't enable:
-  # - godox
-  # - maligned,prealloc
-  # - gochecknoglobals
-  # - golint
-  #  - forcetypeassert
-issues:
-  exclude-dirs:
-    - crds
+  settings:
+    errcheck:
+      check-type-assertions: true
+    funlen:
+      lines: 80
+    gosec:
+      excludes:
+        - G404
+        - G402
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            - - ID
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - crds
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - crds
+      - third_party$
+      - builtin$
+      - examples$
