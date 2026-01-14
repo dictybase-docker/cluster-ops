@@ -95,7 +95,7 @@ func validateEnvironment() error {
 func createStorageClient(ctx context.Context) (*storage.Client, error) {
 	return storage.NewClient(
 		ctx,
-		option.WithCredentialsFile(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")),
+		option.WithAuthCredentialsFile(option.ServiceAccount, os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")),
 	)
 }
 
