@@ -178,7 +178,7 @@ func initializeServices(
 	ctx context.Context,
 	credentialsFile string,
 ) (*iam.Service, *cloudresourcemanager.Service, error) {
-	opts := option.WithCredentialsFile(credentialsFile)
+	opts := option.WithAuthCredentialsFile(option.ServiceAccount, credentialsFile)
 
 	iamService, err := iam.NewService(ctx, opts)
 	if err != nil {
