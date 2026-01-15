@@ -106,7 +106,8 @@ func (mno *Minio) createSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
 func (mno *Minio) getHelmValues() pulumi.Map {
 	return pulumi.Map{
 		"image": pulumi.Map{
-			"tag": pulumi.String(mno.Config.Image.Tag),
+			"repository": pulumi.String("bitnamilegacy/minio"),
+			"tag":        pulumi.String(mno.Config.Image.Tag),
 		},
 		"auth": pulumi.Map{
 			"existingSecret":        pulumi.String(mno.Config.Secret.Name),
@@ -147,10 +148,14 @@ func (mno *Minio) createIngress(ctx *pulumi.Context) error {
 	}
 
 	ingressName := "minio-api-ingress"
-	_, err := networkingv1.NewIngress(ctx, ingressName, &networkingv1.IngressArgs{
-		Metadata: mno.createIngressMetadata(ingressName),
-		Spec:     mno.createIngressSpec(),
-	})
+	_, err := networkingv1.NewIngress(
+		ctx,
+		ingressName,
+		&networkingv1.IngressArgs{
+			Metadata: mno.createIngressMetadata(ingressName),
+			Spec:     mno.createIngressSpec(),
+		},
+	)
 
 	return err
 }
@@ -160,10 +165,14 @@ func (mno *Minio) createIngressMetadata(name string) *metav1.ObjectMetaArgs {
 		Name:      pulumi.String(name),
 		Namespace: pulumi.String(mno.Config.Namespace),
 		Labels: pulumi.StringMap{
-			mno.Config.APIIngress.Label.Name: pulumi.String(mno.Config.APIIngress.Label.Value),
+			mno.Config.APIIngress.Label.Name: pulumi.String(
+				mno.Config.APIIngress.Label.Value,
+			),
 		},
 		Annotations: pulumi.StringMap{
-			"nginx.ingress.kubernetes.io/proxy-body-size": pulumi.String(mno.Config.APIIngress.ProxySize),
+			"nginx.ingress.kubernetes.io/proxy-body-size": pulumi.String(
+				mno.Config.APIIngress.ProxySize,
+			),
 		},
 	}
 }
