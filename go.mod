@@ -3,7 +3,7 @@ module github.com/dictybase-docker/cluster-ops
 go 1.25.0
 
 require (
-	cloud.google.com/go/kms v1.24.0
+	cloud.google.com/go/kms v1.25.0
 	cloud.google.com/go/storage v1.59.1
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/deckarep/golang-set/v2 v2.8.0
