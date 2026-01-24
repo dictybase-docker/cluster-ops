@@ -202,3 +202,9 @@ cluster-info:
 [no-cd]
 cluster-dump:
 	kops toolbox dump -v 9 --k8s-resources
+
+# View instance groups in the kops cluster
+# Usage: just instance-groups
+[no-cd]
+instance-groups:
+	kops get ig
