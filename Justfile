@@ -64,11 +64,36 @@ aider:
                    --watch-files
 
 install-asdf-plugins:
-  asdf plugin add gcloud
-  asdf plugin add kubectl
-  asdf plugin add kops
-  asdf plugin add pulumi
-  asdf install
+  asdf plugin add kubectl || true
+  asdf plugin add kops || true
+  asdf plugin add pulumi || true
+  asdf plugin add velero || true
+  asdf plugin add mc || true
+  asdf plugin add gcloud || true
+  asdf install kubectl 1.28.8
+  asdf set kubectl 1.28.8
+  asdf install kops v1.29.2
+  asdf set kops v1.29.2
+  asdf install pulumi 3.108.0
+  asdf set pulumi 3.108.0
+  asdf install velero 1.14.0
+  asdf set velero 1.14.0
+  asdf install mc 2024-02-09T22-18-24Z
+  asdf set mc 2024-02-09T22-18-24Z
+  asdf install gcloud 537.0.0
+  asdf set gcloud 537.0.0
+
+# Install or upgrade a tool version
+# Usage: just install-tool <name> [version]
+install-tool name version="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{version}}" ]; then
+        asdf install {{name}}
+    else
+        asdf install {{name}} {{version}}
+        asdf set {{name}} {{version}}
+    fi
 
 set-env-var name value:
     #!/usr/bin/env bash
@@ -91,16 +116,16 @@ init-kops-cluster project_id bucket_name:
     just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
     # Enable required APIs
     just gcp-api enable-apis {{ project_id }} gcs-files/apis/enabled_apis.txt
-    
-    # Disable unnecessary APIs  
+
+    # Disable unnecessary APIs
     just gcp-api disable-apis {{ project_id }} gcs-files/apis/disable_enabled_apis.txt
-    
+
     # Create kops cluster creator service account
     just gcp-sa create-sa {{ project_id }} kops-cluster-creator gcs-files/roles-permissions/kops-cluster-creator-roles.txt credentials/kops-cluster-creator.json
-    
+
     # Update GOOGLE_APPLICATION_CREDENTIALS env var
     just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
-    
+
     # Set up kops state store and initialize cluster
     just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
@@ -114,16 +139,16 @@ init-kops-cluster project_id bucket_name:
 initialize-pulumi project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     echo "Step 1: Creating Pulumi Manager Service Account Key"
     just gcp-sa create-sa {{ project_id }} pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
-    
+
     echo "Step 2: Setting PULUMI_GCP_CREDENTIALS environment variable"
     export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
-    
+
     echo "Step 3: Creating Key Ring and Key for Pulumi secrets encryption"
     just gcp-kms create-keyring-and-key {{ project_id }} {{ keyring_name }} {{ key_name }} credentials/pulumi-manager.json {{ location }}
-    
+
     echo "Step 4: Initializing Pulumi State Store"
     just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json {{ bucket_name }} "" {{ location }}
     echo "Pulumi deployment environment setup completed successfully!"
@@ -141,7 +166,7 @@ pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_
     #!/usr/bin/env bash
     just initialize-pulumi {{ project_id }} {{ keyring_name }} {{ key_name }} {{ bucket_name }} {{ location }}
     export PULUMI_SECRET_PROVIDER="gcpkms://projects/{{ project_id }}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
-    
+
     echo "Creating Initial Resources"
     just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/initial-resources.txt"
     just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/database-and-storage-resources.txt"
