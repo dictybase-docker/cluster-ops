@@ -84,16 +84,21 @@ install-asdf-plugins:
   asdf set gcloud 537.0.0
 
 # Install or upgrade a tool version
-# Usage: just install-tool <name> [version]
-install-tool name version="":
+# Usage: just install-tool <name> <version>
+install-tool name version:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -z "{{version}}" ]; then
-        asdf install {{name}}
-    else
-        asdf install {{name}} {{version}}
-        asdf set {{name}} {{version}}
+
+    # Check if the tool is in .tool-versions
+    if ! grep -q "^{{name}} " .tool-versions; then
+        echo "Error: Tool '{{name}}' is not defined in .tool-versions file."
+        exit 1
     fi
+
+    echo "Installing {{name}} version {{version}}..."
+    asdf install {{name}} {{version}}
+    asdf set {{name}} {{version}}
+    echo "Successfully installed and set {{name}} {{version}}"
 
 set-env-var name value:
     #!/usr/bin/env bash
