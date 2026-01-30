@@ -1,3 +1,4 @@
+# Modules
 mod gcp-analysis 'just_modules/analysis.justfile'
 mod gcp-sa 'just_modules/sa.justfile'
 mod gcp-role 'just_modules/role.justfile'
@@ -7,6 +8,7 @@ mod gcp-kms 'just_modules/kms.justfile'
 mod gcp-pulumi 'just_modules/pulumi.justfile'
 mod gcp-cluster 'just_modules/cluster.justfile'
 
+# Variables
 dagger_version := "v0.11.9"
 container_module := "github.com/dictybase-docker/dagger-of-dcr/container-image@main"
 bin_path := `mktemp -d`
@@ -19,11 +21,10 @@ dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux
 
 set dotenv-filename := x"${CLUSTER_ENV_FILE:-.env}"
 
-# Run Golang tests using Dagger
-test:
-    dagger -m github.com/dictybase-docker/dagger-of-dcr/golang@main call with-golang-version with-gotest-sum-formatter test --src "."
-
+# Main setup recipe
 setup: install-gha-binary install-dagger-binary
+
+# --- Setup Tools ---
 
 [group('setup-tools')]
 install-gha-binary:
@@ -34,35 +35,7 @@ install-gha-binary:
 install-dagger-binary:
     {{ action_bin }} sd --dagger-version {{ dagger_version }} --dagger-bin-dir {{ bin_path }} --dagger-file {{ dagger_file }}
 
-# ref: Git reference (branch, tag, or commit hash) to use for the build
-# user: Docker Hub username
-# pass: Docker Hub password
-
-# Build and publish the backup image to Docker Hub
-build-publish-backup-image ref user pass: setup
-    #!/usr/bin/env bash
-    set -euxo pipefail
-
-    {{ dagger_bin }} call -m {{ container_module }} \
-    with-ref --ref={{ ref }} \
-    with-repository --repository dictybase-docker/cluster-ops \
-    with-dockerfile --docker-file build/package/Dockerfile \
-    with-image --image database-backup \
-    with-namespace publish-from-repo \
-    --user={{ user }} --password={{ pass }}
-
-# Run aider AI coding assistant with specific configuration
-aider:
-    #!/usr/bin/env bash
-    set -euxo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory()}}/credentials/dcr-experiments-cloud-manager.json"
-    aider --architect --model 'vertex_ai/claude-3-5-sonnet-v2@20241022' \
-                   --no-auto-commits \
-                   --no-auto-lint \
-                   --vim --cache-prompts \
-                   --cache-keepalive-pings 3 \
-                   --watch-files
-
+[group('setup-tools')]
 install-asdf-plugins:
   asdf plugin add kubectl || true
   asdf plugin add kops || true
@@ -85,6 +58,7 @@ install-asdf-plugins:
 
 # Install or upgrade a tool version
 # Usage: just install-tool <name> <version>
+[group('setup-tools')]
 install-tool name version:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -100,6 +74,27 @@ install-tool name version:
     asdf set {{name}} {{version}}
     echo "Successfully installed and set {{name}} {{version}}"
 
+# --- Development & Testing ---
+
+# Run Golang tests using Dagger
+[group('dev-tools')]
+test:
+    dagger -m github.com/dictybase-docker/dagger-of-dcr/golang@main call with-golang-version with-gotest-sum-formatter test --src "."
+
+# Run aider AI coding assistant with specific configuration
+[group('dev-tools')]
+aider:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory()}}/credentials/dcr-experiments-cloud-manager.json"
+    aider --architect --model 'vertex_ai/claude-3-5-sonnet-v2@20241022' \
+                   --no-auto-commits \
+                   --no-auto-lint \
+                   --vim --cache-prompts \
+                   --cache-keepalive-pings 3 \
+                   --watch-files
+
+[group('dev-tools')]
 set-env-var name value:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -115,7 +110,29 @@ set-env-var name value:
     # Verify the service account was created
     echo "Environmental variable {{ name }} has been set to {{ value }}"
 
+# --- Build & Publish ---
+
+# ref: Git reference (branch, tag, or commit hash) to use for the build
+# user: Docker Hub username
+# pass: Docker Hub password
+# Build and publish the backup image to Docker Hub
+[group('build')]
+build-publish-backup-image ref user pass: setup
+    #!/usr/bin/env bash
+    set -euxo pipefail
+
+    {{ dagger_bin }} call -m {{ container_module }} \
+    with-ref --ref={{ ref }} \
+    with-repository --repository dictybase-docker/cluster-ops \
+    with-dockerfile --docker-file build/package/Dockerfile \
+    with-image --image database-backup \
+    with-namespace publish-from-repo \
+    --user={{ user }} --password={{ pass }}
+
+# --- Cluster Operations ---
+
 # Initialize a Kubernetes cluster with kops
+[group('cluster-ops')]
 init-kops-cluster project_id bucket_name:
     # Update GOOGLE_APPLICATION_CREDENTIALS env var
     just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
@@ -134,6 +151,8 @@ init-kops-cluster project_id bucket_name:
     # Set up kops state store and initialize cluster
     just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
+# --- Pulumi Operations ---
+
 # Setup Pulumi deployment environment
 # Parameters:
 #   project_id: GCP project ID
@@ -141,6 +160,7 @@ init-kops-cluster project_id bucket_name:
 #   key_name: Name of the KMS key
 #   bucket_name: Name of the GCS bucket for Pulumi state
 #   location: Google Cloud region (optional, defaults to us-central1)
+[group('pulumi-ops')]
 initialize-pulumi project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -167,6 +187,7 @@ initialize-pulumi project_id keyring_name key_name bucket_name location="us-cent
 #   key_name: Name of the KMS key
 #   bucket_name: Name of the GCS bucket for Pulumi state
 #   location: Google Cloud region (optional, defaults to us-central1)
+[group('pulumi-ops')]
 pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
     just initialize-pulumi {{ project_id }} {{ keyring_name }} {{ key_name }} {{ bucket_name }} {{ location }}
