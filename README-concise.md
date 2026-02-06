@@ -19,7 +19,7 @@ Deploy a Kubernetes cluster on Google Cloud Platform for dictyBase applications.
    ```bash
    just install-asdf-plugins
    ```
-   This installs: [kubectl](https://kubernetes.io/docs/reference/kubectl/), [kops](https://kops.sigs.k8s.io/), [gcloud](https://cloud.google.com/sdk/gcloud), [pulumi](https://www.pulumi.com/).
+   This installs: [kubectl](https://kubernetes.io/docs/reference/kubectl/), [kops](https://kops.sigs.k8s.io/), [gcloud](https://cloud.google.com/sdk/gcloud), [pulumi](https://www.pulumi.com/), [velero](https://velero.io/), and [mc](https://min.io/docs/minio/linux/reference/minio-mc.html).
 
 ## Cluster Setup
 

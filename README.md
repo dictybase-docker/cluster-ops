@@ -36,11 +36,10 @@ Now, to install just, simply run:
 ```
 asdf install just
 ```
-The versions of `just` and the other required binaries used for the project are specified in the `.tool-versions` file, and will be picked up by `asdf`.
 
 ### Remaining binaries
 
-Since `just` is now installed, we can run a single just recipe to install the remaining binaries: 
+Since `just` is now installed, we can run a single just recipe to install the remaining binaries. This will install specific versions of the tools as defined in the `Justfile`:
 
 ```
 just install-asdf-plugins
@@ -52,7 +51,8 @@ This command will install the following binaries:
 - [kops](https://kops.sigs.k8s.io/)
 - [gcloud](https://cloud.google.com/sdk/gcloud)
 - [pulumi](https://www.pulumi.com/docs/)
-- [direnv](https://direnv.net/)
+- [velero](https://velero.io/docs/)
+- [mc (MinIO Client)](https://min.io/docs/minio/linux/reference/minio-mc.html)
 
 ## Environmental Variables
 
