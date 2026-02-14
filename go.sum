@@ -274,8 +274,8 @@ github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2 h1:xJu48+RW+BHHnKtBni6Vj5vKqO
 github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2/go.mod h1:7yCJFC/jnUwFs566f0FAY2iAzc4G1mQP8H6K+40FK4Y=
 github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.25.0 h1:N1qitmrGomEaCPsblqJHaw8Re0cqqox5V+kHsi4EEtk=
 github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.25.0/go.mod h1:ACBJF6+nzUqDeRK+p2OrvykunyeHfvtbyELc6PB38fk=
-github.com/pulumi/pulumi/sdk/v3 v3.219.0 h1:OwTSwk1ZuOI4hQUdSccWuIAuqs4fL/FcppesPOAKHQ8=
-github.com/pulumi/pulumi/sdk/v3 v3.219.0/go.mod h1:ZOBPPC2NZOZf729AdCX+CctfNc5SN6aJh0bdqNdzQC4=
+github.com/pulumi/pulumi/sdk/v3 v3.220.0 h1:TtdlW2VfvBWhFZSvaDN9lSUlSS4gGSdNWdca3RGPsBQ=
+github.com/pulumi/pulumi/sdk/v3 v3.220.0/go.mod h1:UGWJOz25OiFIN0QH79UFij8mffH94TYebKUgy9Wvug0=
 github.com/redis/go-redis/v9 v9.17.3 h1:fN29NdNrE17KttK5Ndf20buqfDZwGNgoUr9qjl1DQx4=
 github.com/redis/go-redis/v9 v9.17.3/go.mod h1:u410H11HMLoB+TP67dz8rL9s6QW2j76l0//kSOd3370=
 github.com/rivo/uniseg v0.1.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
