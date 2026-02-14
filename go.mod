@@ -170,6 +170,6 @@ require (
 	cloud.google.com/go/serviceusage v1.9.7
 	github.com/pulumi/pulumi-command/sdk v1.1.3
 	k8s.io/api v0.35.0
-	k8s.io/apimachinery v0.35.0
+	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.0
 )
