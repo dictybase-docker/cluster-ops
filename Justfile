@@ -8,6 +8,7 @@ mod gcp-kms 'just_modules/kms.justfile'
 mod gcp-pulumi 'just_modules/pulumi.justfile'
 mod gcp-cluster 'just_modules/cluster.justfile'
 mod k3d 'just_modules/k3d.justfile'
+mod arangodb 'just_modules/arangodb.justfile'
 
 # Variables
 dagger_version := "v0.11.9"
