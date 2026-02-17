@@ -7,6 +7,7 @@ mod gcp-image 'just_modules/image.justfile'
 mod gcp-kms 'just_modules/kms.justfile'
 mod gcp-pulumi 'just_modules/pulumi.justfile'
 mod gcp-cluster 'just_modules/cluster.justfile'
+mod k3d 'just_modules/k3d.justfile'
 
 # Variables
 dagger_version := "v0.11.9"
