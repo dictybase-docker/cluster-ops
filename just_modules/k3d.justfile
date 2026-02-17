@@ -19,6 +19,22 @@ create-cluster name=cluster_name port=port_forward path=host_path image=k3s_imag
 delete-cluster name=cluster_name:
     k3d cluster delete {{ name }}
 
+# Stop the cluster
+[group('k3d')]
+stop-cluster name=cluster_name:
+    k3d cluster stop {{ name }}
+
+# Start the cluster
+[group('k3d')]
+start-cluster name=cluster_name:
+    k3d cluster start {{ name }}
+
+# Restart the cluster
+[group('k3d')]
+restart-cluster name=cluster_name:
+    k3d cluster stop {{ name }}
+    k3d cluster start {{ name }}
+
 # List active clusters
 [group('k3d')]
 list-clusters:
