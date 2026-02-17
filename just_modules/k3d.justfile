@@ -20,7 +20,9 @@ delete-cluster name='my-dev-cluster':
 list-clusters:
     k3d cluster list
 
-# Show k3d cluster info
+# Export the kubeconfig for a specific cluster
 [group('k3d')]
-cluster-info:
-    kubectl cluster-info
+export-kubeconfig name='my-dev-cluster' output='kubeconfig.yaml':
+    k3d kubeconfig get {{ name }} > {{ output }}
+    @echo "Kubeconfig exported to {{ output }}"
+
