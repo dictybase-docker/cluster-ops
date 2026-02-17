@@ -1,10 +1,12 @@
 # Create a single-node k3d cluster with persistent storage mapping
 # This maps the host path to /var/lib/rancher/k3s/storage@all for dynamic provisioning
+# Default Kubernetes version is 1.28.8
 [group('k3d')]
-create-cluster name='my-dev-cluster' port='8080:80@loadbalancer' host_path="$HOME/k3d-storage":
+create-cluster name='my-dev-cluster' port='8080:80@loadbalancer' host_path="$HOME/k3d-storage" image='rancher/k3s:v1.28.8-k3s1':
     mkdir -p {{ host_path }}
     k3d cluster create {{ name }} \
       --servers 1 \
+      --image {{ image }} \
       --port "{{ port }}" \
       --volume "{{ host_path }}:/var/lib/rancher/k3s/storage@all"
 
@@ -18,3 +20,7 @@ delete-cluster name='my-dev-cluster':
 list-clusters:
     k3d cluster list
 
+# Show k3d cluster info
+[group('k3d')]
+cluster-info:
+    kubectl cluster-info
