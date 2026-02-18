@@ -36,3 +36,5 @@ scratch
 .env
 .zsh_config
 .tool-versions
+k3d-dev-cluster.yaml
+.claude/settings.local.json
