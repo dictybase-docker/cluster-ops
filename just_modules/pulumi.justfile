@@ -48,6 +48,44 @@ pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1"
         echo "Lifecycle configuration has been applied from {{lifecycle_config}}."
     fi
 
+# Set up Pulumi with local filesystem backend
+# Parameters:
+#   path: The custom folder path to store Pulumi state (default: scratch/pulumi-state)
+[group('pulumi-management')]
+pulumi-local-setup path="scratch/pulumi-state":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{ path }}"
+    pulumi login "file://$(realpath "{{ path }}")"
+    echo "Pulumi has been set up to use local directory {{ path }} as the backend."
+
+# Create a local stack with copied config
+# Usage: just setup-local-stack <project_folder> <new_stack_name> <source_stack> <pass_entry>
+[group('pulumi-management')]
+[no-cd]
+setup-local-stack folder stack="local" from-stack="experiments" pass_entry="pulumi/local-passphrase":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Fetch passphrase from pass
+    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+        exit 1
+    fi
+
+    # 1. Init stack
+    export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
+    cd "{{ folder }}"
+
+    if pulumi stack ls --json | jq -e --arg s "{{ stack }}" 'any(.[]; .name == $s)' > /dev/null 2>&1; then
+        echo "Stack '{{ stack }}' already exists."
+    else
+        echo "Creating stack '{{ stack }}' from '{{ from-stack }}'..."
+        pulumi stack init "{{ stack }}" \
+            --copy-config-from "{{ from-stack }}" \
+            --secrets-provider passphrase
+    fi
+
 # Preview Pulumi changes
 # This target previews Pulumi changes for a specific stack in a given folder
 # Parameters:
