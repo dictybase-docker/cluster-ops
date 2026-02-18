@@ -52,7 +52,7 @@ pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config location="us-central1"
 # Parameters:
 #   path: The custom folder path to store Pulumi state (default: scratch/pulumi-state)
 [group('pulumi-management')]
-pulumi-local-setup path="scratch/pulumi-state":
+pulumi-local-setup path="pulumi-files/local-state":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{ path }}"
