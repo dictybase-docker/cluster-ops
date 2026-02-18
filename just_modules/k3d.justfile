@@ -41,7 +41,8 @@ list-clusters:
     k3d cluster list
 
 # Export the kubeconfig to a file
+[no-cd]
 [group('k3d')]
-export-kubeconfig name=cluster_name output='kubeconfig.yaml':
+export-kubeconfig name=cluster_name output='k3d-dev-cluster.yaml':
     k3d kubeconfig get {{ name }} > {{ output }}
     @echo "Kubeconfig for '{{ name }}' exported to {{ output }}"
