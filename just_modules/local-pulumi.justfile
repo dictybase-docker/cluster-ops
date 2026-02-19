@@ -70,6 +70,44 @@ new-stack folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-loca
         pulumi -C "{{ folder }}" stack init "{{ stack }}" --secrets-provider passphrase
     fi
 
+# Deploy resources for a local stack
+# Parameters:
+#   folder: The folder containing the Pulumi project
+#   stack: The stack to deploy (default: local)
+#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+[group('pulumi-local')]
+[no-cd]
+create-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+        exit 1
+    fi
+
+    export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
+    pulumi -C "{{ folder }}" up -s "{{ stack }}" -f -y
+
+# Destroy resources for a local stack
+# Parameters:
+#   folder: The folder containing the Pulumi project
+#   stack: The stack to destroy (default: local)
+#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+[group('pulumi-local')]
+[no-cd]
+remove-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+        exit 1
+    fi
+
+    export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
+    pulumi -C "{{ folder }}" destroy -s "{{ stack }}" -f -y
+
 # Create a new local stack copied from an existing stack's config
 # Parameters:
 #   folder: The folder containing the Pulumi project
