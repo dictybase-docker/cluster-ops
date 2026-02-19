@@ -5,6 +5,8 @@ host_path    := env_var_or_default("HOME", "/tmp") + "/data/k3d"
 port_forward := "8080:80@loadbalancer"
 
 # Create a single-node k3d cluster with persistent storage mapping
+# Node is labeled kubernetes.io/arch=amd64 to satisfy kube-arangodb's hardcoded
+# amd64 node affinity; containerd still pulls the correct arm64 image at runtime.
 [group('k3d')]
 create-cluster name=cluster_name port=port_forward path=host_path image=k3s_image:
     mkdir -p {{ path }}
@@ -12,7 +14,8 @@ create-cluster name=cluster_name port=port_forward path=host_path image=k3s_imag
       --servers 1 \
       --image {{ image }} \
       --port "{{ port }}" \
-      --volume "{{ path }}:/var/lib/rancher/k3s/storage@all"
+      --volume "{{ path }}:/var/lib/rancher/k3s/storage@all" \
+      --k3s-node-label "kubernetes.io/arch=amd64@server:0"
 
 # Delete the cluster
 [group('k3d')]

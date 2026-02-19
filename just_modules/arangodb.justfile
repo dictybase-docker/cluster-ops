@@ -219,13 +219,6 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     pulumi -C arangodb-single config set --plaintext --path "arangodb-single:properties.secret.name" arangodb-root --stack "{{ stack }}"
     pulumi -C arangodb-single config set --secret --path "arangodb-single:properties.secret.password" "$ROOT_PASSWORD" --stack "{{ stack }}"
 
-    # kube-arangodb operator hardcodes amd64 node affinity for ArangoDB pods.
-    # Relabel the node to appear as amd64 so pods can schedule on arm64 k3d nodes.
-    # containerd selects the correct arm64 image at pull time regardless of this label.
-    echo "Relabeling k3d node to work around arangodb operator amd64 affinity..."
-    NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-    kubectl label node "$NODE" kubernetes.io/arch=amd64 --overwrite
-
     echo "Deploying arangodb-operator..."
     just local-pulumi create-resource arangodb-operator {{ stack }} {{ pass_entry }}
 
