@@ -1,0 +1,6 @@
+encryptionsalt: v1:dxta7g1/PuE=:v1:Ito4loj6HnEgX4VX:HrXdIgXi8cNp9KPbGasC2ISafx4BXg==
+config:
+  storage-class:properties:
+    diskType: local
+    name: dictycr-balanced
+    provisioner: rancher.io/local-path
