@@ -165,3 +165,50 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
     restic restore latest --target "{{ output_dir }}"
 
     echo "Restore complete. Data available in {{ output_dir }}"
+
+# Deploy ArangoDB operator and single instance to local k3d cluster
+# Usage: just arangodb deploy-local-arangodb [stack] [from_stack] [storage_size] [pass_entry] [root_pass_entry]
+[no-cd]
+[group('arangodb')]
+deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi" pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+        exit 1
+    fi
+
+    if ! ROOT_PASSWORD=$(pass show "{{ root_pass_entry }}" | head -n 1); then
+        echo "Error: Failed to retrieve root password from '{{ root_pass_entry }}'"
+        exit 1
+    fi
+
+    KUBECONFIG_FILE=$(mktemp /tmp/k3d-kubeconfig-XXXXXX.yaml)
+    cleanup() {
+        rm -f "$KUBECONFIG_FILE"
+    }
+    trap cleanup EXIT
+
+    echo "Exporting k3d kubeconfig..."
+    just k3d export-kubeconfig k3d-dev-cluster "$KUBECONFIG_FILE"
+    export KUBECONFIG="$KUBECONFIG_FILE"
+
+    echo "Creating local stacks from '{{ from_stack }}'..."
+    just local-pulumi new-stack-from arangodb-operator {{ stack }} {{ from_stack }} {{ pass_entry }}
+    just local-pulumi new-stack-from arangodb-single {{ stack }} {{ from_stack }} {{ pass_entry }}
+
+    echo "Overriding arangodb-single config for local environment..."
+    export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
+    pulumi -C arangodb-single config set --secret \
+        --path arangodb-single:secret.password "$ROOT_PASSWORD" \
+        --stack "{{ stack }}"
+    pulumi -C arangodb-single config set \
+        --path arangodb-single:storage.size "{{ storage_size }}" \
+        --stack "{{ stack }}"
+
+    echo "Deploying arangodb-operator..."
+    just local-pulumi create-resource arangodb-operator {{ stack }} {{ pass_entry }}
+
+    echo "Deploying arangodb-single..."
+    just local-pulumi create-resource arangodb-single {{ stack }} {{ pass_entry }}
