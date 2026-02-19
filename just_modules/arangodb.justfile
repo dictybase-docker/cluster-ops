@@ -171,10 +171,10 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
 
 # Deploy ArangoDB operator and single instance to local k3d cluster
 
-# Usage: just arangodb deploy-local-arangodb [stack] [from_stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]
+# Usage: just arangodb deploy-local-arangodb [stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]
 [group('arangodb')]
 [no-cd]
-deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
+deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -198,18 +198,33 @@ deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi"
     just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
-    echo "Creating local stacks from '{{ from_stack }}'..."
-    just local-pulumi new-stack-from arangodb-operator {{ stack }} {{ from_stack }} {{ pass_entry }}
-    just local-pulumi new-stack-from arangodb-single {{ stack }} {{ from_stack }} {{ pass_entry }}
-
-    echo "Overriding arangodb-single config for local environment..."
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
-    pulumi -C arangodb-single config set --secret \
-        --path arangodb-single:secret.password "$ROOT_PASSWORD" \
-        --stack "{{ stack }}"
-    pulumi -C arangodb-single config set \
-        --path arangodb-single:storage.size "{{ storage_size }}" \
-        --stack "{{ stack }}"
+
+    echo "Creating local stacks..."
+    just local-pulumi new-stack arangodb-operator {{ stack }} {{ pass_entry }}
+    just local-pulumi new-stack arangodb-single {{ stack }} {{ pass_entry }}
+
+    echo "Setting arangodb-operator config..."
+    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.namespace" dev --stack "{{ stack }}"
+    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.deploymentReplication" false --stack "{{ stack }}"
+    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.name" kube-arangodb --stack "{{ stack }}"
+    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.version" 1.2.42 --stack "{{ stack }}"
+    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.repository" https://arangodb.github.io/kube-arangodb --stack "{{ stack }}"
+
+    echo "Setting arangodb-single config..."
+    pulumi -C arangodb-single config set --path "arangodb-single:properties.namespace" dev --stack "{{ stack }}"
+    pulumi -C arangodb-single config set --path "arangodb-single:properties.version" 3.11.6 --stack "{{ stack }}"
+    pulumi -C arangodb-single config set --path "arangodb-single:properties.storage.class" dictycr-balanced --stack "{{ stack }}"
+    pulumi -C arangodb-single config set --path "arangodb-single:properties.storage.size" "{{ storage_size }}" --stack "{{ stack }}"
+    pulumi -C arangodb-single config set --plaintext --path "arangodb-single:properties.secret.name" arangodb-root --stack "{{ stack }}"
+    pulumi -C arangodb-single config set --secret --path "arangodb-single:properties.secret.password" "$ROOT_PASSWORD" --stack "{{ stack }}"
+
+    # kube-arangodb operator hardcodes amd64 node affinity for ArangoDB pods.
+    # Relabel the node to appear as amd64 so pods can schedule on arm64 k3d nodes.
+    # containerd selects the correct arm64 image at pull time regardless of this label.
+    echo "Relabeling k3d node to work around arangodb operator amd64 affinity..."
+    NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+    kubectl label node "$NODE" kubernetes.io/arch=amd64 --overwrite
 
     echo "Deploying arangodb-operator..."
     just local-pulumi create-resource arangodb-operator {{ stack }} {{ pass_entry }}

@@ -50,6 +50,10 @@ func (aro *ArangoDBOperator) Install(ctx *pulumi.Context) error {
 		},
 		Values: pulumi.Map{
 			"operator": pulumi.Map{
+				"architectures": pulumi.Array{
+					pulumi.String("amd64"),
+					pulumi.String("arm64"),
+				},
 				"features": pulumi.Map{
 					"deploymentReplications": pulumi.Bool(
 						aro.Config.DeploymentReplication,
