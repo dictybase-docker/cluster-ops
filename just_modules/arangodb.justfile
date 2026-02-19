@@ -1,7 +1,8 @@
 # Dump a remote ArangoDB database to a local compressed file
+
 # Usage: just arangodb dump-remote-db <db_name> [output_dir] [namespace] [service] [image_tag]
-[no-cd]
 [group('arangodb')]
+[no-cd]
 dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" image_tag="3.11.6":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -88,9 +89,10 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     rm -rf "$DUMP_DIR"
 
 # List restic snapshots from GCS backup repository
+
 # Usage: just arangodb list-restic-snapshots [bucket] [namespace] [latest=7]
-[no-cd]
 [group('arangodb')]
+[no-cd]
 list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" latest="7":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -129,9 +131,10 @@ list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace=
     fi
 
 # Restore the most recent restic snapshot to the scratch folder
+
 # Usage: just arangodb restore-latest-snapshot [bucket] [namespace] [output_dir]
-[no-cd]
 [group('arangodb')]
+[no-cd]
 restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" output_dir="scratch":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -167,10 +170,11 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
     echo "Restore complete. Data available in {{ output_dir }}"
 
 # Deploy ArangoDB operator and single instance to local k3d cluster
-# Usage: just arangodb deploy-local-arangodb [stack] [from_stack] [storage_size] [pass_entry] [root_pass_entry]
-[no-cd]
+
+# Usage: just arangodb deploy-local-arangodb [stack] [from_stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]
 [group('arangodb')]
-deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi" pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
+[no-cd]
+deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -191,7 +195,7 @@ deploy-local-arangodb stack="local" from_stack="experiments" storage_size="20Gi"
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
-    just k3d export-kubeconfig k3d-dev-cluster "$KUBECONFIG_FILE"
+    just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
     echo "Creating local stacks from '{{ from_stack }}'..."
