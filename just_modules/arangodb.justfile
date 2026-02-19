@@ -205,19 +205,21 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     just local-pulumi new-stack arangodb-single {{ stack }} {{ pass_entry }}
 
     echo "Setting arangodb-operator config..."
-    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.namespace" dev --stack "{{ stack }}"
-    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.deploymentReplication" false --stack "{{ stack }}"
-    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.name" kube-arangodb --stack "{{ stack }}"
-    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.version" 1.2.42 --stack "{{ stack }}"
-    pulumi -C arangodb-operator config set --path "arangodb-operator:properties.chart.repository" https://arangodb.github.io/kube-arangodb --stack "{{ stack }}"
+    pulumi -C arangodb-operator config set-all --stack "{{ stack }}" --path \
+        --plaintext "arangodb-operator:properties.namespace=dev" \
+        --plaintext "arangodb-operator:properties.deploymentReplication=false" \
+        --plaintext "arangodb-operator:properties.chart.name=kube-arangodb" \
+        --plaintext "arangodb-operator:properties.chart.version=1.2.42" \
+        --plaintext "arangodb-operator:properties.chart.repository=https://arangodb.github.io/kube-arangodb"
 
     echo "Setting arangodb-single config..."
-    pulumi -C arangodb-single config set --path "arangodb-single:properties.namespace" dev --stack "{{ stack }}"
-    pulumi -C arangodb-single config set --path "arangodb-single:properties.version" 3.11.6 --stack "{{ stack }}"
-    pulumi -C arangodb-single config set --path "arangodb-single:properties.storage.class" dictycr-balanced --stack "{{ stack }}"
-    pulumi -C arangodb-single config set --path "arangodb-single:properties.storage.size" "{{ storage_size }}" --stack "{{ stack }}"
-    pulumi -C arangodb-single config set --plaintext --path "arangodb-single:properties.secret.name" arangodb-root --stack "{{ stack }}"
-    pulumi -C arangodb-single config set --secret --path "arangodb-single:properties.secret.password" "$ROOT_PASSWORD" --stack "{{ stack }}"
+    pulumi -C arangodb-single config set-all --stack "{{ stack }}" --path \
+        --plaintext "arangodb-single:properties.namespace=dev" \
+        --plaintext "arangodb-single:properties.version=3.11.6" \
+        --plaintext "arangodb-single:properties.storage.class=dictycr-balanced" \
+        --plaintext "arangodb-single:properties.storage.size={{ storage_size }}" \
+        --plaintext "arangodb-single:properties.secret.name=arangodb-root" \
+        --secret "arangodb-single:properties.secret.password=$ROOT_PASSWORD"
 
     echo "Deploying arangodb-operator..."
     just local-pulumi create-resource arangodb-operator {{ stack }} {{ pass_entry }}
