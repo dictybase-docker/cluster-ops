@@ -1,0 +1,4 @@
+encryptionsalt: v1:f138zk61L/4=:v1:17qqtCjF7vFTUFIy:HeGtr5P/UR0U7//ShKMwkY0MCGQA1w==
+config:
+  namespace-bootstrap:properties:
+    namespace: dev
