@@ -89,6 +89,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
 
 # List restic snapshots from GCS backup repository
 # Usage: just arangodb list-restic-snapshots [bucket] [namespace] [latest=7]
+[no-cd]
 [group('arangodb')]
 list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" latest="7":
     #!/usr/bin/env bash
@@ -126,3 +127,41 @@ list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace=
         GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_FILE" \
         restic snapshots
     fi
+
+# Restore the most recent restic snapshot to the scratch folder
+# Usage: just arangodb restore-latest-snapshot [bucket] [namespace] [output_dir]
+[no-cd]
+[group('arangodb')]
+restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" output_dir="scratch":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
+    GCS_CREDS_FILE=$(mktemp /tmp/gcs-creds-XXXXXX.json)
+
+    # Fetch kubeconfig for the remote cluster from kops state store
+    echo "Fetching kubeconfig from kops state store..."
+    kops export kubeconfig --kubeconfig="$KUBECONFIG_FILE" --admin=24h
+
+    # Cleanup function
+    cleanup() {
+        echo "Removing temporary files..."
+        rm -f "$KUBECONFIG_FILE" "$GCS_CREDS_FILE"
+    }
+    trap cleanup EXIT
+
+    echo "Fetching restic password from cluster..."
+    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.resticPass}' | base64 -d)
+
+    echo "Fetching GCS credentials from cluster..."
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
+
+    mkdir -p "{{ output_dir }}"
+
+    echo "Restoring latest snapshot to {{ output_dir }}..."
+    RESTIC_REPOSITORY="gs:{{ bucket }}:/" \
+    RESTIC_PASSWORD="$RESTIC_PASSWORD" \
+    GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_FILE" \
+    restic restore latest --target "{{ output_dir }}"
+
+    echo "Restore complete. Data available in {{ output_dir }}"
