@@ -1,12 +1,13 @@
 # Dump a remote ArangoDB database to a local compressed file
 # Usage: just arangodb dump-remote-db <db_name> [output_dir] [namespace] [service] [image_tag]
+[no-cd]
 [group('arangodb')]
 dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" image_tag="3.11.6":
     #!/usr/bin/env bash
     set -euo pipefail
 
     # Configuration
-    LOCAL_PORT=8529
+    LOCAL_PORT=9255
     REMOTE_PORT=8529
     TIMESTAMP=$(date +%Y%m%d-%H%M%S)
     DUMP_DIR="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}"
@@ -65,14 +66,8 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     echo "Starting dump of database '{{ db_name }}'..."
     mkdir -p "$DUMP_DIR"
 
-    # Determine Docker network flags based on OS
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        DOCKER_NET_FLAGS="--add-host=host.docker.internal:host-gateway"
-        ENDPOINT="tcp://host.docker.internal:${LOCAL_PORT}"
-    else
-        DOCKER_NET_FLAGS="--net=host"
-        ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
-    fi
+    DOCKER_NET_FLAGS="--net=host"
+    ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
 
     echo "Running arangodump in Docker container..."
     docker run --rm $DOCKER_NET_FLAGS \
