@@ -11,10 +11,24 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     TIMESTAMP=$(date +%Y%m%d-%H%M%S)
     DUMP_DIR="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}"
     ARCHIVE_FILE="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}.tar.gz"
+    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
+
+    # Fetch kubeconfig for the remote cluster from kops state store
+    echo "Fetching kubeconfig from kops state store..."
+    kops export kubeconfig --kubeconfig="$KUBECONFIG_FILE" --admin=24h
+
+    # Cleanup function
+    cleanup() {
+        echo "Stopping port-forward (PID: $PF_PID)..."
+        kill $PF_PID || true
+        echo "Removing temporary kubeconfig..."
+        rm -f "$KUBECONFIG_FILE"
+    }
+    trap cleanup EXIT
 
     # Validation
     echo "Validating kubectl connectivity..."
-    if ! kubectl cluster-info > /dev/null 2>&1; then
+    if ! KUBECONFIG="$KUBECONFIG_FILE" kubectl cluster-info > /dev/null 2>&1; then
         echo "Error: kubectl is not working or cannot connect to the cluster."
         exit 1
     fi
@@ -23,22 +37,15 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     mkdir -p "{{ output_dir }}"
 
     echo "Fetching credentials from secret 'backend'..."
-    DB_USER=$(kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.user}' | base64 -d)
-    PASSWORD=$(kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.password}' | base64 -d)
+    DB_USER=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.user}' | base64 -d)
+    PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.password}' | base64 -d)
 
     echo "Starting port-forward to service/{{ service }}..."
     # Kill any existing port-forward on this port to avoid conflicts
     lsof -ti:8529 | xargs kill -9 2>/dev/null || true
-    
-    kubectl port-forward -n {{ namespace }} service/{{ service }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
-    PF_PID=$!
 
-    # Cleanup function
-    cleanup() {
-        echo "Stopping port-forward (PID: $PF_PID)..."
-        kill $PF_PID || true
-    }
-    trap cleanup EXIT
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ namespace }} service/{{ service }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
+    PF_PID=$!
 
     # Wait for port-forward
     echo "Waiting for connection to localhost:${LOCAL_PORT}..."
