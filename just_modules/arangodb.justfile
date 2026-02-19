@@ -86,3 +86,43 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
 
     echo "Cleaning up temporary files..."
     rm -rf "$DUMP_DIR"
+
+# List restic snapshots from GCS backup repository
+# Usage: just arangodb list-restic-snapshots [bucket] [namespace] [latest=7]
+[group('arangodb')]
+list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" latest="7":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
+    GCS_CREDS_FILE=$(mktemp /tmp/gcs-creds-XXXXXX.json)
+
+    # Fetch kubeconfig for the remote cluster from kops state store
+    echo "Fetching kubeconfig from kops state store..."
+    kops export kubeconfig --kubeconfig="$KUBECONFIG_FILE" --admin=24h
+
+    # Cleanup function
+    cleanup() {
+        echo "Removing temporary files..."
+        rm -f "$KUBECONFIG_FILE" "$GCS_CREDS_FILE"
+    }
+    trap cleanup EXIT
+
+    echo "Fetching restic password from cluster..."
+    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.resticPass}' | base64 -d)
+
+    echo "Fetching GCS credentials from cluster..."
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
+
+    echo "Listing restic snapshots in gs://{{ bucket }}..."
+    if [[ -n "{{ latest }}" ]]; then
+        RESTIC_REPOSITORY="gs:{{ bucket }}:/" \
+        RESTIC_PASSWORD="$RESTIC_PASSWORD" \
+        GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_FILE" \
+        restic snapshots | { head -2; tail -n $(( {{ latest }} + 1 )); }
+    else
+        RESTIC_REPOSITORY="gs:{{ bucket }}:/" \
+        RESTIC_PASSWORD="$RESTIC_PASSWORD" \
+        GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_FILE" \
+        restic snapshots
+    fi
