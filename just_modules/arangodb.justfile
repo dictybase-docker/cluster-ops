@@ -169,6 +169,94 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
 
     echo "Restore complete. Data available in {{ output_dir }}"
 
+# Restore arangodump databases into the local k3d ArangoDB instance
+#
+# Discovers the ArangoDB service name dynamically (pattern: arangodb-single-<id>),
+# port-forwards to it, then runs arangorestore via Docker.
+#
+# Usage: just arangodb restore-local-arangodb [input_dir] [namespace] [image_tag] [cluster_name] [root_pass]
+# Note: the local ArangoDB bootstrap does not set the root password, so root_pass defaults to empty.
+[group('arangodb')]
+[no-cd]
+restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag="3.11.6" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` root_pass="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    LOCAL_PORT=9529
+    REMOTE_PORT=8529
+    KUBECONFIG_FILE=$(mktemp /tmp/k3d-kubeconfig-XXXXXX.yaml)
+    ROOT_PASS="{{ root_pass }}"
+
+    cleanup() {
+        if [[ -n "${PF_PID:-}" ]]; then
+            echo "Stopping port-forward (PID: $PF_PID)..."
+            kill "$PF_PID" || true
+        fi
+        rm -f "$KUBECONFIG_FILE"
+    }
+    trap cleanup EXIT
+
+    echo "Exporting k3d kubeconfig..."
+    just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
+    export KUBECONFIG="$KUBECONFIG_FILE"
+
+    echo "Discovering ArangoDB service in namespace '{{ namespace }}'..."
+    ARANGO_SVC=$(kubectl get svc -n {{ namespace }} --no-headers \
+        -o custom-columns=":metadata.name" \
+        | grep "^arangodb-single-" | head -n1)
+    if [[ -z "$ARANGO_SVC" ]]; then
+        echo "Error: No service matching 'arangodb-single-*' found in namespace '{{ namespace }}'"
+        exit 1
+    fi
+    echo "Found service: $ARANGO_SVC"
+
+    lsof -ti:${LOCAL_PORT} | xargs kill -9 2>/dev/null || true
+
+    echo "Starting port-forward to service/$ARANGO_SVC..."
+    kubectl port-forward -n {{ namespace }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
+    PF_PID=$!
+
+    echo "Waiting for connection to localhost:${LOCAL_PORT}..."
+    for i in {1..30}; do
+        if nc -z localhost ${LOCAL_PORT} 2>/dev/null; then
+            echo "Port-forward established."
+            break
+        fi
+        sleep 1
+    done
+
+    if ! nc -z localhost ${LOCAL_PORT} 2>/dev/null; then
+        echo "Error: Failed to establish port-forward to $ARANGO_SVC."
+        exit 1
+    fi
+
+    if [[ "$(uname)" == "Darwin" ]]; then
+        ENDPOINT="tcp://host.docker.internal:${LOCAL_PORT}"
+    else
+        ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
+    fi
+
+    # Temporarily hide lost+found — it's a filesystem artifact, not a real database
+    DUMP_DIR="${PWD}/{{ input_dir }}"
+    if [[ -d "$DUMP_DIR/lost+found" ]]; then
+        mv "$DUMP_DIR/lost+found" "$DUMP_DIR/.lost+found.skip"
+        trap 'mv "$DUMP_DIR/.lost+found.skip" "$DUMP_DIR/lost+found" 2>/dev/null; cleanup' EXIT
+    fi
+
+    echo "Restoring databases from '{{ input_dir }}'..."
+    docker run --rm --net=host \
+        -v "${DUMP_DIR}:/dump" \
+        arangodb/arangodb:{{ image_tag }} \
+        arangorestore \
+        --server.endpoint "$ENDPOINT" \
+        --server.username root \
+        --server.password "$ROOT_PASS" \
+        --input-directory /dump \
+        --all-databases true \
+        --create-database true
+
+    echo "Restore complete."
+
 # Deploy ArangoDB operator and single instance to local k3d cluster
 
 # Usage: just arangodb deploy-local-arangodb [stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]
