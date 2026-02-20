@@ -1,0 +1,15 @@
+encryptionsalt: v1:u3ImGtjKNKY=:v1:kDLSLL+JUi/k0wFa:gsxwYFU5AzBjPGY/xPSMh3dhyHVnFA==
+config:
+  modware-stock:properties:
+    appName: stock
+    arangodbSecret:
+      name: backend
+      passkey: password
+      userkey: user
+    command: start-server
+    image:
+      name: ghcr.io/dictybase/modware-stock
+      tag: 92ec242
+    logLevel: debug
+    namespace: dev
+    port: 9345
