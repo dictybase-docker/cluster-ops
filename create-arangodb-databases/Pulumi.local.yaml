@@ -1,0 +1,26 @@
+encryptionsalt: v1:+mtTKWdVfK4=:v1:2/PcePrOpC3Ff/b+:8T+oZY/aqmel0TCLLGc0wfpmPYHjEQ==
+config:
+  create-arangodb-databases:properties:
+    arangodbCredentials:
+      name: arangodb-pass
+      passkey: password
+    arangodbSecret:
+      name: backend
+      pass:
+        secure: v1:POlZnffJs8gVBjdB:MnjWGmGigR0kESz7jMSQvDWrzxWt0ITigo9EYXOx7LuTazKMifqwECu7XDLJGOPIkPh6Ri6iCvxgnpgV
+      passkey: password
+      user: dictycr
+      userkey: user
+    databases:
+      - annotation
+      - order
+      - stock
+      - content
+      - cgm_ddb
+      - chado
+      - annofeature
+    grant: rw
+    image:
+      name: ghcr.io/dictybase-docker/arangoadmin
+      tag: b1e2bd9
+    namespace: dev
