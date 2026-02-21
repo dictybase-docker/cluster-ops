@@ -1,0 +1,15 @@
+encryptionsalt: v1:eO48nbenKNk=:v1:OVzqUdD7qCifNu5F:TfZ7zjqHJ1o6dmzUwNtFJ9D4+ZU5gA==
+config:
+  modware-annotation:properties:
+    appName: annotation
+    arangodbSecret:
+      name: backend
+      passKey: password
+      userKey: user
+    command: start-server
+    image:
+      name: ghcr.io/dictybase/modware-annotation
+      tag: 6fbd5f7
+    logLevel: info
+    namespace: dev
+    port: 9250
