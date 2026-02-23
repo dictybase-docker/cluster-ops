@@ -1,17 +1,21 @@
-secretsprovider: passphrase
+encryptionsalt: v1:RPtjiQz+y34=:v1:YRFj1XUCNDTPcKSJ:r/ieWwZd3mAiWkutWHjAA76dxjB5hw==
 config:
   minio:properties:
     chart:
-      name: bitnami/minio
-      repository: https://charts.bitnami.com/bitnami
-      version: 14.7.10
+      name: minio
+      repository: https://repo.broadcom.com/bitnami-files/
+      version: 17.0.21
     image:
       tag: "2024.8.3"
     namespace: dev
     secret:
       name: minio
       passKey: pass
+      password:
+        secure: v1:Gdp3SCE+47bGPfqy:L6So1kW/9smcR863jW5q4gyMazYXLHuLk9QPT0xvOxzDhBIy1oN7zktDQQbCD1IVj1oiF0qk2aDBLFqI4Do6RUio7ik=
       userKey: user
+      userName:
+        secure: v1:X31YAbEi1uvnQOb8:++kc81a0nRR/2VrxXLeuQlWhlUBBBJKqUUpMzA==
     storage:
       class: dictycr-balanced
       size: 15Gi
