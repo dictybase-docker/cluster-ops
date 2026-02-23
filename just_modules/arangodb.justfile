@@ -236,11 +236,14 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
         ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
     fi
 
-    # Temporarily hide lost+found — it's a filesystem artifact, not a real database
+    # Temporarily move lost+found out of the dump dir — it's a filesystem artifact,
+    # not a real database, and ArangoDB rejects it as an illegal name.
     DUMP_DIR="${PWD}/{{ input_dir }}"
+    LOST_FOUND_TMP=""
     if [[ -d "$DUMP_DIR/lost+found" ]]; then
-        mv "$DUMP_DIR/lost+found" "$DUMP_DIR/.lost+found.skip"
-        trap 'mv "$DUMP_DIR/.lost+found.skip" "$DUMP_DIR/lost+found" 2>/dev/null; cleanup' EXIT
+        LOST_FOUND_TMP=$(mktemp -d /tmp/lost+found-XXXXXX)
+        mv "$DUMP_DIR/lost+found" "$LOST_FOUND_TMP/lost+found"
+        trap 'mv "$LOST_FOUND_TMP/lost+found" "$DUMP_DIR/lost+found" 2>/dev/null; rm -rf "$LOST_FOUND_TMP"; cleanup' EXIT
     fi
 
     echo "Restoring databases from '{{ input_dir }}'..."
