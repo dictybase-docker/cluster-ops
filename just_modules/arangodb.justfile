@@ -260,6 +260,18 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
 
     echo "Restore complete."
 
+    echo "Restarting ArangoDB pod to apply changes..."
+    ARANGO_POD=$(kubectl get pod -n {{ namespace }} -l app=arangodb,role=single -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [[ -n "$ARANGO_POD" ]]; then
+        echo "Found pod $ARANGO_POD, deleting to restart..."
+        kubectl delete pod "$ARANGO_POD" -n {{ namespace }}
+        echo "Waiting for new pod to be ready..."
+        kubectl wait --for=condition=Ready pod -l app=arangodb,role=single -n {{ namespace }} --timeout=180s
+        echo "ArangoDB pod restarted successfully."
+    else
+        echo "Warning: Could not find ArangoDB pod to restart."
+    fi
+
 # Deploy ArangoDB operator and single instance to local k3d cluster
 
 # Usage: just arangodb deploy-local-arangodb [stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]

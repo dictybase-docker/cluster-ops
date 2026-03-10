@@ -9,7 +9,7 @@ config:
     command: start-server
     image:
       name: ghcr.io/dictybase/modware-stock
-      tag: 92ec242
+      tag: 8d05ad4
     logLevel: debug
     namespace: dev
     port: 9345
