@@ -40,3 +40,7 @@ k3d-dev-cluster.yaml
 .claude/settings.local.json
 just_modules/pulumi-files/local-state/.pulumi
 pulumi-files/local-state/.pulumi
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
