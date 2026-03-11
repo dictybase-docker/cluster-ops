@@ -80,7 +80,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
         --server.password "$PASSWORD" \
         --output-directory /dump \
         --server.database "{{ db_name }}" \
-        --include-system-collections true
+        --include-system-collections
 
     echo "Compressing dump..."
     tar -czf "$ARCHIVE_FILE" -C "$(dirname "$DUMP_DIR")" "$(basename "$DUMP_DIR")"
@@ -257,6 +257,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
         --server.password "$ROOT_PASS" \
         --input-directory /dump \
         --all-databases true \
+        --include-system-collections \
         --create-database true
 
     echo "Restore complete."
