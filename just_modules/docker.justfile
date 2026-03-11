@@ -13,6 +13,7 @@ build-args go_ver arango_ver restic_ver:
 
 # Build the backup docker image for the target platform
 [group('docker')]
+[no-cd]
 build-backup tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
     docker buildx build --platform {{ platform }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
@@ -20,6 +21,7 @@ build-backup tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
 
 # Build for GitHub Container Registry
 [group('docker')]
+[no-cd]
 build-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
     docker buildx build --platform {{ platform }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
@@ -27,6 +29,7 @@ build-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.1
 
 # Push to GitHub Container Registry
 [group('docker')]
+[no-cd]
 push-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
     echo $GITHUB_REGISTRY_TOKEN | docker login ghcr.io -u {{ github_user }} --password-stdin
     docker buildx build --platform {{ platform }} \
@@ -35,6 +38,7 @@ push-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17
 
 # Build and push multi-arch image (amd64 + arm64) to Docker Hub
 [group('docker')]
+[no-cd]
 push-backup-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
     docker buildx build --platform {{ platform_multi }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
@@ -42,6 +46,7 @@ push-backup-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.1
 
 # Push multi-arch image to GitHub Container Registry
 [group('docker')]
+[no-cd]
 push-backup-ghcr-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
     echo $GITHUB_REGISTRY_TOKEN | docker login ghcr.io -u {{ github_user }} --password-stdin
     docker buildx build --platform {{ platform_multi }} \
