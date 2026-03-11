@@ -65,3 +65,6 @@
 # - linear.api-key
 # - github.org
 # - github.repo
+#
+backup:  
+  git-push: false
