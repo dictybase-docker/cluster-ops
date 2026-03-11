@@ -79,7 +79,8 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
         --server.username "$DB_USER" \
         --server.password "$PASSWORD" \
         --output-directory /dump \
-        --server.database "{{ db_name }}"
+        --server.database "{{ db_name }}" \
+        --include-system-collections true
 
     echo "Compressing dump..."
     tar -czf "$ARCHIVE_FILE" -C "$(dirname "$DUMP_DIR")" "$(basename "$DUMP_DIR")"
@@ -260,17 +261,17 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
 
     echo "Restore complete."
 
-    echo "Restarting ArangoDB pod to apply changes..."
-    ARANGO_POD=$(kubectl get pod -n {{ namespace }} -l app=arangodb,role=single -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    if [[ -n "$ARANGO_POD" ]]; then
-        echo "Found pod $ARANGO_POD, deleting to restart..."
-        kubectl delete pod "$ARANGO_POD" -n {{ namespace }}
-        echo "Waiting for new pod to be ready..."
-        kubectl wait --for=condition=Ready pod -l app=arangodb,role=single -n {{ namespace }} --timeout=180s
-        echo "ArangoDB pod restarted successfully."
-    else
-        echo "Warning: Could not find ArangoDB pod to restart."
-    fi
+    # echo "Restarting ArangoDB pod to apply changes..."
+    # ARANGO_POD=$(kubectl get pod -n {{ namespace }} -l app=arangodb,role=single -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    # if [[ -n "$ARANGO_POD" ]]; then
+    #     echo "Found pod $ARANGO_POD, deleting to restart..."
+    #     kubectl delete pod "$ARANGO_POD" -n {{ namespace }}
+    #     echo "Waiting for new pod to be ready..."
+    #     kubectl wait --for=condition=Ready pod -l app=arangodb,role=single -n {{ namespace }} --timeout=180s
+    #     echo "ArangoDB pod restarted successfully."
+    # else
+    #     echo "Warning: Could not find ArangoDB pod to restart."
+    # fi
 
 # Deploy ArangoDB operator and single instance to local k3d cluster
 
