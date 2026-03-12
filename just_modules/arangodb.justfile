@@ -13,7 +13,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     TIMESTAMP=$(date +%Y%m%d-%H%M%S)
     DUMP_DIR="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}"
     ARCHIVE_FILE="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}.tar.gz"
-    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
+    KUBECONFIG_FILE=$(mktemp -t kubeconfig)
 
     # Fetch kubeconfig for the remote cluster from kops state store
     echo "Fetching kubeconfig from kops state store..."
@@ -98,8 +98,8 @@ list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace=
     #!/usr/bin/env bash
     set -euo pipefail
 
-    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
-    GCS_CREDS_FILE=$(mktemp /tmp/gcs-creds-XXXXXX.json)
+    KUBECONFIG_FILE=$(mktemp -t kubeconfig)
+    GCS_CREDS_FILE=$(mktemp -t gcs-creds)
 
     # Fetch kubeconfig for the remote cluster from kops state store
     echo "Fetching kubeconfig from kops state store..."
@@ -140,8 +140,8 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
     #!/usr/bin/env bash
     set -euo pipefail
 
-    KUBECONFIG_FILE=$(mktemp /tmp/kubeconfig-XXXXXX.yaml)
-    GCS_CREDS_FILE=$(mktemp /tmp/gcs-creds-XXXXXX.json)
+    KUBECONFIG_FILE=$(mktemp -t kubeconfig)
+    GCS_CREDS_FILE=$(mktemp -t gcs-creds)
 
     # Fetch kubeconfig for the remote cluster from kops state store
     echo "Fetching kubeconfig from kops state store..."
@@ -185,7 +185,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
 
     LOCAL_PORT=9529
     REMOTE_PORT=8529
-    KUBECONFIG_FILE=$(mktemp /tmp/k3d-kubeconfig-XXXXXX.yaml)
+    KUBECONFIG_FILE=$(mktemp -t k3d-kubeconfig)
     ROOT_PASS="{{ root_pass }}"
 
     cleanup() {
@@ -293,7 +293,7 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
         exit 1
     fi
 
-    KUBECONFIG_FILE=$(mktemp /tmp/k3d-kubeconfig-XXXXXX.yaml)
+    KUBECONFIG_FILE=$(mktemp -t k3d-kubeconfig)
     cleanup() {
         rm -f "$KUBECONFIG_FILE"
     }
