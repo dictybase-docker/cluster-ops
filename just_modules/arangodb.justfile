@@ -175,31 +175,39 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
 # Discovers the ArangoDB service name dynamically (pattern: arangodb-single-<id>),
 # port-forwards to it, then runs arangorestore via Docker.
 #
-# Usage: just arangodb restore-local-arangodb [input_dir] [namespace] [image_tag] [cluster_name] [root_pass]
-# Note: the local ArangoDB bootstrap does not set the root password, so root_pass defaults to empty.
+# Usage: just arangodb restore-local-arangodb [input_dir] [namespace] [image_tag] [cluster_name]
+# Root password is read from the 'arangodb-root' k8s secret; after restore the operator JWT resets it back.
 [group('arangodb')]
 [no-cd]
-restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag="3.11.6" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` root_pass="":
+restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag="3.11.6" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}`:
     #!/usr/bin/env bash
     set -euo pipefail
 
     LOCAL_PORT=9529
     REMOTE_PORT=8529
     KUBECONFIG_FILE=$(mktemp -t k3d-kubeconfig)
-    ROOT_PASS="{{ root_pass }}"
+    JWT_FILE=""
 
     cleanup() {
         if [[ -n "${PF_PID:-}" ]]; then
             echo "Stopping port-forward (PID: $PF_PID)..."
             kill "$PF_PID" || true
         fi
-        rm -f "$KUBECONFIG_FILE"
+        rm -f "$KUBECONFIG_FILE" "${JWT_FILE:-}"
     }
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
     just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
+
+    echo "Reading desired root password from 'arangodb-root' secret..."
+    NEW_ROOT_PASS=$(kubectl get secret arangodb-root -n {{ namespace }} \
+        -o jsonpath='{.data.password}' | base64 -d)
+    if [[ -z "$NEW_ROOT_PASS" ]]; then
+        echo "Error: 'arangodb-root' secret has an empty password field."
+        exit 1
+    fi
 
     echo "Discovering ArangoDB service in namespace '{{ namespace }}'..."
     ARANGO_SVC=$(kubectl get svc -n {{ namespace }} --no-headers \
@@ -247,20 +255,38 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
         trap 'mv "$LOST_FOUND_TMP/lost+found" "$DUMP_DIR/lost+found" 2>/dev/null; rm -rf "$LOST_FOUND_TMP"; cleanup' EXIT
     fi
 
+    echo "Fetching operator JWT secret for superuser access..."
+    JWT_FILE=$(mktemp -t arangodb-jwt)
+    kubectl get secret arangodb-jwt -n {{ namespace }} \
+        -o jsonpath='{.data.token}' | base64 -d > "$JWT_FILE"
+
     echo "Restoring databases from '{{ input_dir }}'..."
     docker run --rm --net=host \
         -v "${DUMP_DIR}:/dump" \
+        -v "${JWT_FILE}:/jwt.secret:ro" \
         arangodb/arangodb:{{ image_tag }} \
         arangorestore \
         --server.endpoint "$ENDPOINT" \
-        --server.username root \
-        --server.password "$ROOT_PASS" \
+        --server.jwt-secret-keyfile /jwt.secret \
         --input-directory /dump \
         --all-databases true \
         --include-system-collections \
         --create-database true
 
     echo "Restore complete."
+
+    echo "Resetting root password to local value from 'arangodb-root' secret..."
+    docker run --rm \
+        -v "${JWT_FILE}:/jwt.secret:ro" \
+        -e "ARANGO_NEW_PASS=${NEW_ROOT_PASS}" \
+        arangodb/arangodb:{{ image_tag }} \
+        arangosh \
+        --server.endpoint "$ENDPOINT" \
+        --server.jwt-secret-keyfile /jwt.secret \
+        --javascript.execute-string \
+            "require('@arangodb/users').update('root', process.env.ARANGO_NEW_PASS); print('Root password reset successfully.');"
+
+    echo "Root password has been reset to the local value."
 
     # echo "Restarting ArangoDB pod to apply changes..."
     # ARANGO_POD=$(kubectl get pod -n {{ namespace }} -l app=arangodb,role=single -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
