@@ -186,14 +186,19 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     LOCAL_PORT=9529
     REMOTE_PORT=8529
     KUBECONFIG_FILE=$(mktemp -t k3d-kubeconfig)
-    JWT_FILE=""
+    JWT_FILE=$(mktemp -t arangodb-jwt)
+    DUMP_DIR="${PWD}/{{ input_dir }}"
+    LOST_FOUND_TMP=""
+    PF_PID=""
 
+    # Single cleanup covers all resources — no trap override needed
     cleanup() {
-        if [[ -n "${PF_PID:-}" ]]; then
-            echo "Stopping port-forward (PID: $PF_PID)..."
-            kill "$PF_PID" || true
+        [[ -n "$PF_PID" ]] && { echo "Stopping port-forward (PID: $PF_PID)..."; kill "$PF_PID" 2>/dev/null || true; }
+        if [[ -n "$LOST_FOUND_TMP" ]]; then
+            mv "$LOST_FOUND_TMP/lost+found" "$DUMP_DIR/lost+found" 2>/dev/null || true
+            rm -rf "$LOST_FOUND_TMP"
         fi
-        rm -f "$KUBECONFIG_FILE" "${JWT_FILE:-}"
+        rm -f "$KUBECONFIG_FILE" "$JWT_FILE"
     }
     trap cleanup EXIT
 
@@ -233,35 +238,27 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
         fi
         sleep 1
     done
-
     if ! nc -z localhost ${LOCAL_PORT} 2>/dev/null; then
         echo "Error: Failed to establish port-forward to $ARANGO_SVC."
         exit 1
     fi
 
-    if [[ "$(uname)" == "Darwin" ]]; then
-        ENDPOINT="tcp://host.docker.internal:${LOCAL_PORT}"
-    else
-        ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
-    fi
+    # Docker networking set by just os() at parse time — no runtime uname needed
+    DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
+    ENDPOINT="tcp://{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}:${LOCAL_PORT}"
 
-    # Temporarily move lost+found out of the dump dir — it's a filesystem artifact,
-    # not a real database, and ArangoDB rejects it as an illegal name.
-    DUMP_DIR="${PWD}/{{ input_dir }}"
-    LOST_FOUND_TMP=""
+    # Temporarily move lost+found — it's a filesystem artifact ArangoDB rejects
     if [[ -d "$DUMP_DIR/lost+found" ]]; then
         LOST_FOUND_TMP=$(mktemp -d /tmp/lost+found-XXXXXX)
         mv "$DUMP_DIR/lost+found" "$LOST_FOUND_TMP/lost+found"
-        trap 'mv "$LOST_FOUND_TMP/lost+found" "$DUMP_DIR/lost+found" 2>/dev/null; rm -rf "$LOST_FOUND_TMP"; cleanup' EXIT
     fi
 
     echo "Fetching operator JWT secret for superuser access..."
-    JWT_FILE=$(mktemp -t arangodb-jwt)
     kubectl get secret arangodb-jwt -n {{ namespace }} \
         -o jsonpath='{.data.token}' | base64 -d > "$JWT_FILE"
 
     echo "Restoring databases from '{{ input_dir }}'..."
-    docker run --rm --net=host \
+    docker run --rm $DOCKER_NET_FLAGS \
         -v "${DUMP_DIR}:/dump" \
         -v "${JWT_FILE}:/jwt.secret:ro" \
         arangodb/arangodb:{{ image_tag }} \
@@ -276,7 +273,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     echo "Restore complete."
 
     echo "Resetting root password to local value from 'arangodb-root' secret..."
-    docker run --rm \
+    docker run --rm $DOCKER_NET_FLAGS \
         -v "${JWT_FILE}:/jwt.secret:ro" \
         -e "ARANGO_NEW_PASS=${NEW_ROOT_PASS}" \
         arangodb/arangodb:{{ image_tag }} \
@@ -287,18 +284,6 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
             "require('@arangodb/users').update('root', process.env.ARANGO_NEW_PASS); print('Root password reset successfully.');"
 
     echo "Root password has been reset to the local value."
-
-    # echo "Restarting ArangoDB pod to apply changes..."
-    # ARANGO_POD=$(kubectl get pod -n {{ namespace }} -l app=arangodb,role=single -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    # if [[ -n "$ARANGO_POD" ]]; then
-    #     echo "Found pod $ARANGO_POD, deleting to restart..."
-    #     kubectl delete pod "$ARANGO_POD" -n {{ namespace }}
-    #     echo "Waiting for new pod to be ready..."
-    #     kubectl wait --for=condition=Ready pod -l app=arangodb,role=single -n {{ namespace }} --timeout=180s
-    #     echo "ArangoDB pod restarted successfully."
-    # else
-    #     echo "Warning: Could not find ArangoDB pod to restart."
-    # fi
 
 # Deploy ArangoDB operator and single instance to local k3d cluster
 
