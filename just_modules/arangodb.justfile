@@ -1,3 +1,38 @@
+# ── private helpers ──────────────────────────────────────────────────────────
+
+# Waits for a TCP port to accept connections
+[group('arangodb')]
+[no-cd]
+_wait-for-port port retries="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for i in $(seq 1 {{ retries }}); do
+        if nc -z localhost {{ port }} 2>/dev/null; then
+            echo "Port-forward established on localhost:{{ port }}."
+            exit 0
+        fi
+        sleep 1
+    done
+    echo "Error: localhost:{{ port }} did not open after {{ retries }}s."
+    exit 1
+
+# Discovers the arangodb-single-* service name in a namespace
+[group('arangodb')]
+[no-cd]
+_discover-arango-svc namespace="dev":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SVC=$(kubectl get svc -n {{ namespace }} --no-headers \
+        -o custom-columns=":metadata.name" \
+        | grep "^arangodb-single-" | head -n1)
+    if [[ -z "$SVC" ]]; then
+        echo "Error: No service matching 'arangodb-single-*' found in namespace '{{ namespace }}'" >&2
+        exit 1
+    fi
+    echo "$SVC"
+
+# ── public recipes ────────────────────────────────────────────────────────────
+
 # Dump a remote ArangoDB database to a local compressed file
 
 # Usage: just arangodb dump-remote-db <db_name> [output_dir] [namespace] [service] [image_tag]
@@ -49,20 +84,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ namespace }} service/{{ service }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
-    # Wait for port-forward
-    echo "Waiting for connection to localhost:${LOCAL_PORT}..."
-    for i in {1..30}; do
-        if nc -z localhost $LOCAL_PORT 2>/dev/null; then
-            echo "Port-forward established."
-            break
-        fi
-        sleep 1
-    done
-
-    if ! nc -z localhost $LOCAL_PORT 2>/dev/null; then
-        echo "Error: Failed to establish port-forward."
-        exit 1
-    fi
+    just arangodb _wait-for-port ${LOCAL_PORT}
 
     echo "Starting dump of database '{{ db_name }}'..."
     mkdir -p "$DUMP_DIR"
@@ -215,13 +237,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     fi
 
     echo "Discovering ArangoDB service in namespace '{{ namespace }}'..."
-    ARANGO_SVC=$(kubectl get svc -n {{ namespace }} --no-headers \
-        -o custom-columns=":metadata.name" \
-        | grep "^arangodb-single-" | head -n1)
-    if [[ -z "$ARANGO_SVC" ]]; then
-        echo "Error: No service matching 'arangodb-single-*' found in namespace '{{ namespace }}'"
-        exit 1
-    fi
+    ARANGO_SVC=$(just arangodb _discover-arango-svc {{ namespace }})
     echo "Found service: $ARANGO_SVC"
 
     lsof -ti:${LOCAL_PORT} | xargs kill -9 2>/dev/null || true
@@ -230,18 +246,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     kubectl port-forward -n {{ namespace }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
-    echo "Waiting for connection to localhost:${LOCAL_PORT}..."
-    for i in {1..30}; do
-        if nc -z localhost ${LOCAL_PORT} 2>/dev/null; then
-            echo "Port-forward established."
-            break
-        fi
-        sleep 1
-    done
-    if ! nc -z localhost ${LOCAL_PORT} 2>/dev/null; then
-        echo "Error: Failed to establish port-forward to $ARANGO_SVC."
-        exit 1
-    fi
+    just arangodb _wait-for-port ${LOCAL_PORT}
 
     # Docker networking set by just os() at parse time — no runtime uname needed
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
