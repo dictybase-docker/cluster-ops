@@ -23,6 +23,6 @@ config:
       - annofeature
     grant: rw
     image:
-      name: dictybase/arangoadmin
-      tag: develop-cdf7c20
+      name: ghcr.io/dictybase-docker/arangoadmin
+      tag: fec50dd
     namespace: dev

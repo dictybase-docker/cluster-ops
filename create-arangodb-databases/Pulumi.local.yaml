@@ -22,5 +22,5 @@ config:
     grant: rw
     image:
       name: ghcr.io/dictybase-docker/arangoadmin
-      tag: b1e2bd9
+      tag: fec50dd
     namespace: dev
