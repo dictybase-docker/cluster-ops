@@ -228,11 +228,11 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
-    echo "Reading desired root password from 'arangodb-root' secret..."
-    NEW_ROOT_PASS=$(kubectl get secret arangodb-root -n {{ namespace }} \
+    echo "Reading desired root password from 'arangodb-pass' secret..."
+    NEW_ROOT_PASS=$(kubectl get secret arangodb-pass -n {{ namespace }} \
         -o jsonpath='{.data.password}' | base64 -d)
     if [[ -z "$NEW_ROOT_PASS" ]]; then
-        echo "Error: 'arangodb-root' secret has an empty password field."
+        echo "Error: 'arangodb-pass' secret has an empty password field."
         exit 1
     fi
 
