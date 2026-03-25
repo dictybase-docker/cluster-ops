@@ -161,6 +161,8 @@ func (adb *ArangoDB) ensureUserArgs() pulumi.StringArray {
 		pulumi.String(adb.Config.ArangodbSecret.Pass),
 		pulumi.String("--admin-password"),
 		pulumi.String("$(ARANGODB_PASSWORD)"),
+		pulumi.String("--password-policy"),
+		pulumi.String("always"),
 	}
 }
 
