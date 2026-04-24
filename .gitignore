@@ -36,3 +36,5 @@ scratch
 .env
 .zsh_config
 .tool-versions
+.claude
+pulumi-files/local-state/.pulumi
