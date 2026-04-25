@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/kms v1.29.0
 	cloud.google.com/go/storage v1.62.0
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/deckarep/golang-set/v2 v2.8.0
+	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.29.0
@@ -133,6 +133,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/zclconf/go-cty v1.13.2 // indirect
+	go.mongodb.org/mongo-driver v1.17.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/featuregate v1.53.0 // indirect
 	go.opentelemetry.io/collector/pdata v1.53.0 // indirect
