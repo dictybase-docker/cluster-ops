@@ -181,7 +181,7 @@ require (
 )
 
 require (
-	cloud.google.com/go/serviceusage v1.13.0
+	cloud.google.com/go/serviceusage v1.14.0
 	github.com/pulumi/pulumi-command/sdk v1.2.1
 	k8s.io/api v0.35.4
 	k8s.io/apimachinery v0.35.4
