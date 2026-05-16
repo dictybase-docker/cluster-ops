@@ -9,7 +9,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
-	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.30.0
+	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.237.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
