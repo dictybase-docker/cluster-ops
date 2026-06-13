@@ -13,6 +13,6 @@ jobs:
       - name: unit test
         run: go test -covermode=atomic -coverprofile=profile.cov -v ./...
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           file: ./profile.cov
