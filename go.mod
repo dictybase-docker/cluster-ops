@@ -10,7 +10,7 @@ require (
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.32.0
-	github.com/pulumi/pulumi/sdk/v3 v3.247.0
+	github.com/pulumi/pulumi/sdk/v3 v3.248.0
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v2 v2.27.7
