@@ -38,3 +38,9 @@ scratch
 .tool-versions
 .claude
 pulumi-files/local-state/.pulumi
+k3d-dev-cluster.yaml
+just_modules/pulumi-files/local-state/.pulumi
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

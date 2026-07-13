@@ -103,7 +103,10 @@ func (adp *ArangoDeployment) createArangoSpec() *databasev1.ArangoDeploymentSpec
 		Image:           adp.createImageSpec(),
 		ImagePullPolicy: pulumi.String("IfNotPresent"),
 		Environment:     pulumi.String("Development"),
-		Single:          adp.createSingleSpec(),
+		Architecture: pulumi.StringArray{
+			pulumi.String("arm64"),
+		},
+		Single: adp.createSingleSpec(),
 		ExternalAccess: &databasev1.ArangoDeploymentSpecExternalAccessArgs{
 			Type: pulumi.String("NodePort"),
 		},

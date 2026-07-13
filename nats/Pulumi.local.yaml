@@ -1,0 +1,13 @@
+encryptionsalt: v1:ISqbE1TgCkg=:v1:+xhum2aREw/hPldY:mvzSnk57YLH/0n85VdiLL0ekkBSO/g==
+config:
+  nats:properties:
+    chart:
+      name: nats
+      repository: https://nats-io.github.io/k8s/helm/charts
+      version: 1.2.4
+    image:
+      tag: 2.10.20-alpine
+    namespace: dev
+    storage:
+      class: local-path
+      size: 1Gi

@@ -6,9 +6,14 @@ mod gcp-api 'just_modules/api.justfile'
 mod gcp-image 'just_modules/image.justfile'
 mod gcp-kms 'just_modules/kms.justfile'
 mod gcp-pulumi 'just_modules/pulumi.justfile'
+mod local-pulumi 'just_modules/local-pulumi.justfile'
 mod gcp-cluster 'just_modules/cluster.justfile'
+mod k3d 'just_modules/k3d.justfile'
+mod arangodb 'just_modules/arangodb.justfile'
+mod docker 'just_modules/docker.justfile'
 
 # Variables
+
 dagger_version := "v0.11.9"
 container_module := "github.com/dictybase-docker/dagger-of-dcr/container-image@main"
 bin_path := `mktemp -d`
@@ -37,26 +42,27 @@ install-dagger-binary:
 
 [group('setup-tools')]
 install-asdf-plugins:
-  asdf plugin add kubectl || true
-  asdf plugin add kops || true
-  asdf plugin add pulumi || true
-  asdf plugin add velero || true
-  asdf plugin add mc || true
-  asdf plugin add gcloud || true
-  asdf install kubectl 1.28.8
-  asdf set kubectl 1.28.8
-  asdf install kops v1.29.2
-  asdf set kops v1.29.2
-  asdf install pulumi 3.108.0
-  asdf set pulumi 3.108.0
-  asdf install velero 1.14.0
-  asdf set velero 1.14.0
-  asdf install mc 2024-02-09T22-18-24Z
-  asdf set mc 2024-02-09T22-18-24Z
-  asdf install gcloud 537.0.0
-  asdf set gcloud 537.0.0
+    asdf plugin add kubectl || true
+    asdf plugin add kops || true
+    asdf plugin add pulumi || true
+    asdf plugin add velero || true
+    asdf plugin add mc || true
+    asdf plugin add gcloud || true
+    asdf install kubectl 1.28.8
+    asdf set kubectl 1.28.8
+    asdf install kops v1.29.2
+    asdf set kops v1.29.2
+    asdf install pulumi 3.108.0
+    asdf set pulumi 3.108.0
+    asdf install velero 1.14.0
+    asdf set velero 1.14.0
+    asdf install mc 2024-02-09T22-18-24Z
+    asdf set mc 2024-02-09T22-18-24Z
+    asdf install gcloud 537.0.0
+    asdf set gcloud 537.0.0
 
 # Install or upgrade a tool version
+
 # Usage: just install-tool <name> <version>
 [group('setup-tools')]
 install-tool name version:
@@ -64,15 +70,15 @@ install-tool name version:
     set -euo pipefail
 
     # Check if the tool is in .tool-versions
-    if ! grep -q "^{{name}} " .tool-versions; then
-        echo "Error: Tool '{{name}}' is not defined in .tool-versions file."
+    if ! grep -q "^{{ name }} " .tool-versions; then
+        echo "Error: Tool '{{ name }}' is not defined in .tool-versions file."
         exit 1
     fi
 
-    echo "Installing {{name}} version {{version}}..."
-    asdf install {{name}} {{version}}
-    asdf set {{name}} {{version}}
-    echo "Successfully installed and set {{name}} {{version}}"
+    echo "Installing {{ name }} version {{ version }}..."
+    asdf install {{ name }} {{ version }}
+    asdf set {{ name }} {{ version }}
+    echo "Successfully installed and set {{ name }} {{ version }}"
 
 # --- Development & Testing ---
 
@@ -86,7 +92,7 @@ test:
 aider:
     #!/usr/bin/env bash
     set -euxo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory()}}/credentials/dcr-experiments-cloud-manager.json"
+    export GOOGLE_APPLICATION_CREDENTIALS="{{ invocation_directory() }}/credentials/dcr-experiments-cloud-manager.json"
     aider --architect --model 'vertex_ai/claude-3-5-sonnet-v2@20241022' \
                    --no-auto-commits \
                    --no-auto-lint \
@@ -111,10 +117,10 @@ set-env-var name value:
     echo "Environmental variable {{ name }} has been set to {{ value }}"
 
 # --- Build & Publish ---
-
 # ref: Git reference (branch, tag, or commit hash) to use for the build
 # user: Docker Hub username
 # pass: Docker Hub password
+
 # Build and publish the backup image to Docker Hub
 [group('build')]
 build-publish-backup-image ref user pass: setup
@@ -152,14 +158,14 @@ init-kops-cluster project_id bucket_name:
     just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
 
 # --- Pulumi Operations ---
-
 # Setup Pulumi deployment environment
 # Parameters:
 #   project_id: GCP project ID
 #   keyring_name: Name of the KMS keyring
 #   key_name: Name of the KMS key
 #   bucket_name: Name of the GCS bucket for Pulumi state
-#   location: Google Cloud region (optional, defaults to us-central1)
+
+# location: Google Cloud region (optional, defaults to us-central1)
 [group('pulumi-ops')]
 initialize-pulumi project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
@@ -186,7 +192,8 @@ initialize-pulumi project_id keyring_name key_name bucket_name location="us-cent
 #   keyring_name: Name of the KMS keyring
 #   key_name: Name of the KMS key
 #   bucket_name: Name of the GCS bucket for Pulumi state
-#   location: Google Cloud region (optional, defaults to us-central1)
+
+# location: Google Cloud region (optional, defaults to us-central1)
 [group('pulumi-ops')]
 pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash

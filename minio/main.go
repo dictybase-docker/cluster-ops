@@ -119,6 +119,9 @@ func (mno *Minio) getHelmValues() pulumi.Map {
 			"size":         pulumi.String(mno.Config.Storage.Size),
 		},
 		"disableWebUI": pulumi.Bool(!mno.Config.WebUI),
+		"console": pulumi.Map{
+			"enabled": pulumi.Bool(mno.Config.WebUI),
+		},
 	}
 }
 

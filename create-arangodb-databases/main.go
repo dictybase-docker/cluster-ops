@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -117,52 +118,75 @@ func (adb *ArangoDB) createJobSpec() *batchv1.JobSpecArgs {
 }
 
 func (adb *ArangoDB) createPodSpec() *corev1.PodSpecArgs {
+	initContainers := corev1.ContainerArray{
+		adb.createContainer("ensure-user", adb.ensureUserArgs()),
+	}
+	for _, db := range adb.Config.Databases {
+		initContainers = append(initContainers,
+			adb.createContainer(containerName("ensure-database", db), adb.ensureDatabaseArgs(db)))
+	}
+
+	grantContainers := make(corev1.ContainerArray, 0, len(adb.Config.Databases))
+	for _, db := range adb.Config.Databases {
+		grantContainers = append(grantContainers,
+			adb.createContainer(containerName("ensure-grant", db), adb.ensureGrantArgs(db)))
+	}
+
 	return &corev1.PodSpecArgs{
-		RestartPolicy: pulumi.String("Never"),
-		Containers: corev1.ContainerArray{
-			adb.createJobContainer(),
-		},
+		RestartPolicy:  pulumi.String("Never"),
+		InitContainers: initContainers,
+		Containers:     grantContainers,
 	}
 }
 
-func (adb *ArangoDB) createContainerArgs() pulumi.StringArray {
-	// Create the dbnames slice
-	dbnames := make(pulumi.StringArray, 0, len(adb.Config.Databases)*2)
-	for _, name := range adb.Config.Databases {
-		dbnames = append(
-			dbnames,
-			pulumi.String("--database"),
-			pulumi.String(name),
-		)
-	}
+func containerName(prefix, dbName string) string {
+	return prefix + "-" + strings.ReplaceAll(dbName, "_", "-")
+}
 
-	args := pulumi.StringArray{
-		pulumi.String("--log-level"),
-		pulumi.String("info"),
-		pulumi.String("create-database"),
-		pulumi.String("--admin-user"),
-		pulumi.String("root"),
-		pulumi.String("--admin-password"),
-		pulumi.String("$(ARANGODB_PASSWORD)"),
+func (adb *ArangoDB) createContainer(name string, args pulumi.StringArray) *corev1.ContainerArgs {
+	return &corev1.ContainerArgs{
+		Name:  pulumi.String(name),
+		Image: pulumi.String(fmt.Sprintf("%s:%s", adb.Config.Image.Name, adb.Config.Image.Tag)),
+		Env:   adb.createEnvironmentVariables(),
+		Args:  args,
+	}
+}
+
+func (adb *ArangoDB) ensureUserArgs() pulumi.StringArray {
+	return pulumi.StringArray{
+		pulumi.String("ensure-user"),
 		pulumi.String("--user"),
 		pulumi.String(adb.Config.ArangodbSecret.User),
 		pulumi.String("--password"),
 		pulumi.String(adb.Config.ArangodbSecret.Pass),
-		pulumi.String("--grant"),
-		pulumi.String(adb.Config.Grant),
+		pulumi.String("--admin-password"),
+		pulumi.String("$(ARANGODB_PASSWORD)"),
+		pulumi.String("--password-policy"),
+		pulumi.String("always"),
 	}
-	// Concatenate args and dbnames
-	return append(args, dbnames...)
 }
 
-func (adb *ArangoDB) createJobContainer() *corev1.ContainerArgs {
-	return &corev1.ContainerArgs{
-		Name: pulumi.String("create-databases"),
-		Image: pulumi.String(
-			fmt.Sprintf("%s:%s", adb.Config.Image.Name, adb.Config.Image.Tag),
-		),
-		Env:  adb.createEnvironmentVariables(),
-		Args: adb.createContainerArgs(),
+func (adb *ArangoDB) ensureDatabaseArgs(dbName string) pulumi.StringArray {
+	return pulumi.StringArray{
+		pulumi.String("ensure-database"),
+		pulumi.String("--database"),
+		pulumi.String(dbName),
+		pulumi.String("--admin-password"),
+		pulumi.String("$(ARANGODB_PASSWORD)"),
+	}
+}
+
+func (adb *ArangoDB) ensureGrantArgs(dbName string) pulumi.StringArray {
+	return pulumi.StringArray{
+		pulumi.String("ensure-grant"),
+		pulumi.String("--user"),
+		pulumi.String(adb.Config.ArangodbSecret.User),
+		pulumi.String("--database"),
+		pulumi.String(dbName),
+		pulumi.String("--grant"),
+		pulumi.String(adb.Config.Grant),
+		pulumi.String("--admin-password"),
+		pulumi.String("$(ARANGODB_PASSWORD)"),
 	}
 }
 

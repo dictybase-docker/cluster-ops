@@ -1,0 +1,21 @@
+encryptionsalt: v1:kghnT+FJEQc=:v1:W8+4Yu2uTCStBWu8:6KetomczMo9qDk7g46Jr9SRKvzGgxw==
+config:
+  arangodb-single:namespace: dev
+  arangodb-single:properties:
+    namespace: dev
+    secret:
+      name: arangodb-root
+      password:
+        secure: v1:LFVt0wk3ZkfRg8ii:xfBwOriZl7imoSgOT11KWHqM6r7nfM+zFRzDIh2t7ZlCN5K9smu6FzVvf2l3fTZeO6xGEl8gf7RAFX0oDviEhGtcP/BBHucgLeBinhH5ag==
+    storage:
+      class: dictycr-balanced
+      size: 20Gi
+    version: 3.11.6
+  arangodb-single:secret:
+    name: arangodb-root
+    password:
+      secure: v1:9VXPvbs6DLKd1/ez:74t+N7wWjthEedvW46TcXDWvzLBQAdIw7BHqn4YZLVLBepMoOaheOBtrDVaVUuj3ej9nxUeSShCLws9cIwRqQdn7CgavOd6p6Hmd6f+W4Q==
+  arangodb-single:storage:
+    class: dictycr-balanced
+    size: 20Gi
+  arangodb-single:version: 3.11.6

@@ -117,6 +117,7 @@ func validateConfig(config arangoDBConfig) error {
 func buildArangoDumpArgs(config arangoDBConfig) []string {
 	return []string{
 		"--all-databases",
+		"--include-system-collections",
 		"--server.username", config.User,
 		"--server.password", config.Password,
 		"--server.endpoint", fmt.Sprintf("http+tcp://%s:%d", config.Server, config.Port),
