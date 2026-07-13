@@ -36,7 +36,6 @@ _discover-arango-svc namespace="dev":
 # Dump a remote ArangoDB database to a local compressed file
 
 # Usage: just arangodb dump-remote-db <db_name> [output_dir] [namespace] [service] [image_tag]
-[no-cd]
 [group('arangodb')]
 [no-cd]
 dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" image_tag="3.11.6":
