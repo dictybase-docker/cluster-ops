@@ -36,8 +36,8 @@ scratch
 .env
 .zsh_config
 .tool-versions
+.claude
 k3d-dev-cluster.yaml
-.claude/settings.local.json
 just_modules/pulumi-files/local-state/.pulumi
 pulumi-files/local-state/.pulumi
 
