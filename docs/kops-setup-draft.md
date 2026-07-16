@@ -11,6 +11,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 - **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
 - **Prerequisites in one sentence**: An existing GCP project with billing enabled, `sa-manager.json` key, and the tools listed in Section 1.
 - **Reusable across environments**: This guide is written to be generic — dev, staging, prod, whatever. Change the project ID, pick a cluster name, adjust a few optional knobs (node count, machine size), and the same steps produce a cluster in a different GCP project. The only per-environment artifact you create is a small env file (Section 3).
+- **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](pulumi-setup.md).
 
 ## Table of Contents
 - [Overview](#overview)
@@ -31,15 +32,14 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
   - [5.1 Sanity Checks (Per Phase)](#51-sanity-checks-per-phase)
   - [5.2 Cluster Health](#52-cluster-health)
   - [5.3 Getting Inside the Cluster](#53-getting-inside-the-cluster)
-- [6. Post-Provisioning (Pulumi)](#6-post-provisioning-pulumi)
-- [7. Common Pitfalls](#7-common-pitfalls)
-  - [7.1 ".envrc Changes Don't Take Effect" (~35% of issues)](#71-envrc-changes-dont-take-effect-35-of-issues)
-  - [7.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues)
-  - [7.3 Re-running Against an Existing Cluster (~15% of issues)](#73-re-running-against-an-existing-cluster-15-of-issues)
-  - [7.4 Forgot the SSH Keypair (~10% of issues)](#74-forgot-the-ssh-keypair-10-of-issues)
-  - [7.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)](#75-wrong-kops_cluster_name-suffix-8-of-issues)
-  - [7.6 "Service Not Enabled" During SA Creation (~7% of issues)](#76-service-not-enabled-during-sa-creation-7-of-issues)
-- [8. Escalation — When to Call for Help](#8-escalation--when-to-call-for-help)
+- [6. Common Pitfalls](#6-common-pitfalls)
+  - [6.1 ".envrc Changes Don't Take Effect" (~35% of issues)](#61-envrc-changes-dont-take-effect-35-of-issues)
+  - [6.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)](#62-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues)
+  - [6.3 Re-running Against an Existing Cluster (~15% of issues)](#63-re-running-against-an-existing-cluster-15-of-issues)
+  - [6.4 Forgot the SSH Keypair (~10% of issues)](#64-forgot-the-ssh-keypair-10-of-issues)
+  - [6.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)](#65-wrong-kops_cluster_name-suffix-8-of-issues)
+  - [6.6 "Service Not Enabled" During SA Creation (~7% of issues)](#66-service-not-enabled-during-sa-creation-7-of-issues)
+- [7. Escalation — When to Call for Help](#7-escalation--when-to-call-for-help)
 
 ## 1. Prerequisites & Tooling
 
@@ -334,7 +334,7 @@ Your cluster my-cluster.k8s.local is ready
 **Common failure signatures**:
 - `Error: bucket "..." already exists in a different project` — the bucket name is taken globally. Pick a different `<BUCKET_NAME>`.
 - `Error: could not find the specified project` — the `<PROJECT_ID>` is wrong or the project doesn't exist. Double-check in the GCP console.
-- `Error: SERVICE_ACCOUNT_NOT_FOUND` — the credential rotation didn't take effect in your shell. See [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues).
+- `Error: SERVICE_ACCOUNT_NOT_FOUND` — the credential rotation didn't take effect in your shell. See [Section 6.1](#61-envrc-changes-dont-take-effect-35-of-issues).
 
 ## 5. Verification & Access
 
@@ -351,7 +351,7 @@ You can run these manually for peace of mind after each phase:
     just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
     diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
     ```
-    **Expected**: `diff` produces no output — every required API is enabled. If APIs are missing, re-run Phase 1a (idempotent). If the gap persists beyond 2 minutes, escalate per [Section 8](#8-escalation--when-to-call-for-help).
+    **Expected**: `diff` produces no output — every required API is enabled. If APIs are missing, re-run Phase 1a (idempotent). If the gap persists beyond 2 minutes, escalate per [Section 7](#7-escalation--when-to-call-for-help).
 
 *   **After Phase 2 (SA created)**: Confirm the key file exists with tight permissions:
     ```bash
@@ -370,7 +370,7 @@ You can run these manually for peace of mind after each phase:
     gsutil ls -L -b gs://${BUCKET_NAME} | head -5
     kops get cluster --state $KOPS_STATE_STORE
     ```
-    **Expected**: bucket shows versioning enabled and a lifecycle rule; `kops get cluster` lists your new cluster. If the cluster doesn't appear, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set — see [Section 7.2](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
+    **Expected**: bucket shows versioning enabled and a lifecycle rule; `kops get cluster` lists your new cluster. If the cluster doesn't appear, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set — see [Section 6.2](#62-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
 
 ### 5.2 Cluster Health
 
@@ -386,7 +386,7 @@ You can run these manually for peace of mind after each phase:
     ```
     followed by a list of nodes all showing `Ready` status.
 
-    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix in [Section 7.5](#75-wrong-kops_cluster_name-suffix-8-of-issues) (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
+    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix in [Section 6.5](#65-wrong-kops_cluster_name-suffix-8-of-issues) (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
 
 2.  **Status Overview**:
     ```bash
@@ -408,47 +408,12 @@ You can run these manually for peace of mind after each phase:
     just gcp-cluster export-named-kubeconfig <NAME> <HOURS>
     ```
 
-## 6. Post-Provisioning (Pulumi)
 
-Once the cluster is running, deploy the application stack on top using Pulumi.
-
-1.  **Initialize & Deploy**:
-    ```bash
-    # Set these once for your environment, then the command is copy-paste-ready:
-    export STACK_NAME="<stack-name>"        # e.g., dev-my-app
-    export FROM_STACK="<base-stack>"         # base stack to inherit config from, or use "" for none
-    export PROJECT_ID="<your-gcp-project-id>"
-    export KEYRING="<kms-keyring>"           # created during cluster bootstrap
-    export KEY="<kms-key>"                    # created during cluster bootstrap
-    export BUCKET="<pulumi-state-bucket>"     # e.g., pulumi-state-my-cluster
-
-    just pulumi-init-and-deploy ${STACK_NAME} ${FROM_STACK} ${PROJECT_ID} ${KEYRING} ${KEY} ${BUCKET}
-    ```
-    *Creates Pulumi IAM, KMS keys, state bucket, and deploys initial resources.*
-
-    **Expected healthy output**:
-    ```
-    Updating stack '<STACK_NAME>'
-    ...
-    Resources:
-        + N created
-    Duration: XmYs
-    ```
-    followed by a summary of created resources (service accounts, KMS keyrings, storage buckets).
-
-2.  **Verify the deployment**:
-    ```bash
-    pulumi stack output --stack <STACK_NAME>
-    ```
-    **Expected output**: Lists the stack's exported values (e.g., service account emails, bucket names). If this returns nothing or an error, the deployment may not have completed — re-run the deploy command.
-
-**If Pulumi fails with an IAM or permissions error**: This typically means the `kops-cluster-creator` key doesn't have the roles Pulumi needs (Pulumi requires its own `pulumi-manager` service account, which `pulumi-init-and-deploy` creates). Check that `GOOGLE_APPLICATION_CREDENTIALS` still points at `kops-cluster-creator.json` — see [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues). If the error persists after 2 retries, escalate per [Section 8](#8-escalation--when-to-call-for-help).
-
-## 7. Common Pitfalls
+## 6. Common Pitfalls
 
 These are the stumbling blocks that catch people most often. If something isn't working, start here before digging deeper.
 
-### 7.1 ".envrc Changes Don't Take Effect" (~35% of issues)
+### 6.1 ".envrc Changes Don't Take Effect" (~35% of issues)
 
 `just set-env-var` updates `.envrc` and runs `direnv allow`, but your *current shell* might not pick up the change. If a command fails with what looks like a missing credential error, try:
 ```bash
@@ -461,7 +426,7 @@ env | grep GOOGLE_APPLICATION_CREDENTIALS
 
 This is especially important right after the credential rotation (Phase 3 of bootstrap) — the Go code reads `GOOGLE_APPLICATION_CREDENTIALS` directly from the environment, not from the `.envrc` file.
 
-### 7.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)
+### 6.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)
 
 These errors come from the bucket-creation step. They mean the per-cluster env file wasn't loaded into your shell — you're either not in a `cluster-env` sub-shell, or the env file itself is missing those variables. Double-check:
 ```bash
@@ -470,7 +435,7 @@ env | grep -E 'KOPS_CLUSTER_NAME|KOPS_STATE_STORE|SSH_KEY|KUBERNETES_VERSION|KUB
 **Expected if correct**: All five variables show non-empty values.
 **If any are empty or missing**: Run `just cluster-env <env> <cluster>` to re-activate the cluster, or if you haven't created the env file yet, revisit [Section 3.1](#31-create-your-cluster-env-file).
 
-### 7.3 Re-running Against an Existing Cluster (~15% of issues)
+### 6.3 Re-running Against an Existing Cluster (~15% of issues)
 
 `kops create cluster` (Phase 5) is not idempotent — if a cluster with the same name already exists in the state bucket, it will error with something like:
 ```
@@ -483,7 +448,7 @@ kops delete cluster --name $KOPS_CLUSTER_NAME --state $KOPS_STATE_STORE --yes
 **Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run `init-kops-cluster`.
 **WARNING**: This destroys all GCE resources associated with the cluster. Only do this if you're sure.
 
-### 7.4 Forgot the SSH Keypair (~10% of issues)
+### 6.4 Forgot the SSH Keypair (~10% of issues)
 
 If `kops create cluster` complains about the SSH key, double-check you've run the manual `ssh-keygen` command from [Section 1.4](#14-ssh-keypair-for-cluster-nodes). A fresh clone of the repo won't have these files. No Justfile recipe creates them for you.
 
@@ -493,7 +458,7 @@ ls -la credentials/k8sVM.pub
 ```
 **Expected if present**: Shows the file with a recent timestamp. **If missing**: Run the `ssh-keygen` command from Section 1.4.
 
-### 7.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)
+### 6.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)
 
 If the name doesn't end in `.k8s.local`, kops will expect a real DNS zone to exist (Cloud DNS), which this repo's tooling doesn't set up.
 
@@ -509,7 +474,7 @@ echo $KOPS_CLUSTER_NAME   # should now end in .k8s.local
 ```
 Stick with `.k8s.local` for gossip-based DNS unless you've explicitly configured a Cloud DNS zone.
 
-### 7.6 "Service Not Enabled" During SA Creation (~7% of issues)
+### 6.6 "Service Not Enabled" During SA Creation (~7% of issues)
 
 If Phase 2 (creating the kops-cluster-creator service account) fails with a message about services not being enabled, it's usually a timing issue — the API enablement from Phase 1 hasn't fully propagated yet. The error looks something like:
 ```
@@ -522,9 +487,9 @@ Wait 10–15 seconds and re-run (the recipe is safe to re-run since it checks if
 just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
 diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
 ```
-**Expected output**: `diff` produces no output — that means every required API is enabled. If APIs are still missing from the enabled list, wait another 15 seconds and check again. If the problem persists beyond 2 minutes, escalate per [Section 8](#8-escalation--when-to-call-for-help).
+**Expected output**: `diff` produces no output — that means every required API is enabled. If APIs are still missing from the enabled list, wait another 15 seconds and check again. If the problem persists beyond 2 minutes, escalate per [Section 7](#7-escalation--when-to-call-for-help).
 
-## 8. Escalation — When to Call for Help
+## 7. Escalation — When to Call for Help
 
 Not every problem can (or should) be solved solo. Escalate to the **platform-lead** immediately if ANY of these happen:
 
