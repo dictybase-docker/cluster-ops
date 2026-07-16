@@ -143,10 +143,13 @@ setup-sa-manager project_id:
     echo "=== Step 2/3: Assigning roles from ${roles_file} ==="
     just gcp-role assign-roles-to-sa {{ project_id }} ${sa_name} ${roles_file}
 
-    # 3. Create and download a JSON key
+    # 3. Create and download a JSON key (pure gcloud CLI — no ADC needed)
     echo "=== Step 3/3: Generating key file ==="
     mkdir -p credentials
-    just gcp-sa create-sa-key {{ project_id }} ${sa_name} ${key_file}
+    gcloud iam service-accounts keys create "${key_file}" \
+        --iam-account="${sa_email}" \
+        --project={{ project_id }}
+    chmod 600 "${key_file}"
 
     echo ""
     echo "Done. sa-manager is ready:"
