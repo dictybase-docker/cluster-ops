@@ -174,26 +174,6 @@ cluster-cred env cluster key:
     fi
     echo "Updated ${env_file}: GOOGLE_APPLICATION_CREDENTIALS → ${abs_key}"
 
-# Initialize a Kubernetes cluster with kops
-[group('cluster-ops')]
-init-kops-cluster project_id bucket_name:
-    # Update GOOGLE_APPLICATION_CREDENTIALS env var
-    just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
-    # Enable required APIs
-    just gcp-api enable-apis {{ project_id }} gcs-files/apis/enabled_apis.txt
-
-    # Disable unnecessary APIs
-    just gcp-api disable-apis {{ project_id }} gcs-files/apis/disable_enabled_apis.txt
-
-    # Create kops cluster creator service account
-    just gcp-sa create-sa {{ project_id }} kops-cluster-creator gcs-files/roles-permissions/kops-cluster-creator-roles.txt credentials/kops-cluster-creator.json
-
-    # Update GOOGLE_APPLICATION_CREDENTIALS env var
-    just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
-
-    # Set up kops state store and initialize cluster
-    just gcp-cluster create-kops-cluster {{ project_id }} {{ bucket_name }}
-
 # --- Pulumi Operations ---
 # Setup Pulumi deployment environment
 # Parameters:
