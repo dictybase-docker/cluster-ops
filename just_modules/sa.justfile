@@ -110,3 +110,47 @@ create-hmac-key project sa_name output_file:
     # Display the access ID (but not the secret)
     echo "Access ID: $(jq -r .accessId {{ output_file }})"
     echo "Secret: [HIDDEN]"
+
+# Create the sa-manager service account, assign all 13 manager roles, and generate a key.
+# Uses the active gcloud identity — works with a personal login that has master access
+# or with an already-activated service account that has sufficient IAM privileges.
+#
+# Usage: just gcp-sa setup-sa-manager <project_id>
+[group('service-account-management')]
+setup-sa-manager project_id:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud config set disable_prompts true
+
+    sa_name="sa-manager"
+    sa_email="${sa_name}@{{ project_id }}.iam.gserviceaccount.com"
+    roles_file="gcs-files/roles-permissions/service-account-manager-roles.txt"
+    key_file="credentials/sa-manager.json"
+
+    # 1. Create the service account (idempotent — skips if it already exists)
+    echo "=== Step 1/3: Creating service account ${sa_email} ==="
+    if gcloud iam service-accounts describe "${sa_email}" --project={{ project_id }} > /dev/null 2>&1; then
+        echo "Service account already exists, skipping creation."
+    else
+        gcloud iam service-accounts create "${sa_name}" \
+            --project={{ project_id }} \
+            --display-name="Service Account Manager" \
+            --description="Master SA for bootstrapping cluster infrastructure"
+        echo "Service account created."
+    fi
+
+    # 2. Assign all 13 manager roles
+    echo "=== Step 2/3: Assigning roles from ${roles_file} ==="
+    just gcp-role assign-roles-to-sa {{ project_id }} ${sa_name} ${roles_file}
+
+    # 3. Create and download a JSON key
+    echo "=== Step 3/3: Generating key file ==="
+    mkdir -p credentials
+    just gcp-sa create-sa-key {{ project_id }} ${sa_name} ${key_file}
+
+    echo ""
+    echo "Done. sa-manager is ready:"
+    echo "  SA email : ${sa_email}"
+    echo "  Key file : ${key_file}"
+    echo ""
+    echo "Next: set up your environment — see docs/kops-setup-draft.md Section 2."
