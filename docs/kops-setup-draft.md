@@ -10,6 +10,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 - **What you'll end up with**: A fully provisioned Kubernetes cluster (GCE instances, networking, IAM, state storage) plus the Pulumi scaffolding for deploying applications.
 - **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
 - **Prerequisites in one sentence**: An existing GCP project with billing enabled, `sa-manager.json` key, and the tools listed in Section 1.
+- **Reusable across environments**: This guide is written to be generic — dev, staging, prod, whatever. Change the project ID, pick a cluster name, adjust a few optional knobs (node count, machine size), and the same steps produce a cluster in a different GCP project. The only per-environment artifact you create is a small env file (Section 3).
 
 ## Table of Contents
 - [Overview](#overview)
@@ -24,6 +25,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
   - [3.1 Create Your Cluster Env File](#31-create-your-cluster-env-file)
   - [3.2 Required Variables](#32-required-variables)
   - [3.3 Point `.envrc` at Your Env File](#33-point-envrc-at-your-env-file)
+  - [3.4 Optional Tuning Knobs](#34-optional-tuning-knobs)
 - [4. Cluster Bootstrap](#4-cluster-bootstrap)
 - [5. Verification & Access](#5-verification--access)
   - [5.1 Sanity Checks (Per Phase)](#51-sanity-checks-per-phase)
@@ -112,7 +114,19 @@ go build ./...
 
 You need the **Service Account Manager** key to open the first door. Think of `sa-manager` as the master key — it has broad permissions (creating other service accounts, enabling APIs, managing IAM) so that the rest of the process can run with tighter, least-privilege credentials.
 
-1.  **Obtain Key**: Request the `sa-manager` JSON key from the project owner. (If you *are* the project owner, run `just gcp-sa create-sa-manager <PROJECT_ID>` after `gcloud auth application-default login`, but most operators start with a key someone else provides.)
+1.  **Obtain Key**: Request the `sa-manager` JSON key from the project owner.
+
+    **If you *are* the project owner**, you can create the SA and its key yourself with one command — no browser login needed, just your active gcloud identity:
+
+    ```bash
+    just gcp-sa setup-sa-manager <PROJECT_ID>
+    # key saved to credentials/sa-manager.json by default
+    # optional: specify a custom path as a second argument
+    ```
+
+    This recipe does three things: creates the SA (skips if it already exists), binds all 13 manager roles, and downloads the JSON key. It works with whatever gcloud identity is active — your personal login, a named configuration, or an activated service account — so long as that identity has IAM admin privileges on the project.
+
+    > The repo also has an older recipe (`just gcp-sa create-sa-manager`) that uses Application Default Credentials (ADC) and the Go binary, but `setup-sa-manager` is the recommended path since it stays entirely in gcloud-land.
 
     **If you're creating this SA manually in the GCP Console** instead of using the Justfile recipe, bind these 13 roles (all predefined, no custom roles needed):
 
@@ -132,7 +146,7 @@ You need the **Service Account Manager** key to open the first door. Think of `s
     | `roles/compute.instanceAdmin.v1` | Full control over GCE instances |
     | `roles/aiplatform.user` | Vertex AI platform access |
 
-    *(Source: live IAM policy for `dcr-experiments`, 2026-07-16 — see `docs/sa-manager-roles.md`.)*
+    *(Source: live IAM policy for a working project, 2026-07-16 — see `docs/sa-manager-roles.md`.)*
 
 2.  **Save Key**: Place it in `./credentials/sa-manager.json`.
 
@@ -149,11 +163,13 @@ You need the **Service Account Manager** key to open the first door. Think of `s
 4.  **(Optional but recommended) Set up a gcloud named configuration**: Step 3 above tells the *SDKs and Go binaries* which key to use. If you also want `gcloud` CLI commands (`gcloud projects get-iam-policy`, `gsutil`, etc.) to run as `sa-manager`, create a dedicated named configuration for it:
 
     ```bash
+    export PROJECT_ID="<your-gcp-project-id>"
+
     gcloud config configurations create sa-manager
     gcloud auth activate-service-account \
-      sa-manager@<PROJECT_ID>.iam.gserviceaccount.com \
+      sa-manager@${PROJECT_ID}.iam.gserviceaccount.com \
       --key-file=credentials/sa-manager.json
-    gcloud config set project <PROJECT_ID>
+    gcloud config set project ${PROJECT_ID}
     gcloud config set compute/zone us-central1-c
     ```
     **Expected output**: `Activated service account credentials for [...]` followed by `Updated property [core/project]` and `Updated property [compute/zone]`.
@@ -177,14 +193,19 @@ You need the **Service Account Manager** key to open the first door. Think of `s
 
 ## 3. Environment Variables — The Cluster Config File
 
-Before `init-kops-cluster` will work, it needs to know a handful of things about your cluster: its name, where to store its state, which SSH key to use, and so on. These are defined in a **per-cluster env file** (model: `.env.dev.dcr-experiments`).
+Before `init-kops-cluster` will work, it needs to know a handful of things about your cluster: its name, where to store its state, which SSH key to use, and so on. These are defined in a **per-cluster env file** — one file per environment, following the naming convention `.env.<env>.<cluster>` (e.g., `.env.dev.my-cluster`, `.env.staging.my-cluster`, `.env.prod.my-cluster`).
+
+The repo ships with `.env.dev.dcr-experiments` as a concrete example. You can copy it as a starting point, or create your own from scratch — either way, the five variables below are what matter.
 
 ### 3.1 Create Your Cluster Env File
 
-Copy the template and fill in your values:
+**Option A — copy the example and edit**:
 ```bash
 cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
+# edit .env.<env>.<cluster-name> with your values
 ```
+
+**Option B — create from scratch** using the table below as your checklist. The file is just `export VAR=value` lines — nothing fancy.
 
 ### 3.2 Required Variables
 
@@ -205,7 +226,23 @@ just set-env-var CLUSTER_ENV_FILE "${PWD}/.env.<env>.<cluster-name>"
 ```
 **Expected output**: Same as above — `direnv: loading ...` / `direnv: export ...`.
 
+**If something goes wrong**: `direnv: command not found` means direnv isn't installed — see [Section 1.2](#12-core-system-tools). `error: ...env.<env>.<cluster-name>: No such file` means the env file you pointed at doesn't exist — double-check the path and that you ran `cp` in [Section 3.1](#31-create-your-cluster-env-file).
+
 This tells `just` which config file to load before running any recipe. Without it, `just` may silently load a stale `.env` (or nothing at all), and the bootstrap will fail with confusing errors about missing variables.
+
+### 3.4 Optional Tuning Knobs
+
+These variables control the shape of your cluster. If unset, reasonable defaults kick in — but you'll typically want smaller values for dev and larger ones for prod.
+
+| Variable | Controls | Default | Example (dev) | Example (prod) |
+|----------|----------|---------|---------------|----------------|
+| `TOTAL_NODES` | How many worker nodes | `4` | `2` | `6` |
+| `NODE_MACHINE` | Worker VM type | `n1-custom-2-4096` | `n1-custom-1-2048` | `n1-custom-4-8192` |
+| `NODE_DISK_SIZE` | Worker boot disk (GB) | `100` | `50` | `200` |
+| `TOTAL_MASTER` | Control plane nodes | `1` | `1` | `1` |
+| `MASTER_MACHINE` | Control plane VM type | `n1-custom-4-8192` | `n1-custom-2-4096` | `n1-custom-8-16384` |
+| `MASTER_DISK_SIZE` | Control plane boot disk (GB) | `75` | `50` | `150` |
+| `COMPUTE_IMAGE` | OS image for all nodes | `ubuntu-os-cloud/ubuntu-2204-jammy-v20240829` | *(leave default)* | *(leave default)* |
 
 ## 4. Cluster Bootstrap
 
@@ -260,11 +297,11 @@ Once the bootstrap command completes, here's how to confirm everything is health
 
 You can run these manually for peace of mind (though `init-kops-cluster` handles most of them automatically):
 
-*   **After APIs are enabled**: `just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled.txt` and compare against `gcs-files/apis/enabled_apis.txt`.
-*   **After the service account is created**: Confirm `credentials/kops-cluster-creator.json` exists with tight permissions (`ls -la credentials/kops-cluster-creator.json` should show mode `0600`).
-*   **After credentials rotate**: `grep GOOGLE_APPLICATION_CREDENTIALS .envrc` should point at `kops-cluster-creator.json`, not `sa-manager.json`.
-*   **After the bucket is created**: `gsutil ls -L -b gs://${BUCKET_NAME}` should show versioning enabled and a lifecycle rule present.
-*   **After kops create cluster**: `kops get cluster --state $KOPS_STATE_STORE` should list your new cluster — this confirms the manifest exists even before VMs are provisioned.
+*   **After APIs are enabled**: `just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled.txt` and compare against `gcs-files/apis/enabled_apis.txt`. If APIs are missing, re-run `init-kops-cluster` (Phase 1 is idempotent).
+*   **After the service account is created**: Confirm `credentials/kops-cluster-creator.json` exists with tight permissions (`ls -la credentials/kops-cluster-creator.json` should show mode `0600`). If the file is missing, re-run `init-kops-cluster` (Phases 1–4 are idempotent). If it fails again, escalate per [Section 8](#8-escalation--when-to-call-for-help).
+*   **After credentials rotate**: `grep GOOGLE_APPLICATION_CREDENTIALS .envrc` should point at `kops-cluster-creator.json`, not `sa-manager.json`. If it still shows `sa-manager`, your shell may not have picked up the `.envrc` change — see [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues).
+*   **After the bucket is created**: `gsutil ls -L -b gs://${BUCKET_NAME}` should show versioning enabled and a lifecycle rule present. If the bucket doesn't exist, re-run `init-kops-cluster` (Phase 4 is idempotent).
+*   **After kops create cluster**: `kops get cluster --state $KOPS_STATE_STORE` should list your new cluster — this confirms the manifest exists even before VMs are provisioned. If nothing shows up, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set correctly — see [Section 7.2](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
 
 ### 5.2 Cluster Health
 
@@ -280,7 +317,7 @@ You can run these manually for peace of mind (though `init-kops-cluster` handles
     ```
     followed by a list of nodes all showing `Ready` status.
 
-    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking/DNS issues — check [Section 7](#7-common-pitfalls), especially the `.envrc` and suffix pitfalls.
+    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix in [Section 7.5](#75-wrong-kops_cluster_name-suffix-8-of-issues) (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
 
 2.  **Status Overview**:
     ```bash
@@ -308,7 +345,15 @@ Once the cluster is running, deploy the application stack on top using Pulumi.
 
 1.  **Initialize & Deploy**:
     ```bash
-    just pulumi-init-and-deploy <STACK_NAME> <FROM_STACK> <PROJECT_ID> <KEYRING> <KEY> <BUCKET>
+    # Set these once for your environment, then the command is copy-paste-ready:
+    export STACK_NAME="<stack-name>"        # e.g., dev-my-app
+    export FROM_STACK="<base-stack>"         # base stack to inherit config from, or use "" for none
+    export PROJECT_ID="<your-gcp-project-id>"
+    export KEYRING="<kms-keyring>"           # created during cluster bootstrap
+    export KEY="<kms-key>"                    # created during cluster bootstrap
+    export BUCKET="<pulumi-state-bucket>"     # e.g., pulumi-state-my-cluster
+
+    just pulumi-init-and-deploy ${STACK_NAME} ${FROM_STACK} ${PROJECT_ID} ${KEYRING} ${KEY} ${BUCKET}
     ```
     *Creates Pulumi IAM, KMS keys, state bucket, and deploys initial resources.*
 
