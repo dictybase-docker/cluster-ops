@@ -342,19 +342,35 @@ Once the bootstrap command completes, here's how to confirm everything is health
 
 ### 5.1 Sanity Checks (Per Phase)
 
-> These commands assume `${PROJECT_ID}` and `${BUCKET_NAME}` are still in your shell environment from [Section 4](#4-cluster-bootstrap). If not, re-export them:
-> ```bash
-> export PROJECT_ID="<your-gcp-project-id>"
-> export BUCKET_NAME="<your-bucket-name>"
-> ```
+> These commands assume you're inside a `cluster-env` sub-shell, so `${PROJECT_ID}`, `${BUCKET_NAME}`, and the other cluster vars are already available from your env file. If you exited the sub-shell and came back, just run `just cluster-env <env> <cluster-name>` again.
 
-You can run these manually for peace of mind (though `init-kops-cluster` handles most of them automatically):
+You can run these manually for peace of mind after each phase:
 
-*   **After APIs are enabled**: `just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled.txt` and compare against `gcs-files/apis/enabled_apis.txt`. If APIs are missing, re-run `init-kops-cluster` (Phase 1 is idempotent).
-*   **After the service account is created**: Confirm `credentials/kops-cluster-creator.json` exists with tight permissions (`ls -la credentials/kops-cluster-creator.json` should show mode `0600`). If the file is missing, re-run `init-kops-cluster` (Phases 1–4 are idempotent). If it fails again, escalate per [Section 8](#8-escalation--when-to-call-for-help).
-*   **After credentials rotate**: `grep GOOGLE_APPLICATION_CREDENTIALS .envrc` should point at `kops-cluster-creator.json`, not `sa-manager.json`. If it still shows `sa-manager`, your shell may not have picked up the `.envrc` change — see [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues).
-*   **After the bucket is created**: `gsutil ls -L -b gs://${BUCKET_NAME}` should show versioning enabled and a lifecycle rule present. If the bucket doesn't exist, re-run `init-kops-cluster` (Phase 4 is idempotent).
-*   **After kops create cluster**: `kops get cluster --state $KOPS_STATE_STORE` should list your new cluster — this confirms the manifest exists even before VMs are provisioned. If nothing shows up, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set correctly — see [Section 7.2](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
+*   **After Phase 1 (APIs enabled)**: Confirm all required services are live:
+    ```bash
+    just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
+    diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
+    ```
+    **Expected**: `diff` produces no output — every required API is enabled. If APIs are missing, re-run Phase 1a (idempotent). If the gap persists beyond 2 minutes, escalate per [Section 8](#8-escalation--when-to-call-for-help).
+
+*   **After Phase 2 (SA created)**: Confirm the key file exists with tight permissions:
+    ```bash
+    ls -la credentials/kops-cluster-creator.json
+    ```
+    **Expected**: file exists with mode `0600`. If missing, re-run Phase 2 (idempotent — it checks if the SA already exists before creating).
+
+*   **After Phase 3 (credential rotated)**: Confirm the active credential points at the new key. Since you exited and re-entered `cluster-env`, just check your shell:
+    ```bash
+    echo $GOOGLE_APPLICATION_CREDENTIALS
+    ```
+    **Expected**: path ends with `credentials/kops-cluster-creator.json`. If it still shows `sa-manager.json`, you likely forgot to `exit` and re-run `cluster-env` after `cluster-cred`.
+
+*   **After Phase 4 (bucket + kops create)**: Confirm the state bucket exists and the cluster manifest was written:
+    ```bash
+    gsutil ls -L -b gs://${BUCKET_NAME} | head -5
+    kops get cluster --state $KOPS_STATE_STORE
+    ```
+    **Expected**: bucket shows versioning enabled and a lifecycle rule; `kops get cluster` lists your new cluster. If the cluster doesn't appear, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set — see [Section 7.2](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
 
 ### 5.2 Cluster Health
 
