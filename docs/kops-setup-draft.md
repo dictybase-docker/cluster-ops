@@ -24,9 +24,11 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 - [3. Environment Variables — The Cluster Config File](#3-environment-variables--the-cluster-config-file)
   - [3.1 Create Your Cluster Env File](#31-create-your-cluster-env-file)
   - [3.2 Required Variables](#32-required-variables)
-  - [3.3 Point `.envrc` at Your Env File](#33-point-envrc-at-your-env-file)
+  - [3.3 Activate Your Cluster Env File](#33-activate-your-cluster-env-file)
   - [3.4 Optional Tuning Knobs](#34-optional-tuning-knobs)
 - [4. Cluster Bootstrap](#4-cluster-bootstrap)
+  - [The easy button](#the-easy-button)
+  - [Step-by-step (run each phase individually)](#step-by-step-run-each-phase-individually)
 - [5. Verification & Access](#5-verification--access)
   - [5.1 Sanity Checks (Per Phase)](#51-sanity-checks-per-phase)
   - [5.2 Cluster Health](#52-cluster-health)
@@ -211,6 +213,8 @@ cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
 
 | Variable | What It Tells the Tooling | Example |
 |----------|--------------------------|--------|
+| `PROJECT_ID` | The GCP project where the cluster lives | `my-gcp-project` |
+| `BUCKET_NAME` | Name of the GCS bucket where kops stores its state. Must be globally unique. | `kops-state-my-cluster` |
 | `KOPS_CLUSTER_NAME` | The full DNS name of your cluster. **Must end in `.k8s.local`** — this uses kops' built-in gossip DNS so you don't need a Cloud DNS zone | `my-cluster.k8s.local` |
 | `KOPS_STATE_STORE` | Where kops keeps its state (a GCS bucket path) | `gs://kops-state-my-cluster/` |
 | `KUBECONFIG` | Path to the kubeconfig file for this cluster | `${CLUSTER_OPS_PATH}/clusters/my-cluster/kubeconfig` |
@@ -219,20 +223,40 @@ cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
 
 > **Why `.k8s.local`?** That suffix tells kops to use gossip-based DNS — cluster nodes discover each other by chatting directly rather than through a managed DNS zone. It's simpler to set up and avoids needing a Cloud DNS zone as a prerequisite.
 
-### 3.3 Point `.envrc` at Your Env File
+### 3.3 Activate Your Cluster Env File
+
+You switch between clusters by sourcing their env file into a sub-shell — one command, no `.envrc` mutation:
 
 ```bash
-just set-env-var CLUSTER_ENV_FILE "${PWD}/.env.<env>.<cluster-name>"
+just cluster-env <env> <cluster-name>
+# Example: just cluster-env dev my-cluster
 ```
-**Expected output**: Same as above — `direnv: loading ...` / `direnv: export ...`.
+**Expected output**:
+```
+Cluster: my-cluster.k8s.local
+State  : gs://kops-state-my-cluster/
+Type 'exit' or Ctrl-D to leave this environment.
+```
 
-**If something goes wrong**: `direnv: command not found` means direnv isn't installed — see [Section 1.2](#12-core-system-tools). `error: ...env.<env>.<cluster-name>: No such file` means the env file you pointed at doesn't exist — double-check the path and that you ran `cp` in [Section 3.1](#31-create-your-cluster-env-file).
+You're now in a sub-shell with all the cluster variables loaded. Every `just` command in this shell targets that cluster. To switch to a different cluster, `exit` back to the parent shell and run `just cluster-env` with a different env file.
 
-This tells `just` which config file to load before running any recipe. Without it, `just` may silently load a stale `.env` (or nothing at all), and the bootstrap will fail with confusing errors about missing variables.
+```bash
+just cluster-env dev my-cluster      # enter dev sub-shell
+just gcp-cluster cluster-status       # hits dev
+exit                                   # leave dev
+
+just cluster-env staging my-cluster  # enter staging sub-shell
+just gcp-cluster cluster-status       # hits staging
+exit                                   # leave staging
+```
+
+Two terminal tabs can each activate a different cluster — no file conflicts, no stale state.
+
+> **Legacy note**: The project also has a `CLUSTER_ENV_FILE` variable in `.envrc` that acts as a fallback default when no `cluster-env` sub-shell is active. It's kept for backward compatibility — you don't need to touch it if you're using `just cluster-env`.
 
 ### 3.4 Optional Tuning Knobs
 
-These variables control the shape of your cluster. If unset, reasonable defaults kick in — but you'll typically want smaller values for dev and larger ones for prod.
+These variables control the shape of your cluster. **Add them to the same per-cluster env file you created in Section 3.1** — the `kops-cluster-creator` binary reads them directly from the environment via `EnvVars` bindings in `internal/kops/flags.go`. If unset, the hardcoded defaults in that file kick in. You'll typically want smaller values for dev and larger ones for prod.
 
 | Variable | Controls | Default | Example (dev) | Example (prod) |
 |----------|----------|---------|---------------|----------------|
@@ -246,30 +270,68 @@ These variables control the shape of your cluster. If unset, reasonable defaults
 
 ## 4. Cluster Bootstrap
 
-Now the fun begins. The single `init-kops-cluster` recipe orchestrates everything end-to-end. Here's what it does under the hood, in order, so you understand each moving part:
-
-**Command** (set these once, then the command is copy-paste-ready):
+Now the fun begins. With your per-cluster env file ready (it now has `PROJECT_ID`, `BUCKET_NAME`, and the five cluster vars from Section 3.2, plus any optional tuning knobs from 3.4), activate the cluster so everything is live in your shell:
 ```bash
-export PROJECT_ID="<your-gcp-project-id>"
-export BUCKET_NAME="<your-bucket-name>"
+just cluster-env <env> <cluster-name>
+```
+
+### The easy button
+
+If you want it all in one shot, the `init-kops-cluster` recipe runs every phase end-to-end:
+
+```bash
 just init-kops-cluster ${PROJECT_ID} ${BUCKET_NAME}
 ```
 
-**What happens, step by step:**
+But if you'd rather understand each moving part by running them one at a time — recommended on your first go — here's the full breakdown.
 
-*   **Phase 1 — Enable & Disable APIs**: Turns on the 42 GCP services the cluster needs (Compute, Container, Storage, IAM, KMS, Monitoring, Logging, etc.) and turns off 8 that aren't used (BigQuery, Deployment Manager, Datastore, etc.). This is like flipping circuit breakers — the services need to be "on" before anything else can talk to them.
+---
 
-*   **Phase 2 — Create the kops-cluster-creator Service Account**: A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is the principle of least privilege in action — rather than using the all-powerful `sa-manager` forever, we create a narrower key specifically for cluster provisioning.
+### Step-by-step (run each phase individually)
 
-*   **Phase 3 — Rotate Credentials**: Switches `GOOGLE_APPLICATION_CREDENTIALS` from `sa-manager` to the new `kops-cluster-creator` key. From this point on, the narrower key is what's used for everything cluster-related.
+> All commands assume you're inside a `cluster-env` sub-shell, so `${PROJECT_ID}` and `${BUCKET_NAME}` are already available.
 
-*   **Phase 4 — State Store Bucket**: Finds or creates the GCS bucket (`<BUCKET_NAME>`) where kops will keep its state. Enables versioning (so you can see the history of changes) and sets a lifecycle rule to clean up old versions automatically.
+**Phase 1a — Enable required APIs**
+```bash
+just gcp-api enable-apis ${PROJECT_ID} gcs-files/apis/enabled_apis.txt
+```
+Turns on the 42 GCP services the cluster needs (Compute, Container, Storage, IAM, KMS, Monitoring, Logging, etc.).
 
-*   **Phase 5 — kops create cluster**: Builds the cluster manifest (a detailed spec describing your cluster's shape — how many nodes, what size, which Kubernetes version) and writes it into the state bucket. **At this point, no actual VMs exist yet** — it's like an architectural blueprint, not the building itself.
+**Phase 1b — Disable unused APIs**
+```bash
+just gcp-api disable-apis ${PROJECT_ID} gcs-files/apis/disable_enabled_apis.txt
+```
+Turns off 8 services that aren't used (BigQuery, Deployment Manager, Datastore, etc.). Purely a cleanup step — not a hard dependency.
 
-*   **Phase 6 — Provision & Validate** (chained automatically): Runs `kops update cluster --yes` to turn the blueprint into real GCE instances, then waits for the cluster to report healthy.
+**Phase 2 — Create the kops-cluster-creator service account**
+```bash
+just gcp-sa create-sa ${PROJECT_ID} kops-cluster-creator \
+  gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
+  credentials/kops-cluster-creator.json
+```
+A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
 
-> **A note on idempotency**: Phases 1–4 are safe to re-run (they check if the thing already exists before creating it). Phase 5 (`kops create cluster`) is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
+**Phase 3 — Rotate credentials**
+```bash
+just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
+```
+Switches the active credential from `sa-manager` to the new `kops-cluster-creator` key. From this point on, the narrower key is what's used for everything cluster-related.
+
+> Remember: after `set-env-var`, reload with `eval "$(direnv export bash)"` so the Go binaries pick up the change — see [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues).
+
+**Phase 4 — State store bucket + kops create + provision + validate**
+```bash
+just gcp-cluster create-kops-cluster ${PROJECT_ID} ${BUCKET_NAME}
+```
+This one bundles several sub-steps:
+- Finds or creates the GCS state bucket with versioning and lifecycle rules
+- Runs `kops create cluster` — builds the manifest and writes it to the bucket (**no VMs exist yet** — it's a blueprint, not a building)
+- Runs `kops update cluster --yes` — turns the blueprint into real GCE instances
+- Validates the cluster and prints status
+
+---
+
+**A note on idempotency**: Phases 1–3 are safe to re-run (they check if the thing already exists before creating it). Phase 4's `kops create cluster` step is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
 
 **Expected successful output** (final lines):
 ```
@@ -394,13 +456,12 @@ This is especially important right after the credential rotation (Phase 3 of boo
 
 ### 7.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)
 
-These errors come from the bucket-creation step. They mean `CLUSTER_ENV_FILE` isn't set, or it's pointing at a file that doesn't exist, or the file itself is missing those variables. Double-check:
+These errors come from the bucket-creation step. They mean the per-cluster env file wasn't loaded into your shell — you're either not in a `cluster-env` sub-shell, or the env file itself is missing those variables. Double-check:
 ```bash
-grep CLUSTER_ENV_FILE .envrc          # is it set?
-cat $(grep CLUSTER_ENV_FILE .envrc | cut -d'=' -f2 | tr -d '"')  # does the file exist and contain the needed vars?
+env | grep -E 'KOPS_CLUSTER_NAME|KOPS_STATE_STORE|SSH_KEY|KUBERNETES_VERSION|KUBECONFIG'
 ```
-**Expected if correct**: The `grep` shows `CLUSTER_ENV_FILE=/path/to/.env.<env>.<cluster>`. The `cat` shows all five required variables with non-empty values.
-**If any variable is empty or missing**: Revisit [Section 3.2](#32-required-variables) and fill in the values.
+**Expected if correct**: All five variables show non-empty values.
+**If any are empty or missing**: Run `just cluster-env <env> <cluster>` to re-activate the cluster, or if you haven't created the env file yet, revisit [Section 3.1](#31-create-your-cluster-env-file).
 
 ### 7.3 Re-running Against an Existing Cluster (~15% of issues)
 
@@ -472,5 +533,5 @@ Not every problem can (or should) be solved solo. Escalate to the **platform-lea
 - The exact command you ran (copy-pasted from your terminal)
 - The full error output (copy-pasted, not summarized)
 - Which phase of the bootstrap was running (see [Section 4](#4-cluster-bootstrap))
-- Output of: `env | grep -E 'GOOGLE_APPLICATION_CREDENTIALS|KOPS_CLUSTER_NAME|KOPS_STATE_STORE|CLUSTER_ENV_FILE'`
+- Output of: `env | grep -E 'GOOGLE_APPLICATION_CREDENTIALS|KOPS_CLUSTER_NAME|KOPS_STATE_STORE'``
 - Output of: `gcloud auth list --filter=status:ACTIVE`
