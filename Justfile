@@ -24,6 +24,8 @@ gha_download_url := if os() == "macos" { base_gha_download_url + "darwin_arm64" 
 file_suffix := ".tar.gz"
 dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux_amd64" + file_suffix }
 
+# Optional legacy fallback superseded by `just cluster-env <env> <cluster>`.
+# Kept for backward compatibility with recipes that don't have an active cluster-env sub-shell.
 set dotenv-filename := x"${CLUSTER_ENV_FILE:-.env}"
 
 # Main setup recipe
@@ -136,6 +138,41 @@ build-publish-backup-image ref user pass: setup
     --user={{ user }} --password={{ pass }}
 
 # --- Cluster Operations ---
+
+# Activate a per-cluster env file by sourcing it into a sub-shell.
+# This is the recommended way to switch between clusters (dev/staging/prod).
+# The sub-shell inherits all cluster vars; 'exit' or Ctrl-D returns to the parent shell.
+#
+# Usage: just cluster-env <env> <cluster>
+# Example: just cluster-env dev my-cluster
+[group('cluster-ops')]
+cluster-env env cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ".env.{{ env }}.{{ cluster }}"
+    echo "Cluster: ${KOPS_CLUSTER_NAME}"
+    echo "State  : ${KOPS_STATE_STORE}"
+    echo "Type 'exit' or Ctrl-D to leave this environment."
+    exec "$SHELL"
+
+# Update the GOOGLE_APPLICATION_CREDENTIALS line in a per-cluster env file.
+# Inserts it if absent, replaces it if already present.
+#
+# Usage: just cluster-cred <env> <cluster> <key-path>
+# Example: just cluster-cred dev my-cluster credentials/kops-cluster-creator.json
+[group('cluster-ops')]
+cluster-cred env cluster key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    env_file=".env.{{ env }}.{{ cluster }}"
+    abs_key="${PWD}/{{ key }}"
+
+    if grep -q '^export GOOGLE_APPLICATION_CREDENTIALS=' "${env_file}" 2>/dev/null; then
+        sed -i '' "s|^export GOOGLE_APPLICATION_CREDENTIALS=.*|export GOOGLE_APPLICATION_CREDENTIALS=${abs_key}|" "${env_file}"
+    else
+        echo "export GOOGLE_APPLICATION_CREDENTIALS=${abs_key}" >> "${env_file}"
+    fi
+    echo "Updated ${env_file}: GOOGLE_APPLICATION_CREDENTIALS → ${abs_key}"
 
 # Initialize a Kubernetes cluster with kops
 [group('cluster-ops')]
