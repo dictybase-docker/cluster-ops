@@ -115,9 +115,10 @@ create-hmac-key project sa_name output_file:
 # Uses the active gcloud identity — works with a personal login that has master access
 # or with an already-activated service account that has sufficient IAM privileges.
 #
-# Usage: just gcp-sa setup-sa-manager <project_id>
+# Usage: just gcp-sa setup-sa-manager <project_id> [key_file]
+#   key_file defaults to credentials/sa-manager.json
 [group('service-account-management')]
-setup-sa-manager project_id:
+setup-sa-manager project_id key_file="credentials/sa-manager.json":
     #!/usr/bin/env bash
     set -euo pipefail
     gcloud config set disable_prompts true
@@ -125,7 +126,6 @@ setup-sa-manager project_id:
     sa_name="sa-manager"
     sa_email="${sa_name}@{{ project_id }}.iam.gserviceaccount.com"
     roles_file="gcs-files/roles-permissions/service-account-manager-roles.txt"
-    key_file="credentials/sa-manager.json"
 
     # 1. Create the service account (idempotent — skips if it already exists)
     echo "=== Step 1/3: Creating service account ${sa_email} ==="
@@ -145,7 +145,7 @@ setup-sa-manager project_id:
 
     # 3. Create and download a JSON key (pure gcloud CLI — no ADC needed)
     echo "=== Step 3/3: Generating key file ==="
-    mkdir -p credentials
+    mkdir -p "$(dirname "${key_file}")"
     gcloud iam service-accounts keys create "${key_file}" \
         --iam-account="${sa_email}" \
         --project={{ project_id }}
