@@ -27,8 +27,6 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
   - [3.3 Activate Your Cluster Env File](#33-activate-your-cluster-env-file)
   - [3.4 Optional Tuning Knobs](#34-optional-tuning-knobs)
 - [4. Cluster Bootstrap](#4-cluster-bootstrap)
-  - [The easy button](#the-easy-button)
-  - [Step-by-step (run each phase individually)](#step-by-step-run-each-phase-individually)
 - [5. Verification & Access](#5-verification--access)
   - [5.1 Sanity Checks (Per Phase)](#51-sanity-checks-per-phase)
   - [5.2 Cluster Health](#52-cluster-health)
@@ -270,26 +268,16 @@ These variables control the shape of your cluster. **Add them to the same per-cl
 
 ## 4. Cluster Bootstrap
 
-Now the fun begins. With your per-cluster env file ready (it now has `PROJECT_ID`, `BUCKET_NAME`, and the five cluster vars from Section 3.2, plus any optional tuning knobs from 3.4), activate the cluster so everything is live in your shell:
+Now the fun begins. With your per-cluster env file ready (it has `PROJECT_ID`, `BUCKET_NAME`, the five cluster vars from Section 3.2, plus any optional tuning knobs from 3.4), start by setting the credential and activating the cluster:
+
+> All commands assume `${PROJECT_ID}` and `${BUCKET_NAME}` are already in your cluster env file (Section 3.2). The credential is managed through the env file too — `cluster-cred` writes it, `cluster-env` loads it.
+
+**Phase 0 — Set the sa-manager credential and activate the cluster**
 ```bash
+just cluster-cred <env> <cluster-name> credentials/sa-manager.json
 just cluster-env <env> <cluster-name>
 ```
-
-### The easy button
-
-If you want it all in one shot, the `init-kops-cluster` recipe runs every phase end-to-end:
-
-```bash
-just init-kops-cluster ${PROJECT_ID} ${BUCKET_NAME}
-```
-
-But if you'd rather understand each moving part by running them one at a time — recommended on your first go — here's the full breakdown.
-
----
-
-### Step-by-step (run each phase individually)
-
-> All commands assume you're inside a `cluster-env` sub-shell, so `${PROJECT_ID}` and `${BUCKET_NAME}` are already available.
+This writes `GOOGLE_APPLICATION_CREDENTIALS` into your cluster env file pointing at the `sa-manager` key, then drops you into a sub-shell with all vars loaded. Phases 1a through 2 run with `sa-manager`'s broad permissions.
 
 **Phase 1a — Enable required APIs**
 ```bash
@@ -311,13 +299,16 @@ just gcp-sa create-sa ${PROJECT_ID} kops-cluster-creator \
 ```
 A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
 
-**Phase 3 — Rotate credentials**
+**Phase 3 — Rotate the credential in the cluster env file**
 ```bash
-just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/kops-cluster-creator.json"
+just cluster-cred <env> <cluster-name> credentials/kops-cluster-creator.json
 ```
-Switches the active credential from `sa-manager` to the new `kops-cluster-creator` key. From this point on, the narrower key is what's used for everything cluster-related.
-
-> Remember: after `set-env-var`, reload with `eval "$(direnv export bash)"` so the Go binaries pick up the change — see [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues).
+This updates the `GOOGLE_APPLICATION_CREDENTIALS` line in your cluster env file to point at the new `kops-cluster-creator` key. To pick it up, exit the sub-shell and re-enter:
+```bash
+exit
+just cluster-env <env> <cluster-name>
+```
+From this point on, the narrower `kops-cluster-creator` key is what's used for everything. The `sa-manager` key goes dormant — and `.envrc` was never touched.
 
 **Phase 4 — State store bucket + kops create + provision + validate**
 ```bash
@@ -331,7 +322,7 @@ This one bundles several sub-steps:
 
 ---
 
-**A note on idempotency**: Phases 1–3 are safe to re-run (they check if the thing already exists before creating it). Phase 4's `kops create cluster` step is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
+**A note on idempotency**: Phases 0–2 are safe to re-run (they check if the thing already exists before creating it). Phase 4's `kops create cluster` step is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
 
 **Expected successful output** (final lines):
 ```
