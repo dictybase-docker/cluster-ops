@@ -192,6 +192,10 @@ validate-kops-ha:
     kubectl get daemonset node-problem-detector -n kube-system --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.nodeProblemDetector.enabled"
     echo "Metrics Server:"
     kubectl top nodes --no-headers 2>/dev/null | head -3 || echo "  NOT AVAILABLE — check spec.metricsServer.enabled"
+    echo "cert-manager:"
+    kubectl get pods -n cert-manager --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.certManager.enabled"
+    echo "Node local DNS cache:"
+    kubectl get pods -n kube-system -l k8s-app=node-local-dns --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.kubeDNS.nodeLocalDNS.enabled"
     echo ""
     echo "HA validation complete."
 

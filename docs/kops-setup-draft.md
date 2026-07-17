@@ -452,6 +452,8 @@ Adjust these fields for defense-in-depth:
 | `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-events |
 | `spec.clusterAutoscaler.enabled` | `true` | Enable Cluster Autoscaler — detects pending pods and scales worker pools via GCE MIGs. Required for elastic InstanceGroups (stateless-web, batch-spot). The node SA automatically gets the MIG update permission |
 | `spec.nodeProblemDetector.enabled` | `true` | Enable Node Problem Detector — monitors kernel logs (`dmesg`, `journald`) for hardware failures and kernel deadlocks, taints unhealthy nodes to prevent scheduling. Critical for detecting zombie nodes before they cascade |
+| `spec.certManager.enabled` | `true` | Enable cert-manager — handles x509 certificate provisioning and rotation for cluster services. Required by many addons (e.g., admission webhooks). One installation per cluster; set `spec.certManager.managed: false` if you run cert-manager externally |
+| `spec.kubeDNS.nodeLocalDNS.enabled` | `true` | Enable node-local DNS cache — runs a caching DNS agent on every node as a DaemonSet, reducing DNS latency and CoreDNS load. Low overhead (5Mi memory, 25m CPU per node). Prevents DNS timeouts during CoreDNS restarts |
 
 <a id="phase-4d"></a>
 
@@ -531,18 +533,15 @@ just gcp-cluster validate-kops-ha
 
 **Phase 7 — Post-Provisioning Hardening**
 
-After the cluster is provisioned and validated, enable two reliability components that kOps manages but does not include in the base cluster spec by default:
+After the cluster is provisioned and validated, verify that the reliability components enabled in Phase 4c are running correctly:
 
-**Enable Metrics Server** (required for HPA and `kubectl top`):
-```bash
-kops get cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} -o yaml | \
-  sed '/^spec:/a\  metricsServer:\n    enabled: true' | \
-  kops replace -f -
-kops update cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes --admin
-```
-> Or, if you set Cluster Autoscaler in Phase 4c, the autoscaler depends on Metrics Server — kOps enables it automatically when the autoscaler is active.
+- **Cluster Autoscaler** (`spec.clusterAutoscaler.enabled: true` in Phase 4c) — auto-scales elastic InstanceGroups
+- **Node Problem Detector** (`spec.nodeProblemDetector.enabled: true` in Phase 4c) — monitors kernel logs, taints unhealthy nodes
+- **cert-manager** (`spec.certManager.enabled: true` in Phase 4c) — handles x509 certificate provisioning and rotation
+- **Node local DNS cache** (`spec.kubeDNS.nodeLocalDNS.enabled: true` in Phase 4c) — per-node DNS caching DaemonSet, reduces DNS latency and CoreDNS load
+- **Metrics Server** — automatically enabled by kOps when Cluster Autoscaler is active
 
-**Verify the hardening components are running:**
+**Verify all three are running:**
 
 ```bash
 # Cluster Autoscaler should be running as a pod in kube-system
@@ -553,12 +552,20 @@ kubectl get daemonset node-problem-detector -n kube-system
 
 # Metrics Server should be running and reporting
 kubectl top nodes
+
+# cert-manager should be running
+kubectl get pods -n cert-manager
+
+# Node local DNS cache should be running on every node
+kubectl get pods -n kube-system -l k8s-app=node-local-dns
 ```
 
 **Expected output:**
 - Cluster Autoscaler: 1 pod `Running` (it's a single-replica deployment, not a DaemonSet)
 - Node Problem Detector: DaemonSet with 1 pod per node, all `Running`
 - Metrics Server: `kubectl top nodes` shows CPU and memory for all nodes (no `error: metrics not available yet`)
+- cert-manager: pods `cert-manager`, `cert-manager-cainjector`, and `cert-manager-webhook` all `Running` in the `cert-manager` namespace
+- Node local DNS cache: one `node-local-dns` pod per node, all `Running` in `kube-system`
 
 **Verify autoscaler surge capacity:**
 
@@ -593,6 +600,8 @@ This section cross-references which kOps settings control which architectural co
 | **Cluster Autoscaler** | *(not a flag)* | `spec.clusterAutoscaler.enabled: true` — auto-provisions the autoscaler pod with GCE MIG permissions. Uses InstanceGroup `minSize`/`maxSize` for scaling bounds | None — manifest only |
 | **Node Problem Detector** | *(not a flag)* | `spec.nodeProblemDetector.enabled: true` — deploys as a DaemonSet, monitors kernel logs, taints unhealthy nodes | None — manifest only |
 | **Metrics Server** | *(not a flag)* | `spec.metricsServer.enabled: true` — enables `kubectl top` and HPA. Automatically enabled when Cluster Autoscaler is active | None — manifest only |
+| **cert-manager** | *(not a flag)* | `spec.certManager.enabled: true` — handles x509 certificates. One installation per cluster. Set `spec.certManager.managed: false` if running externally | None — manifest only |
+| **Node local DNS cache** | *(not a flag)* | `spec.kubeDNS.nodeLocalDNS.enabled: true` — per-node DNS caching DaemonSet. Reduces DNS latency and CoreDNS load | None — manifest only |
 
 ### 5.2 Version Command Matrix
 
