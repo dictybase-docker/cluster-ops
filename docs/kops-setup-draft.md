@@ -15,6 +15,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 
 ## Table of Contents
 - [Overview](#overview)
+- [Quick Setup](#quick-setup)
 - [1. Prerequisites & Tooling](#1-prerequisites--tooling)
   - [1.1 The GCP Project](#11-the-gcp-project)
   - [1.2 Core System Tools](#12-core-system-tools)
@@ -40,6 +41,20 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
   - [6.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)](#65-wrong-kops_cluster_name-suffix-8-of-issues)
   - [6.6 "Service Not Enabled" During SA Creation (~7% of issues)](#66-service-not-enabled-during-sa-creation-7-of-issues)
 - [7. Escalation — When to Call for Help](#7-escalation--when-to-call-for-help)
+
+## Quick Setup
+
+This is the short path to a working cluster. It is an orientation, not a replacement for the detailed instructions — some steps require tool installations, credential provisioning, or env-file choices before they can succeed. Follow the linked section whenever you need the full commands or rationale.
+
+1. **Install the tools.** Make sure `go`, `just`, `gcloud`, `direnv`, and `jq` are installed at the system level, then run `just install-asdf-plugins` for the asdf-managed tools. See [1. Prerequisites & Tooling](#1-prerequisites--tooling).
+2. **Generate the SSH keypair.** Run `ssh-keygen -t rsa -b 4096 -f credentials/k8sVM -N "" -C "kops-cluster-nodes"`. No Justfile recipe does this for you — it must be done by hand. See [1.4 SSH Keypair for Cluster Nodes](#14-ssh-keypair-for-cluster-nodes).
+3. **Build the repo.** Run `go build ./...` — it should succeed silently (no output = no errors). See [1.5 Prepare the Local Repo](#15-prepare-the-local-repo).
+4. **Set up authentication.** Place `sa-manager.json` in `credentials/` and configure `GOOGLE_APPLICATION_CREDENTIALS` with `just set-env-var`. See [2. Authentication Setup](#2-authentication-setup).
+5. **Create your cluster env file.** Copy `.env.dev.dcr-experiments`, then edit the seven required variables: `PROJECT_ID`, `BUCKET_NAME`, `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `KUBECONFIG`, `SSH_KEY`, and `KUBERNETES_VERSION`. See [3. Environment Variables](#3-environment-variables--the-cluster-config-file).
+6. **Bootstrap the cluster.** Activate your env file with `just cluster-env <env> <cluster>`, then run the five-phase bootstrap: set the sa-manager credential → enable required APIs → create the kops-cluster-creator SA → rotate credentials → provision the cluster with `just gcp-cluster create-kops-cluster`. See [4. Cluster Bootstrap](#4-cluster-bootstrap).
+7. **Verify everything is healthy.** Run `just gcp-cluster validate-cluster` — all nodes should show `Ready`. Then explore with `just gcp-cluster k9s`. See [5. Verification & Access](#5-verification--access).
+
+If a short step fails, do not guess at the fix: use the detailed section linked from that step, then check the [Common Pitfalls](#6-common-pitfalls) section before escalating per [Escalation](#7-escalation--when-to-call-for-help).
 
 ## 1. Prerequisites & Tooling
 
@@ -146,7 +161,7 @@ You need the **Service Account Manager** key to open the first door. Think of `s
     | `roles/compute.instanceAdmin.v1` | Full control over GCE instances |
     | `roles/aiplatform.user` | Vertex AI platform access |
 
-    *(Source: live IAM policy for a working project, 2026-07-16 — see `docs/sa-manager-roles.md`.)*
+    *(Source: live IAM policy for a working project, 2026-07-16.)*
 
 2.  **Save Key**: Place it in `./credentials/sa-manager.json`.
 
@@ -158,7 +173,7 @@ You need the **Service Account Manager** key to open the first door. Think of `s
 
     Behind the scenes, this writes `export GOOGLE_APPLICATION_CREDENTIALS=...` into `.envrc` and runs `direnv allow`. If you have `direnv`'s shell hook set up, the variable loads automatically whenever you `cd` into the project. If not, you'll need to manually `eval "$(direnv export bash)"` (or restart your shell) for it to take effect.
 
-> **What happens next**: During cluster bootstrap, the tooling will automatically create a narrower `kops-cluster-creator` service account and rotate `GOOGLE_APPLICATION_CREDENTIALS` to point at *that* key instead. You don't need to do this yourself — the single `init-kops-cluster` recipe handles both credential rotations. Just know that by the time the cluster is up, `sa-manager` is no longer in active use.
+> **What happens next**: During cluster bootstrap, the tooling will automatically create a narrower `kops-cluster-creator` service account and rotate `GOOGLE_APPLICATION_CREDENTIALS` to point at *that* key instead. You don't need to do this yourself — the bootstrap phases (Phases 0–4 in [Section 4](#4-cluster-bootstrap)) handle both credential rotations. Just know that by the time the cluster is up, `sa-manager` is no longer in active use.
 
 4.  **(Optional but recommended) Set up a gcloud named configuration**: Step 3 above tells the *SDKs and Go binaries* which key to use. If you also want `gcloud` CLI commands (`gcloud projects get-iam-policy`, `gsutil`, etc.) to run as `sa-manager`, create a dedicated named configuration for it:
 
@@ -189,13 +204,13 @@ You need the **Service Account Manager** key to open the first door. Think of `s
     gcloud config configurations list    # all your named identities
     ```
 
-    > **You can add more SA identities later the same way** (e.g., a `kops-creator` configuration for the `kops-cluster-creator` key). Each gets its own named slot — see `docs/sa-manager-roles.md` for the full pattern.
+    > **You can add more SA identities later the same way** (e.g., a `kops-creator` configuration for the `kops-cluster-creator` key). Each gets its own named slot — create a new gcloud configuration with `gcloud config configurations create <name>`, activate the SA with `gcloud auth activate-service-account`, and switch between them with `gcloud config configurations activate <name>`.
 
 ## 3. Environment Variables — The Cluster Config File
 
-Before `init-kops-cluster` will work, it needs to know a handful of things about your cluster: its name, where to store its state, which SSH key to use, and so on. These are defined in a **per-cluster env file** — one file per environment, following the naming convention `.env.<env>.<cluster>` (e.g., `.env.dev.my-cluster`, `.env.staging.my-cluster`, `.env.prod.my-cluster`).
+Before the bootstrap will work, it needs to know a handful of things about your cluster: its name, where to store its state, which SSH key to use, and so on. These are defined in a **per-cluster env file** — one file per environment, following the naming convention `.env.<env>.<cluster>` (e.g., `.env.dev.my-cluster`, `.env.staging.my-cluster`, `.env.prod.my-cluster`).
 
-The repo ships with `.env.dev.dcr-experiments` as a concrete example. You can copy it as a starting point, or create your own from scratch — either way, the five variables below are what matter.
+The repo ships with `.env.dev.dcr-experiments` as a concrete example. You can copy it as a starting point, or create your own from scratch — either way, the seven variables below are what matter (two project-level: `PROJECT_ID` and `BUCKET_NAME`; five cluster-level: the rest).
 
 ### 3.1 Create Your Cluster Env File
 
@@ -268,7 +283,7 @@ These variables control the shape of your cluster. **Add them to the same per-cl
 
 ## 4. Cluster Bootstrap
 
-Now the fun begins. With your per-cluster env file ready (it has `PROJECT_ID`, `BUCKET_NAME`, the five cluster vars from Section 3.2, plus any optional tuning knobs from 3.4), start by setting the credential and activating the cluster:
+Now the fun begins. With your per-cluster env file ready (it has `PROJECT_ID`, `BUCKET_NAME`, the five cluster-level vars from Section 3.2, plus any optional tuning knobs from 3.4), start by setting the credential and activating the cluster:
 
 > All commands assume `${PROJECT_ID}` and `${BUCKET_NAME}` are already in your cluster env file (Section 3.2). The credential is managed through the env file too — `cluster-cred` writes it, `cluster-env` loads it.
 
@@ -277,19 +292,19 @@ Now the fun begins. With your per-cluster env file ready (it has `PROJECT_ID`, `
 just cluster-cred <env> <cluster-name> credentials/sa-manager.json
 just cluster-env <env> <cluster-name>
 ```
-This writes `GOOGLE_APPLICATION_CREDENTIALS` into your cluster env file pointing at the `sa-manager` key, then drops you into a sub-shell with all vars loaded. Phases 1a through 2 run with `sa-manager`'s broad permissions.
+**Expected output**: `Wrote GOOGLE_APPLICATION_CREDENTIALS=... to .env.<env>.<cluster-name>` followed by the sub-shell banner printed by `cluster-env` (see [Section 3.3](#33-activate-your-cluster-env-file)). Phases 1a through 2 run with `sa-manager`'s broad permissions.
 
 **Phase 1a — Enable required APIs**
 ```bash
 just gcp-api enable-apis ${PROJECT_ID} gcs-files/apis/enabled_apis.txt
 ```
-Turns on the 42 GCP services the cluster needs (Compute, Container, Storage, IAM, KMS, Monitoring, Logging, etc.).
+**Expected output**: `Operation finished successfully. All required APIs are enabled for project <PROJECT_ID>.` Turns on the 42 GCP services the cluster needs (Compute, Container, Storage, IAM, KMS, Monitoring, Logging, etc.).
 
 **Phase 1b — Disable unused APIs**
 ```bash
 just gcp-api disable-apis ${PROJECT_ID} gcs-files/apis/disable_enabled_apis.txt
 ```
-Turns off 8 services that aren't used (BigQuery, Deployment Manager, Datastore, etc.). Purely a cleanup step — not a hard dependency.
+**Expected output**: `Operation finished successfully. 8 unused services have been disabled.` Purely a cleanup step — not a hard dependency.
 
 **Phase 2 — Create the kops-cluster-creator service account**
 ```bash
@@ -297,7 +312,7 @@ just gcp-sa create-sa ${PROJECT_ID} kops-cluster-creator \
   gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
   credentials/kops-cluster-creator.json
 ```
-A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
+**Expected output**: `Key created successfully. Service account kops-cluster-creator is now ready for use.` A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
 
 **Phase 3 — Rotate the credential in the cluster env file**
 ```bash
@@ -437,7 +452,7 @@ env | grep -E 'KOPS_CLUSTER_NAME|KOPS_STATE_STORE|SSH_KEY|KUBERNETES_VERSION|KUB
 
 ### 6.3 Re-running Against an Existing Cluster (~15% of issues)
 
-`kops create cluster` (Phase 5) is not idempotent — if a cluster with the same name already exists in the state bucket, it will error with something like:
+`kops create cluster` (Phase 4) is not idempotent — if a cluster with the same name already exists in the state bucket, it will error with something like:
 ```
 Error: cluster "my-cluster.k8s.local" already exists
 ```
@@ -445,7 +460,7 @@ If you need to re-create: either use a new cluster name, or delete the existing 
 ```bash
 kops delete cluster --name $KOPS_CLUSTER_NAME --state $KOPS_STATE_STORE --yes
 ```
-**Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run `init-kops-cluster`.
+**Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run Phase 4 of the bootstrap (`just gcp-cluster create-kops-cluster`).
 **WARNING**: This destroys all GCE resources associated with the cluster. Only do this if you're sure.
 
 ### 6.4 Forgot the SSH Keypair (~10% of issues)
@@ -495,7 +510,7 @@ Not every problem can (or should) be solved solo. Escalate to the **platform-lea
 
 | Condition | Why It's an Escalation |
 |-----------|----------------------|
-| `init-kops-cluster` fails after **3 retries** with the same error | Indicates a systemic issue, not a transient glitch |
+| The cluster bootstrap fails after **3 retries** with the same error | Indicates a systemic issue, not a transient glitch |
 | `just gcp-cluster validate-cluster` does **not** return healthy within **15 minutes** of `kops update cluster` | Nodes may be stuck in a boot loop or there's a networking misconfiguration |
 | You see IAM or permission errors mentioning `sa-manager` | The master key may be expired, revoked, or have insufficient roles — only the project owner can fix this |
 | You see billing-related errors (e.g., "billing must be enabled") | The GCP project's billing account needs attention from an org admin |
