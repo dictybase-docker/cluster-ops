@@ -15,16 +15,16 @@ For generic Kubernetes concerns (HPA/VPA, database engine choice, workload
 sizing analysis), see the full architecture proposal.
 
 ## Table of Contents
-- [Overview](#overview)
 - [Requirements & Goals](#requirements--goals)
+- [Overview](#overview)
 - [1. System Context (C4 L1)](#1-system-context-c4-l1)
 - [2. Container Architecture (C4 L2)](#2-container-architecture-c4-l2)
   - [2.1 Control Plane](#21-control-plane)
+    - [2.1.1 etcd Storage](#211-etcd-storage)
   - [2.2 Worker Node Pools](#22-worker-node-pools)
     - [2.2.1 Stateless Web/API Pool](#221-stateless-webapi-pool)
     - [2.2.2 Stateful/Database Pool](#222-statefuldatabase-pool)
     - [2.2.3 Analytical/Batch Pool (Spot)](#223-analyticalbatch-pool-spot)
-  - [2.3 etcd Storage](#23-etcd-storage)
 - [3. Cross-Cutting Concepts](#3-cross-cutting-concepts)
   - [3.1 Networking & Security Posture](#31-networking--security-posture)
   - [3.2 Identity & Access](#32-identity--access)
@@ -36,11 +36,6 @@ sizing analysis), see the full architecture proposal.
   - [ADR-004: Networking Model](#adr-004-networking-model)
 - [5. Technical Risks](#5-technical-risks)
 - [6. HA vs Cost-Optimized Comparison](#6-ha-vs-cost-optimized-comparison)
-- [7. Deployment Specification](#7-deployment-specification)
-  - [7.1 Initialize Environment Variables](#71-initialize-environment-variables)
-  - [7.2 Create Cluster Configuration Template](#72-create-cluster-configuration-template)
-  - [7.3 Edit Cluster Configuration](#73-edit-cluster-configuration)
-  - [7.4 Provision Infrastructure](#74-provision-infrastructure)
 
 ## Requirements & Goals
 
@@ -158,6 +153,30 @@ C4Container
 | Machine type | `e2-standard-2` or `n2-standard-2` | 2 vCPUs, 8 GB RAM. `n2` offers more predictable performance |
 | Boot disk | 64 GB `pd-balanced` | Separate from etcd volumes; solid-state boot at lower cost than `pd-ssd` |
 
+### 2.1.1 etcd Storage
+
+`etcd` is extremely sensitive to disk write/fsync latency. Slow disk
+performance causes leader-election timeouts, cascading into API server drops
+and cluster failure.
+
+- **Volume Isolation:** etcd-main and etcd-events reside on dedicated GCP
+  Persistent Disks, separate from the OS boot disk. kOps handles this
+  separation automatically when `volumeType` is configured in the manifest.
+- **Disk Type:** `pd-ssd` (SSD Persistent Disk) is the recommended choice.
+  `pd-ssd` offers lower latency and higher baseline IOPS than `pd-balanced`.
+- **Capacity:** 20 GB to 50 GB per etcd volume. GCP Persistent Disk
+  performance (IOPS and throughput) scales linearly with provisioned
+  capacity — extremely small disks (e.g., 10 GB) may be severely throttled.
+  Sizing must satisfy etcd's target write/fsync latencies under simulated peak
+  loads.
+
+**Manifest fields** (via `kops edit cluster`):
+
+| Field Path | Value |
+|-------------|-------|
+| `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` |
+| `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` |
+
 ### 2.2 Worker Node Pools
 
 Kops provisions worker nodes through GCE Managed Instance Groups (MIGs). Each
@@ -185,61 +204,29 @@ C4Container
 
 #### 2.2.1 Stateless Web/API Pool
 
-- **Instance Family:** `e2-standard-4` (4 vCPUs, 16 GB RAM).
-- **Elasticity:** Elastic, spanned across 3 zones. kOps manifest configures
-  `minSize: 3` and `maxSize: 6`. Three nodes ensure that if an entire zone
-  experiences a temporary outage, the remaining two zones can keep web traffic
-  reachable.
-- **Boot Disk:** 100 GB `pd-balanced`.
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Instance family | `e2-standard-4` | 4 vCPUs, 16 GB RAM — cost-effective balance of memory and CPU for standard web/API runtimes |
+| Elasticity | Elastic (3 to 6 nodes) | Spanned across 3 zones via GCE MIGs with Cluster Autoscaler. Minimum 3 ensures that if an entire zone experiences a temporary outage, the remaining two zones can keep web traffic reachable |
+| Boot disk | 100 GB `pd-balanced` | Solid-state boot performance at a lower price point than `pd-ssd`; application data lives on ephemeral storage or external services |
 
 #### 2.2.2 Stateful/Database Pool
 
-- **Instance Family:** `n2-standard-4` (4 vCPUs, 16 GB RAM) or
-  `n2-highmem-4` (4 vCPUs, 32 GB RAM) depending on working set requirements.
-  The `N2` series is designed for more predictable performance, critical for
-  stable database transaction processing.
-- **Elasticity:** Static. Elastic autoscaling is highly discouraged for
-  stateful relational databases — rapid scale-down events can interrupt active
-  TCP connections, disrupt writes, and cause replica synchronization issues.
-- **Boot Disk:** 100 GB `pd-balanced`. Database data resides on separate
-  Persistent Volumes, not the boot disk.
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Instance family | `n2-standard-4` or `n2-highmem-4` | 4 vCPUs, 16 GB RAM (or 32 GB RAM for high-memory variant). The `N2` series is designed for more predictable performance, critical for stable database transaction processing |
+| Node count | 3 | Static pool matching the database replication topology (e.g., one primary + two replicas across zones). The count should match the topology your database operator configures |
+| Elasticity | Static (no autoscaling) | Elastic autoscaling is highly discouraged for stateful relational databases — rapid scale-down events can interrupt active TCP connections, disrupt writes, and cause replica synchronization issues |
+| Boot disk | 100 GB `pd-balanced` | Database data resides on separate Persistent Volumes, not the boot disk |
 
 #### 2.2.3 Analytical/Batch Pool (Spot)
 
-- **Instance Family:** `e2-standard-4` running on **Spot VMs** (formerly
-  Preemptible VMs).
-- **Elasticity:** Elastic (0 to 4 nodes). Scales to 0 when no jobs are active
-  to eliminate idle compute costs.
-- **Rationale:** GCP Spot VMs offer up to a **91% discount** compared to
-  standard instances (Source: [GCP Spot VM
-  Docs](https://cloud.google.com/compute/docs/instances/spot)). Jobs must be
-  stateless, idempotent, or robust to interruption. This pool must be isolated
-  using Kubernetes **Node Taints** and **Tolerations** to ensure regular web
-  pods do not run on Spot instances.
-
-### 2.3 etcd Storage
-
-`etcd` is extremely sensitive to disk write/fsync latency. Slow disk
-performance causes leader-election timeouts, cascading into API server drops
-and cluster failure.
-
-- **Volume Isolation:** etcd-main and etcd-events reside on dedicated GCP
-  Persistent Disks, separate from the OS boot disk. kOps handles this
-  separation automatically when `volumeType` is configured in the manifest.
-- **Disk Type:** `pd-ssd` (SSD Persistent Disk) is the recommended choice.
-  `pd-ssd` offers lower latency and higher baseline IOPS than `pd-balanced`.
-- **Capacity:** 20 GB to 50 GB per etcd volume. GCP Persistent Disk
-  performance (IOPS and throughput) scales linearly with provisioned
-  capacity — extremely small disks (e.g., 10 GB) may be severely throttled.
-  Sizing must satisfy etcd's target write/fsync latencies under simulated peak
-  loads.
-
-**Manifest fields** (via `kops edit cluster`):
-
-| Field Path | Value |
-|-------------|-------|
-| `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` |
-| `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` |
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Instance family | `e2-standard-4` (Spot VMs) | 4 vCPUs, 16 GB RAM. Spot VMs offer up to a 91% discount compared to standard instances ([GCP Spot VM Docs](https://cloud.google.com/compute/docs/instances/spot)) |
+| Elasticity | Elastic (0 to 4 nodes) | Scales to 0 when no jobs are active to eliminate idle compute costs |
+| Boot disk | 100 GB `pd-balanced` | Sufficient for batch job scratch space; persistent output should be written to GCS or a database, not the boot disk |
+| Isolation | Node Taints + Tolerations | This pool must be isolated to ensure regular web pods and database pods do not run on Spot instances. Jobs must be stateless, idempotent, or robust to interruption — GCE gives a 30-second graceful shutdown notice on preemption |
 
 ## 3. Cross-Cutting Concepts
 
@@ -376,8 +363,8 @@ database-heavy analytical operations), facing unpredictable traffic bursts from
 scientific publications and batch sequence-alignment jobs, we decided for a
 three-pool architecture (elastic stateless, static stateful, elastic spot
 batch), to achieve cost efficiency through independent scaling while protecting
-database stability, accepting increased kOps InstanceGroup configuration
-complexity.
+database stability, accepting that 3 separate InstanceGroups must be configured, monitored, and
+scaled independently vs a single consolidated pool.
 
 | Option | Benefit | Cost | Verdict |
 |--------|---------|------|---------|
@@ -429,95 +416,9 @@ NAT, and restricted API access:
 | **Network Security** | Custom VPC, Private Topology, Cloud NAT, restricted API CIDR | Custom VPC, Private Topology, Cloud NAT, restricted API CIDR |
 | **Zone Failure Tolerance** | **High.** Redundancies in compute and database minimize downtime risk, though zonal failures may still cause brief pod/database failover. | **Low-to-Moderate.** Web app stays up, but database is non-HA and will experience downtime during a node or zonal outage, requiring manual restore or recovery. |
 
-## 7. Deployment Specification
-
-> **Why this section is included:** The `kops create cluster` template flags
-> encode architectural decisions — topology, networking, sizing, and etcd
-> storage — that directly materialize the ADRs in this document. The commands
-> below show how the architecture translates to the provisioning layer. For
-> the full step-by-step walkthrough (prerequisites, authentication,
-> troubleshooting), see the [kops setup runbook](kops-setup-draft.md).
-
-Deploying a highly available kOps cluster on GCP involves generating a cluster
-template and then editing it to match your architecture.
-
-### 7.1 Initialize Environment Variables
-
-```bash
-export PROJECT="your-gcp-project-id"
-export KOPS_STATE_STORE="gs://dictycr-kops-state-store"
-export NAME="dictycr-cluster.k8s.local"
-```
-
-### 7.2 Create Cluster Configuration Template
-
-This command generates the cluster template in your GCS bucket without creating
-actual resources. Modern kOps uses `--control-plane-count` and
-`--control-plane-zones` (rather than deprecated `master` terminology) and
-configures explicit boot disk sizes:
-
-```bash
-kops create cluster \
-    --name=${NAME} \
-    --state=${KOPS_STATE_STORE} \
-    --project=${PROJECT} \
-    --zones=us-central1-a,us-central1-b,us-central1-c \
-    --control-plane-zones=us-central1-a,us-central1-b,us-central1-c \
-    --node-count=3 \
-    --node-size=e2-standard-4 \
-    --control-plane-count=3 \
-    --control-plane-size=e2-standard-2 \
-    --control-plane-volume-size=64 \
-    --node-volume-size=100 \
-    --topology=private \
-    --networking=cilium \
-    --cloud=gce \
-    --kubernetes-version=${KUBERNETES_VERSION}
-```
-
-**Expected output:** `Created cluster "dictycr-cluster.k8s.local"` — a
-manifest is written to the state store but no VMs are provisioned yet.
-
-### 7.3 Edit Cluster Configuration
-
-After creating the template, tune the manifest for production:
-
-```bash
-kops edit cluster --name=${NAME} --state=${KOPS_STATE_STORE}
-```
-
-Adjust these manifest fields:
-
-| Manifest Section | Field Path | Recommended Value |
-|------------------|------------|-------------------|
-| **GCP Project** | `spec.cloudProvider.gce.project` | `"your-gcp-project-id"` |
-| **Service Account** | `spec.cloudProvider.gce.serviceAccount` | `"kops-nodes-sa@<project>.iam.gserviceaccount.com"` |
-| **API Access** | `spec.kubernetesApiAccess` | `["your-administrative-cidr/32"]` |
-| **CSI Driver** | `spec.cloudProvider.gce.pdCSIDriver.enabled` | `true` |
-| **etcd Volumes (main)** | `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` |
-| **etcd Volumes (events)** | `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` |
-
-### 7.4 Provision Infrastructure
-
-To build and reconcile the GCE instances, disks, load balancers, and network
-routes (kOps v1.31+):
-
-```bash
-kops reconcile cluster --name=${NAME} --state=${KOPS_STATE_STORE} --yes
-```
-
-**Expected output (final lines):**
-```
-Cluster "dictycr-cluster.k8s.local" is ready
-```
-
-To verify the cluster health after creation:
-
-```bash
-kops validate cluster --name=${NAME} --state=${KOPS_STATE_STORE} --wait 10m
-```
-
-**Expected output:** A list of nodes all showing `Ready` status, followed by:
-```
-Your cluster dictycr-cluster.k8s.local is ready
-```
+> **Deployment:** The provisioning workflow that materializes this architecture
+> — including the `kops create cluster` flags, manifest edits, InstanceGroup
+> configuration, version-specific commands (pre-1.31 vs 1.31+), and automation
+> gaps — is documented in the [Kops Cluster Creation Guide](kops-setup-draft.md),
+> Section 4 (Cluster Bootstrap) and the new Section 5 (Production HA
+> Deployment).
