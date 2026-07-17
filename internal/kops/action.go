@@ -15,7 +15,7 @@ func CreateCluster(cltx *cli.Context) error {
 		"--name", cltx.String("cluster-name"),
 		"--state", cltx.String("state"),
 		"--project", cltx.String("project-id"),
-		"--zones", cltx.String("zone"),
+		"--zones", cltx.String("zones"),
 		"--node-count", fmt.Sprintf("%d", cltx.Int("node-count")),
 		"--node-size", cltx.String("node-size"),
 		"--node-volume-size", fmt.Sprintf("%d", cltx.Int("node-volume-size")),
@@ -25,8 +25,18 @@ func CreateCluster(cltx *cli.Context) error {
 		"--kubernetes-version", cltx.String("kubernetes-version"),
 		"--ssh-public-key", cltx.String("ssh-key"),
 		"--cloud", cltx.String("provider"),
-		"--networking", "cilium-etcd",
+		"--networking", cltx.String("networking"),
+		"--topology", cltx.String("topology"),
 	}
+
+	// Optional HA flags
+	if cpZones := cltx.String("control-plane-zones"); cpZones != "" {
+		args = append(args, "--control-plane-zones", cpZones)
+	}
+	if adminAccess := cltx.String("admin-access"); adminAccess != "" {
+		args = append(args, "--admin-access", adminAccess)
+	}
+
 	cmd := exec.Command("kops", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

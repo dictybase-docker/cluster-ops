@@ -18,6 +18,7 @@ func main() {
 	// Combine all flag groups
 	flagGroups := []func() []cli.Flag{
 		kops.DefineClusterFlags,
+		kops.DefineHAClusterFlags,
 		kops.DefineCredentialsFlags,
 		kops.DefineKubernetesFlags,
 		kops.DefineMasterFlags,

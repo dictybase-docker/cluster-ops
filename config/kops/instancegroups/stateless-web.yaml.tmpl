@@ -1,0 +1,21 @@
+# Stateless Web/API InstanceGroup
+# Applied via: just gcp-cluster apply-instancegroups
+# Variables: STATELESS_MACHINE, STATELESS_MIN, STATELESS_MAX, NODE_ZONES
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: stateless-web
+  labels:
+    kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
+spec:
+  role: Node
+  machineType: ${STATELESS_MACHINE:-e2-standard-4}
+  minSize: ${STATELESS_MIN:-3}
+  maxSize: ${STATELESS_MAX:-6}
+  rootVolumeSize: 100
+  zones:
+    - ${NODE_ZONE_A:-us-central1-a}
+    - ${NODE_ZONE_B:-us-central1-b}
+    - ${NODE_ZONE_C:-us-central1-c}
+  nodeLabels:
+    pool: web

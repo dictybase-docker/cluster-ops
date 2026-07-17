@@ -136,10 +136,43 @@ func DefineClusterFlags() []cli.Flag {
 			Required: true,
 		},
 		&cli.StringFlag{
-			Name:    "zone",
+			Name:    "zones",
 			Aliases: []string{"z"},
-			Usage:   "the google cloud zone",
+			Usage:   "the google cloud zones (comma-separated)",
 			Value:   "us-central1-c",
+			EnvVars: []string{"NODE_ZONES"},
+		},
+	}
+}
+
+// DefineHAClusterFlags returns flags for HA production clusters.
+func DefineHAClusterFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "control-plane-zones",
+			Aliases: []string{"cpz"},
+			Usage:   "zones for control-plane nodes (comma-separated)",
+			EnvVars: []string{"CONTROL_PLANE_ZONES"},
+		},
+		&cli.StringFlag{
+			Name:    "topology",
+			Aliases: []string{"t"},
+			Usage:   "cluster topology: public or private",
+			Value:   "public",
+			EnvVars: []string{"TOPOLOGY"},
+		},
+		&cli.StringFlag{
+			Name:    "networking",
+			Aliases: []string{"nw"},
+			Usage:   "networking CNI plugin",
+			Value:   "cilium-etcd",
+			EnvVars: []string{"NETWORKING"},
+		},
+		&cli.StringFlag{
+			Name:    "admin-access",
+			Aliases: []string{"aa"},
+			Usage:   "CIDR(s) for kubernetesApiAccess (comma-separated)",
+			EnvVars: []string{"API_ACCESS_CIDR"},
 		},
 	}
 }
