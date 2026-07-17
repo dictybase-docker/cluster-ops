@@ -2,16 +2,11 @@
 
 **Last tested**: 2026-07-16
 
-## Overview
-
-This guide walks you through bootstrapping a kops-managed Kubernetes cluster on GCP from a fresh clone of the repo, all the way to a running cluster with a Pulumi-managed application stack on top.
-
-- **Who it's for**: Platform operators who have access to a GCP project and the `sa-manager` service account key.
-- **What you'll end up with**: A fully provisioned Kubernetes cluster (GCE instances, networking, IAM, state storage) plus the Pulumi scaffolding for deploying applications.
-- **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
-- **Prerequisites in one sentence**: An existing GCP project with billing enabled, `sa-manager.json` key, and the tools listed in Section 1.
-- **Reusable across environments**: This guide is written to be generic — dev, staging, prod, whatever. Change the project ID, pick a cluster name, adjust a few optional knobs (node count, machine size), and the same steps produce a cluster in a different GCP project. The only per-environment artifact you create is a small env file (Section 3).
-- **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](pulumi-setup.md).
+> **Document type:** This is a **provisioning guide** — a sequential
+> walkthrough for setting up a kops-managed Kubernetes cluster from scratch.
+> For incident-response procedures (diagnostic decision trees, alert-linked
+> runbooks), see the [kops architecture doc](kops-architecture.md) technical
+> risks section, which maps failure modes to mitigations.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -29,18 +24,34 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
   - [3.3 Activate Your Cluster Env File](#33-activate-your-cluster-env-file)
   - [3.4 Optional Tuning Knobs](#34-optional-tuning-knobs)
 - [4. Cluster Bootstrap](#4-cluster-bootstrap)
-- [5. Verification & Access](#5-verification--access)
-  - [5.1 Sanity Checks (Per Phase)](#51-sanity-checks-per-phase)
-  - [5.2 Cluster Health](#52-cluster-health)
-  - [5.3 Getting Inside the Cluster](#53-getting-inside-the-cluster)
-- [6. Common Pitfalls](#6-common-pitfalls)
-  - [6.1 ".envrc Changes Don't Take Effect" (~35% of issues)](#61-envrc-changes-dont-take-effect-35-of-issues)
-  - [6.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)](#62-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues)
-  - [6.3 Re-running Against an Existing Cluster (~15% of issues)](#63-re-running-against-an-existing-cluster-15-of-issues)
-  - [6.4 Forgot the SSH Keypair (~10% of issues)](#64-forgot-the-ssh-keypair-10-of-issues)
-  - [6.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)](#65-wrong-kops_cluster_name-suffix-8-of-issues)
-  - [6.6 "Service Not Enabled" During SA Creation (~7% of issues)](#66-service-not-enabled-during-sa-creation-7-of-issues)
-- [7. Escalation — When to Call for Help](#7-escalation--when-to-call-for-help)
+- [5. Production HA Deployment Reference](#5-production-ha-deployment-reference)
+  - [5.1 Which Setting Controls Which Pool](#51-which-setting-controls-which-pool)
+  - [5.2 Version Command Matrix](#52-version-command-matrix)
+  - [5.3 Rollback](#53-rollback)
+  - [5.4 Automation Gaps](#54-automation-gaps)
+- [6. Verification & Access](#6-verification--access)
+  - [6.1 Sanity Checks (Per Phase)](#61-sanity-checks-per-phase)
+  - [6.2 Cluster Health](#62-cluster-health)
+  - [6.3 Getting Inside the Cluster](#63-getting-inside-the-cluster)
+- [7. Common Pitfalls](#7-common-pitfalls)
+  - [7.1 ".envrc Changes Don't Take Effect" (~35% of issues)](#71-envrc-changes-dont-take-effect-35-of-issues)
+  - [7.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues)
+  - [7.3 Re-running Against an Existing Cluster (~15% of issues)](#73-re-running-against-an-existing-cluster-15-of-issues)
+  - [7.4 Forgot the SSH Keypair (~10% of issues)](#74-forgot-the-ssh-keypair-10-of-issues)
+  - [7.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)](#75-wrong-kops_cluster_name-suffix-8-of-issues)
+  - [7.6 "Service Not Enabled" During SA Creation (~7% of issues)](#76-service-not-enabled-during-sa-creation-7-of-issues)
+- [8. Escalation — When to Call for Help](#8-escalation--when-to-call-for-help)
+
+## Overview
+
+This guide walks you through bootstrapping a kops-managed Kubernetes cluster on GCP from a fresh clone of the repo, all the way to a running cluster with a Pulumi-managed application stack on top.
+
+- **Who it's for**: Platform operators who have access to a GCP project and the `sa-manager` service account key.
+- **What you'll end up with**: A fully provisioned Kubernetes cluster (GCE instances, networking, IAM, state storage) plus the Pulumi scaffolding for deploying applications.
+- **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
+- **Prerequisites in one sentence**: An existing GCP project with billing enabled, `sa-manager.json` key, and the tools listed in Section 1.
+- **Reusable across environments**: This guide is written to be generic — dev, staging, prod, whatever. Change the project ID, pick a cluster name, adjust a few optional knobs (node count, machine size), and the same steps produce a cluster in a different GCP project. The only per-environment artifact you create is a small env file (Section 3).
+- **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](pulumi-setup.md).
 
 ## Quick Setup
 
@@ -51,10 +62,12 @@ This is the short path to a working cluster. It is an orientation, not a replace
 3. **Build the repo.** Run `go build ./...` — it should succeed silently (no output = no errors). See [1.5 Prepare the Local Repo](#15-prepare-the-local-repo).
 4. **Set up authentication.** Place `sa-manager.json` in `credentials/` and configure `GOOGLE_APPLICATION_CREDENTIALS` with `just set-env-var`. See [2. Authentication Setup](#2-authentication-setup).
 5. **Create your cluster env file.** Copy `.env.dev.dcr-experiments`, then edit the seven required variables: `PROJECT_ID`, `BUCKET_NAME`, `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `KUBECONFIG`, `SSH_KEY`, and `KUBERNETES_VERSION`. See [3. Environment Variables](#3-environment-variables--the-cluster-config-file).
-6. **Bootstrap the cluster.** Activate your env file with `just cluster-env <env> <cluster>`, then run the five-phase bootstrap: set the sa-manager credential → enable required APIs → create the kops-cluster-creator SA → rotate credentials → provision the cluster with `just gcp-cluster create-kops-cluster`. See [4. Cluster Bootstrap](#4-cluster-bootstrap).
-7. **Verify everything is healthy.** Run `just gcp-cluster validate-cluster` — all nodes should show `Ready`. Then explore with `just gcp-cluster k9s`. See [5. Verification & Access](#5-verification--access).
+6. **Bootstrap the cluster (HA production).** Activate your env file with `just cluster-env <env> <cluster>`, then run Phases 0–3 (credential → APIs → SA → credential rotation). Phase 4 provisions an HA production cluster: create the GCS state bucket, generate the cluster manifest with `kops create cluster` (3 control-plane nodes, private topology, Cilium), edit the manifest for security, configure three worker InstanceGroups (stateless-web, stateful-db, batch-spot), then apply with the version-appropriate command. See [4. Cluster Bootstrap](#4-cluster-bootstrap) and [5. Production HA Deployment Reference](#5-production-ha-deployment-reference).
 
-If a short step fails, do not guess at the fix: use the detailed section linked from that step, then check the [Common Pitfalls](#6-common-pitfalls) section before escalating per [Escalation](#7-escalation--when-to-call-for-help).
+   > **Note:** The existing `just gcp-cluster create-kops-cluster` recipe creates a single-pool, public-topology cluster — it is not sufficient for this HA production setup. The manual `kops` commands in Section 4 are required until the automation gaps in [Section 5.4](#54-automation-gaps) are addressed.
+7. **Verify everything is healthy.** Run `just gcp-cluster validate-cluster` — all nodes should show `Ready`. Then explore with `just gcp-cluster k9s`. See [6. Verification & Access](#6-verification--access).
+
+If a short step fails, do not guess at the fix: use the detailed section linked from that step, then check the [Common Pitfalls](#7-common-pitfalls) section before escalating per [Escalation](#8-escalation--when-to-call-for-help).
 
 ## 1. Prerequisites & Tooling
 
@@ -325,37 +338,309 @@ just cluster-env <env> <cluster-name>
 ```
 From this point on, the narrower `kops-cluster-creator` key is what's used for everything. The `sa-manager` key goes dormant — and `.envrc` was never touched.
 
-**Phase 4 — State store bucket + kops create + provision + validate**
+**Phase 4 — State store bucket + kops create cluster manifest (HA production)**
+
+> **This is an HA production deployment.** The steps below provision:
+> - **3 control-plane nodes** across 3 zones with etcd Raft quorum and dedicated `pd-ssd` volumes.
+> - **Private topology** (no public IPs on nodes) with Cloud NAT for egress and CIDR-restricted API access.
+> - **Multiple worker InstanceGroups** (stateless web, stateful database, batch/Spot) as described in the [kops architecture doc](kops-architecture.md).
+> 
+> The existing `just gcp-cluster create-kops-cluster` recipe bundles the steps below into a single command **for a single-pool, public-topology cluster** — it is not suitable for this production setup. The step-by-step manual workflow below gives you full control over every architectural decision.
+
+**Phase 4a — Create and harden the GCS state bucket**
+
+The state bucket holds your entire cluster configuration. Harden it before writing anything:
 ```bash
-just gcp-cluster create-kops-cluster ${PROJECT_ID} ${BUCKET_NAME}
+gsutil mb -p ${PROJECT_ID} -l us-central1 gs://${BUCKET_NAME}/
+gsutil versioning set on gs://${BUCKET_NAME}/
+gsutil uniformbucketlevelaccess set on gs://${BUCKET_NAME}/
+gsutil pap set enforced gs://${BUCKET_NAME}/
 ```
-This one bundles several sub-steps:
-- Finds or creates the GCS state bucket with versioning and lifecycle rules
-- Runs `kops create cluster` — builds the manifest and writes it to the bucket (**no VMs exist yet** — it's a blueprint, not a building)
-- Runs `kops update cluster --yes` — turns the blueprint into real GCE instances
-- Validates the cluster and prints status
+**Expected output:** `Creating gs://<BUCKET_NAME>/...` followed by confirmation messages for versioning, UBLA, and PAP. If the bucket name is already taken globally, pick a different `<BUCKET_NAME>`.
+
+**Phase 4b — Generate the HA cluster manifest (no VMs yet)**
+
+This command writes the manifest to the state bucket but provisions **nothing** — it is a blueprint, not a building:
+
+```bash
+kops create cluster \
+    --name=${KOPS_CLUSTER_NAME} \
+    --state=${KOPS_STATE_STORE} \
+    --project=${PROJECT_ID} \
+    --zones=us-central1-a,us-central1-b,us-central1-c \
+    --control-plane-zones=us-central1-a,us-central1-b,us-central1-c \
+    --node-count=3 \
+    --node-size=e2-standard-4 \
+    --control-plane-count=3 \
+    --control-plane-size=e2-standard-2 \
+    --control-plane-volume-size=64 \
+    --node-volume-size=100 \
+    --topology=private \
+    --networking=cilium \
+    --cloud=gce \
+    --kubernetes-version=${KUBERNETES_VERSION}
+```
+
+**Expected output:** `Created cluster "<KOPS_CLUSTER_NAME>"` — this confirms the manifest was written to GCS. No VMs exist yet.
+
+> **What this command creates:** A single default worker InstanceGroup (`nodes-<zone>`) with the flags from `--node-count`, `--node-size`, and `--node-volume-size`. The additional InstanceGroups (stateful database, batch/Spot) and production security settings are configured in the next steps.
+
+**Phase 4c — Edit the manifest for production security**
+```bash
+kops edit cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+Adjust these fields for defense-in-depth:
+
+| Field Path | Recommended Value | Why |
+|------------|-------------------|-----|
+| `spec.cloudProvider.gce.serviceAccount` | `"kops-nodes-sa@<PROJECT_ID>.iam.gserviceaccount.com"` | Least-privilege node identity |
+| `spec.kubernetesApiAccess` | `["<your-admin-cidr>/32"]` | Restrict API access — never leave `0.0.0.0/0` in production |
+| `spec.cloudProvider.gce.pdCSIDriver.enabled` | `true` | GCE Persistent Disk CSI driver for PVs |
+| `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-main (fsync latency critical) |
+| `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-events |
+
+**Phase 4d — Configure the worker InstanceGroups**
+
+kOps uses InstanceGroups to define node pools. The `kops create cluster` command above creates a single default worker group. Production needs three pools — each defined as a separate InstanceGroup. List what exists:
+
+```bash
+kops get instancegroups --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+
+**Rename the default pool** to make it the stateless web/API pool:
+```bash
+kops edit instancegroup nodes-us-central1-a --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+Set these fields in the editor:
+
+```yaml
+metadata:
+  name: stateless-web
+spec:
+  machineType: e2-standard-4
+  minSize: 3
+  maxSize: 6
+  rootVolumeSize: 100
+  zones:
+    - us-central1-a
+    - us-central1-b
+    - us-central1-c
+```
+
+**Create the stateful database pool** (static, no autoscaling):
+```bash
+kops create instancegroup stateful-db \
+    --name=${KOPS_CLUSTER_NAME} \
+    --state=${KOPS_STATE_STORE} \
+    --role=Node \
+    --subnet=us-central1
+kops edit instancegroup stateful-db --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+Set these fields:
+```yaml
+spec:
+  machineType: n2-standard-4
+  minSize: 3
+  maxSize: 3
+  rootVolumeSize: 100
+  zones:
+    - us-central1-a
+    - us-central1-b
+    - us-central1-c
+  nodeLabels:
+    pool: database
+```
+
+> **Important:** This InstanceGroup provides failure-domain capacity (3 hosts across 3 zones) but does **not** give you database HA by itself. You still need a database operator (CloudNativePG, PGO), pod anti-affinity rules, a PodDisruptionBudget, and independent Persistent Volumes per replica.
+
+**Create the batch/Spot pool** (elastic, scales to 0):
+```bash
+kops create instancegroup batch-spot \
+    --name=${KOPS_CLUSTER_NAME} \
+    --state=${KOPS_STATE_STORE} \
+    --role=Node \
+    --subnet=us-central1
+kops edit instancegroup batch-spot --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+Set these fields:
+```yaml
+spec:
+  machineType: e2-standard-4
+  minSize: 0
+  maxSize: 4
+  rootVolumeSize: 100
+  zones:
+    - us-central1-a
+    - us-central1-b
+    - us-central1-c
+  taints:
+    - spot:true:NoSchedule
+  nodeLabels:
+    pool: batch
+  gce:
+    preemptible: true
+```
+
+> **Spot/preemptible field verified:** The `spec.gce.preemptible` field is the kOps-native way to mark an InstanceGroup for Spot VMs. The field is documented in the [kOps InstanceGroup GCE spec](https://kops.sigs.k8s.io/instance_groups/#gce-only-fields). Jobs on this pool must be stateless, idempotent, or robust to interruption — GCE gives a 30-second graceful shutdown notice on preemption.
+
+**Verify all InstanceGroups** before applying:
+```bash
+kops get instancegroups --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+
+**Expected output:**
+
+| Name | Role | Machine Type | Min | Max | Zones |
+|------|------|-------------|-----|-----|-------|
+| control-plane-us-central1-a | ControlPlane | e2-standard-2 | 1 | 1 | us-central1-a |
+| control-plane-us-central1-b | ControlPlane | e2-standard-2 | 1 | 1 | us-central1-b |
+| control-plane-us-central1-c | ControlPlane | e2-standard-2 | 1 | 1 | us-central1-c |
+| stateless-web | Node | e2-standard-4 | 3 | 6 | a,b,c |
+| stateful-db | Node | n2-standard-4 | 3 | 3 | a,b,c |
+| batch-spot | Node | e2-standard-4 | 0 | 4 | a,b,c |
 
 ---
 
-**A note on idempotency**: Phases 0–2 are safe to re-run (they check if the thing already exists before creating it). Phase 4's `kops create cluster` step is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
+**A note on idempotency**: Phases 0–3 are safe to re-run (they check if the thing already exists before creating it). Phase 4a is safe (bucket creation is idempotent). Phase 4b (`kops create cluster`) is *not* — running it against an existing cluster name will error out because a manifest with that name already lives in the state bucket.
 
-**Expected successful output** (final lines):
+**Phase 5 — Apply (version-specific)**
+
+> **Detect your kOps version first:**
+> ```bash
+> kops version | head -1
+> ```
+> The command you use depends on what it prints. Mixing workflows (e.g., using legacy `update` on a cluster created with `reconcile`) can leave the cluster in an inconsistent state.
+
+**If kOps ≥ 1.31.0** — unified reconciliation (stable, recommended):
+```bash
+kops reconcile cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes
 ```
-Cluster "my-cluster.k8s.local" created in GCS bucket gs://kops-state-my-cluster
-...
-Your cluster my-cluster.k8s.local is ready
+**Expected output (final lines):**
+```
+Cluster "<KOPS_CLUSTER_NAME>" is ready
 ```
 
-**Common failure signatures**:
-- `Error: bucket "..." already exists in a different project` — the bucket name is taken globally. Pick a different `<BUCKET_NAME>`.
-- `Error: could not find the specified project` — the `<PROJECT_ID>` is wrong or the project doesn't exist. Double-check in the GCP console.
-- `Error: SERVICE_ACCOUNT_NOT_FOUND` — the credential rotation didn't take effect in your shell. See [Section 6.1](#61-envrc-changes-dont-take-effect-35-of-issues).
+**If kOps ≤ 1.30.x** — legacy two-step apply:
+```bash
+kops update cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes --admin
+```
+**Expected output:** Lists every resource that will be created, then `Kops has updated the cluster config.` If kOps reports that a rolling update is required (common after InstanceGroup changes):
+```bash
+kops rolling-update cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes
+```
 
-## 5. Verification & Access
+> **This repo currently pins kOps v1.29.2** (see `.tool-versions`). That means you must use the legacy `kops update cluster --yes --admin` workflow. The existing `just gcp-cluster update-cluster` recipe runs this exact command. If you upgrade kOps to v1.31+, you must also replace the recipe with `kops reconcile cluster --yes` or add a separate `reconcile-cluster` recipe. See the automation gaps in [Section 5.4](#54-automation-gaps).
+
+**Phase 6 — Validate HA topology**
+
+Confirm the cluster is healthy and check that each InstanceGroup is correctly distributed:
+
+```bash
+# Validate cluster health
+kops validate cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --wait 10m
+```
+**Expected output:** All nodes `Ready`, followed by `Your cluster <KOPS_CLUSTER_NAME> is ready`.
+
+```bash
+# Check InstanceGroup distribution
+kops get instancegroups --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
+```
+**Expected:** 3 control-plane IGs, 3 worker IGs (stateless-web, stateful-db, batch-spot) — all showing the correct machine types, min/max, and zones.
+
+```bash
+# Verify nodes are spread across zones
+kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,POOL:.metadata.labels.pool
+```
+**Expected:** Nodes from each pool distributed across `us-central1-a`, `us-central1-b`, `us-central1-c`. The `POOL` column shows `database` for stateful nodes, `batch` for Spot nodes, and `<none>` for the stateless web pool.
+
+```bash
+# Verify taints on the batch pool
+kubectl describe nodes -l pool=batch | grep -A1 Taints
+```
+**Expected:** `spot=true:NoSchedule` on every batch pool node.
+
+```bash
+# Check overall cluster status
+just gcp-cluster cluster-status
+```
+
+**Common failure signatures** (Phase 5–6):
+
+| If you see | This indicates | Go to |
+|-----------|---------------|------|
+| `Error: bucket "..." already exists in a different project` | The bucket name is taken globally. Pick a different `<BUCKET_NAME>` and re-run from Phase 4a | Phase 4a |
+| `Error: could not find the specified project` | The `<PROJECT_ID>` is wrong or the project doesn't exist. Double-check in the GCP console, then re-run the command | Phase 4b |
+| `Error: SERVICE_ACCOUNT_NOT_FOUND` | The credential rotation didn't take effect in your sub-shell. Exit and re-enter `cluster-env`, then verify with `echo $GOOGLE_APPLICATION_CREDENTIALS` | [Section 7.1](#71-envrc-changes-dont-take-effect-35-of-issues) |
+| Validation timeout (>10 minutes) | Nodes may be stuck in a boot loop. Check GCP console for instance startup errors, verify the OS image is COS or Ubuntu (not RHEL/Rocky) | [kops architecture doc: OS Image Compatibility](kops-architecture.md#33-os-image-compatibility) |
+| Nodes missing from expected zones | The InstanceGroup `spec.zones` list may not match your intent. Run `kops get instancegroups` and verify | Phase 4d |
+| `kops reconcile` returns `unknown command` | You are on kOps ≤ 1.30.x — use the legacy `kops update cluster --yes --admin` path instead | [Section 5.2](#52-version-command-matrix) |
+
+## 5. Production HA Deployment Reference
+
+This section cross-references which kOps settings control which architectural component, the version-specific command matrix, and the gaps in the current automation.
+
+### 5.1 Which Setting Controls Which Pool
+
+| Pool | kOps `create cluster` Flag | InstanceGroup Field(s) | Env Var Override |
+|------|---------------------------|----------------------|------------------|
+| **Control plane** | `--control-plane-count=3`, `--control-plane-size=e2-standard-2`, `--control-plane-volume-size=64`, `--control-plane-zones=...` | Managed via `spec.controlPlane.kubelet`; separate IGs auto-created per zone | `TOTAL_MASTER`, `MASTER_MACHINE`, `MASTER_DISK_SIZE` |
+| **Stateless web (default workers)** | `--node-count=3`, `--node-size=e2-standard-4`, `--node-volume-size=100` | `spec.machineType`, `spec.minSize`, `spec.maxSize`, `spec.zones` | `TOTAL_NODES`, `NODE_MACHINE`, `NODE_DISK_SIZE` |
+| **Stateful database** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: n2-standard-4`, `spec.minSize: 3`, `spec.maxSize: 3`, `spec.nodeLabels.pool: database` | None — manual only |
+| **Batch/Spot** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: e2-standard-4`, `spec.minSize: 0`, `spec.maxSize: 4`, `spec.taints[0]: spot:true:NoSchedule`, `spec.gce.preemptible: true` | None — manual only |
+| **etcd volumes** | *(not a flag)* | `spec.etcdClusters[0].etcdMembers[*].volumeType: pd-ssd`, `spec.etcdClusters[1].etcdMembers[*].volumeType: pd-ssd` | None — manifest only |
+| **Private topology** | `--topology=private` | `spec.topology.masters: private`, `spec.topology.nodes: private` | None — flag/manifest only |
+| **API CIDR restriction** | *(not a flag)* | `spec.kubernetesApiAccess: ["<cidr>/32"]` | None — manifest only |
+| **Networking / CNI** | `--networking=cilium` | `spec.networking.cilium` | None — flag only |
+
+### 5.2 Version Command Matrix
+
+| Action | kOps ≤ 1.30.x (current: v1.29.2) | kOps ≥ 1.31.0 |
+|--------|----------------------------------|---------------|
+| Create manifest | `kops create cluster ...` | `kops create cluster ...` |
+| Edit manifest | `kops edit cluster ...` | `kops edit cluster ...` |
+| Apply changes | `kops update cluster --yes --admin` | `kops reconcile cluster --yes` |
+| Rolling update (if needed) | `kops rolling-update cluster --yes` | *(included in `reconcile`)* |
+| Validate health | `kops validate cluster --wait 10m` | `kops validate cluster --wait 10m` |
+| Justfile recipe | `just gcp-cluster update-cluster` | *(recipe needs to be added)* |
+
+> **Warning:** Do not mix workflows. If you create a cluster with kOps 1.31+, always use `kops reconcile`. If you create with kOps 1.29/1.30, always use `kops update cluster`. The `kops reconcile` command replaces both `update` and `rolling-update` for v1.31+.
+
+### 5.3 Rollback
+
+> **Before taking destructive action:** Check the cluster's current role in
+> your environment. If this is a production cluster serving live traffic,
+> coordinate the rollback with the platform-lead. Verify that no dependent
+> services (Pulumi stacks, CI/CD pipelines, monitoring) are actively using
+> the cluster. For SLA-governed environments, confirm the current uptime
+> budget allows for a full cluster teardown and recreate before proceeding.
+
+If the apply step creates an unhealthy cluster or you need to tear down:
+
+```bash
+kops delete cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes
+```
+**Expected output:** `Deleted cluster: "<KOPS_CLUSTER_NAME>"` — this destroys all GCE resources. The state bucket and its versioned history remain (delete it separately with `gsutil rm -r gs://${BUCKET_NAME}` if no longer needed). You can then re-run from Phase 4b.
+
+### 5.4 Automation Gaps
+
+Inspecting the current codebase (`cmd/kops/main.go`, `internal/kops/flags.go`, `internal/kops/action.go`, `just_modules/cluster.justfile`) against this production HA workflow reveals these gaps:
+
+| Gap | Current State | Impact | Recommendation |
+|-----|--------------|--------|----------------|
+| **`create-kops-cluster` recipe is monolithic** | Creates the bucket, runs `kops create cluster`, applies, validates, and reports status in one go | No opportunity to edit the manifest or configure InstanceGroups before VMs are provisioned | **Recommended:** Split into separate recipes: `create-kops-config` (Phases 4a–4c), `create-kops-instancegroups` (Phase 4d), `apply-kops-cluster` (Phase 5) |
+| **`update-cluster` recipe is legacy-only** | Runs `kops update cluster --yes --admin` | Breaks on kOps ≥ 1.31 | **Recommended:** Add a `reconcile-cluster` recipe (`kops reconcile cluster --yes`) and make `update-cluster` conditional on the installed kOps version, or deprecate it when upgrading past v1.30 |
+| **Go binary creates a single-pool cluster** | `kops-cluster-creator` passes `--node-count`, `--node-size`, single zone via `--zones` | Cannot express the three-pool architecture (stateless, stateful, batch) or private topology | **Recommended:** Either (a) extend the Go binary with flags for additional InstanceGroups (`--stateful-nodes`, `--batch-spot-nodes`, `--topology`), or (b) replace the binary with checked-in declarative cluster + InstanceGroup YAML manifests that `kops replace` applies |
+| **No InstanceGroup management recipes** | The Justfile has no recipes for `create instancegroup`, `edit instancegroup`, `get instancegroups`, or `delete instancegroup` | Operators must run raw `kops` commands for pool configuration | **Recommended:** Add `gcp-cluster create-instancegroup`, `gcp-cluster list-instancegroups`, and `gcp-cluster edit-instancegroup` recipes |
+| **No HA validation recipe** | `validate-cluster` runs `kops validate cluster` only | Does not check InstanceGroup count, zone distribution, taints, or node labels | **Recommended:** Add a `validate-kops-ha` recipe that runs the checks from Phase 6 (InstanceGroup listing, node zone/pool distribution, taint verification) |
+| **No `kops reconcile` recipe** | Doesn't exist | Needed for kOps ≥ 1.31 | **Recommended** if you upgrade kOps |
+
+> None of these recipes exist today. Until they are implemented, follow the manual `kops` commands in Phase 4 and Phase 5. The existing `just gcp-cluster create-kops-cluster` recipe is sufficient for single-pool development clusters but **not for this production HA setup**.
+
+## 6. Verification & Access
 
 Once the bootstrap command completes, here's how to confirm everything is healthy and get hands-on access.
 
-### 5.1 Sanity Checks (Per Phase)
+### 6.1 Sanity Checks (Per Phase)
 
 > These commands assume you're inside a `cluster-env` sub-shell, so `${PROJECT_ID}`, `${BUCKET_NAME}`, and the other cluster vars are already available from your env file. If you exited the sub-shell and came back, just run `just cluster-env <env> <cluster-name>` again.
 
@@ -366,7 +651,7 @@ You can run these manually for peace of mind after each phase:
     just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
     diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
     ```
-    **Expected**: `diff` produces no output — every required API is enabled. If APIs are missing, re-run Phase 1a (idempotent). If the gap persists beyond 2 minutes, escalate per [Section 7](#7-escalation--when-to-call-for-help).
+    **Expected**: `diff` produces no output — every required API is enabled. If APIs are missing, re-run Phase 1a (idempotent). If the gap persists beyond 2 minutes, escalate per [Section 8](#8-escalation--when-to-call-for-help).
 
 *   **After Phase 2 (SA created)**: Confirm the key file exists with tight permissions:
     ```bash
@@ -385,9 +670,9 @@ You can run these manually for peace of mind after each phase:
     gsutil ls -L -b gs://${BUCKET_NAME} | head -5
     kops get cluster --state $KOPS_STATE_STORE
     ```
-    **Expected**: bucket shows versioning enabled and a lifecycle rule; `kops get cluster` lists your new cluster. If the cluster doesn't appear, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set — see [Section 6.2](#62-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
+    **Expected**: bucket shows versioning enabled and a lifecycle rule; `kops get cluster` lists your new cluster. If the cluster doesn't appear, check that `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` are set — see [Section 7.2](#72-missing-kops_cluster_name--ssh_key--kubernetes_version-25-of-issues).
 
-### 5.2 Cluster Health
+### 6.2 Cluster Health
 
 1.  **Validate Health**:
     ```bash
@@ -401,7 +686,7 @@ You can run these manually for peace of mind after each phase:
     ```
     followed by a list of nodes all showing `Ready` status.
 
-    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix in [Section 6.5](#65-wrong-kops_cluster_name-suffix-8-of-issues) (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
+    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix in [Section 7.5](#75-wrong-kops_cluster_name-suffix-8-of-issues) (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
 
 2.  **Status Overview**:
     ```bash
@@ -409,7 +694,7 @@ You can run these manually for peace of mind after each phase:
     ```
     **Expected output**: A summary of cluster components (control plane, nodes, system pods) all reporting `Healthy` or `Ready`.
 
-### 5.3 Getting Inside the Cluster
+### 6.3 Getting Inside the Cluster
 
 3.  **Interactive Dashboard** (recommended for exploration):
     ```bash
@@ -424,11 +709,11 @@ You can run these manually for peace of mind after each phase:
     ```
 
 
-## 6. Common Pitfalls
+## 7. Common Pitfalls
 
 These are the stumbling blocks that catch people most often. If something isn't working, start here before digging deeper.
 
-### 6.1 ".envrc Changes Don't Take Effect" (~35% of issues)
+### 7.1 ".envrc Changes Don't Take Effect" (~35% of issues)
 
 `just set-env-var` updates `.envrc` and runs `direnv allow`, but your *current shell* might not pick up the change. If a command fails with what looks like a missing credential error, try:
 ```bash
@@ -441,7 +726,7 @@ env | grep GOOGLE_APPLICATION_CREDENTIALS
 
 This is especially important right after the credential rotation (Phase 3 of bootstrap) — the Go code reads `GOOGLE_APPLICATION_CREDENTIALS` directly from the environment, not from the `.envrc` file.
 
-### 6.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)
+### 7.2 "Missing KOPS_CLUSTER_NAME / SSH_KEY / KUBERNETES_VERSION" (~25% of issues)
 
 These errors come from the bucket-creation step. They mean the per-cluster env file wasn't loaded into your shell — you're either not in a `cluster-env` sub-shell, or the env file itself is missing those variables. Double-check:
 ```bash
@@ -450,7 +735,7 @@ env | grep -E 'KOPS_CLUSTER_NAME|KOPS_STATE_STORE|SSH_KEY|KUBERNETES_VERSION|KUB
 **Expected if correct**: All five variables show non-empty values.
 **If any are empty or missing**: Run `just cluster-env <env> <cluster>` to re-activate the cluster, or if you haven't created the env file yet, revisit [Section 3.1](#31-create-your-cluster-env-file).
 
-### 6.3 Re-running Against an Existing Cluster (~15% of issues)
+### 7.3 Re-running Against an Existing Cluster (~15% of issues)
 
 `kops create cluster` (Phase 4) is not idempotent — if a cluster with the same name already exists in the state bucket, it will error with something like:
 ```
@@ -463,7 +748,7 @@ kops delete cluster --name $KOPS_CLUSTER_NAME --state $KOPS_STATE_STORE --yes
 **Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run Phase 4 of the bootstrap (`just gcp-cluster create-kops-cluster`).
 **WARNING**: This destroys all GCE resources associated with the cluster. Only do this if you're sure.
 
-### 6.4 Forgot the SSH Keypair (~10% of issues)
+### 7.4 Forgot the SSH Keypair (~10% of issues)
 
 If `kops create cluster` complains about the SSH key, double-check you've run the manual `ssh-keygen` command from [Section 1.4](#14-ssh-keypair-for-cluster-nodes). A fresh clone of the repo won't have these files. No Justfile recipe creates them for you.
 
@@ -473,7 +758,7 @@ ls -la credentials/k8sVM.pub
 ```
 **Expected if present**: Shows the file with a recent timestamp. **If missing**: Run the `ssh-keygen` command from Section 1.4.
 
-### 6.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)
+### 7.5 Wrong KOPS_CLUSTER_NAME Suffix (~8% of issues)
 
 If the name doesn't end in `.k8s.local`, kops will expect a real DNS zone to exist (Cloud DNS), which this repo's tooling doesn't set up.
 
@@ -489,7 +774,7 @@ echo $KOPS_CLUSTER_NAME   # should now end in .k8s.local
 ```
 Stick with `.k8s.local` for gossip-based DNS unless you've explicitly configured a Cloud DNS zone.
 
-### 6.6 "Service Not Enabled" During SA Creation (~7% of issues)
+### 7.6 "Service Not Enabled" During SA Creation (~7% of issues)
 
 If Phase 2 (creating the kops-cluster-creator service account) fails with a message about services not being enabled, it's usually a timing issue — the API enablement from Phase 1 hasn't fully propagated yet. The error looks something like:
 ```
@@ -502,9 +787,9 @@ Wait 10–15 seconds and re-run (the recipe is safe to re-run since it checks if
 just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
 diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
 ```
-**Expected output**: `diff` produces no output — that means every required API is enabled. If APIs are still missing from the enabled list, wait another 15 seconds and check again. If the problem persists beyond 2 minutes, escalate per [Section 7](#7-escalation--when-to-call-for-help).
+**Expected output**: `diff` produces no output — that means every required API is enabled. If APIs are still missing from the enabled list, wait another 15 seconds and check again. If the problem persists beyond 2 minutes, escalate per [Section 8](#8-escalation--when-to-call-for-help).
 
-## 7. Escalation — When to Call for Help
+## 8. Escalation — When to Call for Help
 
 Not every problem can (or should) be solved solo. Escalate to the **platform-lead** immediately if ANY of these happen:
 
