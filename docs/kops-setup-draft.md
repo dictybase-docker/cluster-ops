@@ -36,6 +36,7 @@
   - [Phase 4d — Configure InstanceGroups](#phase-4d)
   - [Phase 5 — Apply (version-aware)](#phase-5)
   - [Phase 6 — Validate HA topology](#phase-6)
+  - [Phase 7 — Post-provisioning hardening](#phase-7)
 - [5. Production HA Deployment Reference](#5-production-ha-deployment-reference)
   - [5.1 Which Setting Controls Which Pool](#51-which-setting-controls-which-pool)
   - [5.2 Version Command Matrix](#52-version-command-matrix)
@@ -449,6 +450,8 @@ Adjust these fields for defense-in-depth:
 | `spec.cloudProvider.gce.pdCSIDriver.enabled` | `true` | GCE Persistent Disk CSI driver for PVs |
 | `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-main (fsync latency critical) |
 | `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-events |
+| `spec.clusterAutoscaler.enabled` | `true` | Enable Cluster Autoscaler — detects pending pods and scales worker pools via GCE MIGs. Required for elastic InstanceGroups (stateless-web, batch-spot). The node SA automatically gets the MIG update permission |
+| `spec.nodeProblemDetector.enabled` | `true` | Enable Node Problem Detector — monitors kernel logs (`dmesg`, `journald`) for hardware failures and kernel deadlocks, taints unhealthy nodes to prevent scheduling. Critical for detecting zombie nodes before they cascade |
 
 <a id="phase-4d"></a>
 
@@ -524,6 +527,53 @@ just gcp-cluster validate-kops-ha
 | Nodes missing from expected zones | The InstanceGroup `spec.zones` list may not match your intent. Run `kops get instancegroups` and verify | Phase 4d |
 | `kops reconcile` returns `unknown command` | You are on kOps ≤ 1.30.x — use the legacy `kops update cluster --yes --admin` path instead | [Section 5.2](#52-version-command-matrix) |
 
+<a id="phase-7"></a>
+
+**Phase 7 — Post-Provisioning Hardening**
+
+After the cluster is provisioned and validated, enable two reliability components that kOps manages but does not include in the base cluster spec by default:
+
+**Enable Metrics Server** (required for HPA and `kubectl top`):
+```bash
+kops get cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} -o yaml | \
+  sed '/^spec:/a\  metricsServer:\n    enabled: true' | \
+  kops replace -f -
+kops update cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes --admin
+```
+> Or, if you set Cluster Autoscaler in Phase 4c, the autoscaler depends on Metrics Server — kOps enables it automatically when the autoscaler is active.
+
+**Verify the hardening components are running:**
+
+```bash
+# Cluster Autoscaler should be running as a pod in kube-system
+kubectl get pods -n kube-system -l app=cluster-autoscaler
+
+# Node Problem Detector should be running as a DaemonSet
+kubectl get daemonset node-problem-detector -n kube-system
+
+# Metrics Server should be running and reporting
+kubectl top nodes
+```
+
+**Expected output:**
+- Cluster Autoscaler: 1 pod `Running` (it's a single-replica deployment, not a DaemonSet)
+- Node Problem Detector: DaemonSet with 1 pod per node, all `Running`
+- Metrics Server: `kubectl top nodes` shows CPU and memory for all nodes (no `error: metrics not available yet`)
+
+**Verify autoscaler surge capacity:**
+
+Elastic InstanceGroups should show maxSize > minSize, giving the autoscaler room to provision replacement nodes:
+```bash
+just gcp-cluster list-instancegroups
+```
+**Expected:** `stateless-web` shows `Min: 3, Max: 6` and `batch-spot` shows `Min: 0, Max: 4`. The autoscaler will scale these pools when pods are pending due to resource pressure — including when a node fails and its pods need a new home.
+
+| If you see | This indicates | Go to |
+|-----------|---------------|------|
+| `kubectl top nodes` returns `error: metrics not available yet` | Metrics Server pod is not running or hasn't collected initial metrics. Wait 60 seconds and retry, then check `kubectl get pods -n kube-system \| grep metrics-server` | Phase 7 |
+| `kubectl get pods -n kube-system -l app=cluster-autoscaler` returns `No resources found` | Cluster Autoscaler is not deployed. Check `kops get cluster -o yaml` for `clusterAutoscaler.enabled: true` | Phase 4c |
+| Node Problem Detector pods are in `CrashLoopBackOff` | Usually a kernel log path issue on the host OS image. Verify the OS is COS or Ubuntu, not RHEL/Rocky | [kops architecture doc: OS Image Compatibility](kops-architecture.md#33-os-image-compatibility) |
+
 ## 5. Production HA Deployment Reference
 
 This section cross-references which kOps settings control which architectural component, the version-specific command matrix, and the current state of automation (what's implemented, what's still manual, and remaining gaps).
@@ -540,6 +590,9 @@ This section cross-references which kOps settings control which architectural co
 | **Private topology** | `--topology=private` | `spec.topology.masters: private`, `spec.topology.nodes: private` | None — flag/manifest only |
 | **API CIDR restriction** | *(not a flag)* | `spec.kubernetesApiAccess: ["<cidr>/32"]` | None — manifest only |
 | **Networking / CNI** | `--networking=cilium` | `spec.networking.cilium` | None — flag only |
+| **Cluster Autoscaler** | *(not a flag)* | `spec.clusterAutoscaler.enabled: true` — auto-provisions the autoscaler pod with GCE MIG permissions. Uses InstanceGroup `minSize`/`maxSize` for scaling bounds | None — manifest only |
+| **Node Problem Detector** | *(not a flag)* | `spec.nodeProblemDetector.enabled: true` — deploys as a DaemonSet, monitors kernel logs, taints unhealthy nodes | None — manifest only |
+| **Metrics Server** | *(not a flag)* | `spec.metricsServer.enabled: true` — enables `kubectl top` and HPA. Automatically enabled when Cluster Autoscaler is active | None — manifest only |
 
 ### 5.2 Version Command Matrix
 

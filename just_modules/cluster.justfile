@@ -185,6 +185,14 @@ validate-kops-ha:
     echo "=== Control-plane zone spread ==="
     kubectl get nodes -l node-role.kubernetes.io/control-plane -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone
     echo ""
+    echo "=== Hardening components ==="
+    echo "Cluster Autoscaler:"
+    kubectl get pods -n kube-system -l app=cluster-autoscaler --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.clusterAutoscaler.enabled"
+    echo "Node Problem Detector:"
+    kubectl get daemonset node-problem-detector -n kube-system --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.nodeProblemDetector.enabled"
+    echo "Metrics Server:"
+    kubectl top nodes --no-headers 2>/dev/null | head -3 || echo "  NOT AVAILABLE — check spec.metricsServer.enabled"
+    echo ""
     echo "HA validation complete."
 
 # Validate the kops cluster
