@@ -1,3 +1,9 @@
+# Build the unified cluster-ops binary.
+# Usage: just build
+[group('setup-tools')]
+build:
+    go build -o bin/cluster-ops ./cmd/cluster-ops
+
 # Set up service accounts for the project
 # Activates necessary APIs if specified
 # Usage: just sa-accounts-setup <project> [activate_api]
@@ -64,140 +70,53 @@ create-kops-cluster project bucket_name:
     just cluster-status
 
 # Update the kops cluster
-# Applies pending changes using the appropriate command for the installed kOps version.
-# kOps >= 1.31: uses reconcile; kOps <= 1.30: uses update.
+# Thin wrapper — delegates version detection and dispatch to cluster-ops.
 # Usage: just update-cluster
 [no-cd]
-update-cluster:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    KOPS_VERSION=$(kops version --short 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
-    MAJOR=$(echo "$KOPS_VERSION" | cut -d. -f1)
-    MINOR=$(echo "$KOPS_VERSION" | cut -d. -f2)
-    if [ "$MAJOR" -gt 1 ] || { [ "$MAJOR" -eq 1 ] && [ "$MINOR" -ge 31 ]; }; then
-        echo "kOps $KOPS_VERSION detected — using reconcile"
-        kops reconcile cluster --yes
-    else
-        echo "kOps $KOPS_VERSION detected — using legacy update"
-        kops update cluster --yes --admin
-    fi
+update-cluster: build
+    ./bin/cluster-ops kops update
 
 # Reconcile the kops cluster (kOps >= 1.31 only)
-# Unified command that replaces update + rolling-update.
+# Thin wrapper — delegates to cluster-ops.
 # Usage: just reconcile-cluster
 [no-cd]
-reconcile-cluster:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    kops reconcile cluster --yes
+reconcile-cluster: build
+    ./bin/cluster-ops kops update
 
 # Create and harden the GCS state bucket for kops.
-# Enables versioning, uniform bucket-level access, and public access prevention.
+# Thin wrapper — delegates to cluster-ops.
 # Usage: just create-state-bucket <project> <bucket_name>
 [no-cd]
-create-state-bucket project bucket_name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if gsutil ls -b "gs://{{ bucket_name }}" &>/dev/null; then
-        echo "Bucket gs://{{ bucket_name }} already exists — hardening existing bucket."
-    else
-        gsutil mb -p {{ project }} -l us-central1 "gs://{{ bucket_name }}/"
-        echo "Bucket created: gs://{{ bucket_name }}"
-    fi
-    gsutil versioning set on "gs://{{ bucket_name }}/"
-    gsutil uniformbucketlevelaccess set on "gs://{{ bucket_name }}/"
-    gsutil pap set enforced "gs://{{ bucket_name }}/"
-    echo "State bucket hardened: versioning ON, UBLA ON, PAP enforced."
+create-state-bucket project bucket_name: build
+    ./bin/cluster-ops bucket create --project={{ project }} --bucket={{ bucket_name }} --harden
 
 # Create the kops cluster manifest (no VMs provisioned yet).
-# Builds the kops-cluster-creator binary and runs kops create cluster
-# with flags drawn from the cluster env file. Does NOT apply or validate.
+# Thin wrapper around cluster-ops binary.
 # Usage: just create-cluster-config <project> <bucket_name>
 [no-cd]
-create-cluster-config project bucket_name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    go build -o bin/kops-cluster-creator cmd/kops/main.go
-    ./bin/kops-cluster-creator --project-id {{ project }}
-    echo "Cluster manifest written to state store. No VMs provisioned yet."
-    echo "Next: edit the manifest (just gcp-cluster edit-cluster), configure"
-    echo "InstanceGroups (just gcp-cluster apply-instancegroups), then apply"
-    echo "(just gcp-cluster update-cluster)."
+create-cluster-config project bucket_name: build
+    ./bin/cluster-ops kops create-config --project-id={{ project }}
 
 # Apply checked-in InstanceGroup templates to the cluster.
-# Processes templates from config/kops/instancegroups/*.yaml.tmpl
-# with envsubst (using current env vars), then applies with kops replace.
+# Thin wrapper — delegates to cluster-ops.
 # Usage: just apply-instancegroups
 [no-cd]
-apply-instancegroups:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    TEMPLATE_DIR="{{ invocation_directory() }}/config/kops/instancegroups"
-    if [ ! -d "$TEMPLATE_DIR" ]; then
-        echo "Error: template directory not found: $TEMPLATE_DIR" >&2
-        exit 1
-    fi
-    echo "Applying InstanceGroup templates from $TEMPLATE_DIR ..."
-    for tmpl in "$TEMPLATE_DIR"/*.yaml.tmpl; do
-        if [ ! -f "$tmpl" ]; then
-            echo "No templates found in $TEMPLATE_DIR" >&2
-            exit 1
-        fi
-        name=$(basename "$tmpl" .yaml.tmpl)
-        echo "  Processing: $name"
-        envsubst < "$tmpl" | kops replace -f -
-        echo "  Applied: $name"
-    done
-    echo "All InstanceGroups applied."
+apply-instancegroups: build
+    ./bin/cluster-ops ig apply
 
 # List all InstanceGroups with key sizing details.
+# Thin wrapper — delegates to cluster-ops.
 # Usage: just list-instancegroups
 [no-cd]
-list-instancegroups:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    kops get instancegroups
+list-instancegroups: build
+    ./bin/cluster-ops ig list
 
 # Validate HA production topology.
-# Checks: InstanceGroup count, zone distribution, node readiness,
-# taints on batch pool, and control-plane zone spread.
+# Thin wrapper — delegates to cluster-ops.
 # Usage: just validate-kops-ha
 [no-cd]
-validate-kops-ha:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "=== Validating cluster health ==="
-    kops validate cluster --wait 10m
-    echo ""
-    echo "=== InstanceGroups ==="
-    kops get instancegroups
-    echo ""
-    echo "=== Node zone distribution ==="
-    kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,POOL:.metadata.labels.pool,TAINTS:.spec.taints[*].key
-    echo ""
-    echo "=== Batch pool taint check ==="
-    if kubectl get nodes -l pool=batch --no-headers 2>/dev/null | grep -q .; then
-        kubectl describe nodes -l pool=batch | grep -A1 Taints || echo "WARNING: No taints found on batch nodes"
-    else
-        echo "No batch nodes (pool may be scaled to 0)."
-    fi
-    echo ""
-    echo "=== Control-plane zone spread ==="
-    kubectl get nodes -l node-role.kubernetes.io/control-plane -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone
-    echo ""
-    echo "=== Hardening components ==="
-    echo "Cluster Autoscaler:"
-    kubectl get pods -n kube-system -l app=cluster-autoscaler --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.clusterAutoscaler.enabled"
-    echo "Node Problem Detector:"
-    kubectl get daemonset node-problem-detector -n kube-system --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.nodeProblemDetector.enabled"
-    echo "Metrics Server:"
-    kubectl top nodes --no-headers 2>/dev/null | head -3 || echo "  NOT AVAILABLE — check spec.metricsServer.enabled"
-    echo "cert-manager:"
-    kubectl get pods -n cert-manager --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.certManager.enabled"
-    echo "Node local DNS cache:"
-    kubectl get pods -n kube-system -l k8s-app=node-local-dns --no-headers 2>/dev/null || echo "  NOT FOUND — check spec.kubeDNS.nodeLocalDNS.enabled"
-    echo ""
-    echo "HA validation complete."
+validate-kops-ha: build
+    ./bin/cluster-ops validate ha
 
 # Validate the kops cluster
 # Checks if the cluster is correctly set up and running
