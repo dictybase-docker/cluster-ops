@@ -155,24 +155,19 @@ cluster-env env cluster:
     echo "Type 'exit' or Ctrl-D to leave this environment."
     exec "$SHELL"
 
+# Build the unified cluster-ops binary.
+[group('setup-tools')]
+build:
+    go build -o bin/cluster-ops ./cmd/cluster-ops
+
 # Update the GOOGLE_APPLICATION_CREDENTIALS line in a per-cluster env file.
-# Inserts it if absent, replaces it if already present.
+# Thin wrapper — delegates platform-safe credential update to cluster-ops.
 #
 # Usage: just cluster-cred <env> <cluster> <key-path>
 # Example: just cluster-cred dev my-cluster credentials/kops-cluster-creator.json
 [group('cluster-ops')]
-cluster-cred env cluster key:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    env_file=".env.{{ env }}.{{ cluster }}"
-    abs_key="${PWD}/{{ key }}"
-
-    if grep -q '^export GOOGLE_APPLICATION_CREDENTIALS=' "${env_file}" 2>/dev/null; then
-        sed -i '' "s|^export GOOGLE_APPLICATION_CREDENTIALS=.*|export GOOGLE_APPLICATION_CREDENTIALS=${abs_key}|" "${env_file}"
-    else
-        echo "export GOOGLE_APPLICATION_CREDENTIALS=${abs_key}" >> "${env_file}"
-    fi
-    echo "Updated ${env_file}: GOOGLE_APPLICATION_CREDENTIALS → ${abs_key}"
+cluster-cred env cluster key: build
+    ./bin/cluster-ops env set-cred {{ env }} {{ cluster }} {{ key }}
 
 # --- Pulumi Operations ---
 # Setup Pulumi deployment environment
