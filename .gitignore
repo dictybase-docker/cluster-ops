@@ -29,6 +29,8 @@ config.json
 .aider*
 kops/kops-cluster-creator
 bin
+/cluster-ops
+/kops
 gcs-files/service-accounts
 config.json.old
 scratch

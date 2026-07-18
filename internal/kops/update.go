@@ -45,7 +45,7 @@ func detectKopsVersionIOE() IOE.IOEither[error, string] {
 // parseSemver parses a version string into a semver.Version.
 // Pure Either — no IO.
 func parseSemver(version string) E.Either[error, semver.Version] {
-	v, err := semver.Make("v" + version)
+	v, err := semver.Make(version)
 	if err != nil {
 		return E.Left[semver.Version](
 			fmt.Errorf("kops version %q is not valid semver: %w", version, err),
