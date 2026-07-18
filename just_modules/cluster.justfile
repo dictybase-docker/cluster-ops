@@ -335,3 +335,188 @@ cluster-dump:
 [no-cd]
 instance-groups:
 	kops get ig
+
+# ─────────────────────────────────────────────
+# Disposable cluster lifecycle recipes (Section 9)
+# ─────────────────────────────────────────────
+
+# Teardown: dry-run preview or full destroy for the current cluster.
+# Without argument (or anything other than "yes"): dry-run only — shows
+# what kOps will destroy without touching anything.
+# With "yes": preflight check → execute teardown → verify cleanup.
+#
+# Usage: just delete-cluster         (dry-run — safe)
+#        just delete-cluster yes     (full destroy)
+[no-cd]
+delete-cluster confirm="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # ── Preflight ──────────────────────────────
+    echo "=== Cluster teardown ==="
+    echo "Cluster:  ${KOPS_CLUSTER_NAME:-UNSET}"
+    echo "Project:  ${PROJECT_ID:-UNSET}"
+    echo "State:    ${KOPS_STATE_STORE:-UNSET}"
+    echo ""
+
+    if [ -z "${KOPS_CLUSTER_NAME:-}" ] || [ -z "${KOPS_STATE_STORE:-}" ]; then
+        echo "ERROR: KOPS_CLUSTER_NAME and KOPS_STATE_STORE must be set."
+        echo "Run: just cluster-env <env> <cluster-name>"
+        exit 1
+    fi
+
+    # ── Dry-run ────────────────────────────────
+    echo "--- Dry-run: resources kOps will destroy ---"
+    kops delete cluster \
+        --name="${KOPS_CLUSTER_NAME}" \
+        --state="${KOPS_STATE_STORE}"
+    echo ""
+
+    # ── Confirm or bail ────────────────────────
+    if [ "{{ confirm }}" != "yes" ]; then
+        echo "Dry-run complete. No resources were touched."
+        echo ""
+        echo "To destroy the cluster, review the list above, then run:"
+        echo "  just gcp-cluster delete-cluster yes"
+        exit 0
+    fi
+
+    # ── Preflight: running workloads ───────────
+    echo "--- Checking for running workloads ---"
+    kubectl get pods --all-namespaces 2>/dev/null || \
+        echo "  (no cluster access — may already be down)"
+    echo ""
+
+    read -r -p "Type 'destroy' to confirm: " answer
+    if [ "$answer" != "destroy" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+
+    # ── Execute ────────────────────────────────
+    echo ""
+    echo "Destroying cluster ${KOPS_CLUSTER_NAME}..."
+    kops delete cluster \
+        --name="${KOPS_CLUSTER_NAME}" \
+        --state="${KOPS_STATE_STORE}" \
+        --yes
+
+    # ── Verify cleanup ─────────────────────────
+    echo ""
+    echo "=== Cleanup verification ==="
+    echo ""
+
+    echo "Instances:"
+    gcloud compute instances list \
+        --project="${PROJECT_ID}" \
+        --filter="name:${KOPS_CLUSTER_NAME}" \
+        2>/dev/null || echo "  (gcloud unavailable)"
+    echo ""
+
+    echo "Disks (check for orphaned PVs):"
+    gcloud compute disks list \
+        --project="${PROJECT_ID}" \
+        --filter="name:${KOPS_CLUSTER_NAME}" \
+        2>/dev/null || echo "  (gcloud unavailable)"
+    echo ""
+
+    echo "Forwarding rules:"
+    gcloud compute forwarding-rules list \
+        --project="${PROJECT_ID}" \
+        2>/dev/null | { grep -E "NAME|${KOPS_CLUSTER_NAME}" || echo "  None matching."; }
+    echo ""
+
+    echo "Addresses:"
+    gcloud compute addresses list \
+        --project="${PROJECT_ID}" \
+        2>/dev/null || echo "  (gcloud unavailable)"
+    echo ""
+
+    echo "Teardown complete."
+
+# Save the current cluster manifest for version-controlled reproducibility.
+# Exports the live cluster spec as YAML so you can diff against it on re-creation.
+# Run this after every successful bootstrap or manifest edit.
+#
+# Usage: just save-cluster-manifest
+[no-cd]
+save-cluster-manifest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    OUT="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    mkdir -p "$(dirname "$OUT")"
+    kops get cluster -o yaml > "$OUT"
+    echo "Cluster manifest saved to: $OUT"
+    echo "Commit it:  git add $OUT && git commit -m 'save known-good cluster manifest'"
+
+# Diff the live cluster manifest against the saved copy.
+# Run before re-creating to see what edits you need to re-apply in Phase 4c.
+# Exits non-zero when differences exist (standard diff behaviour).
+#
+# Usage: just diff-cluster-manifest
+[no-cd]
+diff-cluster-manifest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SAVED="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    if [ ! -f "$SAVED" ]; then
+        echo "ERROR: No saved manifest at $SAVED"
+        echo "Run: just gcp-cluster save-cluster-manifest"
+        exit 1
+    fi
+    echo "--- Live cluster  |  Saved manifest  ---"
+    kops get cluster -o yaml | diff "$SAVED" - && echo "No differences — manifest matches."
+
+# Full cluster re-creation after teardown.
+# Prerequisite: state bucket exists (not deleted during teardown).
+# Runs: create-config → diff manifest → edit (manual) → apply-ig → update → validate.
+#
+# Usage: just recreate-cluster
+[no-cd]
+recreate-cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -z "${PROJECT_ID:-}" ] || [ -z "${BUCKET_NAME:-}" ]; then
+        echo "ERROR: PROJECT_ID and BUCKET_NAME must be set."
+        echo "Run: just cluster-env <env> <cluster-name>"
+        exit 1
+    fi
+
+    echo "=== Step 1/6: Generate cluster manifest ==="
+    just gcp-cluster create-cluster-config "${PROJECT_ID}" "${BUCKET_NAME}"
+    echo ""
+
+    echo "=== Step 2/6: Diff against saved manifest ==="
+    SAVED="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    if [ -f "$SAVED" ]; then
+        kops get cluster -o yaml | diff "$SAVED" - && \
+            echo "Manifest matches saved copy — no edits needed." || \
+            echo "Differences found. Review the diff above before editing."
+    else
+        echo "No saved manifest at $SAVED — skipping diff."
+        echo "After this bootstrap, run 'just gcp-cluster save-cluster-manifest' to save it."
+    fi
+    echo ""
+
+    echo "=== Step 3/6: Edit cluster manifest ==="
+    echo "Opening editor for Phase 4c security settings..."
+    echo "Apply: kubernetesApiAccess, etcd volume types (pd-ssd), node SA,"
+    echo "       Cluster Autoscaler, Node Problem Detector, cert-manager, node-local DNS."
+    just gcp-cluster edit-cluster
+    echo ""
+
+    echo "=== Step 4/6: Apply InstanceGroups ==="
+    just gcp-cluster apply-instancegroups
+    echo ""
+
+    echo "=== Step 5/6: Provision cluster ==="
+    just gcp-cluster update-cluster
+    echo ""
+
+    echo "=== Step 6/6: Validate HA topology ==="
+    just gcp-cluster validate-kops-ha
+    echo ""
+
+    echo "Re-creation complete."
+    echo "Run 'just gcp-cluster save-cluster-manifest' to update the saved manifest."
