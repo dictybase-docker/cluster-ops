@@ -105,7 +105,7 @@ These aren't managed by `asdf` — install them through your system package mana
 
 | Tool | Why You Need It | Check Command | Install |
 |------|-----------------|--------------|---------|
-| **Go** (≥1.21) | Builds the repo's Go binaries (`gcp-tools`, `kops-cluster-creator`, `util`) that the Justfile recipes shell out to | `go version` | [go.dev/dl](https://go.dev/dl/) |
+| **Go** (≥1.21) | Builds the repo's Go binaries (`cluster-ops`, with legacy `gcp-tools` and `kops-cluster-creator` for backward compat) | `go version` | [go.dev/dl](https://go.dev/dl/) |
 | **just** | The task runner — every recipe in this guide (install tools, create cluster, deploy) is a `just` command | `just --version` | [github.com/casey/just](https://github.com/casey/just#installation) |
 | **gcloud** | Google Cloud CLI — used by several recipes behind the scenes and handy for manual debugging | `gcloud version` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
 | **direnv** | Auto-loads environment variables from `.envrc` when you enter the project directory — no manual `export` needed | `direnv version` | [direnv.net](https://direnv.net/docs/installation.html) |
@@ -131,7 +131,7 @@ We use `asdf` to pin exact versions of the remaining tools. With `just` already 
     To upgrade a specific tool version (the tool must be defined in `.tool-versions`):
     ```bash
     just install-tool <tool_name> <version>
-    # Example: just install-tool kubectl 1.28.9
+    # Example: just install-tool kubectl 1.28.8
     ```
 
 ### 1.4 SSH Keypair for Cluster Nodes
@@ -304,7 +304,7 @@ Two terminal tabs can each activate a different cluster — no file conflicts, n
 
 ### 3.4 Optional Tuning Knobs
 
-These variables control the shape of your cluster. **Add them to the same per-cluster env file you created in Section 3.1** — the `kops-cluster-creator` binary reads them directly from the environment via `EnvVars` bindings in `internal/kops/flags.go`. If unset, the hardcoded defaults in that file kick in. You'll typically want smaller values for dev and larger ones for prod.
+These variables control the shape of your cluster. **Add them to the same per-cluster env file you created in Section 3.1** — the `cluster-ops` binary reads them directly from the environment via CLI flag `EnvVars` bindings in `cmd/cluster-ops/main.go`. If unset, the hardcoded defaults in that file kick in. You'll typically want smaller values for dev and larger ones for prod.
 
 | Variable | Controls | Default | Example (dev) | Example (prod) |
 |----------|----------|---------|---------------|----------------|
@@ -412,33 +412,38 @@ just gcp-cluster create-state-bucket ${PROJECT_ID} ${BUCKET_NAME}
 
 ### Phase 4b — Generate cluster manifest
 
-This command writes the manifest to the state bucket but provisions **nothing** — it is a blueprint, not a building. It uses the kops-cluster-creator binary, which reads all flags from your cluster env file:
+This command writes the manifest to the state bucket but provisions **nothing** — it is a blueprint, not a building.
 
 ```bash
 just gcp-cluster create-cluster-config ${PROJECT_ID} ${BUCKET_NAME}
 ```
 
-**Under the hood**, the binary runs `kops create cluster` with these flags drawn from your env file:
+**Under the hood**, the recipe is a thin wrapper that builds and runs `./bin/cluster-ops kops create-config --project-id <project>`. The binary reads all values from environment variables via `cmd/cluster-ops/main.go` `kopsCLIFlags()` bindings — there is no shell variable expansion in the recipe. If a variable is unset, the binary uses the hardcoded default listed in [Section 3.4](#34-optional-tuning-knobs) (e.g., `TOTAL_NODES=4`, `TOPOLOGY=public`, `NETWORKING=cilium-etcd`). For illustration, the equivalent `kops create cluster` invocation looks like:
 
 ```bash
-# What the recipe executes (all values from your cluster env file):
+# Illustrative — the binary constructs and executes this internally.
+# Defaults shown are cmd/cluster-ops/main.go (kopsCLIFlags()) hardcoded values, NOT shell expansions.
 kops create cluster \
     --name=${KOPS_CLUSTER_NAME} \
     --state=${KOPS_STATE_STORE} \
     --project=${PROJECT_ID} \
     --zones=${NODE_ZONES:-us-central1-c} \
-    --control-plane-zones=${CONTROL_PLANE_ZONES} \
-    --node-count=${TOTAL_NODES:-3} \
-    --node-size=${NODE_MACHINE:-e2-standard-4} \
-    --control-plane-count=${TOTAL_MASTER:-3} \
-    --control-plane-size=${MASTER_MACHINE:-e2-standard-2} \
-    --control-plane-volume-size=${MASTER_DISK_SIZE:-64} \
+    ${CONTROL_PLANE_ZONES:+--control-plane-zones=${CONTROL_PLANE_ZONES}} \
+    --node-count=${TOTAL_NODES:-4} \
+    --node-size=${NODE_MACHINE:-n1-custom-2-4096} \
+    --control-plane-count=${TOTAL_MASTER:-1} \
+    --control-plane-size=${MASTER_MACHINE:-n1-custom-4-8192} \
+    --control-plane-volume-size=${MASTER_DISK_SIZE:-75} \
     --node-volume-size=${NODE_DISK_SIZE:-100} \
-    --topology=${TOPOLOGY:-private} \
-    --networking=${NETWORKING:-cilium} \
+    --topology=${TOPOLOGY:-public} \
+    --networking=${NETWORKING:-cilium-etcd} \
     --kubernetes-version=${KUBERNETES_VERSION} \
+    --ssh-public-key=${SSH_KEY} \
+    --cloud=gce \
     ${API_ACCESS_CIDR:+--admin-access=${API_ACCESS_CIDR}}
 ```
+
+> **Production HA tip:** Set `TOPOLOGY=private`, `NETWORKING=cilium`, `TOTAL_MASTER=3`, and `CONTROL_PLANE_ZONES` in your cluster env file to override the binary defaults. See the production examples in [Section 3.4](#34-optional-tuning-knobs).
 
 **Expected output:** `Created cluster "<KOPS_CLUSTER_NAME>"` — this confirms the manifest was written to GCS. No VMs exist yet.
 
@@ -492,7 +497,7 @@ just gcp-cluster apply-instancegroups
 
 ### Phase 5 — Apply (version-aware)
 
-The `just gcp-cluster update-cluster` recipe detects your installed kOps version and uses the correct command:
+The `just gcp-cluster update-cluster` recipe delegates to `./bin/cluster-ops kops update`, which detects your installed kOps version and uses the correct command:
 
 ```bash
 just gcp-cluster update-cluster
@@ -598,7 +603,7 @@ This section cross-references which kOps settings control which architectural co
 
 | Pool | kOps `create cluster` Flag | InstanceGroup Field(s) | Env Var Override |
 |------|---------------------------|----------------------|------------------|
-| **Control plane** | `--control-plane-count=3`, `--control-plane-size=e2-standard-2`, `--control-plane-volume-size=64`, `--control-plane-zones=...` | Managed via `spec.controlPlane.kubelet`; separate IGs auto-created per zone | `TOTAL_MASTER`, `MASTER_MACHINE`, `MASTER_DISK_SIZE` |
+| **Control plane** | `--control-plane-count`, `--control-plane-size`, `--control-plane-volume-size`, `--control-plane-zones` | Managed via `spec.controlPlane.kubelet`; separate IGs auto-created per zone. Examples shown here — actual defaults in [Section 3.4](#34-optional-tuning-knobs) | `TOTAL_MASTER`, `MASTER_MACHINE`, `MASTER_DISK_SIZE`, `CONTROL_PLANE_ZONES` |
 | **Stateless web (default workers)** | `--node-count=3`, `--node-size=e2-standard-4`, `--node-volume-size=100` | `spec.machineType`, `spec.minSize`, `spec.maxSize`, `spec.zones` | `TOTAL_NODES`, `NODE_MACHINE`, `NODE_DISK_SIZE` |
 | **Stateful database** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: n2-standard-4`, `spec.minSize: 3`, `spec.maxSize: 3`, `spec.nodeLabels.pool: database` | None — manual only |
 | **Batch/Spot** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: e2-standard-4`, `spec.minSize: 0`, `spec.maxSize: 4`, `spec.taints[0]: spot:true:NoSchedule`, `spec.gce.preemptible: true` | None — manual only |
@@ -653,7 +658,7 @@ For a full teardown and re-creation workflow — including dry-run previews, pre
 | `just gcp-cluster create-cluster-config <project> <bucket>` | Phase 4b — generate HA manifest from env vars |
 | `just gcp-cluster apply-instancegroups` | Phase 4d — apply checked-in InstanceGroup templates |
 | `just gcp-cluster update-cluster` | Phase 5 — version-aware apply (auto-detects kOps version) |
-| `just gcp-cluster reconcile-cluster` | Phase 5 — explicit reconcile for kOps ≥ 1.31 |
+| `just gcp-cluster reconcile-cluster` | `cluster-ops kops update` (same version-aware dispatch as `update-cluster`) |
 | `just gcp-cluster validate-kops-ha` | Phase 6 — HA topology validation |
 | `just gcp-cluster list-instancegroups` | Inspection — list all InstanceGroups |
 | `just gcp-cluster delete-cluster` | Section 9 — dry-run teardown preview (safe, no changes) |
@@ -673,9 +678,9 @@ For a full teardown and re-creation workflow — including dry-run previews, pre
 
 | Gap | Recommendation |
 |-----|---------------|
-| The Go binary (`kops-cluster-creator`) creates a single default worker pool | For the three-pool HA architecture, the InstanceGroup templates handle the additional pools. The binary creates the base cluster + default pool; templates add the rest. No Go changes needed unless you want the binary to create all pools in one invocation. |
+| The `cluster-ops create-config` path creates a single default worker pool | For the three-pool HA architecture, the InstanceGroup templates handle the additional pools. `cluster-ops kops create-config` creates the base cluster + default pool; `cluster-ops ig apply` adds the rest. |
 
-> The original `just gcp-cluster create-kops-cluster` recipe still works for single-pool development clusters. It bundles the old Go binary + legacy `kops update cluster --yes --admin` + validation — use it for dev clusters where a single node pool and public topology are sufficient.
+> The original `just gcp-cluster create-kops-cluster` recipe still works for single-pool development clusters. It builds the legacy `kops-cluster-creator` binary, then chains into the same version-aware `update-cluster` recipe (which delegates to `cluster-ops kops update`). Use it for dev clusters where a single node pool and public topology are sufficient.
 
 ## 6. Verification & Access
 
