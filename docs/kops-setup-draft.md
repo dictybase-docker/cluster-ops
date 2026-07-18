@@ -86,7 +86,7 @@ This is the short path to a working cluster. It is an orientation, not a replace
 5. **Create your cluster env file.** Copy `.env.dev.dcr-experiments`, then edit the seven required variables: `PROJECT_ID`, `BUCKET_NAME`, `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `KUBECONFIG`, `SSH_KEY`, and `KUBERNETES_VERSION`. See [3. Environment Variables](#3-environment-variables--the-cluster-config-file).
 6. **Bootstrap the cluster (HA production).** Activate your env file with `just cluster-env <env> <cluster>`, then run Phases 0–3 (credential → APIs → SA → credential rotation). For the HA production cluster, use the dedicated recipes: `just gcp-cluster create-state-bucket` → `just gcp-cluster create-cluster-config` → `just gcp-cluster edit-cluster` (manual step — opens $EDITOR) → `just gcp-cluster apply-instancegroups` → `just gcp-cluster update-cluster` (auto-detects kOps version) → `just gcp-cluster validate-kops-ha`. See [4. Cluster Bootstrap](#4-cluster-bootstrap) and [5. Production HA Deployment Reference](#5-production-ha-deployment-reference).
 
-   > **Note:** The legacy `just gcp-cluster create-kops-cluster` recipe creates a single-pool, public-topology cluster — use it only for development clusters. The recipes above are required for the HA production setup.
+   > **Note:** The `cluster-ops` binary replaced the legacy `create-kops-cluster` recipe. For single-pool dev clusters, use `just gcp-cluster create-cluster-config` and `just gcp-cluster update-cluster` directly. For HA production, follow the full phased workflow.
 7. **Verify everything is healthy.** Run `just gcp-cluster validate-kops-ha` — checks cluster health, InstanceGroups, zone distribution, and taints. Then explore with `just gcp-cluster k9s`. See [6. Verification & Access](#6-verification--access).
 
 If a short step fails, do not guess at the fix: use the detailed section linked from that step, then check the [Common Pitfalls](#7-common-pitfalls) section before escalating per [Escalation](#8-escalation--when-to-call-for-help).
@@ -105,7 +105,7 @@ These aren't managed by `asdf` — install them through your system package mana
 
 | Tool | Why You Need It | Check Command | Install |
 |------|-----------------|--------------|---------|
-| **Go** (≥1.21) | Builds the repo's Go binaries (`cluster-ops`, with legacy `gcp-tools` and `kops-cluster-creator` for backward compat) | `go version` | [go.dev/dl](https://go.dev/dl/) |
+| **Go** (≥1.21) | Builds the `cluster-ops` binary (`cmd/cluster-ops/main.go`) that all Justfile recipes shell out to | `go version` | [go.dev/dl](https://go.dev/dl/) |
 | **just** | The task runner — every recipe in this guide (install tools, create cluster, deploy) is a `just` command | `just --version` | [github.com/casey/just](https://github.com/casey/just#installation) |
 | **gcloud** | Google Cloud CLI — used by several recipes behind the scenes and handy for manual debugging | `gcloud version` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
 | **direnv** | Auto-loads environment variables from `.envrc` when you enter the project directory — no manual `export` needed | `direnv version` | [direnv.net](https://direnv.net/docs/installation.html) |
@@ -391,12 +391,7 @@ From this point on, the narrower `kops-cluster-creator` key is what's used for e
 
 ### Phase 4 — HA cluster manifest
 
-> **This is an HA production deployment.** The steps below provision:
-> - **3 control-plane nodes** across 3 zones with etcd Raft quorum and dedicated `pd-ssd` volumes.
-> - **Private topology** (no public IPs on nodes) with Cloud NAT for egress and CIDR-restricted API access.
-> - **Multiple worker InstanceGroups** (stateless web, stateful database, batch/Spot) as described in the [kops architecture doc](kops-architecture.md).
-> 
-> The existing `just gcp-cluster create-kops-cluster` recipe bundles the steps below into a single command **for a single-pool, public-topology cluster** — it is not suitable for this production setup. The step-by-step manual workflow below gives you full control over every architectural decision.
+> **This is an HA production deployment.** The steps below provision a multi-pool, private-topology cluster with 3 control-plane nodes, dedicated etcd volumes, and three worker InstanceGroups. Every step is a single Justfile recipe backed by the `cluster-ops` binary.
 
 <a id="phase-4a"></a>
 
@@ -518,7 +513,7 @@ kOps <version> detected — using reconcile (or legacy update)
 Cluster "<KOPS_CLUSTER_NAME>" is ready
 ```
 
-> **This repo currently pins kOps v1.29.2** (see `.tool-versions`). The existing `just gcp-cluster create-kops-cluster` recipe bundles creation and apply into one step for a single-pool, public-topology cluster — use it only for development. For production HA, use the recipes in Phase 4.
+> **This repo currently pins kOps v1.29.2** (see `.tool-versions`). All `kops` commands are dispatched through `cluster-ops`, which auto-detects the installed kOps version and uses the correct subcommand.
 
 <a id="phase-6"></a>
 
@@ -680,7 +675,7 @@ For a full teardown and re-creation workflow — including dry-run previews, pre
 |-----|---------------|
 | The `cluster-ops create-config` path creates a single default worker pool | For the three-pool HA architecture, the InstanceGroup templates handle the additional pools. `cluster-ops kops create-config` creates the base cluster + default pool; `cluster-ops ig apply` adds the rest. |
 
-> The original `just gcp-cluster create-kops-cluster` recipe still works for single-pool development clusters. It builds the legacy `kops-cluster-creator` binary, then chains into the same version-aware `update-cluster` recipe (which delegates to `cluster-ops kops update`). Use it for dev clusters where a single node pool and public topology are sufficient.
+> All recipes delegate to the `cluster-ops` binary (`./bin/cluster-ops`). The legacy `create-kops-cluster` recipe has been removed — use the phased HA workflow in Section 4 for production, or `create-cluster-config` + `update-cluster` for single-pool dev clusters.
 
 ## 6. Verification & Access
 
@@ -791,7 +786,7 @@ If you need to re-create: either use a new cluster name, or delete the existing 
 ```bash
 kops delete cluster --name $KOPS_CLUSTER_NAME --state $KOPS_STATE_STORE --yes
 ```
-**Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run Phase 4 of the bootstrap (`just gcp-cluster create-kops-cluster`).
+**Expected output**: `Deleted cluster: "my-cluster.k8s.local"` — after this you can re-run the bootstrap from Phase 4a.
 **WARNING**: This destroys all GCE resources associated with the cluster. Only do this if you're sure.
 
 ### 7.4 Forgot the SSH Keypair (~10% of issues)
