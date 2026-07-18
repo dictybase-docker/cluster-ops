@@ -2,14 +2,17 @@ package kops
 
 import (
 	"fmt"
-	"log/slog"
-	"os/exec"
+
+	F "github.com/IBM/fp-go/v2/function"
+	IO "github.com/IBM/fp-go/v2/io"
+	IOE "github.com/IBM/fp-go/v2/ioeither"
 
 	"github.com/urfave/cli/v2"
 )
 
-func CreateCluster(cltx *cli.Context) error {
-	slog.Info("Creating Kubernetes cluster...")
+// buildKopsArgs constructs the kops create cluster argument list from CLI context.
+// Pure function — no side effects.
+func buildKopsArgs(cltx *cli.Context) []string {
 	args := []string{
 		"create", "cluster",
 		"--name", cltx.String("cluster-name"),
@@ -29,7 +32,6 @@ func CreateCluster(cltx *cli.Context) error {
 		"--topology", cltx.String("topology"),
 	}
 
-	// Optional HA flags
 	if cpZones := cltx.String("control-plane-zones"); cpZones != "" {
 		args = append(args, "--control-plane-zones", cpZones)
 	}
@@ -37,23 +39,29 @@ func CreateCluster(cltx *cli.Context) error {
 		args = append(args, "--admin-access", adminAccess)
 	}
 
-	cmd := exec.Command("kops", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error(
-			"Error creating cluster",
-			"error",
-			err,
-			"output",
-			string(output),
-		)
-		return cli.Exit("Failed to create cluster: "+err.Error(), 1)
-	}
+	return args
+}
 
-	slog.Info("Cluster creation initiated.")
-	slog.Info("Command output", "output", string(output))
-	slog.Info("Please wait for the cluster to be fully provisioned.")
-	slog.Info("You can check the status using: kops validate cluster")
+// runCreateClusterIOE executes the full kops create cluster pipeline.
+// Uses runKopsIOE from exec.go for the underlying command execution.
+func runCreateClusterIOE(args []string) IOE.IOEither[error, string] {
+	return F.Pipe1(
+		runKopsIOE(args...),
+		IOE.MapLeft[string](func(err error) error {
+			return fmt.Errorf("kops create cluster failed: %w", err)
+		}),
+	)
+}
 
-	return nil
+// CreateCluster creates a Kubernetes cluster using kops.
+func CreateCluster(cltx *cli.Context) error {
+	args := buildKopsArgs(cltx)
+
+	return F.Pipe2(
+		runCreateClusterIOE(args),
+		IOE.ChainFirstIOK[error](IO.Logf[string]("Kops cluster config written. Output: %s")),
+		IOE.Fold(func(err error) IO.IO[error] {
+			return IO.Of[error](cli.Exit("Failed to create kops cluster: "+err.Error(), 1))
+		}, func(_ string) IO.IO[error] { return IO.Of[error](nil) }),
+	)()
 }
