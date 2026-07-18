@@ -40,35 +40,6 @@ sa-accounts-setup project activate_api="true":
 
     gcloud config set disable_prompts false
 
-# Create a kops cluster
-# Sets up the necessary bucket and initiates cluster creation
-# Usage: just create-kops-cluster <project> <bucket_name>
-[no-cd]
-create-kops-cluster project bucket_name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # Build the Go binary
-    go build -o bin/gcp-tools cmd/gcp/main.go
-
-    # Run the Go command to create or find the kops bucket
-    ./bin/gcp-tools find-or-create-kops-bucket --project {{ project }} --bucket {{ bucket_name }}
-
-    echo "Bucket setup complete. Ready for kops cluster createion"
-
-
-    # Build the kops-cluster-creator binary
-    go build -o bin/kops-cluster-creator cmd/kops/main.go
-
-    # Run the kops-cluster-creator command
-    ./bin/kops-cluster-creator --project-id {{ project }}
-
-    echo "Kops cluster creation initiated. Please check the logs for details."
-
-    just update-cluster
-    just validate-cluster
-    just cluster-status
-
 # Update the kops cluster
 # Thin wrapper — delegates version detection and dispatch to cluster-ops.
 # Usage: just update-cluster

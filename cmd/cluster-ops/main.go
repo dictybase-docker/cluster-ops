@@ -338,6 +338,15 @@ func envCommand() *cli.Command {
 					return util.SetCredential(envFile, cltx.Args().Get(2))
 				},
 			},
+			{
+				Name:  "set-var",
+				Usage: "Set an environment variable in .envrc and reload",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "name", Aliases: []string{"n"}, Required: true},
+					&cli.StringFlag{Name: "value", Aliases: []string{"v"}, Required: true},
+				},
+				Action: util.SetEnvironmentalVariable,
+			},
 		},
 	}
 }

@@ -103,17 +103,8 @@ aider:
                    --watch-files
 
 [group('dev-tools')]
-set-env-var name value:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # Build the binary
-    go build -o ./bin/util ./cmd/util
-
-    ./bin/util set-env-var \
-      --name={{ name }} \
-      --value={{ value }} \
-
+set-env-var name value: build
+    ./bin/cluster-ops env set-var --name={{ name }} --value={{ value }}
     direnv allow
     # Verify the service account was created
     echo "Environmental variable {{ name }} has been set to {{ value }}"
