@@ -8,11 +8,9 @@ enable-apis project api_file:
     
     echo "Enabling APIs for project {{project}} from file {{api_file}}"
     
-    # Build the Go binary
-    go build -o bin/gcp-tools cmd/gcp/main.go
-    
-    # Run the Go command to enable required Google Cloud APIs
-    ./bin/gcp-tools enable-apis --project {{ project }} --api-file-path {{ api_file }}
+    # Build and run cluster-ops
+    go build -o bin/cluster-ops cmd/cluster-ops/main.go
+    ./bin/cluster-ops api enable --project={{ project }} --api-file-path={{ api_file }}
     echo "Finished enabling APIs"
     
     # List enabled APIs
@@ -52,11 +50,9 @@ disable-apis project api_file:
     
     echo "Disabling APIs for project {{project}} from file {{api_file}}"
     
-    # Build the Go binary
-    go build -o bin/gcp-tools cmd/gcp/main.go
-    
-    # Run the Go command to enable required Google Cloud APIs
-    ./bin/gcp-tools disable-apis --project {{ project }} --api-file-path {{ api_file }}
+    # Build and run cluster-ops
+    go build -o bin/cluster-ops cmd/cluster-ops/main.go
+    ./bin/cluster-ops api disable --project={{ project }} --api-file-path={{ api_file }}
 
     echo "Finished disabling APIs"
     

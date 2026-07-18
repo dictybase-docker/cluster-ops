@@ -21,6 +21,8 @@ func main() {
 			bucketCommand(),
 			igCommand(),
 			envCommand(),
+			apiCommand(),
+			saCommand(),
 		},
 	}
 
@@ -346,6 +348,69 @@ func envCommand() *cli.Command {
 					&cli.StringFlag{Name: "value", Aliases: []string{"v"}, Required: true},
 				},
 				Action: util.SetEnvironmentalVariable,
+			},
+		},
+	}
+}
+
+// ---------- api ----------
+
+func apiCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "api",
+		Usage: "Enable or disable GCP APIs",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "enable",
+				Usage:  "Enable APIs from a file",
+				Action: gcp.EnableAPIs,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "project", Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: "api-file-path", Aliases: []string{"f"}, Required: true},
+				},
+			},
+			{
+				Name:   "disable",
+				Usage:  "Disable APIs from a file",
+				Action: gcp.DisableAPIs,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "project", Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: "api-file-path", Aliases: []string{"f"}, Required: true},
+				},
+			},
+		},
+	}
+}
+
+// ---------- sa ----------
+
+func saCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "sa",
+		Usage: "Create service accounts and keys",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "create",
+				Usage:  "Create a service account with roles from a file",
+				Action: gcp.CreateServiceAccount,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "name", Required: true},
+					&cli.StringFlag{Name: "project", Required: true},
+					&cli.StringFlag{Name: "roles-file", Aliases: []string{"r"}, Required: true},
+					&cli.StringFlag{Name: "description"},
+					&cli.StringFlag{Name: "display-name"},
+					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+				},
+			},
+			{
+				Name:   "create-key",
+				Usage:  "Create a key for an existing service account",
+				Action: gcp.CreateServiceAccountKey,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "name", Required: true},
+					&cli.StringFlag{Name: "project", Required: true},
+					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+				},
 			},
 		},
 	}

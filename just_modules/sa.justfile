@@ -5,22 +5,16 @@ create-sa project sa_name roles_file output_file="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Build the binary
-    go build -o ./bin/gcp-tools ./cmd/gcp
+    # Build and run cluster-ops
+    go build -o ./bin/cluster-ops ./cmd/cluster-ops
 
-    ./bin/gcp-tools create-sa \
+    ./bin/cluster-ops sa create \
       --name={{ sa_name }} \
       --project={{ project }} \
       --description={{ sa_name }} \
       --display-name={{ sa_name }} \
       --roles-file={{ roles_file }} \
       --output-file={{ output_file }} \
-
-    # Verify the service account was created
-    echo "Verifying service account creation..."
-    ./bin/gcp-tools describe-sa \
-      --name={{ sa_name }} \
-      --project={{ project }} \
 
 # Create service account manager and assign predefined roles
 [group('service-account-management')]
@@ -51,10 +45,10 @@ create-sa-key project sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Build the binary
-    go build -o ./bin/gcp-tools ./cmd/gcp
+    # Build and run cluster-ops
+    go build -o ./bin/cluster-ops ./cmd/cluster-ops
     
-    ./bin/gcp-tools create-sa-key \
+    ./bin/cluster-ops sa create-key \
       --name={{ sa_name }} \
       --project={{ project }} \
       --output-file={{ key_file }} \
