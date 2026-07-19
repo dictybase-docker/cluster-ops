@@ -886,23 +886,21 @@ This works because kOps stores the entire cluster specification in the GCS state
 
 ### 9.3 Teardown — Destroy the Cluster
 
-**Step 1: Preflight checks.** Before destroying anything, confirm you're targeting the right cluster and that no dependent services will break:
+**Step 1: Preflight checks (automatic — the recipe does this for you).** The `just gcp-cluster delete-cluster` recipe runs these checks before destroying anything:
+
+- Echoes `${KOPS_CLUSTER_NAME}`, `${KOPS_STATE_STORE}`, `${PROJECT_ID}` so you can confirm you're targeting the right cluster
+- Validates that `KOPS_CLUSTER_NAME` and `KOPS_STATE_STORE` are set (exits with an error if not)
+- Runs a dry-run (`kops delete cluster` without `--yes`) and prints every resource that would be destroyed
+- Checks for running workloads with `kubectl get pods --all-namespaces`
+
+All you need to do is run the command and review the output. The manual equivalent is shown below for understanding what's happening under the hood:
 
 ```bash
-# Are you in a cluster-env sub-shell targeting the right cluster?
+# Under the hood — the recipe runs these checks:
 echo "About to destroy: ${KOPS_CLUSTER_NAME}"
 echo "State bucket:      ${KOPS_STATE_STORE}"
 echo "GCP project:       ${PROJECT_ID}"
-
-# Any workloads still running?
-kubectl get pods --all-namespaces 2>/dev/null || echo "(no cluster access — already down?)"
-
-# Any Pulumi stacks still deployed against this cluster?
-# Check your Pulumi stacks manually — there's no automated discovery for this yet.
-# See Section 9.7 for the Pulumi teardown caveat.
-
-# Any Velero backups you should take first?
-# See Section 9.7 for the PV data caveat.
+kubectl get pods --all-namespaces 2>/dev/null || echo "(no cluster access)"
 ```
 
 If everything looks correct, proceed.
@@ -932,35 +930,19 @@ Deleted cluster: "<KOPS_CLUSTER_NAME>"
 - The GCS state bucket — kOps removes the active cluster definition from the bucket but leaves the bucket and its versioned object history intact.
 - The kubeconfig file at `${KUBECONFIG}` — now pointing at a dead cluster. Delete it or leave it; it'll be overwritten on re-creation.
 
-> **Justfile recipes are available.** Instead of running the raw `kops` command, use `just gcp-cluster delete-cluster` (dry-run) and `just gcp-cluster delete-cluster yes` (full teardown with preflight checks and cleanup verification). See [Section 9.6](#96-the-full-cycle-recipe) for the complete workflow.
+> **The recipe handles everything.** `just gcp-cluster delete-cluster yes` runs preflight → dry-run → confirmation → destruction → cleanup verification (instances, disks, forwarding rules, addresses) in one command. No need for the manual steps below unless you're debugging. For a dry-run only, use `just gcp-cluster delete-cluster` (no `yes`).
 
-**Step 4: Verify cleanup.** After teardown, confirm no resources from the cluster remain. Use broad inventory checks rather than name-pattern filters (kOps naming conventions can vary):
+**What the recipe does, in order:**
 
-```bash
-# Instances — should show none matching the cluster's project/zone
-gcloud compute instances list --project=${PROJECT_ID} \
-  --filter="name:${KOPS_CLUSTER_NAME}"
-# Expected: Listed 0 items.
+1. **Preflight** — echoes cluster/project/state, validates env vars, checks for running workloads
+2. **Dry-run** — prints every resource kOps plans to destroy
+3. **Confirmation** — prompts "Type 'destroy' to confirm" (abort by typing anything else)
+4. **Destroy** — runs `kops delete cluster --yes`
+5. **Cleanup verification** — lists any remaining instances, disks, forwarding rules, and addresses matching the cluster name
 
-# Disks — check for orphaned PV disks (especially if reclaim policy is Retain)
-gcloud compute disks list --project=${PROJECT_ID} \
-  --filter="name:${KOPS_CLUSTER_NAME}"
-# Expected: Listed 0 items. If disks remain, they may be orphaned PVs — delete
-# them manually with `gcloud compute disks delete <name>`.
-
-# Forwarding rules — broad check, review manually
-gcloud compute forwarding-rules list --project=${PROJECT_ID}
-# Confirm no rules reference the deleted cluster's name or IP.
-
-# Addresses — check for orphaned static IPs
-gcloud compute addresses list --project=${PROJECT_ID}
-# Release any that belonged to the cluster with `gcloud compute addresses delete <name>`.
-
-# Target pools / load balancer components
-gcloud compute target-pools list --project=${PROJECT_ID}
-gcloud compute url-maps list --project=${PROJECT_ID}
-# Review manually; delete any that belonged to the cluster.
-```
+**What it leaves behind:**
+- The GCS state bucket — kOps removes the active cluster definition but leaves the bucket and its versioned history intact.
+- The kubeconfig file at `${KUBECONFIG}` — now pointing at a dead cluster. Delete it or leave it; it'll be overwritten on re-creation.
 
 ### 9.4 Optional: Delete the State Bucket
 
