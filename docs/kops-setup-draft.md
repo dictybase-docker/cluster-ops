@@ -886,63 +886,27 @@ This works because kOps stores the entire cluster specification in the GCS state
 
 ### 9.3 Teardown — Destroy the Cluster
 
-**Step 1: Preflight checks (automatic — the recipe does this for you).** The `just gcp-cluster delete-cluster` recipe runs these checks before destroying anything:
-
-- Echoes `${KOPS_CLUSTER_NAME}`, `${KOPS_STATE_STORE}`, `${PROJECT_ID}` so you can confirm you're targeting the right cluster
-- Validates that `KOPS_CLUSTER_NAME` and `KOPS_STATE_STORE` are set (exits with an error if not)
-- Runs a dry-run (`kops delete cluster` without `--yes`) and prints every resource that would be destroyed
-- Checks for running workloads with `kubectl get pods --all-namespaces`
-
-All you need to do is run the command and review the output. The manual equivalent is shown below for understanding what's happening under the hood:
+The `just gcp-cluster delete-cluster` recipe handles the entire teardown in one command:
 
 ```bash
-# Under the hood — the recipe runs these checks:
-echo "About to destroy: ${KOPS_CLUSTER_NAME}"
-echo "State bucket:      ${KOPS_STATE_STORE}"
-echo "GCP project:       ${PROJECT_ID}"
-kubectl get pods --all-namespaces 2>/dev/null || echo "(no cluster access)"
+# Dry-run only (safe — preview what will be destroyed):
+just gcp-cluster delete-cluster
+
+# Full teardown (with confirmation prompt):
+just gcp-cluster delete-cluster yes
 ```
-
-If everything looks correct, proceed.
-
-**Step 2: Dry-run (no `--yes`).** Always preview what kOps will destroy before committing:
-
-```bash
-kops delete cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE}
-```
-
-**Expected output:** kOps lists every resource it plans to delete — GCE instances, disks, forwarding rules, firewall rules, and the cluster manifest itself. Review this list carefully. If it references resources you don't recognize or lists an unexpected count, stop and investigate.
-
-**Step 3: Execute.** Only after confirming the dry-run output matches expectations:
-
-```bash
-kops delete cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes
-```
-
-**Expected output:**
-```
-Deleted cluster: "<KOPS_CLUSTER_NAME>"
-```
-
-**How long it takes:** Typically a few minutes, depending on the number of instances and networking resources. kOps tears down GCE instances first, then cleans up disks, forwarding rules, and firewall rules.
-
-**What it leaves behind:**
-- The GCS state bucket — kOps removes the active cluster definition from the bucket but leaves the bucket and its versioned object history intact.
-- The kubeconfig file at `${KUBECONFIG}` — now pointing at a dead cluster. Delete it or leave it; it'll be overwritten on re-creation.
-
-> **The recipe handles everything.** `just gcp-cluster delete-cluster yes` runs preflight → dry-run → confirmation → destruction → cleanup verification (instances, disks, forwarding rules, addresses) in one command. No need for the manual steps below unless you're debugging. For a dry-run only, use `just gcp-cluster delete-cluster` (no `yes`).
 
 **What the recipe does, in order:**
 
-1. **Preflight** — echoes cluster/project/state, validates env vars, checks for running workloads
-2. **Dry-run** — prints every resource kOps plans to destroy
-3. **Confirmation** — prompts "Type 'destroy' to confirm" (abort by typing anything else)
-4. **Destroy** — runs `kops delete cluster --yes`
-5. **Cleanup verification** — lists any remaining instances, disks, forwarding rules, and addresses matching the cluster name
+1. **Preflight** — echoes `${KOPS_CLUSTER_NAME}`, `${KOPS_STATE_STORE}`, `${PROJECT_ID}`; validates `KOPS_CLUSTER_NAME` and `KOPS_STATE_STORE` are set (exits with error if not)
+2. **Dry-run** — prints every resource kOps plans to destroy (GCE instances, disks, forwarding rules, firewall rules). Review this output before proceeding.
+3. **Bail or proceed** — if you ran `delete-cluster` (no `yes`), the recipe stops here after printing the dry-run. If you ran `delete-cluster yes`, it continues.
+4. **Workload check** — `kubectl get pods --all-namespaces` to show what's still running
+5. **Confirmation** — prompts "Type 'destroy' to confirm" (abort by typing anything else)
+6. **Destroy** — runs `kops delete cluster --yes`
+7. **Cleanup verification** — lists any remaining instances, disks, and forwarding rules matching the cluster name, plus all addresses in the project
 
-**What it leaves behind:**
-- The GCS state bucket — kOps removes the active cluster definition but leaves the bucket and its versioned history intact.
-- The kubeconfig file at `${KUBECONFIG}` — now pointing at a dead cluster. Delete it or leave it; it'll be overwritten on re-creation.
+> **What survives teardown** is covered in [Section 9.2](#92-what-survives-teardown). The kubeconfig at `${KUBECONFIG}` will point at a dead cluster after teardown — delete it or let re-creation overwrite it.
 
 ### 9.4 Optional: Delete the State Bucket
 
@@ -1079,7 +1043,7 @@ exit
 kubectl get sc   # check StorageClass reclaim policies
 kubectl get pv   # list all PVs and their status
 ```
-After teardown, run the disk inventory check from Section 9.3 Step 4 to catch any orphans. If you have valuable data on PVCs, back them up with Velero before tearing down (see `just gcp-cluster setup-cluster-backup`).
+After teardown, run the disk inventory check from Section 9.3 Step 7 to catch any orphans. If you have valuable data on PVCs, back them up with Velero before tearing down (see `just gcp-cluster setup-cluster-backup`).
 
 **External DNS records break.** If you configured a real DNS zone (not `.k8s.local` gossip), the A records pointing at the API load balancer go stale after teardown. Re-creation gets a new load balancer IP — you'll need to update DNS.
 
