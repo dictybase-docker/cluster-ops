@@ -354,7 +354,7 @@ just cluster-env <env> <cluster-name>
 ```bash
 just gcp-api enable-apis ${PROJECT_ID} gcs-files/apis/enabled_apis.txt
 ```
-**Expected output**: `Operation finished successfully. All required APIs are enabled for project <PROJECT_ID>.` Turns on the 42 GCP services the cluster needs (Compute, Container, Storage, IAM, KMS, Monitoring, Logging, etc.).
+**Expected output**: `Operation finished successfully. All required APIs are enabled for project <PROJECT_ID>.` (interspersed with recipe status messages).
 
 <a id="phase-1b"></a>
 
@@ -362,7 +362,7 @@ just gcp-api enable-apis ${PROJECT_ID} gcs-files/apis/enabled_apis.txt
 ```bash
 just gcp-api disable-apis ${PROJECT_ID} gcs-files/apis/disable_enabled_apis.txt
 ```
-**Expected output**: `Operation finished successfully. 8 unused services have been disabled.` Purely a cleanup step — not a hard dependency.
+**Expected output**: `Operation finished successfully. 8 unused services have been disabled.` (interspersed with recipe status messages).
 
 <a id="phase-2"></a>
 
