@@ -89,6 +89,75 @@ list-instancegroups: build
 validate-kops-ha: build
     ./bin/cluster-ops validate ha
 
+# Validate post-provisioning hardening components.
+# Checks Cluster Autoscaler, Node Problem Detector, Metrics Server,
+# cert-manager, and node-local DNS are all running.
+# Usage: just validate-hardening
+[no-cd]
+validate-hardening:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "=== Post-Provisioning Hardening Check ==="
+    echo ""
+
+    fail=0
+
+    echo "--- Cluster Autoscaler ---"
+    if kubectl get pods -n kube-system -l app=cluster-autoscaler 2>/dev/null | grep -q Running; then
+        echo "  ✓ Running"
+    else
+        echo "  ✗ Not found or not Running"
+        fail=1
+    fi
+
+    echo "--- Node Problem Detector ---"
+    if kubectl get daemonset node-problem-detector -n kube-system &>/dev/null; then
+        ready=$(kubectl get daemonset node-problem-detector -n kube-system -o jsonpath='{.status.numberReady}')
+        desired=$(kubectl get daemonset node-problem-detector -n kube-system -o jsonpath='{.status.desiredNumberScheduled}')
+        if [ "$ready" = "$desired" ]; then
+            echo "  ✓ Running ($ready/$desired nodes)"
+        else
+            echo "  ✗ $ready/$desired nodes ready"
+            fail=1
+        fi
+    else
+        echo "  ✗ Not found"
+        fail=1
+    fi
+
+    echo "--- Metrics Server ---"
+    if kubectl top nodes &>/dev/null; then
+        echo "  ✓ Reporting metrics"
+    else
+        echo "  ✗ Not reporting (wait 60s and retry)"
+        fail=1
+    fi
+
+    echo "--- cert-manager ---"
+    if kubectl get pods -n cert-manager 2>/dev/null | grep -q Running; then
+        echo "  ✓ Running"
+    else
+        echo "  ✗ Not found or not Running"
+        fail=1
+    fi
+
+    echo "--- Node-local DNS cache ---"
+    if kubectl get pods -n kube-system -l k8s-app=node-local-dns 2>/dev/null | grep -q Running; then
+        echo "  ✓ Running"
+    else
+        echo "  ✗ Not found or not Running"
+        fail=1
+    fi
+
+    echo ""
+    if [ $fail -eq 0 ]; then
+        echo "All 5 hardening components running."
+    else
+        echo "Some components failed. See Phase 7 for troubleshooting."
+        exit 1
+    fi
+
 # Validate the kops cluster
 # Checks if the cluster is correctly set up and running
 # Usage: just validate-cluster [waittime]
