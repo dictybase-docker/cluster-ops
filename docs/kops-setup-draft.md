@@ -15,8 +15,7 @@
   - [1.1 The GCP Project](#11-the-gcp-project)
   - [1.2 Core System Tools](#12-core-system-tools)
   - [1.3 asdf-Managed Tools](#13-asdf-managed-tools)
-  - [1.4 SSH Keypair for Cluster Nodes](#14-ssh-keypair-for-cluster-nodes)
-  - [1.5 Prepare the Local Repo](#15-prepare-the-local-repo)
+  - [1.4 SSH Keypair and Local Repo](#14-ssh-keypair-and-local-repo)
 - [2. Authentication Setup](#2-authentication-setup)
 - [3. Environment Variables — The Cluster Config File](#3-environment-variables--the-cluster-config-file)
   - [3.1 Create Your Cluster Env File](#31-create-your-cluster-env-file)
@@ -37,23 +36,20 @@
   - [Phase 5 — Apply (version-aware)](#phase-5)
   - [Phase 6 — Validate HA topology](#phase-6)
   - [Phase 7 — Post-Provisioning Hardening](#phase-7)
-- [5. Production HA Deployment Reference](#5-production-ha-deployment-reference)
-  - [5.1 Which Setting Controls Which Pool](#51-which-setting-controls-which-pool)
-  - [5.2 Version Command Matrix](#52-version-command-matrix)
-  - [5.4 Automation Summary](#54-automation-summary)
-- [6. Verification & Access](#6-verification--access)
-  - [6.1 Sanity Checks (Per Phase)](#61-sanity-checks-per-phase)
-  - [6.2 Cluster Health](#62-cluster-health)
-  - [6.3 Getting Inside the Cluster](#63-getting-inside-the-cluster)
-- [9. Disposable Cluster Lifecycle](#9-disposable-cluster-lifecycle)
-  - [9.1 Mindset: Cluster as Cattle](#91-mindset-cluster-as-cattle)
-  - [9.2 What Survives Teardown](#92-what-survives-teardown)
-  - [9.3 Teardown — Destroy the Cluster](#93-teardown--destroy-the-cluster)
-  - [9.4 Optional: Delete the State Bucket](#94-optional-delete-the-state-bucket)
-  - [9.5 Re-Creation — Bring It Back](#95-re-creation--bring-it-back)
-  - [9.6 The Full Cycle (Recipe)](#96-the-full-cycle-recipe)
-  - [9.7 Caveats](#97-caveats)
-- [10. Next Steps](#10-next-steps)
+- [5. Exploring the Cluster](#5-exploring-the-cluster)
+- [6. Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle)
+  - [6.1 Mindset](#61-mindset)
+  - [6.2 What Survives Teardown](#62-what-survives-teardown)
+  - [6.3 Teardown — Destroy the Cluster](#63-teardown--destroy-the-cluster)
+  - [6.4 Optional: Delete the State Bucket](#64-optional-delete-the-state-bucket)
+  - [6.5 Re-Creation — Bring It Back](#65-re-creation--bring-it-back)
+  - [6.6 Summary](#66-summary)
+  - [6.7 Caveats](#67-caveats)
+- [7. Next Steps](#7-next-steps)
+- [Appendix A — Production HA Deployment Reference](#appendix-a--production-ha-deployment-reference)
+  - [A.1 Which Setting Controls Which Pool](#a1-which-setting-controls-which-pool)
+  - [A.2 Version Command Matrix](#a2-version-command-matrix)
+  - [A.3 Automation Summary](#a3-automation-summary)
 
 ## Overview
 
@@ -68,17 +64,14 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 
 ## Quick Setup
 
-This is the short path to a working cluster. It is an orientation, not a replacement for the detailed instructions — some steps require tool installations, credential provisioning, or env-file choices before they can succeed. Follow the linked section whenever you need the full commands or rationale.
+1. [Install the tools.](#1-prerequisites--tooling) `go`, `just`, `gcloud`, `direnv`, `jq` at system level, then `just install-asdf-plugins` for asdf-managed tools.
+2. [Generate the SSH keypair and prepare the repo.](#14-ssh-keypair-and-local-repo) Create `credentials/k8sVM` and the `credentials/` directory.
+3. [Set up authentication.](#2-authentication-setup) Place `sa-manager.json` in `credentials/` and configure `GOOGLE_APPLICATION_CREDENTIALS`.
+4. [Create your cluster env file.](#3-environment-variables--the-cluster-config-file) Copy `.env.dev.dcr-experiments`, then set the seven required variables.
+5. [Bootstrap the cluster.](#4-cluster-bootstrap) Activate your env file (`just cluster-env`), then run the phased HA workflow.
+6. [Verify and explore.](#5-exploring-the-cluster) Run `just gcp-cluster validate-kops-ha`, then `just gcp-cluster k9s`.
 
-1. **Install the tools.** Make sure `go`, `just`, `gcloud`, `direnv`, and `jq` are installed at the system level, then run `just install-asdf-plugins` for the asdf-managed tools. See [1. Prerequisites & Tooling](#1-prerequisites--tooling).
-2. **Generate the SSH keypair.** Run `ssh-keygen -t rsa -b 4096 -f credentials/k8sVM -N "" -C "kops-cluster-nodes"`. No Justfile recipe does this for you — it must be done by hand. See [1.4 SSH Keypair for Cluster Nodes](#14-ssh-keypair-for-cluster-nodes).
-3. **Build the repo.** Run `go build ./...` — it should succeed silently (no output = no errors). See [1.5 Prepare the Local Repo](#15-prepare-the-local-repo).
-4. **Set up authentication.** Place `sa-manager.json` in `credentials/` and configure `GOOGLE_APPLICATION_CREDENTIALS` with `just set-env-var`. See [2. Authentication Setup](#2-authentication-setup).
-5. **Create your cluster env file.** Copy `.env.dev.dcr-experiments`, then edit the seven required variables: `PROJECT_ID`, `BUCKET_NAME`, `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `KUBECONFIG`, `SSH_KEY`, and `KUBERNETES_VERSION`. See [3. Environment Variables](#3-environment-variables--the-cluster-config-file).
-6. **Bootstrap the cluster (HA production).** Activate your env file with `just cluster-env <env> <cluster>`, then run Phases 0–3 (credential → APIs → SA → credential rotation). For the HA production cluster, use the dedicated recipes: `just gcp-cluster create-state-bucket` → `just gcp-cluster create-cluster-config` → `just gcp-cluster edit-cluster` (manual step — opens $EDITOR) → `just gcp-cluster apply-instancegroups` → `just gcp-cluster update-cluster` (auto-detects kOps version) → `just gcp-cluster validate-kops-ha`. See [4. Cluster Bootstrap](#4-cluster-bootstrap) and [5. Production HA Deployment Reference](#5-production-ha-deployment-reference).
-
-   > **Note:** The `cluster-ops` binary replaced the legacy `create-kops-cluster` recipe. For single-pool dev clusters, use `just gcp-cluster create-cluster-config` and `just gcp-cluster update-cluster` directly. For HA production, follow the full phased workflow.
-7. **Verify everything is healthy.** Run `just gcp-cluster validate-kops-ha` — checks cluster health, InstanceGroups, zone distribution, and taints. Then explore with `just gcp-cluster k9s`. See [6. Verification & Access](#6-verification--access).
+<a id="1-prerequisites--tooling"></a>
 
 ## 1. Prerequisites & Tooling
 
@@ -93,7 +86,7 @@ These aren't managed by `asdf` — install them through your system package mana
 
 | Tool | Why You Need It | Check Command | Install |
 |------|-----------------|--------------|---------|
-| **Go** (≥1.21) | Builds the `cluster-ops` binary (`cmd/cluster-ops/main.go`) that all Justfile recipes shell out to | `go version` | [go.dev/dl](https://go.dev/dl/) |
+| **Go** (≥1.26) | Builds the `cluster-ops` binary (`cmd/cluster-ops/main.go`) that all Justfile recipes shell out to | `go version` | [go.dev/dl](https://go.dev/dl/) |
 | **just** | The task runner — every recipe in this guide (install tools, create cluster, deploy) is a `just` command | `just --version` | [github.com/casey/just](https://github.com/casey/just#installation) |
 | **gcloud** | Google Cloud CLI — used by several recipes behind the scenes and handy for manual debugging | `gcloud version` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
 | **direnv** | Auto-loads environment variables from `.envrc` when you enter the project directory — no manual `export` needed | `direnv version` | [direnv.net](https://direnv.net/docs/installation.html) |
@@ -106,7 +99,6 @@ We use `asdf` to pin exact versions of the remaining tools. With `just` already 
 ```bash
 just install-asdf-plugins
 ```
-
 This installs: [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/), [kops](https://kops.sigs.k8s.io/), [pulumi](https://www.pulumi.com/docs/), [velero](https://velero.io/docs/), [mc](https://min.io/docs/minio/linux/reference/minio-mc.html).
 
 To upgrade a specific tool version (must be defined in `.tool-versions`):
@@ -114,32 +106,17 @@ To upgrade a specific tool version (must be defined in `.tool-versions`):
 just install-tool <tool_name> <version>
 # Example: just install-tool kubectl 1.28.8
 ```
-
-### 1.4 SSH Keypair for Cluster Nodes
-
-**No Justfile recipe generates this for you** — create it by hand:
+### 1.4 SSH Keypair and Local Repo
 
 ```bash
+# Generate the SSH keypair (no Justfile recipe — do this by hand):
 ssh-keygen -t rsa -b 4096 -f credentials/k8sVM -N "" -C "kops-cluster-nodes"
-```
-**Expected output**:
-```
-Your identification has been saved in credentials/k8sVM
-Your public key has been saved in credentials/k8sVM.pub
-```
 
-Both files are gitignored. A fresh clone always needs this step (or a secure copy from another operator).
-
-### 1.5 Prepare the Local Repo
-
-```bash
-# Create the credentials directory if it doesn't exist (gitignored — safe for secrets)
+# Create the credentials directory (gitignored — safe for secrets):
 mkdir -p credentials
-
-# The repo should build cleanly:
-go build ./...
 ```
-**Expected output**: `go build ./...` succeeds silently (no output = no errors). If you see `go: command not found`, Go isn't installed — revisit [Section 1.2](#12-core-system-tools).
+
+Both key files are gitignored. A fresh clone always needs the keypair (or a secure copy from another operator).
 
 ## 2. Authentication Setup
 
@@ -185,13 +162,13 @@ You need the **Service Account Manager** key. It has broad permissions (creating
     ```bash
     just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
     ```
-    **Expected output**: `direnv: loading ...` followed by `direnv: export ~PATH` (exact vars vary). If you see `direnv: command not found`, install direnv — [Section 1.2](#12-core-system-tools).
+    If you see `direnv: command not found`, install direnv — [Section 1.2](#12-core-system-tools).
 
     Behind the scenes, this writes `export GOOGLE_APPLICATION_CREDENTIALS=...` into `.envrc` and runs `direnv allow`. If you have `direnv`'s shell hook set up, the variable loads automatically whenever you `cd` into the project. If not, you'll need to manually `eval "$(direnv export bash)"` (or restart your shell) for it to take effect.
 
 > **What happens next**: During cluster bootstrap, the tooling will automatically create a narrower `kops-cluster-creator` service account and rotate `GOOGLE_APPLICATION_CREDENTIALS` to point at *that* key instead. You don't need to do this yourself — the bootstrap phases (Phases 0–4 in [Section 4](#4-cluster-bootstrap)) handle both credential rotations. Just know that by the time the cluster is up, `sa-manager` is no longer in active use.
 
-4.  **(Optional but recommended) Set up a gcloud named configuration**: Step 3 above tells the *SDKs and Go binaries* which key to use. If you also want `gcloud` CLI commands (`gcloud projects get-iam-policy`, `gsutil`, etc.) to run as `sa-manager`, create a dedicated named configuration for it:
+4.  **(Optional but recommended) Set up a gcloud named configuration**: Step 3 above tells the *SDKs and Go binaries* which key to use. If you also want `gcloud` CLI commands (`gcloud projects get-iam-policy`, `gcloud storage`, etc.) to run as `sa-manager`, create a dedicated named configuration for it:
 
     ```bash
     export PROJECT_ID="<your-gcp-project-id>"
@@ -203,7 +180,6 @@ You need the **Service Account Manager** key. It has broad permissions (creating
     gcloud config set project ${PROJECT_ID}
     gcloud config set compute/zone us-central1-c
     ```
-    **Expected output**: `Activated service account credentials for [...]` followed by `Updated property [core/project]` and `Updated property [compute/zone]`.
 
     This creates an isolated identity slot — your personal login stays untouched in the `default` configuration. Switch back to it anytime:
     ```bash
@@ -222,6 +198,8 @@ You need the **Service Account Manager** key. It has broad permissions (creating
 
     > **You can add more SA identities later the same way** (e.g., a `kops-creator` configuration for the `kops-cluster-creator` key). Each gets its own named slot — create a new gcloud configuration with `gcloud config configurations create <name>`, activate the SA with `gcloud auth activate-service-account`, and switch between them with `gcloud config configurations activate <name>`.
 
+<a id="3-environment-variables--the-cluster-config-file"></a>
+
 ## 3. Environment Variables — The Cluster Config File
 
 Before the bootstrap will work, it needs to know a handful of things about your cluster: its name, where to store its state, which SSH key to use, and so on. These are defined in a **per-cluster env file** — one file per environment, following the naming convention `.env.<env>.<cluster>` (e.g., `.env.dev.my-cluster`, `.env.staging.my-cluster`, `.env.prod.my-cluster`).
@@ -235,7 +213,6 @@ The repo ships with `.env.dev.dcr-experiments` as a concrete example. You can co
 cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
 # edit .env.<env>.<cluster-name> with your values
 ```
-
 **Option B — create from scratch** using the table below as your checklist. The file is just `export VAR=value` lines — nothing fancy.
 
 ### 3.2 Required Variables
@@ -260,13 +237,6 @@ You switch between clusters by sourcing their env file into a sub-shell — one 
 just cluster-env <env> <cluster-name>
 # Example: just cluster-env dev my-cluster
 ```
-**Expected output**:
-```
-Cluster: my-cluster.k8s.local
-State  : gs://kops-state-my-cluster/
-Type 'exit' or Ctrl-D to leave this environment.
-```
-
 You're now in a sub-shell with all the cluster variables loaded. Every `just` command targets that cluster. To switch clusters, `exit` back to the parent shell and run `just cluster-env` with a different env file.
 
 > **Legacy note**: The project also has a `CLUSTER_ENV_FILE` variable in `.envrc` that acts as a fallback default when no `cluster-env` sub-shell is active. It's kept for backward compatibility — you don't need to touch it if you're using `just cluster-env`.
@@ -315,7 +285,7 @@ With your per-cluster env file ready (it has `PROJECT_ID`, `BUCKET_NAME`, the fi
 just cluster-cred <env> <cluster-name> credentials/sa-manager.json
 just cluster-env <env> <cluster-name>
 ```
-**Expected output**: `Wrote GOOGLE_APPLICATION_CREDENTIALS=... to .env.<env>.<cluster-name>` followed by the sub-shell banner printed by `cluster-env` (see [Section 3.3](#33-activate-your-cluster-env-file)). Phases 1a through 2 run with `sa-manager`'s broad permissions.
+Phases 1a through 2 run with `sa-manager`'s broad permissions.
 
 <a id="phase-1a"></a>
 
@@ -323,16 +293,12 @@ just cluster-env <env> <cluster-name>
 ```bash
 just gcp-api enable-apis ${PROJECT_ID} gcs-files/apis/enabled_apis.txt
 ```
-**Expected output**: `Operation finished successfully. All required APIs are enabled for project <PROJECT_ID>.` (interspersed with recipe status messages).
-
 <a id="phase-1b"></a>
 
 ### Phase 1b — Disable unused APIs
 ```bash
 just gcp-api disable-apis ${PROJECT_ID} gcs-files/apis/disable_enabled_apis.txt
 ```
-**Expected output**: `Operation finished successfully. 8 unused services have been disabled.` (interspersed with recipe status messages).
-
 <a id="phase-2"></a>
 
 ### Phase 2 — Create kops-cluster-creator SA
@@ -341,7 +307,7 @@ just gcp-sa create-sa ${PROJECT_ID} kops-cluster-creator \
   gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
   credentials/kops-cluster-creator.json
 ```
-**Expected output**: `Key created successfully. Service account kops-cluster-creator is now ready for use.` A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
+A dedicated identity with just the 8 roles it needs (compute admin, network admin, storage admin, IAM, logging). This is least privilege in action — rather than using the all-powerful `sa-manager` forever, we mint a narrower key specifically for cluster provisioning.
 
 <a id="phase-3"></a>
 
@@ -370,7 +336,7 @@ The state bucket holds your entire cluster configuration. Harden it before writi
 ```bash
 just gcp-cluster create-state-bucket ${PROJECT_ID} ${BUCKET_NAME}
 ```
-**What it does:** Creates the bucket (skips if it already exists), then enables versioning, uniform bucket-level access, and public access prevention. **Expected output:** confirmation messages for each hardening step. If the bucket name is already taken globally, pick a different `<BUCKET_NAME>`.
+**What it does:** Creates the bucket (skips if it already exists), then enables versioning, uniform bucket-level access, and public access prevention. If the bucket name is already taken globally, pick a different `<BUCKET_NAME>`.
 
 <a id="phase-4b"></a>
 
@@ -381,12 +347,9 @@ This command writes the manifest to the state bucket but provisions **nothing** 
 ```bash
 just gcp-cluster create-cluster-config ${PROJECT_ID} ${BUCKET_NAME}
 ```
-
 **Under the hood**, the recipe builds and runs `./bin/cluster-ops kops create-config --project-id <project>`. The binary reads all values from environment variables via `cmd/cluster-ops/main.go` `kopsCLIFlags()` bindings — no shell variable expansion. If a variable is unset, the binary uses the hardcoded default listed in [Section 3.4](#34-optional-tuning-knobs) (e.g., `TOTAL_NODES=4`, `TOPOLOGY=public`, `NETWORKING=cilium-etcd`).
 
 > **Production HA tip:** Set `TOPOLOGY=private`, `NETWORKING=cilium`, `TOTAL_MASTER=3`, and `CONTROL_PLANE_ZONES` in your cluster env file to override the binary defaults. See the production examples in [Section 3.4](#34-optional-tuning-knobs).
-
-**Expected output:** `Created cluster "<KOPS_CLUSTER_NAME>"` — this confirms the manifest was written to GCS. No VMs exist yet.
 
 > **What this creates:** A single default worker InstanceGroup (`nodes-<zone>`) with the flags from the env file variables `TOTAL_NODES`, `NODE_MACHINE`, and `NODE_DISK_SIZE`. The additional InstanceGroups (stateful database, batch/Spot) are configured in Phase 4d.
 
@@ -425,7 +388,6 @@ kOps uses InstanceGroups to define node pools. Production needs three pools — 
 ```bash
 just gcp-cluster apply-instancegroups
 ```
-
 **What it does:** Processes each `*.yaml.tmpl` template with `envsubst` (substituting values from your cluster env file), then applies them with `kops replace`. The templates and the env vars that drive them:
 
 | Template | Env Vars | Purpose |
@@ -449,7 +411,6 @@ The `just gcp-cluster update-cluster` recipe delegates to `./bin/cluster-ops kop
 ```bash
 just gcp-cluster update-cluster
 ```
-
 **What it does under the hood:**
 - **kOps ≥ 1.31.0** → `kops reconcile cluster --yes` (unified reconciliation)
 - **kOps ≤ 1.30.x** → `kops update cluster --yes --admin` (legacy two-step)
@@ -458,13 +419,6 @@ If you know you're on kOps ≥ 1.31, you can also use the explicit recipe:
 ```bash
 just gcp-cluster reconcile-cluster
 ```
-
-**Expected output (final lines):**
-```
-kOps <version> detected — using reconcile (or legacy update)
-Cluster "<KOPS_CLUSTER_NAME>" is ready
-```
-
 > **This repo currently pins kOps v1.29.2** (see `.tool-versions`). All `kops` commands are dispatched through `cluster-ops`, which auto-detects the installed kOps version and uses the correct subcommand.
 
 <a id="phase-6"></a>
@@ -476,19 +430,7 @@ A single recipe checks everything:
 ```bash
 just gcp-cluster validate-kops-ha
 ```
-
 **What it checks:** cluster health (`kops validate cluster`), InstanceGroup listing, node zone distribution (per pool), taints on batch nodes, and control-plane zone spread.
-
-**Expected output:** All nodes `Ready`, all InstanceGroups showing correct machine types and min/max, batch nodes carrying `spot=true:NoSchedule`, and control-plane nodes spread across 3 zones.
-
-| If you see | This indicates | Go to |
-|-----------|---------------|------|
-| `Error: bucket "..." already exists in a different project` | The bucket name is taken globally. Pick a different `<BUCKET_NAME>` and re-run from Phase 4a | Phase 4a |
-| `Error: could not find the specified project` | The `<PROJECT_ID>` is wrong or the project doesn't exist. Double-check in the GCP console, then re-run the command | Phase 4b |
-| `Error: SERVICE_ACCOUNT_NOT_FOUND` | The credential rotation didn't take effect in your sub-shell. Exit and re-enter `cluster-env`, then verify with `echo $GOOGLE_APPLICATION_CREDENTIALS` |
-| Validation timeout (>10 minutes) | Nodes may be stuck in a boot loop. Check GCP console for instance startup errors, verify the OS image is COS or Ubuntu (not RHEL/Rocky) | [kops architecture doc: OS Image Compatibility](kops-architecture.md#33-os-image-compatibility) |
-| Nodes missing from expected zones | The InstanceGroup `spec.zones` list may not match your intent. Run `kops get instancegroups` and verify | Phase 4d |
-| `kops reconcile` returns `unknown command` | You are on kOps ≤ 1.30.x — use the legacy `kops update cluster --yes --admin` path instead | [Section 5.2](#52-version-command-matrix) |
 
 <a id="phase-7"></a>
 
@@ -502,201 +444,38 @@ After the cluster is provisioned and validated, verify that the reliability comp
 - **Node local DNS cache** (`spec.kubeDNS.nodeLocalDNS.enabled: true` in Phase 4c) — per-node DNS caching DaemonSet, reduces DNS latency and CoreDNS load
 - **Metrics Server** — automatically enabled by kOps when Cluster Autoscaler is active
 
-**Verify all three are running:**
+**Verify all five are running:**
 
 ```bash
-# Cluster Autoscaler should be running as a pod in kube-system
-kubectl get pods -n kube-system -l app=cluster-autoscaler
-
-# Node Problem Detector should be running as a DaemonSet
-kubectl get daemonset node-problem-detector -n kube-system
-
-# Metrics Server should be running and reporting
-kubectl top nodes
-
-# cert-manager should be running
-kubectl get pods -n cert-manager
-
-# Node local DNS cache should be running on every node
-kubectl get pods -n kube-system -l k8s-app=node-local-dns
+just gcp-cluster validate-hardening
 ```
 
-**Expected output:**
-- Cluster Autoscaler: 1 pod `Running` (it's a single-replica deployment, not a DaemonSet)
-- Node Problem Detector: DaemonSet with 1 pod per node, all `Running`
-- Metrics Server: `kubectl top nodes` shows CPU and memory for all nodes (no `error: metrics not available yet`)
-- cert-manager: pods `cert-manager`, `cert-manager-cainjector`, and `cert-manager-webhook` all `Running` in the `cert-manager` namespace
-- Node local DNS cache: one `node-local-dns` pod per node, all `Running` in `kube-system`
+## 5. Exploring the Cluster
 
-**Verify autoscaler surge capacity:**
+Once the cluster is provisioned and validated ([Phase 6](#phase-6) & [Phase 7](#phase-7)), export the kubeconfig and explore:
 
-Elastic InstanceGroups should show maxSize > minSize, giving the autoscaler room to provision replacement nodes:
 ```bash
-just gcp-cluster list-instancegroups
+just gcp-cluster export-kubeconfig
+just gcp-cluster k9s
 ```
-**Expected:** `stateless-web` shows `Min: 3, Max: 6` and `batch-spot` shows `Min: 0, Max: 4`. The autoscaler will scale these pools when pods are pending due to resource pressure — including when a node fails and its pods need a new home.
+For a kubeconfig with custom name and duration:
+```bash
+just gcp-cluster export-named-kubeconfig <NAME> <HOURS>
+```
 
-| If you see | This indicates | Go to |
-|-----------|---------------|------|
-| `kubectl top nodes` returns `error: metrics not available yet` | Metrics Server pod is not running or hasn't collected initial metrics. Wait 60 seconds and retry, then check `kubectl get pods -n kube-system \| grep metrics-server` | Phase 7 |
-| `kubectl get pods -n kube-system -l app=cluster-autoscaler` returns `No resources found` | Cluster Autoscaler is not deployed. Check `kops get cluster -o yaml` for `clusterAutoscaler.enabled: true` | Phase 4c |
-| Node Problem Detector pods are in `CrashLoopBackOff` | Usually a kernel log path issue on the host OS image. Verify the OS is COS or Ubuntu, not RHEL/Rocky | [kops architecture doc: OS Image Compatibility](kops-architecture.md#33-os-image-compatibility) |
-
-## 5. Production HA Deployment Reference
-
-This section cross-references which kOps settings control which architectural component, the version-specific command matrix, and the current state of automation (what's implemented, what's still manual, and remaining gaps). For cluster teardown and re-creation, see [Section 9: Disposable Cluster Lifecycle](#9-disposable-cluster-lifecycle).
-
-### 5.1 Which Setting Controls Which Pool
-
-> **Env Var Override** column references are detailed in [Section 3.4](#34-optional-tuning-knobs). Default values shown there.
-
-| Pool | kOps `create cluster` Flag | InstanceGroup Field(s) | Env Var Override |
-|------|---------------------------|----------------------|------------------|
-| **Control plane** | `--control-plane-count`, `--control-plane-size`, `--control-plane-volume-size`, `--control-plane-zones` | Managed via `spec.controlPlane.kubelet`; separate IGs auto-created per zone | `TOTAL_MASTER`, `MASTER_MACHINE`, `MASTER_DISK_SIZE`, `CONTROL_PLANE_ZONES` |
-| **Stateless web (default workers)** | `--node-count=3`, `--node-size=e2-standard-4`, `--node-volume-size=100` | `spec.machineType`, `spec.minSize`, `spec.maxSize`, `spec.zones` | `TOTAL_NODES`, `NODE_MACHINE`, `NODE_DISK_SIZE` |
-| **Stateful database** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: n2-standard-4`, `spec.minSize: 3`, `spec.maxSize: 3`, `spec.nodeLabels.pool: database` | None — manual only |
-| **Batch/Spot** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: e2-standard-4`, `spec.minSize: 0`, `spec.maxSize: 4`, `spec.taints[0]: spot:true:NoSchedule`, `spec.gce.preemptible: true` | None — manual only |
-| **etcd volumes** | *(not a flag)* | `spec.etcdClusters[0].etcdMembers[*].volumeType: pd-ssd`, `spec.etcdClusters[1].etcdMembers[*].volumeType: pd-ssd` | None — manifest only |
-| **Private topology** | `--topology=private` | `spec.topology.masters: private`, `spec.topology.nodes: private` | None — flag/manifest only |
-| **API CIDR restriction** | *(not a flag)* | `spec.kubernetesApiAccess: ["<cidr>/32"]` | None — manifest only |
-| **Networking / CNI** | `--networking=cilium` | `spec.networking.cilium` | None — flag only |
-| **Cluster Autoscaler** | *(not a flag)* | `spec.clusterAutoscaler.enabled: true` — auto-provisions the autoscaler pod with GCE MIG permissions | None — manifest only |
-| **Node Problem Detector** | *(not a flag)* | `spec.nodeProblemDetector.enabled: true` — deploys as a DaemonSet, monitors kernel logs, taints unhealthy nodes | None — manifest only |
-| **Metrics Server** | *(not a flag)* | `spec.metricsServer.enabled: true` — enables `kubectl top` and HPA. Automatically enabled when Cluster Autoscaler is active | None — manifest only |
-| **cert-manager** | *(not a flag)* | `spec.certManager.enabled: true` — handles x509 certificates. Set `spec.certManager.managed: false` if running externally | None — manifest only |
-| **Node local DNS cache** | *(not a flag)* | `spec.kubeDNS.nodeLocalDNS.enabled: true` — per-node DNS caching DaemonSet. Reduces DNS latency and CoreDNS load | None — manifest only |
-
-### 5.2 Version Command Matrix
-
-| Action | kOps ≤ 1.30.x (current: v1.29.2) | kOps ≥ 1.31.0 |
-|--------|----------------------------------|---------------|
-| Create manifest | `kops create cluster ...` | `kops create cluster ...` |
-| Edit manifest | `kops edit cluster ...` | `kops edit cluster ...` |
-| Apply changes | `kops update cluster --yes --admin` | `kops reconcile cluster --yes` |
-| Rolling update (if needed) | `kops rolling-update cluster --yes` | *(included in `reconcile`)* |
-| Validate health | `kops validate cluster --wait 10m` | `kops validate cluster --wait 10m` |
-| Justfile recipe | `just gcp-cluster update-cluster` | `just gcp-cluster update-cluster` (version-aware) or `just gcp-cluster reconcile-cluster` (explicit) |
-
-> **Warning:** Do not mix workflows. If you create a cluster with kOps 1.31+, always use `kops reconcile`. If you create with kOps 1.29/1.30, always use `kops update cluster`. The `kops reconcile` command replaces both `update` and `rolling-update` for v1.31+.
-
-### 5.4 Automation Summary
-
-**Implemented recipes:**
-
-| Recipe | Covers |
-|--------|--------|
-| `just gcp-cluster create-state-bucket <project> <bucket>` | Phase 4a — create and harden GCS bucket |
-| `just gcp-cluster create-cluster-config <project> <bucket>` | Phase 4b — generate HA manifest from env vars |
-| `just gcp-cluster apply-instancegroups` | Phase 4d — apply checked-in InstanceGroup templates |
-| `just gcp-cluster update-cluster` | Phase 5 — version-aware apply (auto-detects kOps version) |
-| `just gcp-cluster reconcile-cluster` | Same version-aware dispatch as `update-cluster` |
-| `just gcp-cluster validate-kops-ha` | Phase 6 — HA topology validation |
-| `just gcp-cluster list-instancegroups` | Inspection — list all InstanceGroups |
-| `just gcp-cluster delete-cluster` | Section 9 — dry-run teardown preview |
-| `just gcp-cluster delete-cluster yes` | Section 9 — full teardown with confirmation |
-| `just gcp-cluster save-cluster-manifest` | Section 9 — export live manifest as YAML |
-| `just gcp-cluster diff-cluster-manifest` | Section 9 — diff live manifest against saved copy |
-| `just gcp-cluster recreate-cluster` | Section 9 — full re-creation pipeline |
-
-**Still manual:**
-
-| Step | Why Manual |
-|------|-----------|
-| Phase 4c — `just gcp-cluster edit-cluster` | Opens `$EDITOR` for security settings (API access, etcd volumes, node SA). Human judgment required. |
-| InstanceGroup template authoring | Edit templates in `config/kops/instancegroups/` once, commit, recipe applies automatically. |
-
-**Remaining gap** (if you upgrade to kOps ≥ 1.31):
-
-| Gap | Recommendation |
-|-----|---------------|
-| The `cluster-ops create-config` path creates a single default worker pool | For the three-pool HA architecture, the InstanceGroup templates handle the additional pools. `cluster-ops kops create-config` creates the base cluster + default pool; `cluster-ops ig apply` adds the rest. |
-
-> All recipes delegate to the `cluster-ops` binary (`./bin/cluster-ops`). The legacy `create-kops-cluster` recipe has been removed — use the phased HA workflow in Section 4 for production, or `create-cluster-config` + `update-cluster` for single-pool dev clusters.
-
-## 6. Verification & Access
-
-Once the bootstrap command completes, here's how to confirm everything is healthy and get hands-on access.
-
-### 6.1 Sanity Checks (Per Phase)
-
-> These commands assume you're inside a `cluster-env` sub-shell. If you exited and came back, run `just cluster-env <env> <cluster-name>` again.
-
-*   **After Phase 1 (APIs enabled)**: Same verification command as Phase 1a:
-    ```bash
-    just gcp-api list-enabled-apis ${PROJECT_ID} /tmp/enabled-check.txt
-    diff <(sort gcs-files/apis/enabled_apis.txt) <(sort /tmp/enabled-check.txt)
-    ```
-    **Expected**: `diff` produces no output. If APIs are missing, re-run Phase 1a (idempotent).
-
-*   **After Phase 2 (SA created)**: Confirm the key file exists:
-    ```bash
-    ls -la credentials/kops-cluster-creator.json
-    ```
-    **Expected**: file exists with mode `0600`.
-
-*   **After Phase 3 (credential rotated)**: Confirm the active credential:
-    ```bash
-    echo $GOOGLE_APPLICATION_CREDENTIALS
-    ```
-    **Expected**: path ends with `credentials/kops-cluster-creator.json`.
-
-*   **After Phase 4 (bucket + kops create)**: Confirm the state bucket and manifest:
-    ```bash
-    gsutil ls -L -b gs://${BUCKET_NAME} | head -5
-    kops get cluster --state $KOPS_STATE_STORE
-    ```
-    **Expected**: bucket shows versioning enabled; `kops get cluster` lists your cluster.
-
-### 6.2 Cluster Health
-
-1.  **Validate Health**:
-    ```bash
-    just gcp-cluster validate-cluster
-    ```
-    **Expected healthy output**:
-    ```
-    Validating cluster my-cluster.k8s.local
-    ...
-    Your cluster my-cluster.k8s.local is ready
-    ```
-    followed by a list of nodes all showing `Ready` status.
-
-    **If validation fails**: You'll see something like `Validation failed: ...` with specifics about which component is unhealthy. Common causes: nodes still booting (wait 2–3 minutes and retry), or networking issues — check the `.k8s.local` suffix (wrong suffix breaks gossip DNS) and verify GCP firewall rules aren't blocking inter-node traffic (`gcloud compute firewall-rules list --project=${PROJECT_ID}`).
-
-2.  **Status Overview**:
-    ```bash
-    just gcp-cluster cluster-status
-    ```
-    **Expected output**: A summary of cluster components (control plane, nodes, system pods) all reporting `Healthy` or `Ready`.
-
-### 6.3 Getting Inside the Cluster
-
-3.  **Interactive Dashboard** (recommended for exploration):
-    ```bash
-    just gcp-cluster k9s
-    ```
-
-4.  **Export Kubeconfig** (if you need the file for another tool):
-    ```bash
-    just gcp-cluster export-kubeconfig
-    # OR for a specific duration/name
-    just gcp-cluster export-named-kubeconfig <NAME> <HOURS>
-    ```
-
-
-## 9. Disposable Cluster Lifecycle
+## 6. Disposable Cluster Lifecycle
 
 Spin up when work begins, tear down when done, repeat as needed. No idle compute costs, no stale state.
 
-### 9.1 Mindset: Cluster as Cattle
+### 6.1 Mindset
 
-A disposable cluster is cattle, not a pet. Destroy it and create a fresh one from the same blueprint. The blueprint (env file, InstanceGroup templates, SA keys, state bucket) is the durable artifact. GCE instances are transient.
-
-This works because kOps stores the entire cluster specification in the GCS state bucket. So long as that bucket (with versioning enabled) and your env file survive, you can recreate from the same starting point.
+Destroy and recreate from the same blueprint. The blueprint — env file, InstanceGroup templates, SA keys, state bucket — is durable. GCE instances are transient. kOps stores the cluster spec in the GCS state bucket. As long as that bucket (with versioning enabled) and your env file survive, recreation is possible from the same starting point.
 
 > **⚠️ Reproducibility gap — Phase 4c is manual.** The `create-cluster-config` recipe generates the manifest from your env file, but Phase 4c requires human judgment. See [Phase 4c](#phase-4c) for how to capture edits for reproducibility.
 
-### 9.2 What Survives Teardown
+You pay for GCE instances only while the cluster is up. The GCS state bucket costs very little per month. The main trade-off is re-creation time (instance boot + manifest review) vs. the cost of keeping instances running 24/7.
+
+### 6.2 What Survives Teardown
 
 | Artifact | Survives? | Why |
 |----------|-----------|-----|
@@ -713,7 +492,9 @@ This works because kOps stores the entire cluster specification in the GCS state
 | **Firewall rules** (kOps-managed) | ❌ Destroyed | Only the rules kOps created; project-wide rules are untouched. |
 | **VPC network / subnets** | ⚠️ Depends | If kOps created the VPC (e.g., you used `--topology=private` with no pre-existing network), it is destroyed. If you pointed kOps at a pre-existing shared VPC, that network survives and is not modified. |
 
-### 9.3 Teardown — Destroy the Cluster
+<a id="63-teardown--destroy-the-cluster"></a>
+
+### 6.3 Teardown — Destroy the Cluster
 
 ```bash
 # Dry-run (safe — preview what will be destroyed):
@@ -722,25 +503,26 @@ just gcp-cluster delete-cluster
 # Full teardown (with confirmation prompt):
 just gcp-cluster delete-cluster yes
 ```
-
 **What the recipe does:** Preflight validation → dry-run → confirmation prompt → destroy → cleanup verification.
 
-> **What survives teardown** is covered in [Section 9.2](#92-what-survives-teardown). The kubeconfig will point at a dead cluster — delete it or let re-creation overwrite it.
+> **What survives teardown** is covered in [Section 6.2](#62-what-survives-teardown). The kubeconfig will point at a dead cluster — delete it or let re-creation overwrite it.
 
-### 9.4 Optional: Delete the State Bucket
+### 6.4 Optional: Delete the State Bucket
+
+> **⚠️ This permanently deletes all versioned history.** For routine maintenance, use [GCS lifecycle rules](https://cloud.google.com/storage/docs/lifecycle) instead. Only run the command below when you are done permanently or troubleshooting corrupted state.
 
 For a completely clean slate:
 ```bash
-gsutil rm -r gs://${BUCKET_NAME}
+gcloud storage rm --recursive gs://${BUCKET_NAME}
 ```
 
-Only if you're done permanently or troubleshooting corrupted state. Otherwise, keeping the bucket costs very little and preserves recreate ability.
+Keeping the bucket costs very little and preserves recreate ability.
 
 If deleted, re-run Phase 4a before Phase 4b.
 
-> **⚠️ Do not use `gsutil rm -r -a`** — it permanently deletes all versioned history. Use [GCS lifecycle rules](https://cloud.google.com/storage/docs/lifecycle) for routine maintenance.
+<a id="65-re-creation--bring-it-back"></a>
 
-### 9.5 Re-Creation — Bring It Back
+### 6.5 Re-Creation — Bring It Back
 
 After teardown, bringing the cluster back skips the heavy one-time setup. The GCP project already exists, APIs are enabled, service accounts and their keys are in place, the SSH keypair is still in `credentials/`, and your per-cluster env file is untouched.
 
@@ -761,7 +543,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
    ```bash
    just gcp-cluster edit-cluster
    ```
-   Re-apply the same security settings: `kubernetesApiAccess`, etcd volume types (`pd-ssd`), node service account, Cluster Autoscaler, Node Problem Detector, cert-manager, and node-local DNS. If you saved and checked in the manifest (see [Section 9.1](#91-mindset-cluster-as-cattle)), diff against your saved copy:
+   Re-apply the same security settings: `kubernetesApiAccess`, etcd volume types (`pd-ssd`), node service account, Cluster Autoscaler, Node Problem Detector, cert-manager, and node-local DNS. If you saved and checked in the manifest (see [Phase 4c](#phase-4c)), diff against your saved copy:
    ```bash
    kops get cluster -o yaml > /tmp/fresh-manifest.yaml
    diff config/kops/cluster-manifest.yaml /tmp/fresh-manifest.yaml
@@ -784,99 +566,25 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 
 7. **Verify hardening** (Phase 7):
    ```bash
-   kubectl get pods -n kube-system -l app=cluster-autoscaler
-   kubectl get daemonset node-problem-detector -n kube-system
-   kubectl top nodes
-   kubectl get pods -n cert-manager
-   kubectl get pods -n kube-system -l k8s-app=node-local-dns
+   just gcp-cluster validate-hardening
    ```
 
 **Re-creation time:** Primarily GCE instance boot and health checks, plus manifest review in Phase 4c.
 
-### 9.6 The Full Cycle (Recipe)
+### 6.6 Summary
 
-Here is the complete create → use → destroy → recreate workflow, using the Justfile recipes:
+- **First time:** Sections 1–4
+- **Teardown:** `just gcp-cluster delete-cluster yes`
+- **Recreate:** `just gcp-cluster recreate-cluster`
+- **Repeat as needed**
 
-```bash
-# ─── FIRST TIME (one-time setup) ───
-# Follow Sections 1–4 in full. This gets you:
-#   - Tools installed (Section 1)
-#   - sa-manager key in place (Section 2)
-#   - Per-cluster env file created (Section 3)
-#   - APIs enabled, SAs created, cluster bootstrapped (Section 4)
-#
-# Optional but recommended: after your first successful bootstrap,
-# save the edited manifest so re-creation is a diff-check, not a full edit:
-#   just gcp-cluster save-cluster-manifest
-#   git add config/kops/cluster-manifest.yaml && git commit -m "save known-good cluster manifest"
-
-# ─── USE THE CLUSTER ───
-# Deploy apps, run workloads, do whatever you need.
-
-# ─── TEARDOWN ───
-just cluster-env <env> <cluster-name>
-
-# Step 1: Dry-run — preview what will be destroyed (safe, no changes)
-just gcp-cluster delete-cluster
-
-# Step 2: Execute — full teardown with confirmation prompt
-just gcp-cluster delete-cluster yes
-#  → Type 'destroy' at the prompt to confirm
-#  → Cleanup verification runs automatically
-exit  # leave the sub-shell
-
-# ─── RECREATE WHEN NEEDED AGAIN ───
-just cluster-env <env> <cluster-name>
-
-# One command runs the full 6-step pipeline:
-#   create-config → diff manifest → edit (manual) → apply-ig → update → validate
-just gcp-cluster recreate-cluster
-#  → Step 3 opens your $EDITOR for Phase 4c security settings — this is the
-#    only manual step. If you saved the manifest, the diff in Step 2 shows
-#    you exactly what edits to re-apply.
-exit
-
-# ─── TEARDOWN AGAIN ───
-# (same teardown sequence as above)
-
-# ... repeat as needed ...
-```
-
-**What each recipe does:**
-
-| Recipe | Purpose |
-|--------|---------|
-| `just gcp-cluster delete-cluster` | Dry-run — shows what kOps will destroy. Safe to run anytime. |
-| `just gcp-cluster delete-cluster yes` | Full teardown: preflight → confirmation prompt → destroy → cleanup verification (instances, disks, forwarding rules, addresses). |
-| `just gcp-cluster save-cluster-manifest` | Exports `kops get cluster -o yaml` to `config/kops/cluster-manifest.yaml`. Commit this file for version-controlled reproducibility. |
-| `just gcp-cluster diff-cluster-manifest` | Diffs the live cluster manifest against the saved copy. Exits non-zero when differences exist — review the diff to know what Phase 4c edits to re-apply. |
-| `just gcp-cluster recreate-cluster` | Full re-creation pipeline: runs create-config → diff against saved manifest → opens editor for Phase 4c → apply-instancegroups → update-cluster → validate-kops-ha. |
-
-**Cost model:** With this pattern, you pay for GCE instances only while the cluster is up. Shutting down when not in use eliminates idle compute costs entirely. The GCS state bucket costs very little per month. The main trade-off is the re-creation time (mostly instance boot + manifest review) vs. the cost of keeping instances running 24/7.
-
-### 9.7 Caveats
-
-**Workload PVCs may survive teardown.** kOps-managed disks are always destroyed, but PVCs with `Retain` reclaim policy become orphaned. Check before teardown:
-```bash
-kubectl get sc   # check reclaim policies
-kubectl get pv   # list all PVs
-```
-Back up valuable data with Velero first (`just gcp-cluster setup-cluster-backup`).
-
-**External DNS breaks.** If using a real DNS zone (not `.k8s.local`), A records go stale after teardown. Re-creation gets a new load balancer IP — update DNS.
-
-**Pulumi stacks tied to cluster.** Tear down Pulumi stacks before destroying the cluster:
-```bash
-just gcp-pulumi remove-resource <folder> <stack>
-```
-
-**State bucket versioned history is recovery, not a blueprint.** Old versions accumulate over cycles. Do **not** use `gsutil rm -r -a` — it permanently deletes history. Use [GCS lifecycle rules](https://cloud.google.com/storage/docs/lifecycle) to expire old versions after retention period.
+### 6.7 Caveats
 
 **kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The `.tool-versions` file pins the version — run `just install-asdf-plugins` to sync.
 
 **GCP quotas.** Frequent cycles may trigger GCE API rate-limiting. Quota is released on teardown, but rapid create/delete loops can throttle.
 
-## 10. Next Steps
+## 7. Next Steps
 
 Your cluster is up and validated. Where to go from here:
 
@@ -884,4 +592,78 @@ Your cluster is up and validated. Where to go from here:
 - **Understand the architecture** — Read [`docs/kops-architecture.md`](kops-architecture.md) for the full architectural rationale, failure modes, and design decisions behind the HA topology, InstanceGroup layout, and networking choices.
 - **Set up backups** — Run `just gcp-cluster setup-cluster-backup` to configure Velero for disaster recovery.
 - **Explore the cluster** — Run `just gcp-cluster k9s` for an interactive terminal dashboard, or `kubectl get all --all-namespaces` for a quick inventory.
-- **Tear it down when done** — See [Section 9: Disposable Cluster Lifecycle](#9-disposable-cluster-lifecycle) to destroy the cluster when it's no longer needed and recreate it later.
+- **Tear it down when done** — See [Section 6: Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle) to destroy the cluster when it's no longer needed and recreate it later.
+
+<a id="appendix-a--production-ha-deployment-reference"></a>
+
+## Appendix A — Production HA Deployment Reference
+
+This section cross-references which kOps settings control which architectural component, the version-specific command matrix, and the current state of automation (what's implemented, what's still manual, and remaining gaps). For cluster teardown and re-creation, see [Section 6: Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle).
+
+### A.1 Which Setting Controls Which Pool
+
+> **Env Var Override** column references are detailed in [Section 3.4](#34-optional-tuning-knobs). Default values shown there.
+
+| Pool | kOps `create cluster` Flag | InstanceGroup Field(s) | Env Var Override |
+|------|---------------------------|----------------------|------------------|
+| **Control plane** | `--control-plane-count`, `--control-plane-size`, `--control-plane-volume-size`, `--control-plane-zones` | Managed via `spec.controlPlane.kubelet`; separate IGs auto-created per zone | `TOTAL_MASTER`, `MASTER_MACHINE`, `MASTER_DISK_SIZE`, `CONTROL_PLANE_ZONES` |
+| **Stateless web (default workers)** | `--node-count=3`, `--node-size=e2-standard-4`, `--node-volume-size=100` | `spec.machineType`, `spec.minSize`, `spec.maxSize`, `spec.zones` | `TOTAL_NODES`, `NODE_MACHINE`, `NODE_DISK_SIZE` |
+| **Stateful database** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: n2-standard-4`, `spec.minSize: 3`, `spec.maxSize: 3`, `spec.nodeLabels.pool: database` | None — manual only |
+| **Batch/Spot** | *(not created by `kops create cluster`)* | Created via `kops create instancegroup`. Set `spec.machineType: e2-standard-4`, `spec.minSize: 0`, `spec.maxSize: 4`, `spec.taints[0]: spot:true:NoSchedule`, `spec.gce.preemptible: true` | None — manual only |
+| **etcd volumes** | *(not a flag)* | `spec.etcdClusters[0].etcdMembers[*].volumeType: pd-ssd`, `spec.etcdClusters[1].etcdMembers[*].volumeType: pd-ssd` | None — manifest only |
+| **Private topology** | `--topology=private` | `spec.topology.masters: private`, `spec.topology.nodes: private` | None — flag/manifest only |
+| **API CIDR restriction** | *(not a flag)* | `spec.kubernetesApiAccess: ["<cidr>/32"]` | None — manifest only |
+| **Networking / CNI** | `--networking=cilium` | `spec.networking.cilium` | None — flag only |
+| **Cluster Autoscaler** | *(not a flag)* | `spec.clusterAutoscaler.enabled: true` — auto-provisions the autoscaler pod with GCE MIG permissions | None — manifest only |
+| **Node Problem Detector** | *(not a flag)* | `spec.nodeProblemDetector.enabled: true` — deploys as a DaemonSet, monitors kernel logs, taints unhealthy nodes | None — manifest only |
+| **Metrics Server** | *(not a flag)* | `spec.metricsServer.enabled: true` — enables `kubectl top` and HPA. Automatically enabled when Cluster Autoscaler is active | None — manifest only |
+| **cert-manager** | *(not a flag)* | `spec.certManager.enabled: true` — handles x509 certificates. Set `spec.certManager.managed: false` if running externally | None — manifest only |
+| **Node local DNS cache** | *(not a flag)* | `spec.kubeDNS.nodeLocalDNS.enabled: true` — per-node DNS caching DaemonSet. Reduces DNS latency and CoreDNS load | None — manifest only |
+
+### A.2 Version Command Matrix
+
+| Action | kOps ≤ 1.30.x (current: v1.29.2) | kOps ≥ 1.31.0 |
+|--------|----------------------------------|---------------|
+| Create manifest | `kops create cluster ...` | `kops create cluster ...` |
+| Edit manifest | `kops edit cluster ...` | `kops edit cluster ...` |
+| Apply changes | `kops update cluster --yes --admin` | `kops reconcile cluster --yes` |
+| Rolling update (if needed) | `kops rolling-update cluster --yes` | *(included in `reconcile`)* |
+| Validate health | `kops validate cluster --wait 10m` | `kops validate cluster --wait 10m` |
+| Justfile recipe | `just gcp-cluster update-cluster` | `just gcp-cluster update-cluster` (version-aware) or `just gcp-cluster reconcile-cluster` (explicit) |
+
+> **Warning:** Do not mix workflows. If you create a cluster with kOps 1.31+, always use `kops reconcile`. If you create with kOps 1.29/1.30, always use `kops update cluster`. The `kops reconcile` command replaces both `update` and `rolling-update` for v1.31+.
+
+### A.3 Automation Summary
+
+**Implemented recipes:**
+
+| Recipe | Covers |
+|--------|--------|
+| `just gcp-cluster create-state-bucket <project> <bucket>` | Phase 4a — create and harden GCS bucket |
+| `just gcp-cluster create-cluster-config <project> <bucket>` | Phase 4b — generate HA manifest from env vars |
+| `just gcp-cluster apply-instancegroups` | Phase 4d — apply checked-in InstanceGroup templates |
+| `just gcp-cluster update-cluster` | Phase 5 — version-aware apply (auto-detects kOps version) |
+| `just gcp-cluster reconcile-cluster` | Same version-aware dispatch as `update-cluster` |
+| `just gcp-cluster validate-kops-ha` | Phase 6 — HA topology validation |
+| `just gcp-cluster validate-hardening` | Phase 7 — hardening component checks |
+| `just gcp-cluster list-instancegroups` | Inspection — list all InstanceGroups |
+| `just gcp-cluster delete-cluster` | Section 6 — dry-run teardown preview |
+| `just gcp-cluster delete-cluster yes` | Section 6 — full teardown with confirmation |
+| `just gcp-cluster save-cluster-manifest` | Section 6 — export live manifest as YAML |
+| `just gcp-cluster diff-cluster-manifest` | Section 6 — diff live manifest against saved copy |
+| `just gcp-cluster recreate-cluster` | Section 6 — full re-creation pipeline |
+
+**Still manual:**
+
+| Step | Why Manual |
+|------|-----------|
+| Phase 4c — `just gcp-cluster edit-cluster` | Opens `$EDITOR` for security settings (API access, etcd volumes, node SA). Human judgment required. |
+| InstanceGroup template authoring | Edit templates in `config/kops/instancegroups/` once, commit, recipe applies automatically. |
+
+**Remaining gap** (if you upgrade to kOps ≥ 1.31):
+
+| Gap | Recommendation |
+|-----|---------------|
+| The `cluster-ops create-config` path creates a single default worker pool | For the three-pool HA architecture, the InstanceGroup templates handle the additional pools. `cluster-ops kops create-config` creates the base cluster + default pool; `cluster-ops ig apply` adds the rest. |
+
+> All recipes delegate to the `cluster-ops` binary (`./bin/cluster-ops`). The legacy `create-kops-cluster` recipe has been removed — use the phased HA workflow in Section 4 for production, or `create-cluster-config` + `update-cluster` for single-pool dev clusters.
