@@ -16,28 +16,6 @@ create-sa project sa_name roles_file output_file="":
       --roles-file={{ roles_file }} \
       --output-file={{ output_file }} \
 
-# Create service account manager and assign predefined roles
-[group('service-account-management')]
-[no-cd]
-create-sa-manager project_id:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # disable prompt
-    gcloud config set disable_prompts true
-    echo "Settings application default credentials"
-    gcloud auth application-default login --project={{ project_id }}
-
-    sa_name="sa-manager"
-    sa_display_name="service account manager"
-    roles_file="./gcs-files/roles-permissions/service-account-manager-roles.txt"
-    output_file="./credentials/{{ project_id }}-.json"
-
-    echo "Creating service account: ${sa_name}"
-    just gcp-sa create-sa {{ project_id }} ${sa_name} ${roles_file} ${output_file}
-
-    echo "Service account creation, key generation, and role assignment completed."
-
 # Create a JSON-formatted key for a service account
 [group('service-account-management')]
 [no-cd]
