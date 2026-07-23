@@ -28,8 +28,10 @@ Deploy a Kubernetes cluster on Google Cloud Platform for dictyBase applications.
 # 1. Get sa-manager.json key from GCP project owner and save to ./credentials/
 just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
 
-# 2. Create cluster with single command
-just init-kops-cluster <project_id> <bucket_name>
+# 2. Follow the phased HA workflow (see docs/kops-setup-draft.md)
+just gcp-cluster create-state-bucket <project_id> <bucket_name>
+just gcp-cluster create-cluster-config <project_id> <bucket_name>
+just gcp-cluster update-cluster
 ```
 
 ### Manual Setup
@@ -49,7 +51,9 @@ If needed, perform steps individually:
 
 3. Initialize cluster:
    ```bash
-   just create-kops-cluster <project_id> <bucket_name>
+   just gcp-cluster create-state-bucket <project_id> <bucket_name>
+   just gcp-cluster create-cluster-config <project_id> <bucket_name>
+   just gcp-cluster update-cluster
    ```
 
 ## Application Deployment with Pulumi

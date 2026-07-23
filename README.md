@@ -73,7 +73,7 @@ The Service Account Manager service account is needed to:
 
 The project owner must run:
 ```sh
-just create-sa-manager <project_id>
+just gcp-sa setup-sa-manager <project_id>
 ```
 
 This will create a service account named `sa-manager` and create a JSON key file for the service account in their `./credentials` directory.
@@ -88,16 +88,6 @@ just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.j
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the [prescribed method](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key) of setting up ADC.
 
 From here, you will be able to continue with the cluster setup on your own.
-
-### Set up Cluster with a Single Command
-
-A single command can be used to initialize the required Google Cloud services and set up the `kops` cluster.
-
-Running the following:
-```sh
-just init-kops-cluster <project_id> <bucket_name>
-```
-will execute the steps listed below. There is no need to run them individually. They have been preserved here for documentation.
 
 ### 1. Enable Required APIs
 
@@ -142,10 +132,12 @@ Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` se
 
 ### 4. Set Up kops State Store and Initialize the Cluster
 
-The `create-kops-cluster` recipe sets up the state store bucket and initializes the Kubernetes cluster:
+Follow the [Kops Cluster Creation Guide](docs/kops-setup-draft.md) for the current phased HA provisioning workflow. The modern approach uses:
 
 ```sh
-just create-kops-cluster <project_id> <bucket_name>
+just gcp-cluster create-state-bucket <project_id> <bucket_name>
+just gcp-cluster create-cluster-config <project_id> <bucket_name>
+just gcp-cluster update-cluster
 ```
 ## Application Deployment with Pulumi
 

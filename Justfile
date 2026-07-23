@@ -24,10 +24,6 @@ gha_download_url := if os() == "macos" { base_gha_download_url + "darwin_arm64" 
 file_suffix := ".tar.gz"
 dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux_amd64" + file_suffix }
 
-# Optional legacy fallback superseded by `just cluster-env <env> <cluster>`.
-# Kept for backward compatibility with recipes that don't have an active cluster-env sub-shell.
-set dotenv-filename := x"${CLUSTER_ENV_FILE:-.env}"
-
 # Main setup recipe
 setup: install-gha-binary install-dagger-binary
 
@@ -140,7 +136,7 @@ build-publish-backup-image ref user pass: setup
 cluster-env env cluster:
     #!/usr/bin/env bash
     set -euo pipefail
-    source ".env.{{ env }}.{{ cluster }}"
+    set -a; source ".env.{{ env }}.{{ cluster }}"; set +a
     echo "Cluster: ${KOPS_CLUSTER_NAME}"
     echo "State  : ${KOPS_STATE_STORE}"
     echo "Type 'exit' or Ctrl-D to leave this environment."
