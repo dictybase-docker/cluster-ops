@@ -4,6 +4,55 @@
 build:
     go build -o bin/cluster-ops ./cmd/cluster-ops
 
+# Generate a per-project SSH keypair for kops node access (Section 1.4).
+# Default algorithm: Ed25519. Pass type=rsa for RSA-4096 if you need it.
+# Refuses to overwrite an existing keypair.
+#
+# Usage: just gcp-cluster generate-ssh-key <project_id>
+#        just gcp-cluster generate-ssh-key <project_id> rsa
+[no-cd]
+generate-ssh-key project type="ed25519":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    root="{{ invocation_directory() }}"
+    key_dir="${root}/credentials/{{ project }}"
+    key_path="${key_dir}/k8sVM"
+    key_type="{{ type }}"
+
+    case "${key_type}" in
+        ed25519|rsa) ;;
+        *)
+            echo "ERROR: unsupported type '${key_type}'. Use ed25519 (default) or rsa."
+            exit 1
+            ;;
+    esac
+
+    if [ -e "${key_path}" ] || [ -e "${key_path}.pub" ]; then
+        echo "ERROR: key already exists — refusing to overwrite:"
+        [ -e "${key_path}" ] && echo "  ${key_path}"
+        [ -e "${key_path}.pub" ] && echo "  ${key_path}.pub"
+        echo "Remove those files only if you intend to rotate the keypair."
+        exit 1
+    fi
+
+    mkdir -p "${key_dir}"
+
+    if [ "${key_type}" = "rsa" ]; then
+        ssh-keygen -t rsa -b 4096 -f "${key_path}" -N "" -C "kops-cluster-nodes"
+    else
+        ssh-keygen -t ed25519 -f "${key_path}" -N "" -C "kops-cluster-nodes"
+    fi
+
+    echo ""
+    echo "Created:"
+    echo "  private: ${key_path}"
+    echo "  public:  ${key_path}.pub"
+    echo ""
+    echo "Add this to your per-cluster env file (.env.<env>.<cluster>):"
+    echo "  SSH_KEY=\${CLUSTER_OPS_PATH}/credentials/{{ project }}/k8sVM.pub"
+    echo "  # or: SSH_KEY=\${PWD}/credentials/{{ project }}/k8sVM.pub"
+
 # Set up service accounts for the project
 # Activates necessary APIs if specified
 # Usage: just sa-accounts-setup <project> [activate_api]
