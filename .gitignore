@@ -47,3 +47,4 @@ pulumi-files/local-state/.pulumi
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+/.pi
