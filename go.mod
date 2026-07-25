@@ -14,7 +14,7 @@ require (
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v2 v2.27.7
-	google.golang.org/api v0.289.0
+	google.golang.org/api v0.290.0
 )
 
 require (
