@@ -48,3 +48,6 @@ pulumi-files/local-state/.pulumi
 .dolt/
 *.db
 /.pi
+
+# opencode-codebase-index local storage
+.codebase-index/index/
