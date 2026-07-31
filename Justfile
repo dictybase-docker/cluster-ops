@@ -56,8 +56,6 @@ install-asdf-plugins:
     asdf set velero 1.14.0
     asdf install mc 2024-02-09T22-18-24Z
     asdf set mc 2024-02-09T22-18-24Z
-    asdf install gcloud 537.0.0
-    asdf set gcloud 537.0.0
 
 # Install or upgrade a tool version
 
