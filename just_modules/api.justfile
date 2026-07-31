@@ -1,5 +1,6 @@
 # Enable multiple Google Cloud API services from a file
 [group('api-management')]
+[no-cd]
 enable-apis project api_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -18,6 +19,7 @@ enable-apis project api_file:
 
 # List enabled APIs in a Google Cloud project and write their names to a file
 [group('api-management')]
+[no-cd]
 list-enabled-apis project output_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -44,6 +46,7 @@ list-enabled-apis project output_file:
 
 # Disable multiple Google Cloud API services from a file
 [group('api-management')]
+[no-cd]
 disable-apis project api_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -63,6 +66,7 @@ disable-apis project api_file:
 
 # Authenticate with gcloud using a service account JSON key file and set up a named configuration
 [group('authentication-and-configuration')]
+[no-cd]
 gcloud-auth-sa key_file config_name zone="us-central1-c":
     #!/usr/bin/env bash
     set -euo pipefail

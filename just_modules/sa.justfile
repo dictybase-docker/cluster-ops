@@ -90,6 +90,7 @@ create-hmac-key project sa_name output_file:
 # Usage: just gcp-sa setup-sa-manager <project_id> [key_file]
 #   key_file defaults to credentials/sa-manager.json
 [group('service-account-management')]
+[no-cd]
 setup-sa-manager project_id key_file="credentials/sa-manager.json":
     #!/usr/bin/env bash
     set -euo pipefail
