@@ -113,19 +113,19 @@ setup-sa-manager project_id key_file="credentials/sa-manager.json":
 
     # 2. Assign all 13 manager roles
     echo "=== Step 2/3: Assigning roles from ${roles_file} ==="
-    just gcp-role assign-roles-to-sa {{ project_id }} ${sa_name} ${roles_file}
+    just gcp-role assign-roles-to-sa {{ project_id }} ${sa_name} {{ invocation_directory() }}/${roles_file}
 
     # 3. Create and download a JSON key (pure gcloud CLI — no ADC needed)
     echo "=== Step 3/3: Generating key file ==="
-    mkdir -p "$(dirname "${key_file}")"
-    gcloud iam service-accounts keys create "${key_file}" \
+    mkdir -p "$(dirname "{{ key_file }}")"
+    gcloud iam service-accounts keys create "{{ key_file }}" \
         --iam-account="${sa_email}" \
         --project={{ project_id }}
-    chmod 600 "${key_file}"
+    chmod 600 "{{ key_file }}"
 
     echo ""
     echo "Done. sa-manager is ready:"
     echo "  SA email : ${sa_email}"
-    echo "  Key file : ${key_file}"
+    echo "  Key file : {{ key_file }}"
     echo ""
     echo "Next: set up your environment — see docs/kops-setup-draft.md Section 2."
