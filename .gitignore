@@ -52,3 +52,5 @@ pulumi-files/local-state/.pulumi
 # opencode-codebase-index local storage
 .codebase-index/index/
 /.pi-subagents/artifacts
+/.env.prod.dcr-kube1
+/.tool-versions.prod.dcr-kube1
