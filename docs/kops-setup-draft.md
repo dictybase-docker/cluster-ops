@@ -7,12 +7,13 @@
   - [1.1 The GCP Project](#11-the-gcp-project)
   - [1.2 Core System Tools](#12-core-system-tools)
   - [1.3 asdf-Managed Tools](#13-asdf-managed-tools)
+    - [1.3.1 Per-Cluster Tool Version Files](#131-per-cluster-tool-version-files)
   - [1.4 SSH Keypair and Local Repo](#14-ssh-keypair-and-local-repo)
 - [2. Authentication Setup](#2-authentication-setup)
 - [3. Environment Variables — The Cluster Config File](#3-environment-variables--the-cluster-config-file)
   - [3.1 Create Your Cluster Env File](#31-create-your-cluster-env-file)
   - [3.2 Required Variables](#32-required-variables)
-  - [3.2.1 Per-Project File Isolation](#321-per-project-file-isolation)
+    - [3.2.1 Per-Project File Isolation](#321-per-project-file-isolation)
   - [3.3 Activate Your Cluster Env File](#33-activate-your-cluster-env-file)
   - [3.4 Optional Tuning Knobs](#34-optional-tuning-knobs)
 - [4. Cluster Bootstrap](#4-cluster-bootstrap)
@@ -102,6 +103,34 @@ To upgrade a specific tool version (must be defined in `.tool-versions`):
 ```bash
 just install-tool <tool_name> <version>
 # Example: just install-tool kubectl 1.28.8
+```
+<a id="131-per-cluster-tool-version-files"></a>
+
+### 1.3.1 Per-Cluster Tool Version Files
+
+The repo-root `.tool-versions` pins the **default (dev) toolchain** — currently `kubectl 1.28.8`, `kops v1.29.2`, and the rest of Section 1.3. A single global pin is not enough once clusters diverge: kops only manages the Kubernetes minor versions it supports, and kubectl must stay within one minor version of its server. An HA production cluster on a newer Kubernetes line needs different kops/kubectl versions than the dev cluster.
+
+asdf resolves versions from an alternate file when the `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` environment variable is set. This repo uses that variable to give each cluster its own version set:
+
+1. **Name the file with the cluster** — mirror the env-file convention ([Section 3.1](#31-create-your-cluster-env-file)): `.tool-versions.<env>.<cluster>` (e.g. `.tool-versions.dev.my-cluster`, `.tool-versions.prod.my-cluster`). Since one cluster maps to one GCP project ([Section 3.2.1](#321-per-project-file-isolation)), a `<project-id>`-scoped name like `.tool-versions.<project-id>` also works.
+2. **Make it a complete copy of `.tool-versions`.** The alternate file replaces the root file entirely — every asdf tool must appear in it, even tools whose version is unchanged. A tool missing from the file has no version set, and its shim fails with `No version is set`.
+3. **Point the cluster's env file at it** — one export line in `.env.<env>.<cluster>`:
+   ```bash
+   export ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=".tool-versions.prod.my-cluster"
+   ```
+   `just cluster-env <env> <cluster>` sources the env file, so every asdf shim inside that sub-shell — and every `just` recipe it runs — resolves the cluster's versions. The dev cluster keeps working with zero changes: its env file simply omits the variable, and the root `.tool-versions` applies as before.
+
+Version pairing rules:
+
+- **kops ↔ Kubernetes:** kops supports a bounded set of Kubernetes minor versions. Match the kops minor version to the cluster's Kubernetes minor version (kops v1.29.x → Kubernetes 1.28/1.29; kops v1.31.x → Kubernetes 1.31+).
+- **kubectl:** keep within one minor version of the cluster server.
+- **kops ≥ 1.31:** cluster updates use `kops reconcile cluster` instead of `kops update cluster` — see [Phase 5](#phase-5). Do not mix `update` and `reconcile` workflows across versions.
+
+`just install-asdf-plugins` installs the versions in the **root** `.tool-versions` — the dev default. For a per-cluster file, install each tool with asdf directly (installs are shared across clusters; the file is just the pin record):
+
+```bash
+asdf install kops v1.31.0
+asdf install kubectl 1.31.0
 ```
 ### 1.4 SSH Keypair and Local Repo
 
@@ -206,6 +235,8 @@ cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
 # edit .env.<env>.<cluster-name> with your values
 ```
 **Option B — create from scratch** using the table below as your checklist. The file is just `export VAR=value` lines — nothing fancy.
+
+> **Per-cluster tool versions (optional):** If this cluster needs asdf tool versions different from the dev defaults, add one line — `export ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=".tool-versions.<env>.<cluster>"` — and create that file. See [Section 1.3.1](#131-per-cluster-tool-version-files).
 
 ### 3.2 Required Variables
 
@@ -441,7 +472,7 @@ One recipe; version dispatch is automatic:
 | Rolling update | separate `kops rolling-update` if needed | included in `reconcile` |
 | Validate | `kops validate cluster` | same |
 
-> This repo pins kOps in `.tool-versions` (currently v1.29.2). Do not mix `update` and `reconcile` workflows across versions. Prefer `just gcp-cluster update-cluster` so the binary picks the right subcommand.
+> This repo pins kOps in `.tool-versions` (currently v1.29.2; per-cluster pins live in `.tool-versions.<env>.<cluster>` — see [Section 1.3.1](#131-per-cluster-tool-version-files)). Do not mix `update` and `reconcile` workflows across versions. Prefer `just gcp-cluster update-cluster` so the binary picks the right subcommand.
 
 <a id="phase-6"></a>
 
@@ -495,6 +526,7 @@ You pay for GCE instances only while the cluster is up. The GCS state bucket cos
 |----------|-----------|-----|
 | GCS state bucket (`gs://${BUCKET_NAME}`) | ✅ Yes | kOps delete does **not** touch the state bucket. The versioned object history is preserved. |
 | Per-cluster env file (`.env.<env>.<cluster-name>`) | ✅ Yes | A local file in the repo — never touched by teardown. |
+| Per-cluster tool version file (`.tool-versions.<env>.<cluster>`) | ✅ Yes | A local file in the repo — part of the cluster blueprint. See [Section 1.3.1](#131-per-cluster-tool-version-files). |
 | SSH keypair (`credentials/<project-id>/k8sVM*`) | ✅ Yes | Local files. Reused across create/destroy cycles. |
 | Service account keys (`credentials/<project-id>/sa-manager.json`, `credentials/<project-id>/kops-cluster-creator.json`, etc.) | ✅ Yes | Local files — one JSON key per SA per project. The SAs themselves live in the GCP project and are never deleted. |
 | GCP project + enabled APIs | ✅ Yes | Teardown only removes cluster resources, not the project or its API enablement. |
@@ -594,7 +626,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 
 ### 6.7 Caveats
 
-**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The `.tool-versions` file pins the version — run `just install-asdf-plugins` to sync.
+**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The active versions file pins the version — for the dev default that is `.tool-versions` (run `just install-asdf-plugins` to sync); per-cluster pins live in `.tool-versions.<env>.<cluster>` ([Section 1.3.1](#131-per-cluster-tool-version-files)).
 
 **GCP quotas.** Frequent cycles may trigger GCE API rate-limiting. Quota is released on teardown, but rapid create/delete loops can throttle.
 
