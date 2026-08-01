@@ -46,7 +46,7 @@ just install-tool <tool_name> <version>
 # Example: just install-tool kubectl 1.28.8
 ```
 
-Each call installs the exact version (creating the asdf plugin if needed) and writes the pin to the active tool versions file — `.tool-versions` at the repo root, or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set (see `docs/kops-setup-draft.md` §1.3.1). Tools managed this way include:
+Each call installs the exact version (creating the asdf plugin if needed) and writes the pin to the active tool versions file — `.tool-versions` at the repo root, or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set (see `docs/kops-setup-draft.md` §1.4.1). Tools managed this way include:
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/)
 - [kops](https://kops.sigs.k8s.io/)
