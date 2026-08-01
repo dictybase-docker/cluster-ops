@@ -38,26 +38,15 @@ install-gha-binary:
 install-dagger-binary:
     {{ action_bin }} sd --dagger-version {{ dagger_version }} --dagger-bin-dir {{ bin_path }} --dagger-file {{ dagger_file }}
 
-[group('setup-tools')]
-install-asdf-plugins:
-    asdf plugin add kubectl || true
-    asdf plugin add kops || true
-    asdf plugin add pulumi || true
-    asdf plugin add velero || true
-    asdf plugin add mc || true
-    asdf plugin add gcloud || true
-    asdf install kubectl 1.28.8
-    asdf set kubectl 1.28.8
-    asdf install kops v1.29.2
-    asdf set kops v1.29.2
-    asdf install pulumi 3.108.0
-    asdf set pulumi 3.108.0
-    asdf install velero 1.14.0
-    asdf set velero 1.14.0
-    asdf install mc 2024-02-09T22-18-24Z
-    asdf set mc 2024-02-09T22-18-24Z
-
-# Install or upgrade a tool version
+# Install a tool version in the active (or default) tool versions file.
+#   - Target file resolves from ASDF_DEFAULT_TOOL_VERSIONS_FILENAME (exported by
+#     `just cluster-env <env> <cluster>` for per-cluster pins); falls back to `.tool-versions`.
+#   - Auto-installs the asdf plugin when missing.
+#   - Installs the binary WITHOUT setting any version (installs are shared across clusters).
+#   - Sets the version by editing only that tool's line in the target file —
+#     `asdf set` updates or appends the single entry; the recipe never copies,
+#     generates, or rewrites the manifest. The target file must already exist.
+#   - Always runs at the repo root (where the version files live), regardless of invocation dir.
 
 # Usage: just install-tool <name> <version>
 [group('setup-tools')]
@@ -65,16 +54,38 @@ install-tool name version:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Check if the tool is in .tool-versions
-    if ! grep -q "^{{ name }} " .tool-versions; then
-        echo "Error: Tool '{{ name }}' is not defined in .tool-versions file."
+    # Version files live at the repo root; write there regardless of invocation dir.
+    cd "{{ justfile_directory() }}"
+
+    versions_file="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
+
+    # Target must pre-exist — asdf set on a missing file would create a
+    # one-tool partial manifest, violating the complete-copy invariant.
+    if [[ ! -f "${versions_file}" ]]; then
+        echo "Error: tool versions file '${versions_file}' does not exist."
         exit 1
     fi
 
-    echo "Installing {{ name }} version {{ version }}..."
-    asdf install {{ name }} {{ version }}
-    asdf set {{ name }} {{ version }}
-    echo "Successfully installed and set {{ name }} {{ version }}"
+    # 1. Plugin present? Auto-install if missing.
+    # Note: no grep -q here — -q exits on first match, SIGPIPEs asdf (rc 141),
+    # and pipefail would flip the branch. -x + >/dev/null reads all output.
+    if ! asdf plugin list | grep -x '{{ name }}' >/dev/null; then
+        echo "Installing asdf plugin {{ name }}..."
+        asdf plugin add '{{ name }}'
+    fi
+
+    # 2. Binary installed? Install WITHOUT setting any version.
+    if ! asdf list '{{ name }}' '{{ version }}' 2>/dev/null | tr -d ' *' | grep -x '{{ version }}' >/dev/null; then
+        echo "Installing {{ name }} {{ version }}..."
+        asdf install '{{ name }}' '{{ version }}'
+    else
+        echo "{{ name }} {{ version }} already installed"
+    fi
+
+    # 3. Set version in the active tool versions file — single-line edit only.
+    echo "Setting {{ name }} {{ version }} in ${versions_file}..."
+    asdf set '{{ name }}' '{{ version }}'
+    echo "Done: {{ name }} {{ version }} → ${versions_file}"
 
 # --- Development & Testing ---
 

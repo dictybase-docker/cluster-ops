@@ -39,17 +39,17 @@ asdf install just
 
 ### Remaining binaries
 
-Since `just` is now installed, we can run a single just recipe to install the remaining binaries. This will install specific versions of the tools as defined in the `Justfile`:
+Since `just` is now installed, install the remaining tools one by one, pinning each to the version defined in `.tool-versions`:
 
-```
-just install-asdf-plugins
+```bash
+just install-tool <tool_name> <version>
+# Example: just install-tool kubectl 1.28.8
 ```
 
-This command will install the following binaries:
+Each call installs the exact version (creating the asdf plugin if needed) and writes the pin to the active tool versions file — `.tool-versions` at the repo root, or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set (see `docs/kops-setup-draft.md` §1.3.1). Tools managed this way include:
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/)
 - [kops](https://kops.sigs.k8s.io/)
-- [gcloud](https://cloud.google.com/sdk/gcloud)
 - [pulumi](https://www.pulumi.com/docs/)
 - [velero](https://velero.io/docs/)
 - [mc (MinIO Client)](https://min.io/docs/minio/linux/reference/minio-mc.html)

@@ -15,11 +15,12 @@ Deploy a Kubernetes cluster on Google Cloud Platform for dictyBase applications.
 3. Install [direnv](https://direnv.net/):
    Install using your system's package manager or [download directly](https://direnv.net/docs/installation.html)
    **Important**: [Hook direnv into your shell](https://direnv.net/docs/hook.html) after installation
-4. Install required tools:
+4. Install required tools (one per `.tool-versions` entry):
    ```bash
-   just install-asdf-plugins
+   just install-tool kubectl 1.28.8
+   just install-tool kops v1.29.2
    ```
-   This installs: [kubectl](https://kubernetes.io/docs/reference/kubectl/), [kops](https://kops.sigs.k8s.io/), [gcloud](https://cloud.google.com/sdk/gcloud), [pulumi](https://www.pulumi.com/), [velero](https://velero.io/), and [mc](https://min.io/docs/minio/linux/reference/minio-mc.html).
+   Each call installs the exact version (creating the asdf plugin if needed) and pins it to `.tool-versions` — or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set. Managed tools: [kubectl](https://kubernetes.io/docs/reference/kubectl/), [kops](https://kops.sigs.k8s.io/), [pulumi](https://www.pulumi.com/), [velero](https://velero.io/), and [mc](https://min.io/docs/minio/linux/reference/minio-mc.html).
 
 ## Cluster Setup
 

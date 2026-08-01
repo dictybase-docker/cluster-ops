@@ -89,7 +89,7 @@ CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the ko
 Same tooling baseline as the kops guide: `just`, `asdf` tools (`kubectl`, `pulumi`, `gcloud`), `jq`, `direnv` optional. Re-run if needed:
 
 ```bash
-just install-asdf-plugins
+just install-tool <tool> <version>
 ```
 
 ### 1.3 Access

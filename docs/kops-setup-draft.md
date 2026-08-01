@@ -62,7 +62,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 
 ## Quick Setup
 
-1. [Install the tools.](#1-prerequisites--tooling) `go`, `just`, `gcloud`, `direnv`, `jq` at system level, then `just install-asdf-plugins` for asdf-managed tools.
+1. [Install the tools.](#1-prerequisites--tooling) `go`, `just`, `gcloud`, `direnv`, `jq` at system level, then `just install-tool <tool> <version>` for each asdf-managed tool.
 2. [Generate the SSH keypair and prepare the repo.](#14-ssh-keypair-and-local-repo) `just gcp-cluster generate-ssh-key <project-id>` (Ed25519 under `credentials/<project-id>/`).
 3. [Set up authentication.](#2-authentication-setup) Place `sa-manager.json` in `credentials/<project-id>/`.
 4. [Create your cluster env file.](#3-environment-variables--the-cluster-config-file) Copy `.env.dev.dcr-experiments`, then set the eight required variables (including `GOOGLE_APPLICATION_CREDENTIALS`).
@@ -92,18 +92,14 @@ These aren't managed by `asdf` — install them through your system package mana
 
 ### 1.3 asdf-Managed Tools
 
-We use `asdf` to pin exact versions of the remaining tools. With `just` already installed, run:
+We use `asdf` to pin exact versions of the remaining tools. With `just` already installed, install each pinned tool with:
 
-```bash
-just install-asdf-plugins
-```
-This installs: [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/), [kops](https://kops.sigs.k8s.io/), [pulumi](https://www.pulumi.com/docs/), [velero](https://velero.io/docs/), [mc](https://min.io/docs/minio/linux/reference/minio-mc.html).
-
-To upgrade a specific tool version (must be defined in `.tool-versions`):
 ```bash
 just install-tool <tool_name> <version>
 # Example: just install-tool kubectl 1.28.8
 ```
+
+This installs [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/), [kops](https://kops.sigs.k8s.io/), [pulumi](https://www.pulumi.com/docs/), [velero](https://velero.io/docs/), [mc](https://min.io/docs/minio/linux/reference/minio-mc.html), and any other tool listed in the active tool versions file. The recipe (1) auto-installs the asdf plugin if missing, (2) installs the binary **without** setting any version, then (3) sets the version in the active tool versions file — resolved from `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME`, falling back to `.tool-versions`. Run it inside `just cluster-env <env> <cluster>` (or with the variable exported) to pin a per-cluster file; run at the repo root for the dev default. `asdf set` updates or appends only the selected tool entry — the recipe never copies, generates, or rewrites the manifest, and the target file must already exist (create a per-cluster file as a complete copy first, per [Section 1.3.1](#131-per-cluster-tool-version-files)).
 <a id="131-per-cluster-tool-version-files"></a>
 
 ### 1.3.1 Per-Cluster Tool Version Files
@@ -126,7 +122,16 @@ Version pairing rules:
 - **kubectl:** keep within one minor version of the cluster server.
 - **kops ≥ 1.31:** cluster updates use `kops reconcile cluster` instead of `kops update cluster` — see [Phase 5](#phase-5). Do not mix `update` and `reconcile` workflows across versions.
 
-`just install-asdf-plugins` installs the versions in the **root** `.tool-versions` — the dev default. For a per-cluster file, install each tool with asdf directly (installs are shared across clusters; the file is just the pin record):
+At the repo root (no env var), `just install-tool` pins the **root** `.tool-versions` — the dev default. For a per-cluster file, run `just install-tool` inside the cluster's sub-shell (installs are shared across clusters; the file is just the pin record):
+
+```bash
+just cluster-env <env> <cluster>
+just install-tool kops v1.31.0
+just install-tool kubectl 1.31.0
+exit
+```
+
+Equivalently, install directly with asdf (the pin record is then edited separately, e.g. via `just install-tool` or `asdf set`):
 
 ```bash
 asdf install kops v1.31.0
@@ -626,7 +631,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 
 ### 6.7 Caveats
 
-**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The active versions file pins the version — for the dev default that is `.tool-versions` (run `just install-asdf-plugins` to sync); per-cluster pins live in `.tool-versions.<env>.<cluster>` ([Section 1.3.1](#131-per-cluster-tool-version-files)).
+**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The active versions file pins the version — for the dev default that is `.tool-versions` (run `just install-tool <tool> <version>` per tool to sync); per-cluster pins live in `.tool-versions.<env>.<cluster>` ([Section 1.3.1](#131-per-cluster-tool-version-files)).
 
 **GCP quotas.** Frequent cycles may trigger GCE API rate-limiting. Quota is released on teardown, but rapid create/delete loops can throttle.
 
