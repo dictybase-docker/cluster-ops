@@ -80,7 +80,7 @@ Finish [`docs/kops-setup-draft.md`](kops-setup-draft.md) first:
 - Phase 4c security edits applied if you care about production access controls
 - Storage-friendly topology in place for your target:
   - **Simple dev**: single control plane / small worker pool is enough
-  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [kops §3.4](kops-setup-draft.md#34-optional-tuning-knobs) and [Phase 4d](kops-setup-draft.md#phase-4d))
+  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [kops §1.3.4](kops-setup-draft.md#134-optional-tuning-knobs) and [Phase 4d](kops-setup-draft.md#phase-4d))
 
 CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the kops manifest). StorageClass creation assumes that.
 
@@ -139,7 +139,7 @@ export PULUMI_BACKEND_URL="gs://<pulumi-state-bucket>"
 # export KUBECONFIG=...
 ```
 
-Also keep kops-required vars (`PROJECT_ID`, `KUBECONFIG`, etc.) already defined per [kops §3.2](kops-setup-draft.md#32-required-variables).
+Also keep kops-required vars (`PROJECT_ID`, `KUBECONFIG`, etc.) already defined per [kops §1.3.2](kops-setup-draft.md#132-required-variables).
 
 > **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
 
