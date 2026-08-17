@@ -87,6 +87,31 @@ install-tool name version:
     asdf set '{{ name }}' '{{ version }}'
     echo "Done: {{ name }} {{ version }} → ${versions_file}"
 
+# Install every tool pinned in the active tool versions file.
+#   - Resolves the file from ASDF_DEFAULT_TOOL_VERSIONS_FILENAME (per-cluster)
+#     or falls back to the repo-root .tool-versions (dev default).
+#   - Adds each asdf plugin, then runs `asdf install` (no args) to install
+#     every pinned binary in one pass.
+# Usage: just install-tools  (at repo root for dev, or inside `just cluster-env`)
+[group('setup-tools')]
+install-tools:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    file="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
+    if [[ ! -f "${file}" ]]; then
+        echo "Error: tool versions file '${file}' does not exist."
+        echo "Create it first — see Section 1.4 of docs/kops-setup-draft.md."
+        exit 1
+    fi
+    echo "Installing plugins from ${file}..."
+    grep -vE '^\s*(#|$)' "${file}" | cut -d' ' -f1 | while read -r tool; do
+        asdf plugin add "${tool}" 2>/dev/null || true
+    done
+    echo "Installing all pinned versions from ${file}..."
+    asdf install
+    echo "Done: every tool in ${file} installed."
+
 # --- Development & Testing ---
 
 # Run Golang tests using Dagger
