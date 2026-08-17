@@ -103,7 +103,7 @@ Everything the tooling knows about a cluster — its name, state location, tool 
 cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
 # edit .env.<env>.<cluster-name> with your values
 ```
-**Option B — create from scratch** using the [variables overview](#132-variables-overview) as your checklist. The file is just `export VAR=value` lines — nothing fancy.
+**Option B — create from scratch** using the [variables overview](#132-variables-overview) as your checklist. The file is just `VAR=value` lines — nothing fancy (no `export` prefix; `just cluster-env` auto-exports them via `set -a`).
 
 #### 1.3.2 Variables Overview
 
@@ -126,7 +126,7 @@ The cluster env file grows as you work through the guide — do not fill it all 
 Set `PROJECT_ID` now — every later step references it:
 
 ```bash
-export PROJECT_ID="<your-gcp-project-id>"
+PROJECT_ID="<your-gcp-project-id>"
 ```
 
 > **Why `.k8s.local`?** `KOPS_CLUSTER_NAME` must end in `.k8s.local` so kops uses gossip-based DNS — cluster nodes discover each other directly instead of through a managed DNS zone. You set this value in [Section 3](#3-cluster-bootstrap).
@@ -206,7 +206,7 @@ Use a per-cluster file when a cluster needs different kops/kubectl versions than
    The file replaces the root file entirely — every tool must appear in it. A tool missing from the file fails its shim with `No version is set`. Like the root file, it is gitignored.
 2. **Point the env file at it**:
    ```bash
-   export ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=".tool-versions.<env>.<cluster>"
+   ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=".tool-versions.<env>.<cluster>"
    ```
 3. **Load the env file, then install everything**:
    ```bash
@@ -227,8 +227,8 @@ Use a per-cluster file when a cluster needs different kops/kubectl versions than
 One GCP project hosts exactly one cluster. Scope every cluster-specific file to its project ID: SSH keys and service-account JSON keys go in `credentials/<project-id>/`, and the kubeconfig goes in `clusters/<project-id>/`. Add these paths to the cluster env file before creating the files:
 
 ```bash
-export SSH_KEY="${CLUSTER_OPS_PATH}/credentials/<project-id>/k8sVM.pub"
-export KUBECONFIG="${CLUSTER_OPS_PATH}/clusters/<project-id>/kubeconfig"
+SSH_KEY="${CLUSTER_OPS_PATH}/credentials/<project-id>/k8sVM.pub"
+KUBECONFIG="${CLUSTER_OPS_PATH}/clusters/<project-id>/kubeconfig"
 ```
 
 The credential path is added with `GOOGLE_APPLICATION_CREDENTIALS` in [Section 2](#2-authentication-setup), after the service-account key exists. This isolation prevents one project's cluster files from replacing another project's files.
@@ -289,7 +289,7 @@ You need the **Service Account Manager** key. It has broad permissions (creating
    Add its path to your **per-cluster env file**:
 
    ```bash
-   export GOOGLE_APPLICATION_CREDENTIALS="${CLUSTER_OPS_PATH}/credentials/<project-id>/sa-manager.json"
+   GOOGLE_APPLICATION_CREDENTIALS="${CLUSTER_OPS_PATH}/credentials/<project-id>/sa-manager.json"
    ```
 
    `just cluster-env` loads it. Phases 2–3 of the bootstrap create a narrower `kops-cluster-creator` key and update that path. By the time the cluster is up, `sa-manager` is no longer in active use.
@@ -351,10 +351,10 @@ Before starting, verify the variables you set in earlier sections and add the re
 | `KUBERNETES_VERSION` | Which Kubernetes version to deploy | `1.28.8` |
 
 ```bash
-export BUCKET_NAME="kops-state-<cluster-name>"
-export KOPS_CLUSTER_NAME="<cluster-name>.k8s.local"
-export KOPS_STATE_STORE="gs://${BUCKET_NAME}/"
-export KUBERNETES_VERSION="1.28.8"
+BUCKET_NAME="kops-state-<cluster-name>"
+KOPS_CLUSTER_NAME="<cluster-name>.k8s.local"
+KOPS_STATE_STORE="gs://${BUCKET_NAME}/"
+KUBERNETES_VERSION="1.28.8"
 ```
 
 Cluster-shape and InstanceGroup variables are set later, at [Phase 4b](#phase-4b) and [Phase 4d](#phase-4d).
