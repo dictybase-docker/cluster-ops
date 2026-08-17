@@ -11,7 +11,8 @@ import (
 	IOE "github.com/IBM/fp-go/v2/ioeither"
 )
 
-const credentialPrefix = "export GOOGLE_APPLICATION_CREDENTIALS="
+const gacPrefix = "GOOGLE_APPLICATION_CREDENTIALS="
+const gacExportPrefix = "export GOOGLE_APPLICATION_CREDENTIALS="
 
 // SetCredential updates or inserts the GOOGLE_APPLICATION_CREDENTIALS
 // line in a per-cluster env file. Validates the key file exists before
@@ -69,7 +70,7 @@ func readAndUpdateEnv(envFile string) func(string) IOE.IOEither[error, string] {
 				return "", fmt.Errorf("read env file: %w", err)
 			}
 
-			newLine := credentialPrefix + absKey
+			newLine := gacPrefix + absKey
 			trimmed := strings.TrimRight(string(content), "\n")
 			var lines []string
 			if trimmed != "" {
@@ -78,7 +79,8 @@ func readAndUpdateEnv(envFile string) func(string) IOE.IOEither[error, string] {
 
 			replaced := false
 			for i, line := range lines {
-				if strings.HasPrefix(strings.TrimSpace(line), credentialPrefix) {
+				field := strings.TrimSpace(line)
+				if strings.HasPrefix(field, gacPrefix) || strings.HasPrefix(field, gacExportPrefix) {
 					lines[i] = newLine
 					replaced = true
 					break

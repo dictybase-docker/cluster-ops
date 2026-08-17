@@ -34,6 +34,37 @@ func TestSetCredential_Replace(t *testing.T) {
 	}
 }
 
+func TestSetCredential_ReplacesPlainLine(t *testing.T) {
+	dir := t.TempDir()
+
+	envFile := filepath.Join(dir, ".env.test.cluster")
+	key := filepath.Join(dir, "key.json")
+	if err := os.WriteFile(key, []byte(`{}`), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	// Plain VAR=value format — no `export` prefix (matches .env.dev.dcr-experiments).
+	if err := os.WriteFile(envFile, []byte("GOOGLE_APPLICATION_CREDENTIALS=${PWD}/old.json\n"), 0o600); err != nil {
+		t.Fatalf("write env file: %v", err)
+	}
+
+	if err := SetCredential(envFile, key); err != nil {
+		t.Fatalf("SetCredential: %v", err)
+	}
+
+	content, _ := os.ReadFile(envFile)
+	absKey, _ := filepath.Abs(key)
+
+	if got := strings.Count(string(content), "GOOGLE_APPLICATION_CREDENTIALS="); got != 1 {
+		t.Errorf("expected exactly 1 credential line, got %d:\n%s", got, string(content))
+	}
+	if strings.Contains(string(content), "${PWD}/old.json") {
+		t.Errorf("old credential value not replaced:\n%s", string(content))
+	}
+	if !strings.Contains(string(content), absKey) {
+		t.Errorf("expected %q in file, got: %s", absKey, string(content))
+	}
+}
+
 func TestSetCredential_MissingKey(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env.test.cluster")
