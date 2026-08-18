@@ -4,29 +4,39 @@
 build:
     go build -o bin/cluster-ops ./cmd/cluster-ops
 
-# Generate a per-project SSH keypair for kops node access (Section 1.4).
-# Default algorithm: Ed25519. Pass type=rsa for RSA-4096 if you need it.
+# Generate a per-project SSH keypair for kops node access (Section 1.6).
+# Key path: SSH_KEY env var if set (takes precedence), else credentials/<project>/k8sVM.
+# Options: -p/--project <project-id>, -t/--type ed25519|rsa (default ed25519).
 # Refuses to overwrite an existing keypair.
-#
-# Usage: just gcp-cluster generate-ssh-key <project_id>
-#        just gcp-cluster generate-ssh-key <project_id> rsa
+# Usage: just gcp-cluster generate-ssh-key [--project <project-id>] [--type ed25519|rsa]
 [no-cd]
-generate-ssh-key project type="ed25519":
+[arg("project", long="project", short="p", help="GCP project id; builds credentials/<project>/k8sVM when SSH_KEY is unset")]
+[arg("type", long="type", short="t", pattern="ed25519|rsa", help="Key algorithm: ed25519 (default) or rsa")]
+generate-ssh-key project="" type="ed25519":
     #!/usr/bin/env bash
     set -euo pipefail
 
     root="{{ invocation_directory() }}"
-    key_dir="${root}/credentials/{{ project }}"
-    key_path="${key_dir}/k8sVM"
-    key_type="{{ type }}"
 
-    case "${key_type}" in
-        ed25519|rsa) ;;
-        *)
-            echo "ERROR: unsupported type '${key_type}'. Use ed25519 (default) or rsa."
+    if [ -n "${SSH_KEY:-}" ]; then
+        case "${SSH_KEY}" in
+            *.pub)
+                key_path="${SSH_KEY%.pub}"
+                ;;
+            *)
+                echo "ERROR: SSH_KEY must point at the '.pub' file, got: ${SSH_KEY}"
+                exit 1
+                ;;
+        esac
+    else
+        if [ -z "{{ project }}" ]; then
+            echo "ERROR: no key path. Set SSH_KEY or pass --project <project-id>."
             exit 1
-            ;;
-    esac
+        fi
+        key_path="${root}/credentials/{{ project }}/k8sVM"
+    fi
+
+    key_dir="$(dirname "${key_path}")"
 
     if [ -e "${key_path}" ] || [ -e "${key_path}.pub" ]; then
         echo "ERROR: key already exists — refusing to overwrite:"
@@ -38,7 +48,7 @@ generate-ssh-key project type="ed25519":
 
     mkdir -p "${key_dir}"
 
-    if [ "${key_type}" = "rsa" ]; then
+    if [ "{{ type }}" = "rsa" ]; then
         ssh-keygen -t rsa -b 4096 -f "${key_path}" -N "" -C "kops-cluster-nodes"
     else
         ssh-keygen -t ed25519 -f "${key_path}" -N "" -C "kops-cluster-nodes"
@@ -48,10 +58,12 @@ generate-ssh-key project type="ed25519":
     echo "Created:"
     echo "  private: ${key_path}"
     echo "  public:  ${key_path}.pub"
-    echo ""
-    echo "Add this to your per-cluster env file (.env.<env>.<cluster>):"
-    echo "  SSH_KEY=\${CLUSTER_OPS_PATH}/credentials/{{ project }}/k8sVM.pub"
-    echo "  # or: SSH_KEY=\${PWD}/credentials/{{ project }}/k8sVM.pub"
+
+    if [ -z "${SSH_KEY:-}" ]; then
+        echo ""
+        echo "Add this to your per-cluster env file (.env.<env>.<cluster>):"
+        echo "  SSH_KEY=\${PWD}/credentials/{{ project }}/k8sVM.pub"
+    fi
 
 # Set up service accounts for the project
 # Activates necessary APIs if specified
