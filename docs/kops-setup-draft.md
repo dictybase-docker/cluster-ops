@@ -11,7 +11,7 @@
     - [1.3.2 Variables Overview](#132-variables-overview)
     - [1.3.3 Activate Your Cluster Env File](#133-activate-your-cluster-env-file)
   - [1.4 asdf-Managed Tools](#14-asdf-managed-tools)
-    - [1.4.1 Per-Cluster Tool Version Files](#141-per-cluster-tool-version-files)
+    - [1.4.1 Tool Version Files](#141-tool-version-files)
   - [1.5 Per-Project File Isolation](#15-per-project-file-isolation)
   - [1.6 SSH Keypair and Local Repo](#16-ssh-keypair-and-local-repo)
 - [2. Authentication Setup](#2-authentication-setup)
@@ -45,7 +45,7 @@
 > **Document type:** This is a **provisioning guide** — a sequential
 > walkthrough for setting up a kops-managed Kubernetes cluster from scratch.
 > For incident-response procedures (diagnostic decision trees, alert-linked
-> runbooks), see the [kops architecture doc](kops-architecture.md) technical
+> runbooks), see the [kops architecture doc](kops-gcp-architecture.md) technical
 > risks section, which maps failure modes to mitigations.
 
 ## Overview
@@ -63,7 +63,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 
 1. [Install the system tools.](#12-core-system-tools) Install `go`, `just`, `gcloud`, `direnv`, and `jq` through your system package manager.
 2. [Create the cluster env file.](#13-environment-variables--the-cluster-config-file) Copy `.env.dev.dcr-experiments` to `.env.<env>.<cluster>` and set `PROJECT_ID`; the remaining variables are added at their later steps.
-3. [Install the asdf-managed tools.](#14-asdf-managed-tools) Create the dev `.tool-versions` (or a per-cluster file — [§1.4.1](#141-per-cluster-tool-version-files)) and run `just install-tools`. All tool version files are gitignored.
+3. [Install the asdf-managed tools.](#14-asdf-managed-tools) Create the dev `.tool-versions` (or a per-cluster file — [§1.4.1](#141-tool-version-files)) and run `just install-tools`. All tool version files are gitignored.
 4. [Set up per-project file isolation and SSH.](#15-per-project-file-isolation) Add `SSH_KEY` and `KUBECONFIG` paths under the project directory, then generate the Ed25519 keypair.
 5. [Set up authentication.](#2-authentication-setup) Create or obtain `sa-manager.json`, add `GOOGLE_APPLICATION_CREDENTIALS` to the cluster env file, and configure the required named gcloud configuration.
 6. [Bootstrap the cluster.](#3-cluster-bootstrap) Verify the earlier variables, set the bootstrap variables (`BUCKET_NAME`, `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `KUBERNETES_VERSION`), exit the current shell, re-enter with `just cluster-env`, and run the phased HA workflow.
@@ -116,7 +116,7 @@ The cluster env file grows as you work through the guide — do not fill it all 
 | `KOPS_CLUSTER_NAME` | [Section 3 — Cluster Bootstrap](#3-cluster-bootstrap) |
 | `KOPS_STATE_STORE` | [Section 3 — Cluster Bootstrap](#3-cluster-bootstrap) |
 | `KUBERNETES_VERSION` | [Section 3 — Cluster Bootstrap](#3-cluster-bootstrap) |
-| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Section 1.4.1](#141-per-cluster-tool-version-files) |
+| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Section 1.4.1](#141-tool-version-files) |
 | `KUBECONFIG` | [Section 1.5](#15-per-project-file-isolation) |
 | `SSH_KEY` | [Section 1.6](#16-ssh-keypair-and-local-repo) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | [Section 2](#2-authentication-setup) |
@@ -157,20 +157,20 @@ We use `asdf` to pin exact versions of these tools:
 | `k9s` | Terminal cluster UI | [k9scli.io](https://k9scli.io/) |
 | `k3d` | Local Kubernetes for testing | [k3d.io](https://k3d.io/) |
 
-The list of tools and their pinned versions lives in a **tool versions file** — an asdf manifest of `<tool> <version>` lines. There are two flavors:
+Versions are declared in a tool versions file — see [§1.4.1](#141-tool-version-files).
 
-- **`.tool-versions`** (repo root) — the dev default.
-- **`.tool-versions.<env>.<cluster>`** — a per-cluster override (see [Section 1.4.1](#141-per-cluster-tool-version-files)).
+<a id="141-tool-version-files"></a>
 
-Both are **gitignored** — they live only on your machine, never committed. You create whichever one you need, then install everything in it with one recipe:
+#### 1.4.1 Tool Version Files
 
-```bash
-just install-tools
-```
+Versions live in a **tool versions file** — an asdf manifest of `<tool> <version>` lines. `just install-tools` reads it, adds every asdf plugin, and installs every pinned binary — the single source of truth for *what* gets installed. Both the root and per-cluster files are **gitignored**.
 
-The recipe reads the active versions file (`.tool-versions` at the repo root, or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set inside `just cluster-env`), adds every asdf plugin, and installs every pinned binary in one pass.
+**Which file is read** is controlled by the `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` env var:
 
-**To set up the dev toolchain** — create the root file from the table above, then run the recipe:
+- **Unset** → `.tool-versions` at the repo root (the dev default).
+- **Set** → the named file (a per-cluster file, e.g. `.tool-versions.<env>.<cluster>`), loaded via the cluster env file so `just cluster-env <env> <cluster>` selects it automatically.
+
+**Dev default** — create the root file, then install:
 
 ```bash
 cat > .tool-versions <<'EOF'
@@ -189,32 +189,28 @@ just install-tools
 
 Use `just install-tool <tool> <version>` to add or re-pin a single tool later — it edits only that tool's line in the active file.
 
-Per-cluster versions diverge when clusters run different Kubernetes lines — kops only manages the Kubernetes minors it supports, and kubectl must stay within one minor of its server.
+**Per-cluster file** — use one when a cluster needs different kops/kubectl versions than the dev default:
 
-<a id="141-per-cluster-tool-version-files"></a>
+> **Order matters:** create the env file ([Section 1.3.1](#131-create-your-cluster-env-file)) first.
 
-#### 1.4.1 Per-Cluster Tool Version Files
-
-Use a per-cluster file when a cluster needs different kops/kubectl versions than the dev default.
-
-> **Order matters:** the env file ([Section 1.3.1](#131-create-your-cluster-env-file)) must exist before you can point asdf at a per-cluster tool file.
-
-1. **Create the per-cluster file** as a complete copy of the root file (a `<project-id>`-scoped name also works — one cluster maps to one project, [Section 1.5](#15-per-project-file-isolation)):
+1. **Create** the file as a complete copy of the root:
    ```bash
    cp .tool-versions .tool-versions.<env>.<cluster>
    ```
-   The file replaces the root file entirely — every tool must appear in it. A tool missing from the file fails its shim with `No version is set`. Like the root file, it is gitignored.
-2. **Point the env file at it**:
+   Every tool must appear in it — a missing tool fails its shim with `No version is set`. (A `<project-id>`-scoped name also works — one cluster maps to one project, [Section 1.5](#15-per-project-file-isolation).)
+
+2. **Set the env var** in the cluster env file:
    ```bash
    ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=".tool-versions.<env>.<cluster>"
    ```
-3. **Load the env file, then install everything**:
+
+3. **Activate, then install**:
    ```bash
    just cluster-env <env> <cluster>
    just install-tools
    ```
-   To pin different versions for this cluster, run `just install-tool <tool> <version>` inside the sub-shell — it edits the per-cluster file, not the root one.
-4. **Exit the sub-shell** (`exit`). The dev cluster is unaffected — its env file omits the variable, so the root `.tool-versions` applies.
+
+4. **Exit** the sub-shell — the dev cluster is unaffected (its env file omits the var, so root `.tool-versions` applies).
 
 **Version pairing rules:**
 
@@ -224,33 +220,26 @@ Use a per-cluster file when a cluster needs different kops/kubectl versions than
 
 ### 1.5 Per-Project File Isolation
 
-One GCP project hosts exactly one cluster. Scope every cluster-specific file to its project ID: SSH keys and service-account JSON keys go in `credentials/<project-id>/`, and the kubeconfig goes in `clusters/<project-id>/`. Add these paths to the cluster env file before creating the files:
+One GCP project hosts exactly one cluster. Scope every cluster-specific file to its project ID: SSH keys and service-account JSON keys go in `credentials/<project-id>/`, and the kubeconfig goes in `clusters/<project-id>/`. These paths are relative to the **cluster-ops repo root** — the directory you run `just` from, where the env file lives. Anchor them with `${PWD}` (your shell's working directory at that point):
 
 ```bash
-SSH_KEY="${CLUSTER_OPS_PATH}/credentials/<project-id>/k8sVM.pub"
-KUBECONFIG="${CLUSTER_OPS_PATH}/clusters/<project-id>/kubeconfig"
+SSH_KEY="${PWD}/credentials/<project-id>/k8sVM.pub"
+KUBECONFIG="${PWD}/clusters/<project-id>/kubeconfig"
 ```
 
 The credential path is added with `GOOGLE_APPLICATION_CREDENTIALS` in [Section 2](#2-authentication-setup), after the service-account key exists. This isolation prevents one project's cluster files from replacing another project's files.
 
 ### 1.6 SSH Keypair and Local Repo
 
-Preferred — generates an **Ed25519** keypair under `credentials/<project-id>/` and refuses to overwrite an existing key:
+Preferred — generates an **Ed25519** keypair (RSA-4096 via `-t rsa`) and refuses to overwrite an existing key:
 
 ```bash
-just gcp-cluster generate-ssh-key <project-id>
-# RSA-4096 fallback if you need it:
-just gcp-cluster generate-ssh-key <project-id> rsa
+just gcp-cluster generate-ssh-key
+# RSA-4096 fallback:
+just gcp-cluster generate-ssh-key -t rsa
 ```
 
-What the recipe runs (Ed25519 default):
-
-```bash
-mkdir -p credentials/<project-id>
-ssh-keygen -t ed25519 -f credentials/<project-id>/k8sVM -N "" -C "kops-cluster-nodes"
-```
-
-Both key files are gitignored. A fresh clone always needs the keypair (or a secure copy from another operator). Set `SSH_KEY` in your per-cluster env file to the `.pub` path ([Section 1.5](#15-per-project-file-isolation)) before running this recipe. Phase 0's `just cluster-env` loads it.
+Key path precedence: the `SSH_KEY` env var if set (from [Section 1.5](#15-per-project-file-isolation)); otherwise `--project <project-id>` builds `credentials/<project-id>/k8sVM`. Both key files are gitignored — a fresh clone always needs the keypair (or a secure copy from another operator).
 
 ## 2. Authentication Setup
 
@@ -289,7 +278,7 @@ You need the **Service Account Manager** key. It has broad permissions (creating
    Add its path to your **per-cluster env file**:
 
    ```bash
-   GOOGLE_APPLICATION_CREDENTIALS="${CLUSTER_OPS_PATH}/credentials/<project-id>/sa-manager.json"
+   GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/<project-id>/sa-manager.json"
    ```
 
    `just cluster-env` loads it. Phases 2–3 of the bootstrap create a narrower `kops-cluster-creator` key and update that path. By the time the cluster is up, `sa-manager` is no longer in active use.
@@ -334,7 +323,7 @@ Before starting, verify the variables you set in earlier sections and add the re
 | Variable | Set up in |
 |----------|-----------|
 | `PROJECT_ID` | [Section 1.3.2](#132-variables-overview) |
-| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Section 1.4.1](#141-per-cluster-tool-version-files) |
+| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Section 1.4.1](#141-tool-version-files) |
 | `KUBECONFIG` | [Section 1.5](#15-per-project-file-isolation) |
 | `SSH_KEY` | [Section 1.6](#16-ssh-keypair-and-local-repo) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | [Section 2](#2-authentication-setup) |
@@ -533,7 +522,7 @@ One recipe; version dispatch is automatic:
 | Rolling update | separate `kops rolling-update` if needed | included in `reconcile` |
 | Validate | `kops validate cluster` | same |
 
-> This repo pins kOps in `.tool-versions` (currently v1.29.2; per-cluster pins live in `.tool-versions.<env>.<cluster>` — see [Section 1.4.1](#141-per-cluster-tool-version-files)). Do not mix `update` and `reconcile` workflows across versions. Prefer `just gcp-cluster update-cluster` so the binary picks the right subcommand.
+> This repo pins kOps in `.tool-versions` (currently v1.29.2; per-cluster pins live in `.tool-versions.<env>.<cluster>` — see [Section 1.4.1](#141-tool-version-files)). Do not mix `update` and `reconcile` workflows across versions. Prefer `just gcp-cluster update-cluster` so the binary picks the right subcommand.
 
 <a id="phase-6"></a>
 
@@ -587,7 +576,7 @@ You pay for GCE instances only while the cluster is up. The GCS state bucket cos
 |----------|-----------|-----|
 | GCS state bucket (`gs://${BUCKET_NAME}`) | ✅ Yes | kOps delete does **not** touch the state bucket. The versioned object history is preserved. |
 | Per-cluster env file (`.env.<env>.<cluster-name>`) | ✅ Yes | A local file in the repo — never touched by teardown. |
-| Per-cluster tool version file (`.tool-versions.<env>.<cluster>`) | ✅ Yes | A local file in the repo — part of the cluster blueprint. See [Section 1.4.1](#141-per-cluster-tool-version-files). |
+| Per-cluster tool version file (`.tool-versions.<env>.<cluster>`) | ✅ Yes | A local file in the repo — part of the cluster blueprint. See [Section 1.4.1](#141-tool-version-files). |
 | SSH keypair (`credentials/<project-id>/k8sVM*`) | ✅ Yes | Local files. Reused across create/destroy cycles. |
 | Service account keys (`credentials/<project-id>/sa-manager.json`, `credentials/<project-id>/kops-cluster-creator.json`, etc.) | ✅ Yes | Local files — one JSON key per SA per project. The SAs themselves live in the GCP project and are never deleted. |
 | GCP project + enabled APIs | ✅ Yes | Teardown only removes cluster resources, not the project or its API enablement. |
@@ -632,6 +621,8 @@ If deleted, re-run Phase 4a before Phase 4b.
 ### 5.5 Re-Creation — Bring It Back
 
 After teardown, bringing the cluster back skips the heavy one-time setup. The GCP project already exists, APIs are enabled, service accounts and their keys are in place, the SSH keypair is still in `credentials/<project-id>/`, and your per-cluster env file is untouched.
+
+> **Shortcut:** `just gcp-cluster recreate-cluster` automates the checklist below (requiring only that the env is activated first). Walk through it manually when you want to review each phase.
 
 **Re-creation checklist** (assuming the state bucket was **not** deleted):
 
@@ -687,7 +678,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 
 ### 5.7 Caveats
 
-**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The active versions file pins the version — for the dev default that is `.tool-versions` (run `just install-tool <tool> <version>` per tool to sync); per-cluster pins live in `.tool-versions.<env>.<cluster>` ([Section 1.4.1](#141-per-cluster-tool-version-files)).
+**kOps version drift.** If you upgrade kOps between cycles, check [release notes](https://kops.sigs.k8s.io/releases/) for breaking changes. The active versions file pins the version — for the dev default that is `.tool-versions` (run `just install-tool <tool> <version>` per tool to sync); per-cluster pins live in `.tool-versions.<env>.<cluster>` ([Section 1.4.1](#141-tool-version-files)).
 
 **GCP quotas.** Frequent cycles may trigger GCE API rate-limiting. Quota is released on teardown, but rapid create/delete loops can throttle.
 
@@ -696,6 +687,6 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 Your cluster is up and validated. Where to go from here:
 
 - **Deploy applications** — Follow [`docs/pulumi-setup.md`](pulumi-setup.md) to deploy the Pulumi-managed application stack on top of your new cluster.
-- **Understand the architecture** — Read [`docs/kops-architecture.md`](kops-architecture.md) for HA topology, InstanceGroup layout, and networking decisions.
+- **Understand the architecture** — Read [`docs/kops-gcp-architecture.md`](kops-gcp-architecture.md) for HA topology, InstanceGroup layout, and networking decisions.
 - **Explore the cluster** — `just gcp-cluster k9s`, or `kubectl get all --all-namespaces`.
 - **Tear it down when done** — [Section 5: Disposable Cluster Lifecycle](#5-disposable-cluster-lifecycle).
