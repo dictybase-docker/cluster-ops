@@ -1,6 +1,6 @@
-# Set up Pulumi with local filesystem backend
+# Set up Pulumi with a local filesystem backend.
 # Parameters:
-#   path: The custom folder path to store Pulumi state (default: pulumi-files/local-state)
+# path: The custom folder path to store Pulumi state (default: pulumi-files/local-state)
 [group('pulumi-local')]
 [no-cd]
 pulumi-local-setup path="pulumi-files/local-state":
@@ -10,11 +10,11 @@ pulumi-local-setup path="pulumi-files/local-state":
     pulumi login "file://$(realpath "{{ path }}")"
     echo "Pulumi has been set up to use local directory {{ path }} as the backend."
 
-# Create a new Pulumi Go project using the local backend
-# Parameters:
-#   folder: The folder to create the project in (will be created if it doesn't exist)
-#   stack: The initial stack name (default: local)
-#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+# Create a new Pulumi Go project using the local backend.
+# Usage: just local-pulumi new-project --folder <dir> [--stack <name>] [--pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="Initial stack name")]
+[arg("folder", long="folder", short="f", help="Folder to create the project in")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for the stack passphrase")]
 [group('pulumi-local')]
 [no-cd]
 new-project folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
@@ -40,11 +40,11 @@ new-project folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-lo
 
     echo "Project '$(basename "{{ folder }}")' created in {{ folder }} with stack '{{ stack }}'."
 
-# Create a new local stack in a given folder
-# Parameters:
-#   folder: The folder containing the Pulumi project
-#   stack: The name of the new stack (default: local)
-#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+# Create a new local stack in a given folder.
+# Usage: just local-pulumi new-stack --folder <dir> [--stack <name>] [--pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="New stack name")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for the stack passphrase")]
 [group('pulumi-local')]
 [no-cd]
 new-stack folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
@@ -70,11 +70,11 @@ new-stack folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-loca
         pulumi -C "{{ folder }}" stack init "{{ stack }}" --secrets-provider passphrase
     fi
 
-# Deploy resources for a local stack
-# Parameters:
-#   folder: The folder containing the Pulumi project
-#   stack: The stack to deploy (default: local)
-#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+# Deploy resources for a local stack.
+# Usage: just local-pulumi create-resource --folder <dir> [--stack <name>] [--pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="Stack to deploy")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for the stack passphrase")]
 [group('pulumi-local')]
 [no-cd]
 create-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
@@ -89,11 +89,11 @@ create-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulum
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
     pulumi -C "{{ folder }}" up -s "{{ stack }}" -f -y
 
-# Destroy resources for a local stack
-# Parameters:
-#   folder: The folder containing the Pulumi project
-#   stack: The stack to destroy (default: local)
-#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+# Destroy resources for a local stack.
+# Usage: just local-pulumi remove-resource --folder <dir> [--stack <name>] [--pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="Stack to destroy")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for the stack passphrase")]
 [group('pulumi-local')]
 [no-cd]
 remove-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-local-setup
@@ -108,19 +108,18 @@ remove-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulum
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
     pulumi -C "{{ folder }}" destroy -s "{{ stack }}" -f -y
 
-# Create a new local stack copied from an existing stack's config
-# Parameters:
-#   folder: The folder containing the Pulumi project
-#   stack: The name of the new stack (default: local)
-#   from-stack: The stack to copy config from (default: experiments)
-#   pass_entry: The pass entry for the stack passphrase (default: pulumi/local-passphrase)
+# Create a new local stack copied from an existing stack's config.
+# Usage: just local-pulumi new-stack-from --folder <dir> [--stack <name>] [--from-stack <name>] [--pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="New stack name")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("from-stack", long="from-stack", short="F", help="Stack to copy config from")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for the stack passphrase")]
 [group('pulumi-local')]
 [no-cd]
 new-stack-from folder stack="local" from-stack="experiments" pass_entry="pulumi/local-passphrase": pulumi-local-setup
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Fetch passphrase from pass
     if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
         echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
         exit 1

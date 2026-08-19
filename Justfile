@@ -1,4 +1,6 @@
 # Modules
+set minimum-version := '1.46.0'
+
 mod gcp-analysis 'just_modules/analysis.justfile'
 mod gcp-sa 'just_modules/sa.justfile'
 mod gcp-role 'just_modules/role.justfile'
@@ -48,7 +50,9 @@ install-dagger-binary:
 #     generates, or rewrites the manifest. The target file must already exist.
 #   - Always runs at the repo root (where the version files live), regardless of invocation dir.
 
-# Usage: just install-tool <name> <version>
+# Usage: just install-tool --name <tool> --version <v>
+[arg("name", long="name", short="n", help="Tool name")]
+[arg("version", long="version", short="v", help="Tool version")]
 [group('setup-tools')]
 install-tool name version:
     #!/usr/bin/env bash
@@ -132,6 +136,10 @@ aider:
                    --cache-keepalive-pings 3 \
                    --watch-files
 
+# Set an environment variable in .envrc.
+# Usage: just set-env-var --name <name> --value <value>
+[arg("name", long="name", short="n", help="Env var name")]
+[arg("value", long="value", short="v", help="Env var value")]
 [group('dev-tools')]
 set-env-var name value: build
     ./bin/cluster-ops env set-var --name={{ name }} --value={{ value }}
@@ -144,7 +152,11 @@ set-env-var name value: build
 # user: Docker Hub username
 # pass: Docker Hub password
 
-# Build and publish the backup image to Docker Hub
+# Build and publish the backup image to Docker Hub.
+# Usage: just build-publish-backup-image --ref <ref> --user <user> --pass <pass>
+[arg("ref", long="ref", short="r", help="Git ref (branch, tag, or commit)")]
+[arg("user", long="user", short="u", help="Docker Hub username")]
+[arg("pass", long="pass", short="p", help="Docker Hub password")]
 [group('build')]
 build-publish-backup-image ref user pass: setup
     #!/usr/bin/env bash
@@ -164,8 +176,10 @@ build-publish-backup-image ref user pass: setup
 # This is the recommended way to switch between clusters (dev/staging/prod).
 # The sub-shell inherits all cluster vars; 'exit' or Ctrl-D returns to the parent shell.
 #
-# Usage: just cluster-env <env> <cluster>
-# Example: just cluster-env dev my-cluster
+# Usage: just cluster-env --env <env> --cluster <cluster>
+# Example: just cluster-env --env dev --cluster my-cluster
+[arg("env", long="env", short="e", help="Environment name (.env.<env>.<cluster>)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name")]
 [group('cluster-ops')]
 cluster-env env cluster:
     #!/usr/bin/env bash
@@ -184,8 +198,11 @@ build:
 # Update the GOOGLE_APPLICATION_CREDENTIALS line in a per-cluster env file.
 # Thin wrapper — delegates platform-safe credential update to cluster-ops.
 #
-# Usage: just cluster-cred <env> <cluster> <key-path>
-# Example: just cluster-cred dev my-cluster credentials/kops-cluster-creator.json
+# Usage: just cluster-cred --env <env> --cluster <cluster> --key <path>
+# Example: just cluster-cred --env dev --cluster my-cluster --key credentials/kops-cluster-creator.json
+[arg("env", long="env", short="e", help="Environment name")]
+[arg("key", long="key", short="k", help="Service account key path")]
+[arg("cluster", long="cluster", short="c", help="Cluster name")]
 [group('cluster-ops')]
 cluster-cred env cluster key: build
     ./bin/cluster-ops env set-cred {{ env }} {{ cluster }} {{ key }}
@@ -199,22 +216,33 @@ cluster-cred env cluster key: build
 #   bucket_name: Name of the GCS bucket for Pulumi state
 
 # location: Google Cloud region (optional, defaults to us-central1)
+[arg("key_name", long="key-name", short="k", help="KMS key name")]
+[arg("location", long="location", short="l", help="Google Cloud region")]
+[arg("project_id", long="project-id", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="GCS bucket for Pulumi state")]
+[arg("keyring_name", long="keyring-name", short="r", help="KMS keyring name")]
 [group('pulumi-ops')]
-initialize-pulumi project_id keyring_name key_name bucket_name location="us-central1":
+initialize-pulumi project_id="" keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    project_id="${PROJECT_ID:-{{ project_id }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project-id."
+        exit 1
+    fi
+
     echo "Step 1: Creating Pulumi Manager Service Account Key"
-    just gcp-sa create-sa {{ project_id }} pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
+    just gcp-sa create-sa --project "${project_id}" --sa-name pulumi-manager --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt --output-file credentials/pulumi-manager.json
 
     echo "Step 2: Setting PULUMI_GCP_CREDENTIALS environment variable"
     export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 
     echo "Step 3: Creating Key Ring and Key for Pulumi secrets encryption"
-    just gcp-kms create-keyring-and-key {{ project_id }} {{ keyring_name }} {{ key_name }} credentials/pulumi-manager.json {{ location }}
+    just gcp-kms create-keyring-and-key --project-id "${project_id}" --keyring-name {{ keyring_name }} --key-name {{ key_name }} --credentials-file credentials/pulumi-manager.json --location {{ location }}
 
     echo "Step 4: Initializing Pulumi State Store"
-    just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json {{ bucket_name }} "" {{ location }}
+    just gcp-pulumi pulumi-gcs-setup --sa-json-path credentials/pulumi-manager.json --gcs-bucket {{ bucket_name }} --location {{ location }}
     echo "Pulumi deployment environment setup completed successfully!"
 
 # Setup Pulumi deployment environment
@@ -227,12 +255,27 @@ initialize-pulumi project_id keyring_name key_name bucket_name location="us-cent
 #   bucket_name: Name of the GCS bucket for Pulumi state
 
 # location: Google Cloud region (optional, defaults to us-central1)
+[arg("stack", long="stack", short="s", help="Initial stack name")]
+[arg("key_name", long="key-name", short="k", help="KMS key name")]
+[arg("location", long="location", short="l", help="Google Cloud region")]
+[arg("from-stack", long="from-stack", short="F", help="Stack to copy config from")]
+[arg("project_id", long="project-id", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="GCS bucket for Pulumi state")]
+[arg("keyring_name", long="keyring-name", short="r", help="KMS keyring name")]
 [group('pulumi-ops')]
-pulumi-init-and-deploy stack from-stack project_id keyring_name key_name bucket_name location="us-central1":
+pulumi-init-and-deploy stack from-stack project_id="" keyring_name key_name bucket_name location="us-central1":
     #!/usr/bin/env bash
-    just initialize-pulumi {{ project_id }} {{ keyring_name }} {{ key_name }} {{ bucket_name }} {{ location }}
-    export PULUMI_SECRET_PROVIDER="gcpkms://projects/{{ project_id }}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
+    set -euo pipefail
+
+    project_id="${PROJECT_ID:-{{ project_id }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project-id."
+        exit 1
+    fi
+
+    just initialize-pulumi --project-id "${project_id}" --keyring-name {{ keyring_name }} --key-name {{ key_name }} --bucket-name {{ bucket_name }} --location {{ location }}
+    export PULUMI_SECRET_PROVIDER="gcpkms://projects/${project_id}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
 
     echo "Creating Initial Resources"
-    just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/initial-resources.txt"
-    just gcp-pulumi create-multiple-resources {{ stack }} {{ from-stack }} "./pulumi-files/database-and-storage-resources.txt"
+    just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/initial-resources.txt"
+    just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/database-and-storage-resources.txt"

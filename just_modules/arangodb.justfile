@@ -1,6 +1,9 @@
 # ── private helpers ──────────────────────────────────────────────────────────
 
-# Waits for a TCP port to accept connections
+# Waits for a TCP port to accept connections.
+# Usage: just arangodb _wait-for-port --port <port> [--retries <n>]
+[arg("port", long="port", short="p", help="TCP port to wait for")]
+[arg("retries", long="retries", short="r", help="Number of retries")]
 [group('arangodb')]
 [no-cd]
 _wait-for-port port retries="30":
@@ -33,9 +36,13 @@ _discover-arango-svc namespace="dev":
 
 # ── public recipes ────────────────────────────────────────────────────────────
 
-# Dump a remote ArangoDB database to a local compressed file
-
-# Usage: just arangodb dump-remote-db <db_name> [output_dir] [namespace] [service] [image_tag]
+# Dump a remote ArangoDB database to a local compressed file.
+# Usage: just arangodb dump-remote-db --db-name <name> [--output-dir <dir>] [--namespace <ns>] [--service <svc>] [--image-tag <tag>]
+[arg("db_name", long="db-name", short="d", help="Database name")]
+[arg("service", long="service", short="s", help="ArangoDB service name")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
+[arg("image_tag", long="image-tag", short="t", help="ArangoDB image tag")]
+[arg("output_dir", long="output-dir", short="o", help="Output directory")]
 [group('arangodb')]
 [no-cd]
 dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" image_tag="3.11.6":
@@ -84,7 +91,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ namespace }} service/{{ service }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
-    just arangodb _wait-for-port ${LOCAL_PORT}
+    just arangodb _wait-for-port --port ${LOCAL_PORT}
 
     echo "Starting dump of database '{{ db_name }}'..."
     mkdir -p "$DUMP_DIR"
@@ -111,9 +118,11 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     echo "Cleaning up temporary files..."
     rm -rf "$DUMP_DIR"
 
-# List restic snapshots from GCS backup repository
-
-# Usage: just arangodb list-restic-snapshots [bucket] [namespace] [latest=7]
+# List restic snapshots from GCS backup repository.
+# Usage: just arangodb list-restic-snapshots [--bucket <b>] [--namespace <ns>] [--latest <n>]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
+[arg("latest", long="latest", short="l", help="Number of recent snapshots to show")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
 [group('arangodb')]
 [no-cd]
 list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" latest="7":
@@ -153,9 +162,11 @@ list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace=
         restic snapshots
     fi
 
-# Restore the most recent restic snapshot to the scratch folder
-
-# Usage: just arangodb restore-latest-snapshot [bucket] [namespace] [output_dir]
+# Restore the most recent restic snapshot to the scratch folder.
+# Usage: just arangodb restore-latest-snapshot [--bucket <b>] [--namespace <ns>] [--output-dir <dir>]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
+[arg("output_dir", long="output-dir", short="o", help="Output directory")]
 [group('arangodb')]
 [no-cd]
 restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespace="dev" output_dir="scratch":
@@ -192,13 +203,15 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
 
     echo "Restore complete. Data available in {{ output_dir }}"
 
-# Restore arangodump databases into the local k3d ArangoDB instance
-#
+# Restore arangodump databases into the local k3d ArangoDB instance.
 # Discovers the ArangoDB service name dynamically (pattern: arangodb-single-<id>),
 # port-forwards to it, then runs arangorestore via Docker.
-#
-# Usage: just arangodb restore-local-arangodb [input_dir] [namespace] [image_tag] [cluster_name]
 # Root password is read from the 'arangodb-root' k8s secret; after restore the operator JWT resets it back.
+# Usage: just arangodb restore-local-arangodb [--input-dir <dir>] [--namespace <ns>] [--image-tag <tag>] [--cluster-name <name>]
+[arg("input_dir", long="input-dir", short="i", help="Directory with arangodump data")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
+[arg("image_tag", long="image-tag", short="t", help="ArangoDB image tag")]
+[arg("cluster_name", long="cluster-name", short="c", help="k3d cluster name")]
 [group('arangodb')]
 [no-cd]
 restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag="3.11.6" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}`:
@@ -225,7 +238,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
-    just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
+    just k3d export-kubeconfig --name {{ cluster_name }} --output "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
     echo "Reading desired root password from 'arangodb-pass' secret..."
@@ -246,7 +259,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     kubectl port-forward -n {{ namespace }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
-    just arangodb _wait-for-port ${LOCAL_PORT}
+    just arangodb _wait-for-port --port ${LOCAL_PORT}
 
     # Docker networking set by just os() at parse time — no runtime uname needed
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
@@ -290,9 +303,13 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
 
     echo "Root password has been reset to the local value."
 
-# Deploy ArangoDB operator and single instance to local k3d cluster
-
-# Usage: just arangodb deploy-local-arangodb [stack] [storage_size] [cluster_name] [pass_entry] [root_pass_entry]
+# Deploy ArangoDB operator and single instance to local k3d cluster.
+# Usage: just arangodb deploy-local-arangodb [--stack <name>] [--storage-size <size>] [--cluster-name <name>] [--pass-entry <entry>] [--root-pass-entry <entry>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name")]
+[arg("pass_entry", long="pass-entry", short="p", help="pass entry for stack passphrase")]
+[arg("storage_size", long="storage-size", short="z", help="Storage size for the DB")]
+[arg("cluster_name", long="cluster-name", short="c", help="k3d cluster name")]
+[arg("root_pass_entry", long="root-pass-entry", short="r", help="pass entry for root password")]
 [group('arangodb')]
 [no-cd]
 deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D_CLUSTER_NAME:-k3d-dev-cluster}` pass_entry="pulumi/local-passphrase" root_pass_entry="arangodb/local-root":
@@ -316,14 +333,14 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
-    just k3d export-kubeconfig {{ cluster_name }} "$KUBECONFIG_FILE"
+    just k3d export-kubeconfig --name {{ cluster_name }} --output "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
 
     echo "Creating local stacks..."
-    just local-pulumi new-stack arangodb-operator {{ stack }} {{ pass_entry }}
-    just local-pulumi new-stack arangodb-single {{ stack }} {{ pass_entry }}
+    just local-pulumi new-stack --folder arangodb-operator --stack {{ stack }} --pass-entry {{ pass_entry }}
+    just local-pulumi new-stack --folder arangodb-single --stack {{ stack }} --pass-entry {{ pass_entry }}
 
     echo "Setting arangodb-operator config..."
     pulumi -C arangodb-operator config set-all --stack "{{ stack }}" --path \
@@ -343,7 +360,7 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
         --secret "arangodb-single:properties.secret.password=$ROOT_PASSWORD"
 
     echo "Deploying arangodb-operator..."
-    just local-pulumi create-resource arangodb-operator {{ stack }} {{ pass_entry }}
+    just local-pulumi create-resource --folder arangodb-operator --stack {{ stack }} --pass-entry {{ pass_entry }}
 
     echo "Deploying arangodb-single..."
-    just local-pulumi create-resource arangodb-single {{ stack }} {{ pass_entry }}
+    just local-pulumi create-resource --folder arangodb-single --stack {{ stack }} --pass-entry {{ pass_entry }}

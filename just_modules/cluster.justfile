@@ -9,9 +9,9 @@ build:
 # Options: -p/--project <project-id>, -t/--type ed25519|rsa (default ed25519).
 # Refuses to overwrite an existing keypair.
 # Usage: just gcp-cluster generate-ssh-key [--project <project-id>] [--type ed25519|rsa]
-[no-cd]
 [arg("project", long="project", short="p", help="GCP project id; builds credentials/<project>/k8sVM when SSH_KEY is unset")]
 [arg("type", long="type", short="t", pattern="ed25519|rsa", help="Key algorithm: ed25519 (default) or rsa")]
+[no-cd]
 generate-ssh-key project="" type="ed25519":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -65,38 +65,42 @@ generate-ssh-key project="" type="ed25519":
         echo "  SSH_KEY=\${PWD}/credentials/{{ project }}/k8sVM.pub"
     fi
 
-# Set up service accounts for the project
-# Activates necessary APIs if specified
-# Usage: just sa-accounts-setup <project> [activate_api]
+# Set up the project's service accounts and roles.
+# Usage: just gcp-cluster sa-accounts-setup [--project <project-id>] [--activate-api <true|false>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("activate_api", long="activate-api", short="a", pattern="true|false", help="Enable the required APIs first")]
 [no-cd]
-sa-accounts-setup project activate_api="true":
+sa-accounts-setup project="" activate_api="true":
     #!/usr/bin/env bash
     set -euo pipefail
 
     gcloud config set disable_prompts true
 
+    project_id="${PROJECT_ID:-{{ project }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project."
+        exit 1
+    fi
+
     if [ "{{ activate_api }}" = "true" ]; then
-        just gcp-api enable-apis {{ project }} \
-             {{ invocation_directory() }}/gcs-files/apis/enabled_apis.txt
+        just gcp-api enable-apis --project "${project_id}" \
+             --api-file {{ invocation_directory() }}/gcs-files/apis/enabled_apis.txt
         sleep 10
     fi
 
     sa_accounts=("cloud-manager" "cluster-backup" "database-backup" "deploy-manager" "kops-cluster-creator")
     for sa_name in "${sa_accounts[@]}"; do
-        sa_email="${sa_name}@{{ project }}.iam.gserviceaccount.com"
+        sa_email="${sa_name}@${project_id}.iam.gserviceaccount.com"
 
         # Check if the service account already exists
-        if ! gcloud iam service-accounts describe "$sa_email" --project={{ project }} &>/dev/null; then
+        if ! gcloud iam service-accounts describe "$sa_email" --project="${project_id}" &>/dev/null; then
             echo "Creating service account: $sa_name"
-            just gcp-sa create-sa {{ project }} \
-                $sa_name "service account for ${sa_name}"
+            just gcp-sa create-sa --project "${project_id}" --sa-name "$sa_name" \
+                --roles-file {{ invocation_directory() }}/gcs-files/roles-permissions/${sa_name}-roles.txt \
+                --output-file {{ invocation_directory() }}/credentials/${project_id}-$sa_name.json
         else
             echo "Service account $sa_name already exists. Skipping creation."
         fi
-
-        just gcp-role assign-roles-to-sa {{ project }} $sa_name {{ invocation_directory() }}/gcs-files/roles-permissions/${sa_name}-roles.txt
-        just gcp-sa create-sa-key {{ project }} $sa_name \
-            {{ invocation_directory() }}/credentials/{{ project }}-$sa_name.json
     done
 
     gcloud config set disable_prompts false
@@ -116,18 +120,39 @@ reconcile-cluster: build
     ./bin/cluster-ops kops update
 
 # Create and harden the GCS state bucket for kops.
-# Thin wrapper — delegates to cluster-ops.
-# Usage: just create-state-bucket <project> <bucket_name>
+# Usage: just gcp-cluster create-state-bucket [--project <project-id>] [--bucket-name <bucket>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to BUCKET_NAME env var)")]
 [no-cd]
-create-state-bucket project bucket_name: build
-    ./bin/cluster-ops bucket create --project={{ project }} --bucket={{ bucket_name }} --harden
+create-state-bucket project="" bucket_name="": build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    project_id="${PROJECT_ID:-{{ project }}}"
+    bucket="${BUCKET_NAME:-{{ bucket_name }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project."
+        exit 1
+    fi
+    if [ -z "$bucket" ]; then
+        echo "ERROR: no bucket name — set BUCKET_NAME or pass --bucket-name."
+        exit 1
+    fi
+    ./bin/cluster-ops bucket create --project="${project_id}" --bucket="${bucket}" --harden
 
 # Create the kops cluster manifest (no VMs provisioned yet).
-# Thin wrapper around cluster-ops binary.
-# Usage: just create-cluster-config <project> <bucket_name>
+# Usage: just gcp-cluster create-cluster-config [--project <project-id>] [--bucket-name <bucket>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to BUCKET_NAME env var)")]
 [no-cd]
-create-cluster-config project bucket_name: build
-    ./bin/cluster-ops kops create-config --project-id={{ project }}
+create-cluster-config project="" bucket_name="": build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    project_id="${PROJECT_ID:-{{ project }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project."
+        exit 1
+    fi
+    ./bin/cluster-ops kops create-config --project-id="${project_id}"
 
 # Apply checked-in InstanceGroup templates to the cluster.
 # Thin wrapper — delegates to cluster-ops.
@@ -255,8 +280,10 @@ export-kubeconfig:
     set -euo pipefail
     kops export kubeconfig --admin
 
-# Export a kubeconfig file with a custom name and duration
-# Usage: just export-named-kubeconfig <name> [duration_hours]
+# Export a kubeconfig file with a custom name and duration.
+# Usage: just gcp-cluster export-named-kubeconfig --name <name> [--duration-hours <n>]
+[arg("name", long="name", short="n", help="Kubeconfig name (without .yaml)")]
+[arg("duration_hours", long="duration-hours", short="d", help="Validity in hours")]
 [no-cd]
 export-named-kubeconfig name duration_hours="24":
     #!/usr/bin/env bash
@@ -266,8 +293,10 @@ export-named-kubeconfig name duration_hours="24":
 
 # Export a kubeconfig file with a given name and custom hour duration
 
-# Extract logs from pods in the cluster
-# Usage: just extract-logs <label> [namespace]
+# Extract logs from pods in the cluster.
+# Usage: just gcp-cluster extract-logs --label <label> [--namespace <ns>]
+[arg("label", long="label", short="l", help="Pod label selector")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
 [no-cd]
 extract-logs label namespace="dev":
     #!/usr/bin/env bash
@@ -335,26 +364,26 @@ setup-cluster-backup:
 
     # If Velero is installed, proceed with the setup
     just gcp-cluster exclude-from-backup dev
-    just gcp-pulumi preview install-velero experiments
-    just gcp-pulumi create-resource install-velero experiments
+    just gcp-pulumi preview --folder install-velero --stack experiments
+    just gcp-pulumi create-resource --folder install-velero --stack experiments
 
 [no-cd]
 edit-cluster:
-	kops edit cluster
+    kops edit cluster
 
 [no-cd]
 cluster-info:
-	kops get cluster -o yaml
+    kops get cluster -o yaml
 
 [no-cd]
 cluster-dump:
-	kops toolbox dump -v 9 --k8s-resources
+    kops toolbox dump -v 9 --k8s-resources
 
 # View instance groups in the kops cluster
 # Usage: just instance-groups
 [no-cd]
 instance-groups:
-	kops get ig
+    kops get ig
 
 # ─────────────────────────────────────────────
 # Disposable cluster lifecycle recipes (Section 9)
@@ -366,7 +395,7 @@ instance-groups:
 # With "yes": preflight check → execute teardown → verify cleanup.
 #
 # Usage: just delete-cluster         (dry-run — safe)
-#        just delete-cluster yes     (full destroy)
+# just delete-cluster yes     (full destroy)
 [no-cd]
 delete-cluster confirm="no":
     #!/usr/bin/env bash
@@ -504,7 +533,7 @@ recreate-cluster:
     fi
 
     echo "=== Step 1/6: Generate cluster manifest ==="
-    just gcp-cluster create-cluster-config "${PROJECT_ID}" "${BUCKET_NAME}"
+    just gcp-cluster create-cluster-config --project "${PROJECT_ID}" --bucket-name "${BUCKET_NAME}"
     echo ""
 
     echo "=== Step 2/6: Diff against saved manifest ==="
