@@ -78,11 +78,11 @@ just gcp-sa setup-sa-manager --project-id <project_id>
 
 This will create a service account named `sa-manager` and create a JSON key file for the service account in their `./credentials` directory.
 
-Have the project owner send the key file to you. Save it as `./credentials/sa-manager.json` directory.
+Have the project owner send the key file to you. Save it as `./credentials/<project_id>/sa-manager.json`.
 
 Then, you can set the `GOOGLE_APPLICATION_CREDENTIALS` environmental variable by running 
 ```
-just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/sa-manager.json"
+just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/<project_id>/sa-manager.json"
 ```
 
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the [prescribed method](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key) of setting up ADC.
