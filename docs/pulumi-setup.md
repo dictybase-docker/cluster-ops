@@ -80,7 +80,7 @@ Finish [`docs/kops-setup-draft.md`](kops-setup-draft.md) first:
 - Phase 4c security edits applied if you care about production access controls
 - Storage-friendly topology in place for your target:
   - **Simple dev**: single control plane / small worker pool is enough
-  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [kops §1.3.4](kops-setup-draft.md#134-optional-tuning-knobs) and [Phase 4d](kops-setup-draft.md#phase-4d))
+  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [kops Phase 4b](kops-setup-draft.md#phase-4b) and [Phase 4d](kops-setup-draft.md#phase-4d))
 
 CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the kops manifest). StorageClass creation assumes that.
 
@@ -132,14 +132,14 @@ This repo’s **programs** are mostly single-instance. HA is partial: some knobs
 Edit `.env.<env>.<cluster-name>` (same file as kops). Example values — replace placeholders:
 
 ```bash
-export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/<project-id>/pulumi-manager.json"
-export PULUMI_SECRET_PROVIDER="gcpkms://projects/<project-id>/locations/us-central1/keyRings/<keyring>/cryptoKeys/<key>"
-export PULUMI_BACKEND_URL="gs://<pulumi-state-bucket>"
+PULUMI_GCP_CREDENTIALS="${PWD}/credentials/<project-id>/pulumi-manager.json"
+PULUMI_SECRET_PROVIDER="gcpkms://projects/<project-id>/locations/us-central1/keyRings/<keyring>/cryptoKeys/<key>"
+PULUMI_BACKEND_URL="gs://<pulumi-state-bucket>"
 # Kubernetes provider uses the cluster kubeconfig from this env file:
-# export KUBECONFIG=...
+# KUBECONFIG="${PWD}/clusters/<project-id>/kubeconfig"
 ```
 
-Also keep kops-required vars (`PROJECT_ID`, `KUBECONFIG`, etc.) already defined per [kops §1.3.2](kops-setup-draft.md#132-required-variables).
+Also keep kops-required vars (`PROJECT_ID`, `KUBECONFIG`, etc.) already defined per [kops §1.3.2](kops-setup-draft.md#132-variables-overview).
 
 > **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
 
@@ -194,7 +194,7 @@ just gcp-kms create-keyring-and-key \
 Then set:
 
 ```bash
-export PULUMI_SECRET_PROVIDER="gcpkms://projects/${PROJECT_ID}/locations/us-central1/keyRings/<keyring-name>/cryptoKeys/<key-name>"
+PULUMI_SECRET_PROVIDER="gcpkms://projects/${PROJECT_ID}/locations/us-central1/keyRings/<keyring-name>/cryptoKeys/<key-name>"
 ```
 
 Persist the same line in the cluster env file.
