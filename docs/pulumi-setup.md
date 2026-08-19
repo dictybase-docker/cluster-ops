@@ -58,7 +58,7 @@ After the cluster is healthy, install only what data plane needs:
 
 ## Quick Setup
 
-Work inside an activated cluster env shell (`just cluster-env <env> <cluster-name>`). Assume kubeconfig already works (`kubectl get nodes`).
+Work inside an activated cluster env shell (`just cluster-env --env <env> --cluster <cluster-name>`). Assume kubeconfig already works (`kubectl get nodes`).
 
 1. [Prerequisites](#1-prerequisites) — cluster validated; `pulumi`, `kubectl`, credentials ready.
 2. [Add Pulumi env vars](#3-environment-variables-for-pulumi) to the per-cluster env file; re-enter `cluster-env`.
@@ -75,7 +75,7 @@ Work inside an activated cluster env shell (`just cluster-env <env> <cluster-nam
 
 Finish [`docs/kops-setup-draft.md`](kops-setup-draft.md) first:
 
-- Cluster env file active (`just cluster-env <env> <cluster-name>`)
+- Cluster env file active (`just cluster-env --env <env> --cluster <cluster-name>`)
 - `kubectl` talks to the cluster (`kubectl get nodes` healthy)
 - Phase 4c security edits applied if you care about production access controls
 - Storage-friendly topology in place for your target:
@@ -89,7 +89,7 @@ CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the ko
 Same tooling baseline as the kops guide: `just`, `asdf` tools (`kubectl`, `pulumi`, `gcloud`), `jq`, `direnv` optional. Re-run if needed:
 
 ```bash
-just install-tool <tool> <version>
+just install-tool --name <tool> --version <version>
 ```
 
 ### 1.3 Access
@@ -148,7 +148,7 @@ Recipes under `just gcp-pulumi` export `GOOGLE_APPLICATION_CREDENTIALS="${PULUMI
 ### 3.2 Activate the Cluster Shell
 
 ```bash
-just cluster-env <env> <cluster-name>
+just cluster-env --env <env> --cluster <cluster-name>
 ```
 
 Confirm:
@@ -170,9 +170,9 @@ Do this **once per GCP project** (thereafter re-login if needed).
 
 ```bash
 mkdir -p credentials/${PROJECT_ID}
-just gcp-sa create-sa ${PROJECT_ID} pulumi-manager \
-  gcs-files/roles-permissions/pulumi-manager-roles.txt \
-  credentials/${PROJECT_ID}/pulumi-manager.json
+just gcp-sa create-sa --sa-name pulumi-manager \
+  --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt \
+  --output-file credentials/${PROJECT_ID}/pulumi-manager.json
 ```
 
 Roles listed in that file include storage admin and KMS crypto operator (needed for state + secret decryption).
@@ -185,11 +185,10 @@ Set / refresh `PULUMI_GCP_CREDENTIALS` in the env file to that path, then re-run
 
 ```bash
 just gcp-kms create-keyring-and-key \
-  ${PROJECT_ID} \
-  <keyring-name> \
-  <key-name> \
-  credentials/${PROJECT_ID}/pulumi-manager.json \
-  us-central1
+  --keyring-name <keyring-name> \
+  --key-name <key-name> \
+  --credentials-file credentials/${PROJECT_ID}/pulumi-manager.json \
+  --location us-central1
 ```
 
 Then set:
@@ -206,10 +205,9 @@ Pick a **globally unique** bucket (example: `pulumi-state-<project-id>`):
 
 ```bash
 just gcp-pulumi pulumi-gcs-setup \
-  credentials/${PROJECT_ID}/pulumi-manager.json \
-  <pulumi-state-bucket> \
-  "" \
-  us-central1
+  --sa-json-path credentials/${PROJECT_ID}/pulumi-manager.json \
+  --gcs-bucket <pulumi-state-bucket> \
+  --location us-central1
 ```
 
 This creates the bucket if missing (versioning on) and runs `pulumi login gs://<pulumi-state-bucket>`.
@@ -218,7 +216,7 @@ This creates the bucket if missing (versioning on) and runs `pulumi login gs://<
 >
 > ```bash
 > exit                                    # leave current sub-shell
-> just cluster-env <env> <cluster-name>   # re-enter — now PULUMI_BACKEND_URL is real
+> just cluster-env --env <env> --cluster <cluster-name>   # re-enter — now PULUMI_BACKEND_URL is real
 > echo "$PULUMI_BACKEND_URL"             # should show gs://<pulumi-state-bucket>
 > ```
 >
@@ -231,7 +229,7 @@ Each cluster env file carries its own `KUBECONFIG`, GCP credentials, KMS key, **
 ```bash
 # Working on cluster A
 exit                                    # leave sub-shell
-just cluster-env dev cluster-b         # enter cluster B
+just cluster-env --env dev --cluster cluster-b         # enter cluster B
 # KUBECONFIG, PULUMI_BACKEND_URL, KMS all changed together
 pulumi -C storage_class stack ls       # shows stacks from cluster B's bucket
 ```
@@ -265,13 +263,13 @@ Examples in-repo: `dev`, `experiments`, `local`. Choose one stack name and use i
 - **Copy-from** a known stack when one exists for that project:
 
 ```bash
-just gcp-pulumi new-stack-from <project-folder> <stack> <from-stack>
+just gcp-pulumi new-stack-from --folder <project-folder> --stack <stack> --from-stack <from-stack>
 ```
 
 When no base stack exists (e.g. some projects lack `Pulumi.dev.yaml`):
 
 ```bash
-just gcp-pulumi new-stack <project-folder> <stack>
+just gcp-pulumi new-stack --folder <project-folder> --stack <stack>
 ```
 
 Then edit config with `pulumi -C <folder> -s <stack> config` / `config set --path` as needed (passwords, bucket names, `instances`).
@@ -283,13 +281,13 @@ Always from repo root, with env shell active. The pattern is the same for every 
 **When a base stack exists** (e.g. `experiments` → `dev`):
 
 ```bash
-just gcp-pulumi new-stack-from <project-folder> ${STACK} ${FROM_STACK}
+just gcp-pulumi new-stack-from --folder <project-folder> --stack ${STACK} --from-stack ${FROM_STACK}
 ```
 
 **When no base stack exists** (project has no `Pulumi.<from-stack>.yaml`):
 
 ```bash
-just gcp-pulumi new-stack <project-folder> ${STACK}
+just gcp-pulumi new-stack --folder <project-folder> --stack ${STACK}
 # Then set config manually:
 pulumi -C <project-folder> -s ${STACK} config set --path "<key>" "<value>"
 ```
@@ -297,8 +295,8 @@ pulumi -C <project-folder> -s ${STACK} config set --path "<key>" "<value>"
 **Always preview before apply**:
 
 ```bash
-just gcp-pulumi preview <project-folder> ${STACK}
-just gcp-pulumi create-resource <project-folder> ${STACK}
+just gcp-pulumi preview --folder <project-folder> --stack ${STACK}
+just gcp-pulumi create-resource --folder <project-folder> --stack ${STACK}
 ```
 
 > **Do not** use `just pulumi-init-and-deploy` for this guide. That entrypoint also deploys non-database projects from `pulumi-files/resources/*.txt` and continues after mid-list failures. Run projects **one at a time** in the order below.
@@ -335,9 +333,9 @@ Both operators run **after** StorageClass and **before** any database instance. 
 Creates the GCE PD StorageClass used by Arango/CNPG/Redis/MinIO PVCs (shipped name: `dictycr-balanced`, type `pd-balanced`).
 
 ```bash
-just gcp-pulumi new-stack-from storage_class ${STACK} ${FROM_STACK}
-just gcp-pulumi preview storage_class ${STACK}
-just gcp-pulumi create-resource storage_class ${STACK}
+just gcp-pulumi new-stack-from --folder storage_class --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder storage_class --stack ${STACK}
+just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
 ```
 
 Check:
@@ -353,9 +351,9 @@ kubectl get storageclass dictycr-balanced
 **ArangoDB operator**
 
 ```bash
-just gcp-pulumi new-stack-from arangodb-operator ${STACK} ${FROM_STACK}
-just gcp-pulumi preview arangodb-operator ${STACK}
-just gcp-pulumi create-resource arangodb-operator ${STACK}
+just gcp-pulumi new-stack-from --folder arangodb-operator --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder arangodb-operator --stack ${STACK}
+just gcp-pulumi create-resource --folder arangodb-operator --stack ${STACK}
 ```
 
 Check:
@@ -368,9 +366,9 @@ kubectl get pods -n operators
 **CloudNativePG operator**
 
 ```bash
-just gcp-pulumi new-stack-from cloudnative-pg-operator ${STACK} ${FROM_STACK}
-just gcp-pulumi preview cloudnative-pg-operator ${STACK}
-just gcp-pulumi create-resource cloudnative-pg-operator ${STACK}
+just gcp-pulumi new-stack-from --folder cloudnative-pg-operator --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder cloudnative-pg-operator --stack ${STACK}
+just gcp-pulumi create-resource --folder cloudnative-pg-operator --stack ${STACK}
 ```
 
 Check:
@@ -389,9 +387,9 @@ kubectl get crd | grep postgresql.cnpg.io
 Deploys ArangoDB **Single** mode, root password secret, and PVC via the StorageClass.
 
 ```bash
-just gcp-pulumi new-stack-from arangodb-single ${STACK} ${FROM_STACK}
-just gcp-pulumi preview arangodb-single ${STACK}
-just gcp-pulumi create-resource arangodb-single ${STACK}
+just gcp-pulumi new-stack-from --folder arangodb-single --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder arangodb-single --stack ${STACK}
+just gcp-pulumi create-resource --folder arangodb-single --stack ${STACK}
 ```
 
 **Dev vs HA:** config changes storage size / version only. Mode remains Single. HA Cluster mode is a repo gap.
@@ -411,10 +409,10 @@ Creates AppDB user secret + Job (`ensure-user` / `ensure-database` / `ensure-gra
 
 ```bash
 # Often no Pulumi.dev.yaml — init empty or copy from experiments/local
-just gcp-pulumi new-stack-from create-arangodb-databases ${STACK} ${FROM_STACK}
-# or: just gcp-pulumi new-stack create-arangodb-databases ${STACK}
-just gcp-pulumi preview create-arangodb-databases ${STACK}
-just gcp-pulumi create-resource create-arangodb-databases ${STACK}
+just gcp-pulumi new-stack-from --folder create-arangodb-databases --stack ${STACK} --from-stack ${FROM_STACK}
+# or: just gcp-pulumi new-stack --folder create-arangodb-databases --stack ${STACK}
+just gcp-pulumi preview --folder create-arangodb-databases --stack ${STACK}
+just gcp-pulumi create-resource --folder create-arangodb-databases --stack ${STACK}
 ```
 
 Check:
@@ -435,10 +433,10 @@ Depends on CNPG operator + StorageClass. Program also creates a GCS backup bucke
 **Before apply (HA path):** edit stack config so the cluster entry has `instances: 3` (or desired odd number), adequate `storage.size` / WAL settings, and a unique backup bucket name in your project.
 
 ```bash
-just gcp-pulumi new-stack-from cloudnative-pg-cluster ${STACK} ${FROM_STACK}
+just gcp-pulumi new-stack-from --folder cloudnative-pg-cluster --stack ${STACK} --from-stack ${FROM_STACK}
 # Adjust instances / buckets / secrets for your project, then:
-just gcp-pulumi preview cloudnative-pg-cluster ${STACK}
-just gcp-pulumi create-resource cloudnative-pg-cluster ${STACK}
+just gcp-pulumi preview --folder cloudnative-pg-cluster --stack ${STACK}
+just gcp-pulumi create-resource --folder cloudnative-pg-cluster --stack ${STACK}
 ```
 
 Ensure the GCP SA JSON path in config points at a real file under `credentials/<project-id>/…` with rights to the backup bucket.
@@ -462,9 +460,9 @@ kubectl get pods -n dev -l cnpg.io/cluster=logto   # name may differ per config
 ### 7.6 Phase E — Redis
 
 ```bash
-just gcp-pulumi new-stack-from redis-standalone ${STACK} ${FROM_STACK}
-just gcp-pulumi preview redis-standalone ${STACK}
-just gcp-pulumi create-resource redis-standalone ${STACK}
+just gcp-pulumi new-stack-from --folder redis-standalone --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder redis-standalone --stack ${STACK}
+just gcp-pulumi create-resource --folder redis-standalone --stack ${STACK}
 ```
 
 **HA:** not available — Deployment `replicas: 1` only.
@@ -482,9 +480,9 @@ kubectl get deploy,svc,pvc -n dev | grep -i redis
 Object storage used alongside the data plane (credentials secret + Bitnami chart). Simple dev often disables web UI and API ingress; lab/prod-like stacks may enable ingress + larger disks (see `Pulumi.experiments.yaml`).
 
 ```bash
-just gcp-pulumi new-stack-from minio ${STACK} ${FROM_STACK}
-just gcp-pulumi preview minio ${STACK}
-just gcp-pulumi create-resource minio ${STACK}
+just gcp-pulumi new-stack-from --folder minio --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi preview --folder minio --stack ${STACK}
+just gcp-pulumi create-resource --folder minio --stack ${STACK}
 ```
 
 **HA:** not implemented as distributed MinIO in this project.
@@ -552,7 +550,7 @@ You are done with **this** guide when:
 To tear down a single database project (careful — destructive):
 
 ```bash
-just gcp-pulumi remove-resource <project-folder> ${STACK}
+just gcp-pulumi remove-resource --folder <project-folder> --stack ${STACK}
 ```
 
 Prefer snapshot/backup policy before destroy on shared environments.

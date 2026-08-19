@@ -42,8 +42,8 @@ asdf install just
 Since `just` is now installed, install the remaining tools one by one, pinning each to the version defined in `.tool-versions`:
 
 ```bash
-just install-tool <tool_name> <version>
-# Example: just install-tool kubectl 1.28.8
+just install-tool --name <tool_name> --version <version>
+# Example: just install-tool --name kubectl --version 1.28.8
 ```
 
 Each call installs the exact version (creating the asdf plugin if needed) and writes the pin to the active tool versions file — `.tool-versions` at the repo root, or the per-cluster file when `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` is set (see `docs/kops-setup-draft.md` §1.4.1). Tools managed this way include:
@@ -73,7 +73,7 @@ The Service Account Manager service account is needed to:
 
 The project owner must run:
 ```sh
-just gcp-sa setup-sa-manager <project_id>
+just gcp-sa setup-sa-manager --project-id <project_id>
 ```
 
 This will create a service account named `sa-manager` and create a JSON key file for the service account in their `./credentials` directory.
@@ -82,7 +82,7 @@ Have the project owner send the key file to you. Save it as `./credentials/sa-ma
 
 Then, you can set the `GOOGLE_APPLICATION_CREDENTIALS` environmental variable by running 
 ```
-just set-env-var GOOGLE_APPLICATION_CREDENTIALS "${PWD}/credentials/sa-manager.json"
+just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/sa-manager.json"
 ```
 
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the [prescribed method](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key) of setting up ADC.
@@ -96,7 +96,7 @@ To create the kubernetes cluster and run all the `dictyBase` applications, certa
 running the following command will enable the APIs from the list defined in `enabled_apis.txt`
 
 ```sh
-just gcp-api enable-apis <project_id> gcs-files/apis/enabled_apis.txt
+just gcp-api enable-apis --project <project_id> --api-file gcs-files/apis/enabled_apis.txt
 ```
 
 While not required for running the cluster, it is helpful to disable unneeded Google Cloud APIs to prevent unwanted charges to the GCP account.
@@ -104,7 +104,7 @@ While not required for running the cluster, it is helpful to disable unneeded Go
 running the following command will disable unnecessary Google Cloud APIs using the predefined list:
 
 ```sh
-just gcp-api disable-apis <project_id> gcs-files/apis/disable_enabled_apis.txt
+just gcp-api disable-apis --project <project_id> --api-file gcs-files/apis/disable_enabled_apis.txt
 ```
 
 ### 2. Create the `kops cluster creator` Service Account
@@ -114,7 +114,7 @@ The `kops cluster creator` service account is a dedicated service account with t
 Create this service account with:
 
 ```sh
-just gcp-sa create-sa <project_id> kops-cluster-creator gcs-files/roles-permissions/kops-cluster-creator-roles.txt credentials/kops-cluster-creator.json
+just gcp-sa create-sa --project <project_id> --sa-name kops-cluster-creator --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt --output-file credentials/kops-cluster-creator.json
 ```
 
 This will create a service account named `kops-cluster-creator` with the roles defined in `gcs-files/roles-permissions/kops-cluster-creator-roles.txt`, and save the JSON key file to `credentials/kops-cluster-creator.json`.
@@ -135,8 +135,8 @@ Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` se
 Follow the [Kops Cluster Creation Guide](docs/kops-setup-draft.md) for the current phased HA provisioning workflow. The modern approach uses:
 
 ```sh
-just gcp-cluster create-state-bucket <project_id> <bucket_name>
-just gcp-cluster create-cluster-config <project_id> <bucket_name>
+just gcp-cluster create-state-bucket --project <project_id> --bucket-name <bucket_name>
+just gcp-cluster create-cluster-config --project <project_id> --bucket-name <bucket_name>
 just gcp-cluster update-cluster
 ```
 ## Application Deployment with Pulumi
@@ -145,7 +145,7 @@ Applications are deployed to the Kubernetes cluster using [Pulumi](https://www.p
 
 ### 1. Create Pulumi Manager Service Account Key
 ```sh
-just gcp-sa create-sa <project_id> pulumi-manager gcs-files/roles-permissions/pulumi-manager-roles.txt credentials/pulumi-manager.json
+just gcp-sa create-sa --project <project_id> --sa-name pulumi-manager --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt --output-file credentials/pulumi-manager.json
 ```
 
 ### 2. Set the PULUMI_GCP_CREDENTIALS environmental variable
@@ -156,7 +156,7 @@ export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 ### 3. Create Key Ring and Key
 Creates a Google [Cloud Key](https://cloud.google.com/kms/docs/resource-hierarchy#keys) used to encrypt secrets in a Pulumi project's stack
 ```sh
-just gcp-kms create-keyring-and-key <project-id> <keyring-name> <key-name> credentials/pulumi-manager.json <location>
+just gcp-kms create-keyring-and-key --project-id <project-id> --keyring-name <keyring-name> --key-name <key-name> --credentials-file credentials/pulumi-manager.json --location <location>
 ```
 Then,
 ```
@@ -170,7 +170,7 @@ Arguments:
 The following command sets up a Google Cloud Storage bucket to store Pulumi state:
 
 ```sh
-just gcp-pulumi pulumi-gcs-setup credentials/pulumi-manager.json <pulumi_bucket_name> <lifecycle_config> <location>
+just gcp-pulumi pulumi-gcs-setup --sa-json-path credentials/pulumi-manager.json --gcs-bucket <pulumi_bucket_name> --location <location>
 ```
 
 Arguments:
@@ -181,18 +181,18 @@ Arguments:
 ### 5. Initialize Project Stack
 Initialize stack:
 ```
-just gcp-pulumi new-stack-from <folder> <stack> <from-stack>
+just gcp-pulumi new-stack-from --folder <folder> --stack <stack> --from-stack <from-stack>
 ```
 Example: 
 ```
-just gcp-pulumi new-stack from graphql_server production staging
+just gcp-pulumi new-stack-from --folder graphql_server --stack production --from-stack staging
 ```
 This would initialize a new stack called `production` in the `graphql_server` project. It will copy the configuration from the `staging` stack, if it exists.
 
 ### 6. Create Pulumi Resources
 Create the project resources for the desired stack
 ```
-just gcp-pulumi create-resource <folder> <stack>
+just gcp-pulumi create-resource --folder <folder> --stack <stack>
 ```
 
 ## Simplified Pulumi Setup and Deployment
@@ -204,7 +204,7 @@ For convenience, we provide two just recipes that simplify the Pulumi setup and 
 The `initialize-pulumi` recipe combines steps 1-4 of the `Application Deployment with Pulumi` section into a single command:
 
 ```sh
-just initialize-pulumi <project_id> <keyring_name> <key_name> <bucket_name> [location]
+just initialize-pulumi --project-id <project_id> --keyring-name <keyring_name> --key-name <key_name> --bucket-name <bucket_name> [--location <location>]
 ```
 
 Arguments:
@@ -225,7 +225,7 @@ This command will:
 The `pulumi-init-and-deploy` recipe combines the Pulumi environment setup with deploying the initial resources:
 
 ```sh
-just pulumi-init-and-deploy <stack> <from-stack> <project_id> <keyring_name> <key_name> <bucket_name> [location]
+just pulumi-init-and-deploy --stack <stack> --from-stack <from-stack> --project-id <project_id> --keyring-name <keyring_name> --key-name <key_name> --bucket-name <bucket_name> [--location <location>]
 ```
 
 Arguments:
