@@ -40,7 +40,7 @@
   - [5.7 Caveats](#57-caveats)
 - [6. Next Steps](#6-next-steps)
 
-**Last tested**: 2026-07-16
+**Last tested**: 2026-08-18
 
 > **Document type:** This is a **provisioning guide** — a sequential
 > walkthrough for setting up a kops-managed Kubernetes cluster from scratch.
@@ -232,12 +232,12 @@ The credential path is added with `GOOGLE_APPLICATION_CREDENTIALS` in [Section 2
 
 ### 1.6 SSH Keypair and Local Repo
 
-Preferred — generates an **Ed25519** keypair (RSA-4096 via `-t rsa`) and refuses to overwrite an existing key:
+Preferred — generates an **Ed25519** keypair (RSA-4096 via `--type rsa`) and refuses to overwrite an existing key:
 
 ```bash
 just gcp-cluster generate-ssh-key
 # RSA-4096 fallback:
-just gcp-cluster generate-ssh-key -t rsa
+just gcp-cluster generate-ssh-key --type rsa
 ```
 
 Key path precedence: the `SSH_KEY` env var if set (from [Section 1.5](#15-per-project-file-isolation)); otherwise `--project <project-id>` builds `credentials/<project-id>/k8sVM`. Both key files are gitignored — a fresh clone always needs the keypair (or a secure copy from another operator).
@@ -603,7 +603,7 @@ You pay for GCE instances only while the cluster is up. The GCS state bucket cos
 just gcp-cluster delete-cluster
 
 # Full teardown (with confirmation prompt):
-just gcp-cluster delete-cluster yes
+just gcp-cluster delete-cluster --confirm yes
 ```
 **What the recipe does:** Preflight validation → dry-run → confirmation prompt → destroy → cleanup verification.
 
@@ -678,7 +678,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 ### 5.6 Summary
 
 - **First time:** Sections 1–4
-- **Teardown:** `just gcp-cluster delete-cluster yes`
+- **Teardown:** `just gcp-cluster delete-cluster --confirm yes`
 - **Recreate:** `just gcp-cluster recreate-cluster`
 - **Repeat as needed**
 
