@@ -16,7 +16,6 @@
   - [1.6 SSH Keypair and Local Repo](#16-ssh-keypair-and-local-repo)
 - [2. Authentication Setup](#2-authentication-setup)
 - [3. Cluster Bootstrap](#3-cluster-bootstrap)
-  - [Phase 0 — Credential & cluster-env](#phase-0)
   - [Phase 1a — Enable APIs](#phase-1a)
   - [Phase 1b — Disable unused APIs](#phase-1b)
   - [Phase 2 — Create kops-cluster-creator SA](#phase-2)
@@ -26,6 +25,7 @@
   - [Phase 4b — Generate cluster manifest](#phase-4b)
   - [Phase 4c — Edit manifest for security](#phase-4c)
   - [Phase 4d — Configure InstanceGroups](#phase-4d)
+  - [Changing Shape After Generation](#changing-shape-after-generation)
   - [Phase 5 — Apply (version-aware)](#phase-5)
   - [Phase 6 — Validate HA topology](#phase-6)
   - [Phase 7 — Post-Provisioning Hardening](#phase-7)
@@ -100,8 +100,8 @@ Everything the tooling knows about a cluster — its name, state location, tool 
 
 **Option A — copy the example and edit**:
 ```bash
-cp .env.dev.dcr-experiments .env.<env>.<cluster-name>
-# edit .env.<env>.<cluster-name> with your values
+cp .env.dev.dcr-experiments .env.<env>.<cluster>
+# edit .env.<env>.<cluster> with your values
 ```
 **Option B — create from scratch** using the [variables overview](#132-variables-overview) as your checklist. The file is just `VAR=value` lines — nothing fancy (no `export` prefix; `just cluster-env` auto-exports them via `set -a`).
 
@@ -127,7 +127,7 @@ The cluster env file grows as you work through the guide — do not fill it all 
 Set `PROJECT_ID` now — every later step references it:
 
 ```bash
-PROJECT_ID="<your-gcp-project-id>"
+PROJECT_ID="<project-id>"
 ```
 
 > **Why `.k8s.local`?** `KOPS_CLUSTER_NAME` must end in `.k8s.local` so kops uses gossip-based DNS — cluster nodes discover each other directly instead of through a managed DNS zone. You set this value in [Section 3](#3-cluster-bootstrap).
@@ -137,7 +137,7 @@ PROJECT_ID="<your-gcp-project-id>"
 `just cluster-env --env <env> --cluster <cluster>` sources the env file into a sub-shell — one command, no `.envrc` mutation:
 
 ```bash
-just cluster-env --env <env> --cluster <cluster-name>
+just cluster-env --env <env> --cluster <cluster>
 # Example: just cluster-env --env dev --cluster my-cluster
 ```
 The sub-shell reads the file once when it starts, so all cluster variables are loaded for every `just` command inside it. To switch clusters — or after editing the file — `exit` the sub-shell and re-run `just cluster-env`.
@@ -221,11 +221,11 @@ Use `just install-tool --name <tool> --version <version>` to add or re-pin a sin
 
 ### 1.5 Per-Project File Isolation
 
-One GCP project hosts exactly one cluster. Scope every cluster-specific file to its project ID: SSH keys and service-account JSON keys go in `credentials/<project-id>/`, and the kubeconfig goes in `clusters/<project-id>/`. These paths are relative to the **cluster-ops repo root** — the directory you run `just` from, where the env file lives. Anchor them with `${PWD}` (your shell's working directory at that point):
+One GCP project hosts exactly one cluster. Scope every cluster-specific file to its project ID: SSH keys and service-account JSON keys go in `credentials/${PROJECT_ID}/`, and the kubeconfig goes in `clusters/${PROJECT_ID}/`. These paths are relative to the **cluster-ops repo root** — the directory you run `just` from, where the env file lives. Anchor them with `${PWD}` (your shell's working directory at that point):
 
 ```bash
-SSH_KEY="${PWD}/credentials/<project-id>/k8sVM.pub"
-KUBECONFIG="${PWD}/clusters/<project-id>/kubeconfig"
+SSH_KEY="${PWD}/credentials/${PROJECT_ID}/k8sVM.pub"
+KUBECONFIG="${PWD}/clusters/${PROJECT_ID}/kubeconfig"
 ```
 
 The credential path is added with `GOOGLE_APPLICATION_CREDENTIALS` in [Section 2](#2-authentication-setup), after the service-account key exists. This isolation prevents one project's cluster files from replacing another project's files.
@@ -240,84 +240,68 @@ just gcp-cluster generate-ssh-key
 just gcp-cluster generate-ssh-key --type rsa
 ```
 
-Key path precedence: the `SSH_KEY` env var if set (from [Section 1.5](#15-per-project-file-isolation)); otherwise `--project <project-id>` builds `credentials/<project-id>/k8sVM`. Both key files are gitignored — a fresh clone always needs the keypair (or a secure copy from another operator).
+Key path precedence: the `SSH_KEY` env var if set (from [Section 1.5](#15-per-project-file-isolation)); otherwise `--project <project-id>` (defaults to `PROJECT_ID`) builds `credentials/${PROJECT_ID}/k8sVM`. Both key files are gitignored — a fresh clone always needs the keypair (or a secure copy from another operator).
 
 ## 2. Authentication Setup
 
-You need the **Service Account Manager** key. It has broad permissions (creating other service accounts, enabling APIs, managing IAM) so the rest of the process can run with tighter, least-privilege credentials.
+You need the **Service Account Manager** (`sa-manager`) key — broad permissions (creating SAs, enabling APIs, managing IAM) so the rest of the process runs least-privilege.
 
-1.  **Obtain Key**: Request the `sa-manager` JSON key from the project owner.
+Record both key paths in your cluster env file **first** — they drive the commands below, and the recipe writes the key where `SA_MANAGER_KEY` points:
 
-    **If you *are* the project owner**, add `SA_MANAGER_KEY` to the cluster env file first (see step 2) — the recipe writes the key there — activate it, then create the SA and key:
+```bash
+SA_MANAGER_KEY="${PWD}/credentials/${PROJECT_ID}/sa-manager.json"
+GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/${PROJECT_ID}/sa-manager.json"
+```
 
-    ```bash
-    just cluster-env --env <env> --cluster <cluster>
-    just gcp-sa setup-sa-manager --project-id <PROJECT_ID>
-    ```
+- `SA_MANAGER_KEY` — where the key lives.
+- `GOOGLE_APPLICATION_CREDENTIALS` — the active credential that `just cluster-env` loads.
 
-    Recipe options:
-    - `-p`, `--project-id <project-id>` — GCP project (required).
-    - `-k`, `--key-file <path>` — key output path, used only when `SA_MANAGER_KEY` is unset (defaults to `credentials/<project-id>/sa-manager.json`).
+Then activate the env — run every command below inside this sub-shell:
 
-    This creates the SA (skips if it already exists), binds all 13 manager roles, and downloads the JSON key.
+```bash
+just cluster-env --env <env> --cluster <cluster>
+```
 
-    **If you're creating this SA manually in the GCP Console**, bind these 13 roles (all predefined, no custom roles needed):
+**If you are the project owner**, create the SA and download its key (skips an existing SA; binds all 13 predefined manager roles — service-account, IAM, API, storage, and KMS administration):
 
-    | Role | Purpose |
-    |---|---|
-    | `roles/iam.serviceAccountAdmin` | Create and delete child service accounts |
-    | `roles/iam.serviceAccountCreator` | Create service accounts |
-    | `roles/iam.serviceAccountKeyAdmin` | Create and rotate SA keys |
-    | `roles/iam.serviceAccountUser` | Impersonate and attach SAs to resources |
-    | `roles/iam.roleAdmin` | Create and manage custom IAM roles |
-    | `roles/resourcemanager.projectIamAdmin` | Grant and revoke IAM roles on the project |
-    | `roles/serviceusage.serviceUsageAdmin` | Enable and disable GCP APIs |
-    | `roles/storage.admin` | Full control over Cloud Storage |
-    | `roles/storage.hmacKeyAdmin` | Manage HMAC keys for storage |
-    | `roles/cloudkms.admin` | Create and manage KMS keyrings and keys |
-    | `roles/cloudkms.cryptoOperator` | Encrypt/decrypt with existing KMS keys |
-    | `roles/compute.instanceAdmin.v1` | Full control over GCE instances |
-    | `roles/aiplatform.user` | Vertex AI platform access |
+```bash
+just gcp-sa setup-sa-manager
+```
 
-2. **Save the key**: Place it in `./credentials/<project-id>/sa-manager.json`.
+Recipe options: `-p`/`--project-id <project-id>` — optional, defaults to `PROJECT_ID` from the activated env; `-k`/`--key-file <path>` — output path, used only when `SA_MANAGER_KEY` is unset (defaults to `credentials/${PROJECT_ID}/sa-manager.json`).
 
-   Record both paths in your **per-cluster env file** (set `SA_MANAGER_KEY` here too if you didn't set it before running the recipe):
+**Otherwise**, ask the project owner for the `sa-manager` JSON key and save it to `./credentials/${PROJECT_ID}/sa-manager.json`.
 
-   ```bash
-   SA_MANAGER_KEY="${PWD}/credentials/<project-id>/sa-manager.json"
-   GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/<project-id>/sa-manager.json"
-   ```
+Next, set up the **gcloud named configuration**. App credentials and gcloud configuration are separate: `GOOGLE_APPLICATION_CREDENTIALS` authenticates recipes and libraries, while the named configuration authenticates direct `gcloud` commands. The activated env provides `PROJECT_ID` and `SA_MANAGER_KEY`:
 
-   `SA_MANAGER_KEY` is the sa-manager key location; `GOOGLE_APPLICATION_CREDENTIALS` is the active credential. `just cluster-env` loads both. Phases 2–3 of the bootstrap create a narrower `kops-cluster-creator` key and update `GOOGLE_APPLICATION_CREDENTIALS`. By the time the cluster is up, `sa-manager` is no longer in active use.
+```bash
+gcloud config configurations create sa-manager
+gcloud auth activate-service-account \
+  sa-manager@${PROJECT_ID}.iam.gserviceaccount.com \
+  --key-file="${SA_MANAGER_KEY}"
+gcloud config set project ${PROJECT_ID}
+gcloud config set compute/zone us-central1-c
+gcloud config configurations activate sa-manager
+```
 
-3. **Set up and activate the required gcloud named configuration**: Application credentials and gcloud configuration are separate. `GOOGLE_APPLICATION_CREDENTIALS` authenticates recipes and libraries; the named gcloud configuration authenticates direct `gcloud` commands. Set up both before bootstrap, inside the activated env (`just cluster-env --env <env> --cluster <cluster>` — it provides `PROJECT_ID` and `SA_MANAGER_KEY`):
+The last command makes `sa-manager` the active gcloud configuration for bootstrap — an isolated slot; your personal login stays untouched in the `default` configuration. Switch back when done:
 
-    ```bash
-    gcloud config configurations create sa-manager
-    gcloud auth activate-service-account \
-      sa-manager@${PROJECT_ID}.iam.gserviceaccount.com \
-      --key-file="${SA_MANAGER_KEY}"
-    gcloud config set project ${PROJECT_ID}
-    gcloud config set compute/zone us-central1-c
-    gcloud config configurations activate sa-manager
-    ```
+```bash
+gcloud config configurations activate default   # personal login
+# back to sa-manager:
+gcloud config configurations activate sa-manager
+```
 
-    The final command makes `sa-manager` the active gcloud configuration for bootstrap. This creates an isolated identity slot — your personal login stays untouched in the `default` configuration. Switch back to it after bootstrap:
-    ```bash
-    gcloud config configurations activate default
-    ```
-    Or flip back to sa-manager:
-    ```bash
-    gcloud config configurations activate sa-manager
-    ```
+Check who you are at any moment:
 
-    See who you are at any moment:
-    ```bash
-    gcloud auth list                     # which account is active?
-    gcloud config configurations list    # all your named identities
-    ```
+```bash
+gcloud auth list                     # which account is active?
+gcloud config configurations list    # all named identities
+```
 
-    > **You can add more SA identities later the same way** (e.g., a `kops-creator` configuration for the `kops-cluster-creator` key). Each gets its own named slot — create a new gcloud configuration with `gcloud config configurations create <name>`, activate the SA with `gcloud auth activate-service-account`, and switch between them with `gcloud config configurations activate <name>`.
+> **Add more SA identities later the same way** (e.g. a `kops-creator` configuration for the `kops-cluster-creator` key). Each gets its own named slot: `gcloud config configurations create <name>`, activate the SA with `gcloud auth activate-service-account`, switch with `gcloud config configurations activate <name>`.
+
+> Phases 2–3 of the bootstrap ([Section 3](#3-cluster-bootstrap)) mint a narrower `kops-cluster-creator` key and point `GOOGLE_APPLICATION_CREDENTIALS` at it; `sa-manager` then goes dormant.
 
 ## 3. Cluster Bootstrap
 
@@ -346,8 +330,8 @@ Before starting, verify the variables you set in earlier sections and add the re
 | `KUBERNETES_VERSION` | Which Kubernetes version to deploy | `1.28.8` |
 
 ```bash
-BUCKET_NAME="kops-state-<cluster-name>"
-KOPS_CLUSTER_NAME="<cluster-name>.k8s.local"
+BUCKET_NAME="kops-state-<cluster>"
+KOPS_CLUSTER_NAME="<cluster>.k8s.local"
 KOPS_STATE_STORE="gs://${BUCKET_NAME}/"
 KUBERNETES_VERSION="1.28.8"
 ```
@@ -358,19 +342,12 @@ After editing the file, reload it before running any recipe:
 
 ```bash
 exit
-just cluster-env --env <env> --cluster <cluster-name>
+just cluster-env --env <env> --cluster <cluster>
 ```
 
 > All commands below assume `${PROJECT_ID}` and `${BUCKET_NAME}` are loaded from the active cluster env file.
 
-<a id="phase-0"></a>
-
-### Phase 0 — Credential & cluster-env
-```bash
-just cluster-cred --env <env> --cluster <cluster-name> --key credentials/<project-id>/sa-manager.json
-just cluster-env --env <env> --cluster <cluster-name>
-```
-Phases 1a through 2 run with `sa-manager`'s broad permissions.
+Phases 1a–2 run with the `sa-manager` credential ([Section 2](#2-authentication-setup)); [Phase 3](#phase-3) rotates to the narrower `kops-cluster-creator` key.
 
 <a id="phase-1a"></a>
 
@@ -398,12 +375,12 @@ A dedicated identity with just the 8 roles it needs (compute admin, network admi
 
 ### Phase 3 — Rotate credential
 ```bash
-just cluster-cred --env <env> --cluster <cluster-name> --key credentials/<project-id>/kops-cluster-creator.json
+just cluster-cred --env <env> --cluster <cluster> --key credentials/${PROJECT_ID}/kops-cluster-creator.json
 ```
 This updates the `GOOGLE_APPLICATION_CREDENTIALS` line in your cluster env file to point at the new `kops-cluster-creator` key. To pick it up, exit the sub-shell and re-enter:
 ```bash
 exit
-just cluster-env --env <env> --cluster <cluster-name>
+just cluster-env --env <env> --cluster <cluster>
 ```
 From this point on, the narrower `kops-cluster-creator` key is what's used for everything. The `sa-manager` key goes dormant — and `.envrc` was never touched.
 
@@ -421,7 +398,7 @@ The state bucket holds your entire cluster configuration (uses `PROJECT_ID` and 
 ```bash
 just gcp-cluster create-state-bucket
 ```
-**What it does:** Creates the bucket (skips if it already exists), then enables versioning, uniform bucket-level access, and public access prevention. If the bucket name is already taken globally, pick a different `<BUCKET_NAME>`.
+**What it does:** Creates the bucket (skips if it already exists), then enables versioning, uniform bucket-level access, and public access prevention. If the bucket name is already taken globally, pick a different bucket name.
 
 <a id="phase-4b"></a>
 
@@ -432,7 +409,15 @@ This command writes the manifest to the state bucket but provisions **nothing** 
 ```bash
 just gcp-cluster create-cluster-config
 ```
-Reads the cluster-shape variables from your env file. Unset variables fall back to these defaults (e.g. `TOTAL_NODES=4`, `TOPOLOGY=public`, `NETWORKING=cilium-etcd`):
+Every variable below is read from your cluster env file. The **Default** column is only a fallback — it applies when the variable is unset. To change a value for your cluster, set it in `.env.<env>.<cluster>`:
+
+```bash
+TOTAL_NODES=6
+TOPOLOGY=private
+NETWORKING=cilium
+```
+
+Then `exit` and re-run `just cluster-env` before `create-cluster-config`:
 
 | Variable | Controls | Default | Example (dev) | Example (prod) |
 |----------|----------|---------|---------------|----------------|
@@ -449,7 +434,7 @@ Reads the cluster-shape variables from your env file. Unset variables fall back 
 | `NODE_ZONES` | Worker node zones (comma-separated) | `us-central1-c` | `us-central1-c` | `us-central1-a,us-central1-b,us-central1-c` |
 | `API_ACCESS_CIDR` | Administrative CIDR for API access | *(none — API open)* | *(leave unset)* | `"<your-ip>/32"` |
 
-> **Production HA tip:** set `TOPOLOGY=private`, `NETWORKING=cilium`, `TOTAL_MASTER=3`, and `CONTROL_PLANE_ZONES` for a production, multi-zone control plane. If you add or change any of these variables inside an active cluster sub-shell, `exit` and re-run `just cluster-env` before this command.
+> **Production HA tip:** set `TOPOLOGY=private`, `NETWORKING=cilium`, `TOTAL_MASTER=3`, and `CONTROL_PLANE_ZONES` for a production, multi-zone control plane.
 
 > **What this creates:** Base cluster + one default worker InstanceGroup sized by `TOTAL_NODES` / `NODE_MACHINE` / `NODE_DISK_SIZE`. Extra pools (stateful DB, batch/Spot) come from templates in Phase 4d — not from `create-cluster-config`.
 
@@ -463,8 +448,8 @@ Adjust these fields for defense-in-depth:
 
 | Field Path | Recommended Value | Why |
 |------------|-------------------|-----|
-| `spec.cloudProvider.gce.serviceAccount` | `"kops-nodes-sa@<PROJECT_ID>.iam.gserviceaccount.com"` | Least-privilege node identity |
-| `spec.kubernetesApiAccess` | `["<your-admin-cidr>/32"]` | Restrict API access — never leave `0.0.0.0/0` in production |
+| `spec.cloudProvider.gce.serviceAccount` | `"kops-nodes-sa@<project-id>.iam.gserviceaccount.com"` | Least-privilege node identity |
+| `spec.kubernetesApiAccess` | `["<your-ip>/32"]` | Restrict API access — never leave `0.0.0.0/0` in production |
 | `spec.cloudProvider.gce.pdCSIDriver.enabled` | `true` | GCE Persistent Disk CSI driver for PVs |
 | `spec.etcdClusters[0].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-main (fsync latency critical) |
 | `spec.etcdClusters[1].etcdMembers[*].volumeType` | `pd-ssd` | Dedicated SSD for etcd-events |
@@ -473,11 +458,13 @@ Adjust these fields for defense-in-depth:
 | `spec.certManager.enabled` | `true` | Enable cert-manager — handles x509 certificate provisioning and rotation for cluster services. Required by many addons (e.g., admission webhooks). One installation per cluster; set `spec.certManager.managed: false` if you run cert-manager externally |
 | `spec.kubeDNS.nodeLocalDNS.enabled` | `true` | Enable node-local DNS cache — runs a caching DNS agent on every node as a DaemonSet, reducing DNS latency and CoreDNS load. Low overhead (5Mi memory, 25m CPU per node). Prevents DNS timeouts during CoreDNS restarts |
 
-> **Tip — Capture your edits for reproducibility.** After completing Phase 4c, export the edited manifest:
-> ```bash
-> kops get cluster -o yaml > config/kops/cluster-manifest.yaml
-> ```
-> Check this into the repo. On re-creation, diff against the fresh manifest to re-apply the same security edits.
+After editing, save the manifest — this is **required**, not optional. It is the diff reference every re-creation depends on; skip it and you re-type these security edits from memory after teardown:
+
+```bash
+just gcp-cluster save-cluster-manifest
+```
+
+Writes `config/kops/${PROJECT_ID}/cluster-manifest.yaml` (per-cluster, scoped by your env file's `PROJECT_ID`) and prints the commit command. Check it in. On re-creation, `just gcp-cluster diff-cluster-manifest` shows which security edits to re-apply.
 
 <a id="phase-4d"></a>
 
@@ -488,7 +475,7 @@ kOps uses InstanceGroups to define node pools. Production needs three pools — 
 ```bash
 just gcp-cluster apply-instancegroups
 ```
-Applies the checked-in templates under `config/kops/instancegroups/`, substituting these InstanceGroup env vars from your env file (unset variables fall back to these defaults):
+Applies the checked-in templates under `config/kops/instancegroups/`. Like Phase 4b, the **Default** column below is only a fallback — override any value per cluster by setting the variable in `.env.<env>.<cluster>`:
 
 | Template | Env Vars | Purpose |
 |----------|----------|---------|
@@ -510,7 +497,24 @@ Applies the checked-in templates under `config/kops/instancegroups/`, substituti
 
 > Edit templates once for shared shape; override sizes per environment via the env file. Phase 4c stays manual (`kops edit` / human security judgment).
 
-**Idempotency:** Phases 0–3 and 4a are safe to re-run. Phase 4b is *not* — a second `create-cluster-config` against an existing cluster name errors if the manifest already lives in the state bucket.
+**Idempotency:** Phases 1a–3 and 4a are safe to re-run. Phase 4b is *not* — a second `create-cluster-config` against an existing cluster name errors if the manifest already lives in the state bucket.
+
+<a id="changing-shape-after-generation"></a>
+
+### Changing Shape After Generation
+
+**Env-file variables are read only at generation time.** `create-cluster-config` bakes them into the manifest and the default `nodes` InstanceGroup once. After that, changing a variable and reloading the env does *nothing* to the state bucket — there is no re-sync command.
+
+**Before Phase 5** (manifest written, no VMs yet) — clean and regenerate. This wipes the whole cluster definition, so re-do [Phase 4c](#phase-4c) edits (+ `save-cluster-manifest`) and any [Phase 4d](#phase-4d) pools you had already applied:
+
+```bash
+kops delete cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --yes
+just gcp-cluster create-cluster-config
+```
+
+**After Phase 5** (provisioned) — do *not* delete. Edit in place instead: `kops edit cluster` for cluster-level variables, `kops edit instancegroup nodes` for worker sizing (`TOTAL_NODES` / `NODE_MACHINE` / `NODE_DISK_SIZE`), then `just gcp-cluster update-cluster`.
+
+> **⚠️ Env-file drift is not recommended at all.** Hand-editing the manifest (`kops edit …`) splits the truth in two — the env file says one thing, the state bucket another. Keep the env file the single source of truth: decide the shape there before Phase 4b, or regenerate from it as above.
 
 <a id="phase-5"></a>
 
@@ -561,7 +565,7 @@ just gcp-cluster k9s
 ```
 For a kubeconfig with custom name and duration:
 ```bash
-just gcp-cluster export-named-kubeconfig --name <NAME> --duration-hours <HOURS>
+just gcp-cluster export-named-kubeconfig --name <name> --duration-hours <hours>
 ```
 
 ## 5. Disposable Cluster Lifecycle
@@ -581,10 +585,10 @@ You pay for GCE instances only while the cluster is up. The GCS state bucket cos
 | Artifact | Survives? | Why |
 |----------|-----------|-----|
 | GCS state bucket (`gs://${BUCKET_NAME}`) | ✅ Yes | kOps delete does **not** touch the state bucket. The versioned object history is preserved. |
-| Per-cluster env file (`.env.<env>.<cluster-name>`) | ✅ Yes | A local file in the repo — never touched by teardown. |
+| Per-cluster env file (`.env.<env>.<cluster>`) | ✅ Yes | A local file in the repo — never touched by teardown. |
 | Per-cluster tool version file (`.tool-versions.<env>.<cluster>`) | ✅ Yes | A local file in the repo — part of the cluster blueprint. See [Section 1.4.1](#141-tool-version-files). |
-| SSH keypair (`credentials/<project-id>/k8sVM*`) | ✅ Yes | Local files. Reused across create/destroy cycles. |
-| Service account keys (`credentials/<project-id>/sa-manager.json`, `credentials/<project-id>/kops-cluster-creator.json`, etc.) | ✅ Yes | Local files — one JSON key per SA per project. The SAs themselves live in the GCP project and are never deleted. |
+| SSH keypair (`credentials/${PROJECT_ID}/k8sVM*`) | ✅ Yes | Local files. Reused across create/destroy cycles. |
+| Service account keys (`credentials/${PROJECT_ID}/sa-manager.json`, `credentials/${PROJECT_ID}/kops-cluster-creator.json`, etc.) | ✅ Yes | Local files — one JSON key per SA per project. The SAs themselves live in the GCP project and are never deleted. |
 | GCP project + enabled APIs | ✅ Yes | Teardown only removes cluster resources, not the project or its API enablement. |
 | InstanceGroup templates (`config/kops/instancegroups/*.yaml.tmpl`) | ✅ Yes | Checked into the repo. |
 | **GCE instances** (control-plane + workers) | ❌ Destroyed | These are the cluster. |
@@ -626,7 +630,7 @@ If deleted, re-run Phase 4a before Phase 4b.
 
 ### 5.5 Re-Creation — Bring It Back
 
-After teardown, bringing the cluster back skips the heavy one-time setup. The GCP project already exists, APIs are enabled, service accounts and their keys are in place, the SSH keypair is still in `credentials/<project-id>/`, and your per-cluster env file is untouched.
+After teardown, bringing the cluster back skips the heavy one-time setup. The GCP project already exists, APIs are enabled, service accounts and their keys are in place, the SSH keypair is still in `credentials/${PROJECT_ID}/`, and your per-cluster env file is untouched.
 
 > **Shortcut:** `just gcp-cluster recreate-cluster` automates the checklist below (requiring only that the env is activated first). Walk through it manually when you want to review each phase.
 
@@ -634,7 +638,7 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
 
 1. **Activate the cluster env** (you're back in a fresh terminal):
    ```bash
-   just cluster-env --env <env> --cluster <cluster-name>
+   just cluster-env --env <env> --cluster <cluster>
    ```
 
 2. **Regenerate the cluster manifest** (Phase 4b):
@@ -647,10 +651,9 @@ After teardown, bringing the cluster back skips the heavy one-time setup. The GC
    ```bash
    just gcp-cluster edit-cluster
    ```
-   Re-apply the same security settings: `kubernetesApiAccess`, etcd volume types (`pd-ssd`), node service account, Cluster Autoscaler, Node Problem Detector, cert-manager, and node-local DNS. If you saved and checked in the manifest (see [Phase 4c](#phase-4c)), diff against your saved copy:
+   Re-apply the same security settings: `kubernetesApiAccess`, etcd volume types (`pd-ssd`), node service account, Cluster Autoscaler, Node Problem Detector, cert-manager, and node-local DNS. If you saved and checked in the manifest (see [Phase 4c](#phase-4c)), diff against your saved copy first:
    ```bash
-   kops get cluster -o yaml > /tmp/fresh-manifest.yaml
-   diff config/kops/cluster-manifest.yaml /tmp/fresh-manifest.yaml
+   just gcp-cluster diff-cluster-manifest
    ```
 
 4. **Apply InstanceGroups** (Phase 4d):
