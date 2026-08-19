@@ -394,8 +394,9 @@ instance-groups:
 # what kOps will destroy without touching anything.
 # With "yes": preflight check → execute teardown → verify cleanup.
 #
-# Usage: just delete-cluster         (dry-run — safe)
-# just delete-cluster yes     (full destroy)
+# Usage: just gcp-cluster delete-cluster               (dry-run — safe)
+#       just gcp-cluster delete-cluster --confirm yes  (full destroy)
+[arg("confirm", long="confirm", short="c", help="Set to 'yes' to destroy after the dry-run; anything else dry-runs")]
 [no-cd]
 delete-cluster confirm="no":
     #!/usr/bin/env bash
@@ -410,7 +411,7 @@ delete-cluster confirm="no":
 
     if [ -z "${KOPS_CLUSTER_NAME:-}" ] || [ -z "${KOPS_STATE_STORE:-}" ]; then
         echo "ERROR: KOPS_CLUSTER_NAME and KOPS_STATE_STORE must be set."
-        echo "Run: just cluster-env <env> <cluster-name>"
+        echo "Run: just cluster-env --env <env> --cluster <cluster-name>"
         exit 1
     fi
 
@@ -426,7 +427,7 @@ delete-cluster confirm="no":
         echo "Dry-run complete. No resources were touched."
         echo ""
         echo "To destroy the cluster, review the list above, then run:"
-        echo "  just gcp-cluster delete-cluster yes"
+        echo "  just gcp-cluster delete-cluster --confirm yes"
         exit 0
     fi
 
@@ -528,7 +529,7 @@ recreate-cluster:
 
     if [ -z "${PROJECT_ID:-}" ] || [ -z "${BUCKET_NAME:-}" ]; then
         echo "ERROR: PROJECT_ID and BUCKET_NAME must be set."
-        echo "Run: just cluster-env <env> <cluster-name>"
+        echo "Run: just cluster-env --env <env> --cluster <cluster-name>"
         exit 1
     fi
 
