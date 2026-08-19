@@ -42,7 +42,7 @@ install-dagger-binary:
 
 # Install a tool version in the active (or default) tool versions file.
 #   - Target file resolves from ASDF_DEFAULT_TOOL_VERSIONS_FILENAME (exported by
-#     `just cluster-env <env> <cluster>` for per-cluster pins); falls back to `.tool-versions`.
+#     `just cluster-env --env <env> --cluster <cluster>` for per-cluster pins); falls back to `.tool-versions`.
 #   - Auto-installs the asdf plugin when missing.
 #   - Installs the binary WITHOUT setting any version (installs are shared across clusters).
 #   - Sets the version by editing only that tool's line in the target file —
