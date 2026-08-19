@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	E "github.com/IBM/fp-go/v2/either"
@@ -12,8 +13,6 @@ import (
 
 	"github.com/urfave/cli/v2"
 )
-
-var defaultManifestPath = "config/kops/cluster-manifest.yaml"
 
 // RecreateCluster runs the full 6-step re-creation pipeline.
 func RecreateCluster(cltx *cli.Context) error {
@@ -55,7 +54,7 @@ func RecreateCluster(cltx *cli.Context) error {
 	}
 
 	fmt.Println("Re-creation complete.")
-	fmt.Println("Run 'cluster-ops kops save-manifest' to update the saved manifest.")
+	fmt.Println("Run 'just gcp-cluster save-cluster-manifest' to update the saved manifest.")
 	return nil
 }
 
@@ -79,13 +78,17 @@ func stepDiffManifest(cltx *cli.Context) error {
 	)
 }
 
-// manifestPath returns the saved manifest path, with a default fallback.
+// manifestPath returns the saved manifest path: an explicit --manifest flag,
+// otherwise a per-project path scoped by PROJECT_ID from the activated env
+// (config/kops/<project-id>/cluster-manifest.yaml), falling back to the flat path.
 func manifestPath(cltx *cli.Context) string {
-	saved := cltx.String("manifest")
-	if saved != "" {
+	if saved := cltx.String("manifest"); saved != "" {
 		return saved
 	}
-	return defaultManifestPath
+	if projectID := os.Getenv("PROJECT_ID"); projectID != "" {
+		return filepath.Join("config", "kops", projectID, "cluster-manifest.yaml")
+	}
+	return filepath.Join("config", "kops", "cluster-manifest.yaml")
 }
 
 // checkManifestExists stats the manifest file.

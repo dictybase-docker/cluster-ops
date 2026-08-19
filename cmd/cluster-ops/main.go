@@ -170,11 +170,11 @@ func kopsDeleteFlags() []cli.Flag {
 			EnvVars: []string{"PROJECT_ID"},
 		},
 		&cli.BoolFlag{
-			Name: "yes",
+			Name:  "yes",
 			Usage: "Execute teardown (without this flag: dry-run only)",
 		},
 		&cli.BoolFlag{
-			Name: "non-interactive",
+			Name:  "non-interactive",
 			Usage: "Skip confirmation prompt (for CI)",
 		},
 	}
@@ -307,7 +307,7 @@ func igCommand() *cli.Command {
 						Value: "config/kops/instancegroups",
 					},
 					&cli.BoolFlag{
-						Name: "dry-run",
+						Name:  "dry-run",
 						Usage: "Render and validate without applying",
 					},
 				},
