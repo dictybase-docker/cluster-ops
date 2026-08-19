@@ -9,7 +9,7 @@ build:
 # Options: -p/--project <project-id>, -t/--type ed25519|rsa (default ed25519).
 # Refuses to overwrite an existing keypair.
 # Usage: just gcp-cluster generate-ssh-key [--project <project-id>] [--type ed25519|rsa]
-[arg("project", long="project", short="p", help="GCP project id; builds credentials/<project>/k8sVM when SSH_KEY is unset")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var); builds credentials/<project>/k8sVM when SSH_KEY is unset")]
 [arg("type", long="type", short="t", pattern="ed25519|rsa", help="Key algorithm: ed25519 (default) or rsa")]
 [no-cd]
 generate-ssh-key project="" type="ed25519":
@@ -29,11 +29,12 @@ generate-ssh-key project="" type="ed25519":
                 ;;
         esac
     else
-        if [ -z "{{ project }}" ]; then
-            echo "ERROR: no key path. Set SSH_KEY or pass --project <project-id>."
+        project="${PROJECT_ID:-{{ project }}}"
+        if [ -z "${project}" ]; then
+            echo "ERROR: no key path. Set SSH_KEY, PROJECT_ID, or pass --project <project-id>."
             exit 1
         fi
-        key_path="${root}/credentials/{{ project }}/k8sVM"
+        key_path="${root}/credentials/${project}/k8sVM"
     fi
 
     key_dir="$(dirname "${key_path}")"
@@ -62,7 +63,7 @@ generate-ssh-key project="" type="ed25519":
     if [ -z "${SSH_KEY:-}" ]; then
         echo ""
         echo "Add this to your per-cluster env file (.env.<env>.<cluster>):"
-        echo "  SSH_KEY=\${PWD}/credentials/{{ project }}/k8sVM.pub"
+        echo "  SSH_KEY=\${PWD}/credentials/${project}/k8sVM.pub"
     fi
 
 # Set up the project's service accounts and roles.
@@ -411,7 +412,7 @@ delete-cluster confirm="no":
 
     if [ -z "${KOPS_CLUSTER_NAME:-}" ] || [ -z "${KOPS_STATE_STORE:-}" ]; then
         echo "ERROR: KOPS_CLUSTER_NAME and KOPS_STATE_STORE must be set."
-        echo "Run: just cluster-env --env <env> --cluster <cluster-name>"
+        echo "Run: just cluster-env --env <env> --cluster <cluster>"
         exit 1
     fi
 
@@ -493,7 +494,12 @@ delete-cluster confirm="no":
 save-cluster-manifest:
     #!/usr/bin/env bash
     set -euo pipefail
-    OUT="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    if [ -z "${PROJECT_ID:-}" ]; then
+        echo "ERROR: PROJECT_ID must be set."
+        echo "Run: just cluster-env --env <env> --cluster <cluster>"
+        exit 1
+    fi
+    OUT="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
     mkdir -p "$(dirname "$OUT")"
     kops get cluster -o yaml > "$OUT"
     echo "Cluster manifest saved to: $OUT"
@@ -508,7 +514,12 @@ save-cluster-manifest:
 diff-cluster-manifest:
     #!/usr/bin/env bash
     set -euo pipefail
-    SAVED="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    if [ -z "${PROJECT_ID:-}" ]; then
+        echo "ERROR: PROJECT_ID must be set."
+        echo "Run: just cluster-env --env <env> --cluster <cluster>"
+        exit 1
+    fi
+    SAVED="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
     if [ ! -f "$SAVED" ]; then
         echo "ERROR: No saved manifest at $SAVED"
         echo "Run: just gcp-cluster save-cluster-manifest"
@@ -529,7 +540,7 @@ recreate-cluster:
 
     if [ -z "${PROJECT_ID:-}" ] || [ -z "${BUCKET_NAME:-}" ]; then
         echo "ERROR: PROJECT_ID and BUCKET_NAME must be set."
-        echo "Run: just cluster-env --env <env> --cluster <cluster-name>"
+        echo "Run: just cluster-env --env <env> --cluster <cluster>"
         exit 1
     fi
 
@@ -538,7 +549,7 @@ recreate-cluster:
     echo ""
 
     echo "=== Step 2/6: Diff against saved manifest ==="
-    SAVED="{{ invocation_directory() }}/config/kops/cluster-manifest.yaml"
+    SAVED="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
     if [ -f "$SAVED" ]; then
         kops get cluster -o yaml | diff "$SAVED" - && \
             echo "Manifest matches saved copy — no edits needed." || \

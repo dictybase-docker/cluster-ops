@@ -126,7 +126,7 @@ create-hmac-key project="" sa_name output_file:
 # Options: -p/--project-id <project-id>, -k/--key-file <path>.
 # Usage: just gcp-sa setup-sa-manager [--project-id <project-id>] [--key-file <path>]
 [arg("key_file", long="key-file", short="k", help="Output key path; defaults to SA_MANAGER_KEY, else credentials/<project-id>/sa-manager.json")]
-[arg("project_id", long="project-id", short="p", help="GCP project id (required)")]
+[arg("project_id", long="project-id", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [group('service-account-management')]
 [no-cd]
 setup-sa-manager project_id="" key_file="":
@@ -136,8 +136,9 @@ setup-sa-manager project_id="" key_file="":
 
     root="{{ invocation_directory() }}"
 
-    if [ -z "{{ project_id }}" ]; then
-        echo "ERROR: --project-id is required."
+    project_id="${PROJECT_ID:-{{ project_id }}}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: --project-id is required (or set PROJECT_ID in the cluster env file)."
         exit 1
     fi
 
@@ -146,20 +147,20 @@ setup-sa-manager project_id="" key_file="":
     elif [ -n "{{ key_file }}" ]; then
         key_file="{{ key_file }}"
     else
-        key_file="${root}/credentials/{{ project_id }}/sa-manager.json"
+        key_file="${root}/credentials/${project_id}/sa-manager.json"
     fi
 
     sa_name="sa-manager"
-    sa_email="${sa_name}@{{ project_id }}.iam.gserviceaccount.com"
+    sa_email="${sa_name}@${project_id}.iam.gserviceaccount.com"
     roles_file="gcs-files/roles-permissions/service-account-manager-roles.txt"
 
     # 1. Create the service account (idempotent — skips if it already exists)
     echo "=== Step 1/3: Creating service account ${sa_email} ==="
-    if gcloud iam service-accounts describe "${sa_email}" --project={{ project_id }} > /dev/null 2>&1; then
+    if gcloud iam service-accounts describe "${sa_email}" --project=${project_id} > /dev/null 2>&1; then
         echo "Service account already exists, skipping creation."
     else
         gcloud iam service-accounts create "${sa_name}" \
-            --project={{ project_id }} \
+            --project=${project_id} \
             --display-name="Service Account Manager" \
             --description="Master SA for bootstrapping cluster infrastructure"
         echo "Service account created."
@@ -167,14 +168,14 @@ setup-sa-manager project_id="" key_file="":
 
     # 2. Assign all 13 manager roles
     echo "=== Step 2/3: Assigning roles from ${roles_file} ==="
-    just gcp-role assign-roles-to-sa --project {{ project_id }} --sa-name ${sa_name} --roles-file {{ invocation_directory() }}/${roles_file}
+    just gcp-role assign-roles-to-sa --project ${project_id} --sa-name ${sa_name} --roles-file {{ invocation_directory() }}/${roles_file}
 
     # 3. Create and download a JSON key (pure gcloud CLI — no ADC needed)
     echo "=== Step 3/3: Generating key file ==="
     mkdir -p "$(dirname "${key_file}")"
     gcloud iam service-accounts keys create "${key_file}" \
         --iam-account="${sa_email}" \
-        --project={{ project_id }}
+        --project=${project_id}
     chmod 600 "${key_file}"
 
     echo ""
