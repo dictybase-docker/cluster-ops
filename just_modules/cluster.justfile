@@ -132,13 +132,6 @@ update-cluster cluster="" kops_name="" state="": build
     fi
     ./bin/cluster-ops kops update
 
-# Reconcile the kops cluster (kOps >= 1.31 only)
-# Thin wrapper — delegates to cluster-ops.
-# Usage: just reconcile-cluster
-[no-cd]
-reconcile-cluster: build
-    ./bin/cluster-ops kops update
-
 # Preview pending cluster changes without applying them (version-aware dry-run).
 # Usage: just gcp-cluster plan-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
@@ -183,21 +176,6 @@ create-state-bucket project="" bucket_name="": build
         exit 1
     fi
     ./bin/cluster-ops bucket create --project="${project_id}" --bucket="${bucket}" --harden
-
-# Create the kops cluster manifest (no VMs provisioned yet).
-# Usage: just gcp-cluster create-cluster-config [--project <project-id>] [--bucket-name <bucket>]
-[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
-[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to BUCKET_NAME env var)")]
-[no-cd]
-create-cluster-config project="" bucket_name="": build
-    #!/usr/bin/env bash
-    set -euo pipefail
-    project_id="${PROJECT_ID:-{{ project }}}"
-    if [ -z "$project_id" ]; then
-        echo "ERROR: no project id — set PROJECT_ID or pass --project."
-        exit 1
-    fi
-    ./bin/cluster-ops kops create-config --project-id="${project_id}"
 
 # Validate HA production topology.
 # Thin wrapper — delegates to cluster-ops.
@@ -442,10 +420,6 @@ setup-cluster-backup:
     just gcp-pulumi create-resource --folder install-velero --stack experiments
 
 [no-cd]
-edit-cluster:
-    kops edit cluster
-
-[no-cd]
 cluster-info:
     kops get cluster -o yaml
 
@@ -550,26 +524,6 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
     fi
 
     echo "Teardown complete."
-
-# Save the current cluster manifest for version-controlled reproducibility.
-# Exports the live cluster spec as YAML so you can diff against it on re-creation.
-# Run this after every successful bootstrap or manifest edit.
-#
-# Usage: just save-cluster-manifest
-[no-cd]
-save-cluster-manifest:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${PROJECT_ID:-}" ]; then
-        echo "ERROR: PROJECT_ID must be set."
-        echo "Run: just cluster-env --env <env> --cluster <cluster>"
-        exit 1
-    fi
-    OUT="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
-    mkdir -p "$(dirname "$OUT")"
-    kops get cluster -o yaml > "$OUT"
-    echo "Cluster manifest saved to: $OUT"
-    echo "Commit it:  git add $OUT && git commit -m 'save known-good cluster manifest'"
 
 # Bootstrap a canonical Git manifest bundle locally from starter templates.
 # Pure offline operation — zero cloud/state store mutation.
@@ -803,37 +757,3 @@ drift-manifests cluster="" kops_name="" state="":
 
     exit "$rc"
 
-# Rewrite shape vars in the per-cluster env file from live kops state.
-# Run after any post-Phase-5 shape change (kops edit / scale) so the env file
-# stays the single source of truth for re-creation. Requires activated env
-# (KOPS_CLUSTER_NAME / KOPS_STATE_STORE) plus --env / --cluster to locate the file.
-#
-# Usage: just gcp-cluster sync-env --env <env> --cluster <cluster>
-[arg("env", long="env", short="e", help="Environment name (.env.<env>.<cluster>)")]
-[arg("cluster", long="cluster", short="c", help="Cluster name")]
-[no-cd]
-sync-env env cluster: build
-    ./bin/cluster-ops kops sync-env --env={{ env }} --cluster={{ cluster }}
-
-# Diff the live cluster manifest against the saved copy.
-# Run before re-creating to see what edits you need to re-apply in Phase 4c.
-# Exits non-zero when differences exist (standard diff behaviour).
-#
-# Usage: just diff-cluster-manifest
-[no-cd]
-diff-cluster-manifest:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${PROJECT_ID:-}" ]; then
-        echo "ERROR: PROJECT_ID must be set."
-        echo "Run: just cluster-env --env <env> --cluster <cluster>"
-        exit 1
-    fi
-    SAVED="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
-    if [ ! -f "$SAVED" ]; then
-        echo "ERROR: No saved manifest at $SAVED"
-        echo "Run: just gcp-cluster save-cluster-manifest"
-        exit 1
-    fi
-    echo "--- Live cluster  |  Saved manifest  ---"
-    kops get cluster -o yaml | diff "$SAVED" - && echo "No differences — manifest matches."
