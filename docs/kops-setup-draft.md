@@ -495,12 +495,6 @@ Applies the checked-in templates under `config/kops/instancegroups/`. Like Phase
 
 > If you add or change any of these variables inside an active cluster sub-shell, `exit` and re-run `just cluster-env` before `apply-instancegroups`.
 
-> Edit templates once for shared shape; override sizes per environment via the env file. Phase 4c stays manual (`kops edit` / human security judgment).
-
-**Idempotency:** Phases 1a–3 and 4a are safe to re-run. Phase 4b is *not* — a second `create-cluster-config` against an existing cluster name errors if the manifest already lives in the state bucket.
-
-<a id="changing-shape-after-generation"></a>
-
 ### Changing Shape After Generation
 
 **Env-file variables are read only at generation time.** `create-cluster-config` bakes them into the manifest and the default `nodes` InstanceGroup once. After that, changing a variable and reloading the env does *nothing* to the state bucket — there is no re-sync command.
