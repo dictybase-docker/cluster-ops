@@ -199,20 +199,6 @@ create-cluster-config project="" bucket_name="": build
     fi
     ./bin/cluster-ops kops create-config --project-id="${project_id}"
 
-# Apply checked-in InstanceGroup templates to the cluster.
-# Thin wrapper — delegates to cluster-ops.
-# Usage: just apply-instancegroups
-[no-cd]
-apply-instancegroups: build
-    ./bin/cluster-ops ig apply
-
-# List all InstanceGroups with key sizing details.
-# Thin wrapper — delegates to cluster-ops.
-# Usage: just list-instancegroups
-[no-cd]
-list-instancegroups: build
-    ./bin/cluster-ops ig list
-
 # Validate HA production topology.
 # Thin wrapper — delegates to cluster-ops.
 # Usage: just gcp-cluster validate-kops-ha [--cluster <name>] [--kops-name <name>] [--state <uri>]
@@ -851,57 +837,3 @@ diff-cluster-manifest:
     fi
     echo "--- Live cluster  |  Saved manifest  ---"
     kops get cluster -o yaml | diff "$SAVED" - && echo "No differences — manifest matches."
-
-# Full cluster re-creation after teardown.
-# Prerequisite: state bucket exists (not deleted during teardown).
-# Runs: create-config → diff manifest → edit (manual) → apply-ig → update → validate.
-#
-# Usage: just recreate-cluster
-[no-cd]
-recreate-cluster:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    if [ -z "${PROJECT_ID:-}" ] || [ -z "${BUCKET_NAME:-}" ]; then
-        echo "ERROR: PROJECT_ID and BUCKET_NAME must be set."
-        echo "Run: just cluster-env --env <env> --cluster <cluster>"
-        exit 1
-    fi
-
-    echo "=== Step 1/6: Generate cluster manifest ==="
-    just gcp-cluster create-cluster-config --project "${PROJECT_ID}" --bucket-name "${BUCKET_NAME}"
-    echo ""
-
-    echo "=== Step 2/6: Diff against saved manifest ==="
-    SAVED="{{ invocation_directory() }}/config/kops/${PROJECT_ID}/cluster-manifest.yaml"
-    if [ -f "$SAVED" ]; then
-        kops get cluster -o yaml | diff "$SAVED" - && \
-            echo "Manifest matches saved copy — no edits needed." || \
-            echo "Differences found. Review the diff above before editing."
-    else
-        echo "No saved manifest at $SAVED — skipping diff."
-        echo "After this bootstrap, run 'just gcp-cluster save-cluster-manifest' to save it."
-    fi
-    echo ""
-
-    echo "=== Step 3/6: Edit cluster manifest ==="
-    echo "Opening editor for Phase 4c security settings..."
-    echo "Apply: kubernetesApiAccess, etcd volume types (pd-ssd), node SA,"
-    echo "       Cluster Autoscaler, Node Problem Detector, cert-manager, node-local DNS."
-    just gcp-cluster edit-cluster
-    echo ""
-
-    echo "=== Step 4/6: Apply InstanceGroups ==="
-    just gcp-cluster apply-instancegroups
-    echo ""
-
-    echo "=== Step 5/6: Provision cluster ==="
-    just gcp-cluster update-cluster
-    echo ""
-
-    echo "=== Step 6/6: Validate HA topology ==="
-    just gcp-cluster validate-kops-ha
-    echo ""
-
-    echo "Re-creation complete."
-    echo "Run 'just gcp-cluster save-cluster-manifest' to update the saved manifest."
