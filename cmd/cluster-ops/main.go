@@ -19,7 +19,6 @@ func main() {
 			kopsCommand(),
 			validateCommand(),
 			bucketCommand(),
-			igCommand(),
 			envCommand(),
 			apiCommand(),
 			saCommand(),
@@ -64,12 +63,6 @@ func kopsCommand() *cli.Command {
 					// but delete.go expects cluster-name / state / project-id / yes / non-interactive.
 					return kops.DeleteCluster(cltx)
 				},
-			},
-			{
-				Name:   "recreate",
-				Usage:  "Recreate cluster from saved manifest",
-				Action: kops.RecreateCluster,
-				Flags:  kopsRecreateFlags(),
 			},
 			{
 				Name:  "sync-env",
@@ -213,32 +206,6 @@ func kopsDeleteFlags() []cli.Flag {
 	}
 }
 
-func kopsRecreateFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{
-			Name: "cluster-name", Aliases: []string{"c"},
-			EnvVars: []string{"KOPS_CLUSTER_NAME"}, Required: true,
-		},
-		&cli.StringFlag{
-			Name: "state", Aliases: []string{"s"},
-			EnvVars: []string{"KOPS_STATE_STORE"}, Required: true,
-		},
-		&cli.StringFlag{
-			Name: "project-id", Aliases: []string{"p"},
-			Required: true,
-		},
-		&cli.StringFlag{
-			Name: "manifest", Aliases: []string{"m"},
-			Usage: "Path to saved cluster manifest",
-		},
-		&cli.StringFlag{
-			Name: "template-dir", Aliases: []string{"d"},
-			Value: "config/kops/instancegroups",
-			Usage: "Directory containing InstanceGroup templates",
-		},
-	}
-}
-
 // ---------- validate ----------
 
 func validateCommand() *cli.Command {
@@ -318,37 +285,6 @@ func bucketCommand() *cli.Command {
 						Usage: "Enable UBLA, PAP, and versioning",
 					},
 				},
-			},
-		},
-	}
-}
-
-// ---------- ig (InstanceGroups) ----------
-
-func igCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "ig",
-		Usage: "Manage kops InstanceGroups",
-		Subcommands: []*cli.Command{
-			{
-				Name:   "apply",
-				Usage:  "Apply checked-in InstanceGroup templates",
-				Action: kops.ApplyInstanceGroups,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name: "template-dir", Aliases: []string{"d"},
-						Value: "config/kops/instancegroups",
-					},
-					&cli.BoolFlag{
-						Name:  "dry-run",
-						Usage: "Render and validate without applying",
-					},
-				},
-			},
-			{
-				Name:   "list",
-				Usage:  "List all InstanceGroups",
-				Action: kops.ListInstanceGroups,
 			},
 		},
 	}
