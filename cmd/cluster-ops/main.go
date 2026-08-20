@@ -51,6 +51,11 @@ func kopsCommand() *cli.Command {
 				Action: kops.UpdateCluster,
 			},
 			{
+				Name:   "plan",
+				Usage:  "Preview pending cluster changes without applying them (version-aware dispatch)",
+				Action: kops.PlanCluster,
+			},
+			{
 				Name:  "delete",
 				Usage: "Teardown a cluster (dry-run by default, --yes to execute)",
 				Flags: kopsDeleteFlags(),

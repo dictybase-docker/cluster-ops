@@ -15,6 +15,14 @@ import (
 
 var kopsV131 = semver.MustParse("1.31.0")
 
+const (
+	flagYes      = "--yes"
+	flagAdmin    = "--admin"
+	cmdCluster   = "cluster"
+	cmdUpdate    = "update"
+	cmdReconcile = "reconcile"
+)
+
 // UpdateCluster applies pending cluster changes using the correct
 // kOps command for the installed version.
 func UpdateCluster(cltx *cli.Context) error {
@@ -56,8 +64,40 @@ func parseSemver(version string) E.Either[error, semver.Version] {
 
 // selectKopsCommand dispatches to the correct kops subcommand based on version.
 func selectKopsCommand(v semver.Version) IOE.IOEither[error, string] {
+	return runKopsIOE(updateCommandArgs(v, true)...)
+}
+
+// selectKopsPlanCommand dispatches dry-run (no --yes) kops command based on version.
+func selectKopsPlanCommand(v semver.Version) IOE.IOEither[error, string] {
+	return runKopsIOE(updateCommandArgs(v, false)...)
+}
+
+// updateCommandArgs returns the kops arguments for applying or previewing changes.
+func updateCommandArgs(v semver.Version, apply bool) []string {
 	if v.GTE(kopsV131) {
-		return runKopsIOE("reconcile", "cluster", "--yes")
+		if apply {
+			return []string{cmdReconcile, cmdCluster, flagYes}
+		}
+		return []string{cmdReconcile, cmdCluster}
 	}
-	return runKopsIOE("update", "cluster", "--yes", "--admin")
+	if apply {
+		return []string{cmdUpdate, cmdCluster, flagYes, flagAdmin}
+	}
+	return []string{cmdUpdate, cmdCluster, flagAdmin}
+}
+
+// PlanCluster previews pending cluster changes using the correct
+// dry-run kOps command for the installed version.
+func PlanCluster(cltx *cli.Context) error {
+	return F.Pipe3(
+		detectKopsVersionIOE(),
+		IOE.ChainEitherK(parseSemver),
+		IOE.Chain(selectKopsPlanCommand),
+		func(effect IOE.IOEither[error, string]) error {
+			return E.Fold(
+				F.Identity[error],
+				func(string) error { return nil },
+			)(effect())
+		},
+	)
 }

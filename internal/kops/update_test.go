@@ -1,6 +1,7 @@
 package kops
 
 import (
+	"strings"
 	"testing"
 
 	E "github.com/IBM/fp-go/v2/either"
@@ -36,5 +37,64 @@ func TestParseSemver_Failures(t *testing.T) {
 		if !E.IsLeft(v) {
 			t.Errorf("expected error for %q, got success", ver)
 		}
+	}
+}
+
+func TestUpdateCommandArgs(t *testing.T) {
+	vLegacy := semver.MustParse("1.29.2")
+	vReconcile := semver.MustParse("1.31.0")
+	vModern := semver.MustParse("1.36.3")
+
+	tests := []struct {
+		name     string
+		version  semver.Version
+		apply    bool
+		expected string
+	}{
+		{
+			name:     "legacy version apply",
+			version:  vLegacy,
+			apply:    true,
+			expected: "update cluster --yes --admin",
+		},
+		{
+			name:     "legacy version plan",
+			version:  vLegacy,
+			apply:    false,
+			expected: "update cluster --admin",
+		},
+		{
+			name:     "v1.31.0 boundary apply",
+			version:  vReconcile,
+			apply:    true,
+			expected: "reconcile cluster --yes",
+		},
+		{
+			name:     "v1.31.0 boundary plan",
+			version:  vReconcile,
+			apply:    false,
+			expected: "reconcile cluster",
+		},
+		{
+			name:     "modern version apply",
+			version:  vModern,
+			apply:    true,
+			expected: "reconcile cluster --yes",
+		},
+		{
+			name:     "modern version plan",
+			version:  vModern,
+			apply:    false,
+			expected: "reconcile cluster",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := strings.Join(updateCommandArgs(tc.version, tc.apply), " ")
+			if actual != tc.expected {
+				t.Errorf("expected command %q, got %q", tc.expected, actual)
+			}
+		})
 	}
 }
