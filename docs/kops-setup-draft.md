@@ -506,9 +506,31 @@ kops delete cluster --name=${KOPS_CLUSTER_NAME} --state=${KOPS_STATE_STORE} --ye
 just gcp-cluster create-cluster-config
 ```
 
-**After Phase 5** (provisioned) — do *not* delete. Edit in place instead: `kops edit cluster` for cluster-level variables, `kops edit instancegroup nodes` for worker sizing (`TOTAL_NODES` / `NODE_MACHINE` / `NODE_DISK_SIZE`), then `just gcp-cluster update-cluster`.
+**After Phase 5** (provisioned) — do *not* delete. Edit live, apply, then **sync the env file back** so it stays the single source of truth for re-creation:
 
-> **⚠️ Env-file drift is not recommended at all.** Hand-editing the manifest (`kops edit …`) splits the truth in two — the env file says one thing, the state bucket another. Keep the env file the single source of truth: decide the shape there before Phase 4b, or regenerate from it as above.
+```bash
+# 1. make the live change
+kops edit cluster                        # cluster-level vars
+# or: kops edit instancegroup nodes      # TOTAL_NODES / NODE_MACHINE / NODE_DISK_SIZE
+# or: kops edit instancegroup <pool>     # STATELESS_* / STATEFUL_* / BATCH_*
+
+# 2. apply
+just gcp-cluster update-cluster
+
+# 3. pull live shape back into the env file (mandatory)
+just gcp-cluster sync-env --env <env> --cluster <cluster>
+
+# 4. refresh the saved manifest (complete cluster-spec snapshot)
+just gcp-cluster save-cluster-manifest
+
+# 5. re-enter so the shell picks up the rewritten env file
+exit
+just cluster-env --env <env> --cluster <cluster>
+```
+
+`sync-env` rewrites the Phase 4b/4d shape variables (`TOPOLOGY`, `NETWORKING`, `TOTAL_NODES`, `STATELESS_*`, …) from live kops state into `.env.<env>.<cluster>`. It fails closed on ambiguous state (mixed master machine types, `nodes` min≠max, multiple API CIDRs). `save-cluster-manifest` captures the full cluster spec (including Phase 4c security edits) for diff on re-creation — the two jobs are complementary, not substitutes.
+
+> **⚠️ Env-file drift is not recommended at all.** Skipping `sync-env` after a live edit splits the truth in two — the env file says one thing, the state bucket another — and the next re-creation regenerates from the stale env. Always run `sync-env` (and `save-cluster-manifest`) after post-Phase-5 shape changes.
 
 <a id="phase-5"></a>
 
