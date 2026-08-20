@@ -39,12 +39,6 @@ func kopsCommand() *cli.Command {
 		Usage: "Manage kops cluster lifecycle",
 		Subcommands: []*cli.Command{
 			{
-				Name:   "create-config",
-				Usage:  "Generate cluster manifest (no VMs provisioned)",
-				Action: kops.CreateCluster,
-				Flags:  kopsCLIFlags(),
-			},
-			{
 				Name:   "update",
 				Usage:  "Apply pending cluster changes (version-aware dispatch)",
 				Action: kops.UpdateCluster,
@@ -64,119 +58,6 @@ func kopsCommand() *cli.Command {
 					return kops.DeleteCluster(cltx)
 				},
 			},
-			{
-				Name:  "sync-env",
-				Usage: "Rewrite shape vars in a per-cluster env file from live kops state",
-				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "env", Aliases: []string{"e"}, Required: true, Usage: "Environment name"},
-					&cli.StringFlag{Name: "cluster", Aliases: []string{"c"}, Required: true, Usage: "Cluster name"},
-				},
-				Action: func(cltx *cli.Context) error {
-					envFile := fmt.Sprintf(".env.%s.%s", cltx.String("env"), cltx.String("cluster"))
-					changes, err := kops.SyncEnv(envFile)
-					if err != nil {
-						return err
-					}
-					if len(changes) == 0 {
-						fmt.Printf("No shape-var changes for %s\n", envFile)
-						return nil
-					}
-					fmt.Printf("Updated %s:\n", envFile)
-					for _, c := range changes {
-						if c.Added {
-							fmt.Printf("  + %s\n", c.New)
-							continue
-						}
-						fmt.Printf("  ~ %s\n    was: %s\n", c.New, c.Old)
-					}
-					return nil
-				},
-			},
-		},
-	}
-}
-
-func kopsCLIFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{
-			Name: "cluster-name", Aliases: []string{"c"},
-			EnvVars: []string{"KOPS_CLUSTER_NAME"}, Required: true,
-		},
-		&cli.StringFlag{
-			Name: "state", Aliases: []string{"s"},
-			EnvVars: []string{"KOPS_STATE_STORE"}, Required: true,
-		},
-		&cli.StringFlag{
-			Name: "project-id", Aliases: []string{"p"},
-			Required: true,
-		},
-		&cli.StringFlag{
-			Name: "zones", Aliases: []string{"z"},
-			EnvVars: []string{"NODE_ZONES"}, Value: "us-central1-c",
-		},
-		&cli.StringFlag{
-			Name: "node-size", Aliases: []string{"ns"},
-			EnvVars: []string{"NODE_MACHINE"}, Value: "n1-custom-2-4096",
-		},
-		&cli.IntFlag{
-			Name: "node-count", Aliases: []string{"nc"},
-			EnvVars: []string{"TOTAL_NODES"}, Value: 4,
-		},
-		&cli.IntFlag{
-			Name: "node-volume-size", Aliases: []string{"nvs"},
-			EnvVars: []string{"NODE_DISK_SIZE"}, Value: 100,
-		},
-		&cli.StringFlag{
-			Name: "control-plane-size", Aliases: []string{"cps"},
-			EnvVars: []string{"MASTER_MACHINE"}, Value: "n1-custom-4-8192",
-		},
-		&cli.StringFlag{
-			Name: "control-plane-count", Aliases: []string{"cpc"},
-			EnvVars: []string{"TOTAL_MASTER"}, Value: "1",
-		},
-		&cli.IntFlag{
-			Name: "control-plane-volume-size", Aliases: []string{"cpvs"},
-			EnvVars: []string{"MASTER_DISK_SIZE"}, Value: 75,
-		},
-		&cli.StringFlag{
-			Name: "control-plane-zones", Aliases: []string{"cpz"},
-			EnvVars: []string{"CONTROL_PLANE_ZONES"},
-		},
-		&cli.StringFlag{
-			Name: "topology", Aliases: []string{"t"},
-			EnvVars: []string{"TOPOLOGY"}, Value: "public",
-		},
-		&cli.StringFlag{
-			Name: "networking", Aliases: []string{"nw"},
-			EnvVars: []string{"NETWORKING"}, Value: "cilium-etcd",
-		},
-		&cli.StringFlag{
-			Name: "admin-access", Aliases: []string{"aa"},
-			EnvVars: []string{"API_ACCESS_CIDR"},
-		},
-		&cli.StringFlag{
-			Name: "kubernetes-version", Aliases: []string{"kv"},
-			EnvVars: []string{"KUBERNETES_VERSION"},
-		},
-		&cli.StringFlag{
-			Name: "ssh-key", Aliases: []string{"sk"},
-			EnvVars: []string{"SSH_KEY"}, Value: "credentials/k8sVM.pub",
-		},
-		&cli.StringFlag{
-			Name: "provider", Aliases: []string{"pr"},
-			Value: "gce",
-		},
-		&cli.StringFlag{
-			Name: "image", Aliases: []string{"im"},
-			EnvVars: []string{"COMPUTE_IMAGE"}, Value: "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
-		},
-		&cli.StringFlag{
-			Name: "kubeconfig", Aliases: []string{"kc"},
-			EnvVars: []string{"KUBECONFIG"},
-		},
-		&cli.StringFlag{
-			Name: "credentials", Aliases: []string{"cred"},
-			EnvVars: []string{"GOOGLE_APPLICATION_CREDENTIALS"},
 		},
 	}
 }
