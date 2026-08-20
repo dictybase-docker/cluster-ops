@@ -123,6 +123,11 @@ install-tools:
 test:
     dagger -m github.com/dictybase-docker/dagger-of-dcr/golang@main call with-golang-version with-gotest-sum-formatter test --src "."
 
+# Run bootstrap-bundle contract tests
+[group('dev-tools')]
+test-bootstrap:
+    ./scripts/test-bootstrap-bundle.sh
+
 # Run aider AI coding assistant with specific configuration
 [group('dev-tools')]
 aider:
