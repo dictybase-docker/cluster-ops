@@ -1,0 +1,64 @@
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  name: ${KOPS_CLUSTER_NAME}
+spec:
+  api:
+    loadBalancer:
+      type: Public
+  authorization:
+    rbac: {}
+  certManager:
+    enabled: true
+  channel: stable
+  cloudConfig:
+    gce:
+      pdCSIDriver:
+        enabled: true
+  cloudProvider: gce
+  clusterAutoscaler:
+    enabled: true
+  configBase: ${KOPS_STATE_STORE}/${KOPS_CLUSTER_NAME}
+  etcdClusters:
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+      volumeType: pd-ssd
+    name: main
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+      volumeType: pd-ssd
+    name: events
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+    name: cilium
+  iam:
+    legacy: false
+  kubeDNS:
+    nodeLocalDNS:
+      enabled: true
+  kubeProxy:
+    enabled: false
+  kubernetesApiAccess:
+  - ${API_ACCESS_CIDR}
+  kubernetesVersion: 1.28.8
+  metricsServer:
+    enabled: true
+  networking:
+    cilium:
+      enableNodePort: true
+      etcdManaged: true
+  nodeProblemDetector:
+    enabled: true
+  nonMasqueradeCIDR: 100.64.0.0/10
+  project: ${PROJECT_ID}
+  subnets:
+  - cidr: 10.0.16.0/20
+    name: us-central1
+    region: us-central1
+    type: Public
+  topology:
+    dns:
+      type: None
