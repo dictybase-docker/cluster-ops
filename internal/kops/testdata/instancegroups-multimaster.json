@@ -1,0 +1,74 @@
+[
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "master-us-central1-a"
+    },
+    "spec": {
+      "role": "ControlPlane",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 1,
+      "maxSize": 1,
+      "machineType": "n1-custom-4-8192",
+      "rootVolume": {
+        "size": 75
+      },
+      "zones": ["us-central1-a"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "master-us-central1-b"
+    },
+    "spec": {
+      "role": "ControlPlane",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 1,
+      "maxSize": 1,
+      "machineType": "n1-custom-4-8192",
+      "rootVolume": {
+        "size": 75
+      },
+      "zones": ["us-central1-b"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "master-us-central1-c"
+    },
+    "spec": {
+      "role": "ControlPlane",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 1,
+      "maxSize": 1,
+      "machineType": "n1-custom-4-8192",
+      "rootVolume": {
+        "size": 75
+      },
+      "zones": ["us-central1-c"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "nodes"
+    },
+    "spec": {
+      "role": "Node",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 6,
+      "maxSize": 6,
+      "machineType": "n1-custom-4-8192",
+      "rootVolume": {
+        "size": 200
+      },
+      "zones": ["us-central1-a", "us-central1-b", "us-central1-c"]
+    }
+  }
+]

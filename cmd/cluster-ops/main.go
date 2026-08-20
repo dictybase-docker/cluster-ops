@@ -66,6 +66,34 @@ func kopsCommand() *cli.Command {
 				Action: kops.RecreateCluster,
 				Flags:  kopsRecreateFlags(),
 			},
+			{
+				Name:  "sync-env",
+				Usage: "Rewrite shape vars in a per-cluster env file from live kops state",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "env", Aliases: []string{"e"}, Required: true, Usage: "Environment name"},
+					&cli.StringFlag{Name: "cluster", Aliases: []string{"c"}, Required: true, Usage: "Cluster name"},
+				},
+				Action: func(cltx *cli.Context) error {
+					envFile := fmt.Sprintf(".env.%s.%s", cltx.String("env"), cltx.String("cluster"))
+					changes, err := kops.SyncEnv(envFile)
+					if err != nil {
+						return err
+					}
+					if len(changes) == 0 {
+						fmt.Printf("No shape-var changes for %s\n", envFile)
+						return nil
+					}
+					fmt.Printf("Updated %s:\n", envFile)
+					for _, c := range changes {
+						if c.Added {
+							fmt.Printf("  + %s\n", c.New)
+							continue
+						}
+						fmt.Printf("  ~ %s\n    was: %s\n", c.New, c.Old)
+					}
+					return nil
+				},
+			},
 		},
 	}
 }

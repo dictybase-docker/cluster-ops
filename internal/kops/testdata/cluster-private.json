@@ -1,0 +1,40 @@
+[
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "Cluster",
+    "metadata": {
+      "name": "prod.k8s.local"
+    },
+    "spec": {
+      "kubernetesVersion": "1.29.2",
+      "api": {
+        "access": ["0.0.0.0/0"]
+      },
+      "networking": {
+        "cilium": {},
+        "subnets": [
+          {
+            "name": "utility-us-central1-a",
+            "zone": "us-central1-a",
+            "type": "Utility"
+          },
+          {
+            "name": "us-central1-a",
+            "zone": "us-central1-a",
+            "type": "Private"
+          },
+          {
+            "name": "us-central1-b",
+            "zone": "us-central1-b",
+            "type": "Private"
+          },
+          {
+            "name": "us-central1-c",
+            "zone": "us-central1-c",
+            "type": "Private"
+          }
+        ]
+      }
+    }
+  }
+]

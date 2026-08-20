@@ -1,0 +1,80 @@
+[
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "master-us-central1-c"
+    },
+    "spec": {
+      "role": "Master",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 1,
+      "maxSize": 1,
+      "machineType": "n1-custom-4-8192",
+      "rootVolume": {
+        "size": 75
+      },
+      "zones": ["us-central1-c"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "nodes"
+    },
+    "spec": {
+      "role": "Node",
+      "image": "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829",
+      "minSize": 4,
+      "maxSize": 4,
+      "machineType": "n1-custom-2-4096",
+      "rootVolume": {
+        "size": 100
+      },
+      "zones": ["us-central1-c"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "stateless-web"
+    },
+    "spec": {
+      "role": "Node",
+      "machineType": "e2-standard-4",
+      "minSize": 3,
+      "maxSize": 6,
+      "zones": ["us-central1-a", "us-central1-b", "us-central1-c"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "stateful-db"
+    },
+    "spec": {
+      "role": "Node",
+      "machineType": "n2-standard-4",
+      "minSize": 3,
+      "maxSize": 3,
+      "zones": ["us-central1-a", "us-central1-b", "us-central1-c"]
+    }
+  },
+  {
+    "apiVersion": "kops.k8s.io/v1alpha2",
+    "kind": "InstanceGroup",
+    "metadata": {
+      "name": "batch-spot"
+    },
+    "spec": {
+      "role": "Node",
+      "machineType": "e2-standard-4",
+      "minSize": 0,
+      "maxSize": 4,
+      "zones": ["us-central1-a", "us-central1-b", "us-central1-c"]
+    }
+  }
+]
