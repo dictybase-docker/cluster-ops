@@ -505,6 +505,18 @@ save-cluster-manifest:
     echo "Cluster manifest saved to: $OUT"
     echo "Commit it:  git add $OUT && git commit -m 'save known-good cluster manifest'"
 
+# Rewrite shape vars in the per-cluster env file from live kops state.
+# Run after any post-Phase-5 shape change (kops edit / scale) so the env file
+# stays the single source of truth for re-creation. Requires activated env
+# (KOPS_CLUSTER_NAME / KOPS_STATE_STORE) plus --env / --cluster to locate the file.
+#
+# Usage: just gcp-cluster sync-env --env <env> --cluster <cluster>
+[arg("env", long="env", short="e", help="Environment name (.env.<env>.<cluster>)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name")]
+[no-cd]
+sync-env env cluster: build
+    ./bin/cluster-ops kops sync-env --env={{ env }} --cluster={{ cluster }}
+
 # Diff the live cluster manifest against the saved copy.
 # Run before re-creating to see what edits you need to re-apply in Phase 4c.
 # Exits non-zero when differences exist (standard diff behaviour).
