@@ -140,7 +140,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
   --pulumi-backend-url "gs://<pulumi-state-bucket>"
 ```
 
-Credential and path variables are listed in [kops §1.3.2](kops-setup-draft.md#132-variables-overview). Cluster identity (`KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `PROJECT_ID`) is **not** in this file.
+Credential and path variables are listed in [kops §1.3.2](kops-setup-draft.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION` — those live in Git after bootstrap.
 
 > **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
 
