@@ -56,7 +56,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 - **What you'll end up with**: A fully provisioned Kubernetes cluster (GCE instances, networking, IAM, state storage) plus the Pulumi scaffolding for deploying applications.
 - **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
 - **Two stores, one handoff**: Until the first YAML exists, the operator env file (`.env.<env>.<cluster>`) holds `PROJECT_ID` plus credentials and local paths. From [Section 3](#3-cluster-bootstrap-git-native-flow) onward, cluster identity and shape live **only** in Git under `config/kops/<cluster>/`. Do not copy kops name, state store, bucket name, or Kubernetes version back into the env file.
-- **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](pulumi-setup.md).
+- **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](docs/pulumi-setup.md).
 
 ## Quick Setup
 
@@ -89,7 +89,7 @@ Install these through your system package manager:
 | **just** | The task runner — all operations are `just` commands | `just --version` | [github.com/casey/just](https://github.com/casey/just#installation) |
 | **gcloud** | Google Cloud CLI for authentication and GCP API interactions | `gcloud version` | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
 | **jq** | JSON processor used behind the scenes | `jq --version` | [jqlang.github.io/jq](https://jqlang.github.io/jq/download/) |
-| **envsubst** | Template rendering tool (gettext) | `envsubst --version` | `brew install gettext` / `apt install gettext-base` |
+| **envsubst** | Required by `just gcp-cluster bootstrap-bundle` to render `config/kops/_starter/*.tmpl` | `envsubst --version` | `brew install gettext` / `apt install gettext-base` |
 
 <a id="13-environment-variables--the-cluster-env-file"></a>
 
@@ -138,9 +138,9 @@ The sub-shell reads the file once at start. After you edit the file — or after
 | `KUBECONFIG` | [Section 1.5](#15-per-project-file-isolation) | Exported kubeconfig path |
 | `SSH_KEY` | [Section 1.6](#16-ssh-keypair) | Node SSH **public** key |
 | `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Section 1.4.1](#141-tool-version-files) | Optional per-cluster asdf pin file |
-| `PULUMI_GCP_CREDENTIALS` | [`docs/pulumi-setup.md`](pulumi-setup.md) | Path to `pulumi-manager.json` |
-| `PULUMI_SECRET_PROVIDER` | [`docs/pulumi-setup.md`](pulumi-setup.md) | `gcpkms://…` URI |
-| `PULUMI_BACKEND_URL` | [`docs/pulumi-setup.md`](pulumi-setup.md) | Pulumi state bucket |
+| `PULUMI_GCP_CREDENTIALS` | [`docs/pulumi-setup.md`](docs/pulumi-setup.md) | Path to `pulumi-manager.json` |
+| `PULUMI_SECRET_PROVIDER` | [`docs/pulumi-setup.md`](docs/pulumi-setup.md) | `gcpkms://…` URI |
+| `PULUMI_BACKEND_URL` | [`docs/pulumi-setup.md`](docs/pulumi-setup.md) | Pulumi state bucket |
 
 **Git-owned after bootstrap (do not write these into the env file):**
 
@@ -561,6 +561,8 @@ just gcp-cluster k9s
 
 ## 6. Disposable Cluster Lifecycle
 
+<a id="61-mindset--durable-blueprint"></a>
+
 ### 6.1 Mindset & Durable Blueprint
 
 The blueprint — canonical manifest bundle (`config/kops/<cluster>/*.yaml`) — is durable in Git. SA keys and the per-cluster env file stay on the operator machine (gitignored). GCE compute instances are transient. Recreation is fully declarative and reproducible.
@@ -674,5 +676,5 @@ To bring the cluster back after teardown:
 
 ## 7. Next Steps
 
-- **Deploy applications:** Follow [`docs/pulumi-setup.md`](pulumi-setup.md).
-- **Architecture deep dive:** Read [`docs/kops-gcp-architecture.md`](kops-gcp-architecture.md).
+- **Deploy applications:** Follow [`docs/pulumi-setup.md`](docs/pulumi-setup.md).
+- **Architecture deep dive:** Read [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md).
