@@ -790,3 +790,35 @@ upload-ssh-secret cluster="" kops_name="" state="" ssh_key="":
     kops create secret sshpublickey "${kn}" --state="${st}" -i "${key}"
     echo "SSH public key uploaded to state store for ${kn}."
 
+# Perform rolling update on cluster nodes (dry-run by default, pass --yes to execute).
+# Usage: just gcp-cluster rolling-update [--cluster <name>] [--kops-name <name>] [--state <uri>] [--instance-group <name>] [--force yes] [--yes yes]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("instance_group", long="instance-group", short="i", help="Restrict roll to specific InstanceGroup")]
+[arg("force", long="force", short="f", pattern="yes|no", help="Set to 'yes' to force rolling update even if no changes reported")]
+[arg("yes", long="yes", short="y", pattern="yes|no", help="Set to 'yes' to execute rolling update immediately")]
+[no-cd]
+rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="${CLUSTER_NAME:-{{ cluster }}}"
+    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+    st="${KOPS_STATE_STORE:-{{ state }}}"
+    [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
+
+    if [ -z "${kn}" ] || [ -z "${st}" ]; then
+        echo "ERROR: kops name and state store must be set or passed via --cluster / --kops-name / --state."
+        exit 1
+    fi
+
+    cmd_args=()
+    [ -n "{{ instance_group }}" ] && cmd_args+=("--instance-group={{ instance_group }}")
+    [ "{{ force }}" = "yes" ] && cmd_args+=("--force")
+    [ "{{ yes }}" = "yes" ] && cmd_args+=("--yes")
+
+    echo "Running rolling-update for ${kn}..."
+    kops rolling-update cluster "${kn}" --state="${st}" "${cmd_args[@]}"
+
