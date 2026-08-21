@@ -757,3 +757,36 @@ drift-manifests cluster="" kops_name="" state="":
 
     exit "$rc"
 
+# Upload the SSH public key as a kops secret into the state store.
+# Usage: just gcp-cluster upload-ssh-secret [--cluster <name>] [--kops-name <name>] [--state <uri>] [--ssh-key <path>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("ssh_key", long="ssh-key", short="k", help="SSH public key path (defaults to SSH_KEY env var or credentials/<project>/k8sVM.pub)")]
+[no-cd]
+upload-ssh-secret cluster="" kops_name="" state="" ssh_key="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="${CLUSTER_NAME:-{{ cluster }}}"
+    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+    st="${KOPS_STATE_STORE:-{{ state }}}"
+    [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
+
+    key="${SSH_KEY:-{{ ssh_key }}}"
+    [ -z "${key}" ] && [ -n "${PROJECT_ID:-}" ] && key="credentials/${PROJECT_ID}/k8sVM.pub"
+
+    if [ -z "${kn}" ] || [ -z "${st}" ]; then
+        echo "ERROR: kops name and state store must be set or passed via --cluster / --kops-name / --state."
+        exit 1
+    fi
+    if [ -z "${key}" ] || [ ! -f "${key}" ]; then
+        echo "ERROR: SSH public key not found: ${key:-<unset>}."
+        echo "Pass --ssh-key <path>, set SSH_KEY, or run 'just gcp-cluster generate-ssh-key --project <id>' (writes credentials/<id>/k8sVM.pub)."
+        exit 1
+    fi
+
+    kops create secret sshpublickey "${kn}" --state="${st}" -i "${key}"
+    echo "SSH public key uploaded to state store for ${kn}."
+
