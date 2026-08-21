@@ -22,6 +22,7 @@
   - [Step 3.6 — Preview & Apply (version-aware)](#step-36--preview--apply-version-aware)
   - [Step 3.7 — Validate HA topology & Hardening](#step-37--validate-ha-topology--hardening)
 - [4. Day-2 Operations (Git-First Workflow)](#4-day-2-operations-git-first-workflow)
+  - [4.1 Drift Detection (CI)](#41-drift-detection-ci)
 - [5. Exploring the Cluster](#5-exploring-the-cluster)
 - [6. Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle)
   - [6.1 Mindset & Durable Blueprint](#61-mindset--durable-blueprint)
@@ -348,6 +349,34 @@ kops rolling-update cluster "<cluster-name>-k8s.local" \
 > git commit -am "HOTFIX: reconcile emergency live edits"
 > ```
 
+<a id="41-drift-detection-ci"></a>
+
+### 4.1 Drift Detection (CI)
+
+Two checks to be wired into CI on PR + nightly cron:
+
+1. **Manifest spec drift (blocking failure):** `just gcp-cluster drift-manifests` — fails with non-zero exit code if canonical `cluster.yaml` or `instancegroups.yaml` differs from live state storage.
+2. **State bucket vs cloud plan (review output):** `just gcp-cluster plan-cluster` — runs version-aware preview `kops update/reconcile` without `--yes` to generate the plan for PR comments.
+
+```yaml
+# Example CI step:
+- name: Check Manifest Drift
+  run: just gcp-cluster drift-manifests
+
+- name: Preview Cloud Plan
+  run: just gcp-cluster plan-cluster
+```
+
+| Check | Role / Catches |
+|---|---|
+| `just gcp-cluster drift-manifests` | Fails CI if someone ran `kops edit` without backfilling |
+| `just gcp-cluster plan-cluster` | Previews pending infrastructure changes in PR review |
+
+CI runs with a read-only service account (`roles/compute.viewer` +
+bucket read). Nightly failure on `drift-manifests` indicates an uncommitted live edit.
+On PRs, `drift-manifests` verifies that base state is clean, while `plan-cluster`
+renders the pending cloud diff into the PR comments for human review.
+
 ---
 
 <a id="5-exploring-the-cluster"></a>
@@ -463,4 +492,3 @@ To bring the cluster back after teardown:
 
 - **Deploy applications:** Follow [`docs/pulumi-setup.md`](pulumi-setup.md).
 - **Architecture deep dive:** Read [`docs/kops-gcp-architecture.md`](kops-gcp-architecture.md).
-- **Source of truth design:** Read [`docs/kops-source-of-truth.md`](kops-source-of-truth.md).
