@@ -23,6 +23,7 @@
   - [Step 3.7 — Validate HA topology & Hardening](#step-37--validate-ha-topology--hardening)
 - [4. Day-2 Operations (Git-First Workflow)](#4-day-2-operations-git-first-workflow)
   - [4.1 Drift Detection (CI)](#41-drift-detection-ci)
+  - [4.2 When to Run a Rolling Update](#42-when-to-run-a-rolling-update)
 - [5. Exploring the Cluster](#5-exploring-the-cluster)
 - [6. Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle)
   - [6.1 Mindset & Durable Blueprint](#61-mindset--durable-blueprint)
@@ -336,9 +337,10 @@ just gcp-cluster update-cluster --cluster <cluster-name>
 just gcp-cluster drift-manifests --cluster <cluster-name>
 
 # 7. If VM sizes or boot disks changed, roll the instances:
-kops rolling-update cluster "<cluster-name>-k8s.local" \
-  --state="gs://kops-state-<cluster-name>" \
-  --instance-group stateless-web --yes
+just gcp-cluster rolling-update \
+  --cluster <cluster-name> \
+  --instance-group stateless-web \
+  --yes yes
 ```
 
 > **Break-Glass Emergency Edits:**
@@ -376,6 +378,42 @@ CI runs with a read-only service account (`roles/compute.viewer` +
 bucket read). Nightly failure on `drift-manifests` indicates an uncommitted live edit.
 On PRs, `drift-manifests` verifies that base state is clean, while `plan-cluster`
 renders the pending cloud diff into the PR comments for human review.
+
+<a id="42-when-to-run-a-rolling-update"></a>
+
+### 4.2 When to Run a Rolling Update
+
+`update-cluster` updates the cloud infrastructure templates in GCP, but does not necessarily restart live running VMs. To know whether running VMs need replacement:
+
+#### How to Check (Dry-Run Inspection)
+
+Run `rolling-update` without `--yes` (it defaults to dry-run inspection):
+
+```bash
+just gcp-cluster rolling-update --cluster <cluster-name>
+```
+
+- If output reports `No cluster updates required.` $\rightarrow$ **Done.** No VMs need replacement.
+- If output lists `NEEDUPDATE > 0` $\rightarrow$ Running VMs are on old templates. Execute with `--yes yes`:
+  ```bash
+  just gcp-cluster rolling-update --cluster <cluster-name> --yes yes
+  ```
+
+#### Change Trigger Matrix
+
+| Change Made in YAML | Rolling Update Needed? | Why |
+|---|:---:|---|
+| **`machineType`** (CPU / RAM change) | **Yes** | Cannot resize running GCE VM on the fly |
+| **`rootVolumeSize`** / disk type | **Yes** | Requires boot disk recreation |
+| **`image`** (OS security upgrade) | **Yes** | New base OS image requires fresh VM |
+| **`kubernetesVersion`** (k8s upgrade) | **Yes** | Node requires kubelet / containerd binary update |
+| **`minSize` / `maxSize`** (pool scaling) | **No** | GCE MIG scales VM count up/down automatically |
+| **`kubernetesApiAccess`** (API CIDRs) | **No** | GCP Load Balancer / firewall rule update only |
+| **Addon configs** (Autoscaler, Cert-Manager) | **No** | In-cluster Kubernetes pod/DaemonSet update |
+
+> **kOps Version Behavior:**
+> - **kOps ≤ 1.30 (`dev` pin: v1.29.2):** `update-cluster` and `rolling-update` are separate commands. Running `rolling-update` after VM template changes is required.
+> - **kOps ≥ 1.31 (`prod` pin: v1.36.1):** `update-cluster` (which runs `kops reconcile cluster --yes`) reconciles cloud resources and rolls nodes sequentially in one pass. Use `just gcp-cluster rolling-update` on ≥1.31 only for targeted pool rolls (`--instance-group <name>`) or forced restarts (`--force yes`).
 
 ---
 
