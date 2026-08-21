@@ -46,7 +46,7 @@ func (gs *GraphqlServer) CreateServiceSpec(
 	config := gs.Config
 	return &corev1.ServiceSpecArgs{
 		Selector: pulumi.StringMap{
-			"app": pulumi.String(deploymentName),
+			appLabel: pulumi.String(deploymentName),
 		},
 		Ports: corev1.ServicePortArray{
 			&corev1.ServicePortArgs{

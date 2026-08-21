@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	E "github.com/IBM/fp-go/v2/either"
-	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
 )
 
@@ -36,16 +35,6 @@ func runKopsCaptureIOE(args ...string) IOE.IOEither[error, string] {
 		}
 		return string(out), nil
 	})
-}
-
-// runKops is a convenience wrapper that executes the IOEither immediately.
-// Kept for backward compatibility with code that expects (error) return.
-func runKops(args ...string) error {
-	effect := runKopsIOE(args...)
-	return E.Fold(
-		F.Identity[error],
-		func(string) error { return nil },
-	)(effect())
 }
 
 // runKopsCapture is a convenience wrapper that executes immediately.

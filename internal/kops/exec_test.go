@@ -64,11 +64,7 @@ func joinArgs(args []string) string {
 		if args[i] == "" {
 			continue
 		}
-		if len(args[i]) > 1 && args[i][0] == '-' {
-			result += " " + args[i]
-		} else {
-			result += " " + args[i]
-		}
+		result += " " + args[i]
 	}
 	return result
 }

@@ -11,6 +11,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const (
+	projectFlag = "project"
+	nameFlag    = "name"
+)
+
 func main() {
 	app := &cli.App{
 		Name:  "cluster-ops",
@@ -52,11 +57,9 @@ func kopsCommand() *cli.Command {
 				Name:  "delete",
 				Usage: "Teardown a cluster (dry-run by default, --yes to execute)",
 				Flags: kopsDeleteFlags(),
-				Action: func(cltx *cli.Context) error {
-					// Bridge: the unified CLI uses --cluster-name / --state / --project-id
-					// but delete.go expects cluster-name / state / project-id / yes / non-interactive.
-					return kops.DeleteCluster(cltx)
-				},
+				// Bridge: the unified CLI uses --cluster-name / --state / --project-id
+				// but delete.go expects cluster-name / state / project-id / yes / non-interactive.
+				Action: kops.DeleteCluster,
 			},
 		},
 	}
@@ -147,7 +150,7 @@ func bucketCommand() *cli.Command {
 				Action: gcp.CreateKopsStateBucket,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name: "project", Aliases: []string{"p"},
+						Name: projectFlag, Aliases: []string{"p"},
 						Required: true,
 					},
 					&cli.StringFlag{
@@ -194,7 +197,7 @@ func envCommand() *cli.Command {
 				Name:  "set-var",
 				Usage: "Set an environment variable in .envrc and reload",
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "name", Aliases: []string{"n"}, Required: true},
+					&cli.StringFlag{Name: nameFlag, Aliases: []string{"n"}, Required: true},
 					&cli.StringFlag{Name: "value", Aliases: []string{"v"}, Required: true},
 				},
 				Action: util.SetEnvironmentalVariable,
@@ -215,7 +218,7 @@ func apiCommand() *cli.Command {
 				Usage:  "Enable APIs from a file",
 				Action: gcp.EnableAPIs,
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "project", Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
 					&cli.StringFlag{Name: "api-file-path", Aliases: []string{"f"}, Required: true},
 				},
 			},
@@ -224,7 +227,7 @@ func apiCommand() *cli.Command {
 				Usage:  "Disable APIs from a file",
 				Action: gcp.DisableAPIs,
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "project", Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
 					&cli.StringFlag{Name: "api-file-path", Aliases: []string{"f"}, Required: true},
 				},
 			},
@@ -244,8 +247,8 @@ func saCommand() *cli.Command {
 				Usage:  "Create a service account with roles from a file",
 				Action: gcp.CreateServiceAccount,
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "name", Required: true},
-					&cli.StringFlag{Name: "project", Required: true},
+					&cli.StringFlag{Name: nameFlag, Required: true},
+					&cli.StringFlag{Name: projectFlag, Required: true},
 					&cli.StringFlag{Name: "roles-file", Aliases: []string{"r"}, Required: true},
 					&cli.StringFlag{Name: "description"},
 					&cli.StringFlag{Name: "display-name"},
@@ -257,8 +260,8 @@ func saCommand() *cli.Command {
 				Usage:  "Create a key for an existing service account",
 				Action: gcp.CreateServiceAccountKey,
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "name", Required: true},
-					&cli.StringFlag{Name: "project", Required: true},
+					&cli.StringFlag{Name: nameFlag, Required: true},
+					&cli.StringFlag{Name: projectFlag, Required: true},
 					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
 				},
 			},

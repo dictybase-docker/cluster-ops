@@ -115,10 +115,14 @@ func checkSurvivingResources(project, dryRunOutput string) []string {
 // parseDryRunOutput extracts resource descriptions from kOps dry-run text.
 // kOps output format: "Instance <zone>/<name>", "PersistentDisk <zone>/<name>", etc.
 func parseDryRunOutput(output string) []string {
+	prefixes := []string{
+		"Instance ", "PersistentDisk ", "ForwardingRule ",
+		"TargetPool ", "FirewallRule ", "Network ",
+	}
 	var resources []string
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
-		for _, prefix := range []string{"Instance ", "PersistentDisk ", "ForwardingRule ", "TargetPool ", "FirewallRule ", "Network "} {
+		for _, prefix := range prefixes {
 			if strings.HasPrefix(line, prefix) {
 				resources = append(resources, line)
 				break
@@ -145,9 +149,11 @@ func resourceStillExists(project, resource string) bool {
 			return false
 		}
 		if resType == "Instance" {
+			//nolint:gosec // args passed as argv (no shell); project from --project-id, zone/name from kops dry-run output
 			cmd = exec.Command("gcloud", "compute", "instances", "describe",
 				zoneAndName[1], "--project="+project, "--zone="+zoneAndName[0])
 		} else {
+			//nolint:gosec // args passed as argv (no shell); project from --project-id, zone/name from kops dry-run output
 			cmd = exec.Command("gcloud", "compute", "disks", "describe",
 				zoneAndName[1], "--project="+project, "--zone="+zoneAndName[0])
 		}

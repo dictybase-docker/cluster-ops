@@ -81,7 +81,7 @@ func TestTemplateMetadata(t *testing.T) {
 			assert.Equal(t, pulumi.String(test.expectedName), result.Name)
 			assert.Equal(
 				t,
-				pulumi.StringMap{"app": pulumi.String(test.expectedLabel)},
+				pulumi.StringMap{appLabel: pulumi.String(test.expectedLabel)},
 				result.Labels,
 			)
 		})
@@ -118,7 +118,7 @@ func TestMetadata(t *testing.T) {
 			)
 			assert.Equal(
 				t,
-				pulumi.StringMap{"app": pulumi.String(test.expectedLabel)},
+				pulumi.StringMap{appLabel: pulumi.String(test.expectedLabel)},
 				result.Labels,
 			)
 		},

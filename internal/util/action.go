@@ -55,6 +55,9 @@ func SetEnvironmentalVariable(cltx *cli.Context) error {
 		// We append the current line (either the original or the updated one) to the lines slice.
 		lines = append(lines, line)
 	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
 
 	// If the environment variable was not found in the file, we append a new line to define it.
 	if !found {

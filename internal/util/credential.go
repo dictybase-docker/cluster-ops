@@ -98,7 +98,7 @@ func readAndUpdateEnv(envFile string) func(string) IOE.IOEither[error, string] {
 func writeEnvFile(envFile string) func(string) IOE.IOEither[error, string] {
 	return func(output string) IOE.IOEither[error, string] {
 		return IOE.TryCatchError(func() (string, error) {
-			if err := os.WriteFile(envFile, []byte(output), 0o644); err != nil {
+			if err := os.WriteFile(envFile, []byte(output), 0o600); err != nil {
 				return "", fmt.Errorf("write env file: %w", err)
 			}
 			return output, nil

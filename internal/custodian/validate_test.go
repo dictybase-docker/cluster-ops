@@ -22,7 +22,7 @@ func TestValidateDaemonSet(t *testing.T) {
 					NumberReady:            3,
 				},
 			},
-			wantStatus: "pass",
+			wantStatus: statusPass,
 		},
 		{
 			name: "partial ready",
@@ -32,7 +32,7 @@ func TestValidateDaemonSet(t *testing.T) {
 					NumberReady:            2,
 				},
 			},
-			wantStatus: "warn",
+			wantStatus: statusWarn,
 		},
 		{
 			name: "none scheduled",
@@ -41,7 +41,7 @@ func TestValidateDaemonSet(t *testing.T) {
 					DesiredNumberScheduled: 0,
 				},
 			},
-			wantStatus: "fail",
+			wantStatus: statusFail,
 		},
 	}
 
@@ -66,19 +66,19 @@ func TestValidatePodsRunning(t *testing.T) {
 			pods: []corev1.Pod{
 				{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
 			},
-			wantStatus: "pass",
+			wantStatus: statusPass,
 		},
 		{
 			name:       "no pods",
 			pods:       []corev1.Pod{},
-			wantStatus: "fail",
+			wantStatus: statusFail,
 		},
 		{
 			name: "pod pending",
 			pods: []corev1.Pod{
 				{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}, Status: corev1.PodStatus{Phase: corev1.PodPending}},
 			},
-			wantStatus: "fail",
+			wantStatus: statusFail,
 		},
 	}
 

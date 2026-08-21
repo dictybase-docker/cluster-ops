@@ -9,6 +9,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+const appLabel = "app"
+
 func (lt *Logto) CreateDeployment(
 	ctx *pulumi.Context,
 	claimName pulumi.StringInput,
@@ -49,13 +51,13 @@ func (lt *Logto) CreateDeploymentSpec(
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(lt.Config.Name),
+				appLabel: pulumi.String(lt.Config.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(lt.Config.Name),
+					appLabel: pulumi.String(lt.Config.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{

@@ -1,5 +1,7 @@
 package main
 
+const appLabel = "app"
+
 type EmailDeployment struct {
 	Name    string
 	Secrets EmailSecrets

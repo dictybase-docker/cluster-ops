@@ -9,6 +9,12 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const (
+	namespaceFlag    = "namespace"
+	namespaceUsage   = "Kubernetes namespace to search in"
+	defaultNamespace = "dev"
+)
+
 func initLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, nil))
 }
@@ -19,10 +25,10 @@ func excludeVolumesFromBackupCommand(logger *slog.Logger) *cli.Command {
 		Usage: "Add 'backup.velero.io/backup-volumes-excludes' annotation to pods",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "namespace",
+				Name:    namespaceFlag,
 				Aliases: []string{"n"},
-				Usage:   "Kubernetes namespace to search in",
-				Value:   "dev",
+				Usage:   namespaceUsage,
+				Value:   defaultNamespace,
 			},
 		},
 		Action: func(cliCtx *cli.Context) error {
@@ -45,7 +51,7 @@ func newCustodianConfig(
 ) custodian.CustodianConfig {
 	return custodian.CustodianConfig{
 		KubeconfigPath: cliCtx.String("kubeconfig"),
-		Namespace:      cliCtx.String("namespace"),
+		Namespace:      cliCtx.String(namespaceFlag),
 		Logger:         logger,
 	}
 }
@@ -62,10 +68,10 @@ func extractLogCommand(logger *slog.Logger) *cli.Command {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:    "namespace",
+				Name:    namespaceFlag,
 				Aliases: []string{"n"},
-				Usage:   "Kubernetes namespace to search in",
-				Value:   "dev",
+				Usage:   namespaceUsage,
+				Value:   defaultNamespace,
 			},
 		},
 		Action: func(cliCtx *cli.Context) error {
@@ -89,10 +95,10 @@ func excludeFromBackupCommand(logger *slog.Logger) *cli.Command {
 		Usage: "Add 'velero.io/exclude-from-backup=true' label",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "namespace",
+				Name:    namespaceFlag,
 				Aliases: []string{"n"},
-				Usage:   "Kubernetes namespace to search in",
-				Value:   "dev",
+				Usage:   namespaceUsage,
+				Value:   defaultNamespace,
 			},
 		},
 		Action: func(cliCtx *cli.Context) error {

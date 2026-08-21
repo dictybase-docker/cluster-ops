@@ -13,9 +13,9 @@ func TestSetCredential_Replace(t *testing.T) {
 	envFile := filepath.Join(dir, ".env.test.cluster")
 	key1 := filepath.Join(dir, "key1.json")
 	key2 := filepath.Join(dir, "key2.json")
-	os.WriteFile(key1, []byte(`{}`), 0644)
-	os.WriteFile(key2, []byte(`{}`), 0644)
-	os.WriteFile(envFile, []byte("# existing env file\n"), 0644)
+	writeFixture(t, key1, `{}`)
+	writeFixture(t, key2, `{}`)
+	writeFixture(t, envFile, "# existing env file\n")
 
 	// First write
 	if err := SetCredential(envFile, key1); err != nil {
@@ -68,10 +68,17 @@ func TestSetCredential_ReplacesPlainLine(t *testing.T) {
 func TestSetCredential_MissingKey(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env.test.cluster")
-	os.WriteFile(envFile, []byte("# env\n"), 0644)
+	writeFixture(t, envFile, "# env\n")
 
 	err := SetCredential(envFile, "/nonexistent/key.json")
 	if err == nil {
 		t.Error("expected error for missing key file, got nil")
+	}
+}
+
+func writeFixture(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
