@@ -28,7 +28,7 @@ if [ "${cmd}" = "get" ] && [ "${subcmd}" = "cluster" ]; then
     echo "apiVersion: kops.k8s.io/v1alpha2"
     echo "kind: Cluster"
     echo "metadata:"
-    echo "  name: mock-cluster.k8s.local"
+    echo "  name: mock-cluster-k8s.local"
     exit 0
 fi
 
@@ -104,13 +104,13 @@ echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
     grep -E "(update|reconcile)" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ update-cluster executed"
 
     just gcp-cluster validate-cluster --cluster dcr-test-1
-    grep -E "validate.*cluster.*--name=dcr-test-1\.k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ validate-cluster executed"
+    grep -E "validate.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ validate-cluster executed"
 
     just gcp-cluster export-kubeconfig --cluster dcr-test-1
-    grep -E "export.*kubeconfig.*--name=dcr-test-1\.k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ export-kubeconfig executed"
+    grep -E "export.*kubeconfig.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ export-kubeconfig executed"
 
     just gcp-cluster delete-cluster --cluster dcr-test-1 --project proj-test-1
-    grep -E "delete.*cluster.*--name=dcr-test-1\.k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ delete-cluster dry-run executed"
+    grep -E "delete.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ delete-cluster dry-run executed"
 )
 
 rm -rf config/kops/dcr-test-1 config/kops/env-cluster
