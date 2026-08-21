@@ -92,7 +92,7 @@ Cluster operational recipes read parameters from **explicit command-line argumen
 | Parameter | Purpose | Environment Fallback (Optional) |
 |-----------|---------|---------------------------------|
 | `--cluster` | Short cluster name (e.g. `dcr-kube1`) | `CLUSTER_NAME` |
-| `--kops-name` | Full kops DNS name (e.g. `dcr-kube1.k8s.local`) | `KOPS_CLUSTER_NAME` |
+| `--kops-name` | Full kops DNS name (e.g. `dcr-kube1-k8s.local`) | `KOPS_CLUSTER_NAME` |
 | `--project` | GCP Project ID | `PROJECT_ID` |
 | `--state` | Kops state storage URI (e.g. `gs://kops-state-dcr-kube1`) | `KOPS_STATE_STORE` |
 
@@ -268,7 +268,7 @@ just gcp-cluster replace-manifests --cluster <cluster-name> --force yes
 Upload the public SSH key into kops state:
 
 ```bash
-kops create secret sshpublickey "<cluster-name>.k8s.local" \
+kops create secret sshpublickey "<cluster-name>-k8s.local" \
   --state="gs://kops-state-<cluster-name>" \
   -i "credentials/<project-id>/k8sVM.pub"
 ```
@@ -335,7 +335,7 @@ just gcp-cluster update-cluster --cluster <cluster-name>
 just gcp-cluster drift-manifests --cluster <cluster-name>
 
 # 7. If VM sizes or boot disks changed, roll the instances:
-kops rolling-update cluster "<cluster-name>.k8s.local" \
+kops rolling-update cluster "<cluster-name>-k8s.local" \
   --state="gs://kops-state-<cluster-name>" \
   --instance-group stateless-web --yes
 ```
@@ -425,7 +425,7 @@ To bring the cluster back after teardown:
 
 3. **Restore SSH secret** (mandatory after teardown):
    ```bash
-   kops create secret sshpublickey "<cluster-name>.k8s.local" \
+   kops create secret sshpublickey "<cluster-name>-k8s.local" \
      --state="gs://kops-state-<cluster-name>" \
      -i "credentials/<project-id>/k8sVM.pub"
    ```
