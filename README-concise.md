@@ -26,13 +26,15 @@ Deploy a Kubernetes cluster on Google Cloud Platform for dictyBase applications.
 
 ### Quick Setup (Recommended)
 ```bash
-# 1. Get sa-manager.json key from GCP project owner and save to ./credentials/<project_id>/
-just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/<project_id>/sa-manager.json"
+# 1. Get sa-manager.json from the GCP project owner; save to ./credentials/<project_id>/
+just create-cluster-env --env <env> --cluster <cluster> --credentials credentials/<project_id>/sa-manager.json
+just cluster-env --env <env> --cluster <cluster>
 
-# 2. Follow the phased HA workflow (see docs/kops-setup-draft.md)
-just gcp-cluster create-state-bucket --project <project_id> --bucket-name <bucket_name>
-just gcp-cluster create-cluster-config --project <project_id> --bucket-name <bucket_name>
-just gcp-cluster update-cluster
+# 2. Follow the Git-native workflow (see docs/kops-setup-draft.md)
+just gcp-cluster bootstrap-bundle --cluster <cluster> --project <project_id> --api-access-cidr <cidr>
+just gcp-cluster create-state-bucket --project <project_id> --bucket-name kops-state-<cluster>
+just gcp-cluster replace-manifests --cluster <cluster> --force yes
+just gcp-cluster update-cluster --cluster <cluster>
 ```
 
 ### Manual Setup
@@ -46,15 +48,16 @@ If needed, perform steps individually:
 
 2. Create kops service account:
    ```bash
-   just gcp-sa create-sa --project <project_id> --sa-name kops-cluster-creator --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt --output-file credentials/kops-cluster-creator.json
-   just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/kops-cluster-creator.json"
+   just gcp-sa create-sa --project <project_id> --sa-name kops-cluster-creator --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt --output-file credentials/<project_id>/kops-cluster-creator.json
+   just cluster-cred --env <env> --cluster <cluster> --key credentials/<project_id>/kops-cluster-creator.json
    ```
 
 3. Initialize cluster:
    ```bash
-   just gcp-cluster create-state-bucket --project <project_id> --bucket-name <bucket_name>
-   just gcp-cluster create-cluster-config --project <project_id> --bucket-name <bucket_name>
-   just gcp-cluster update-cluster
+   just gcp-cluster bootstrap-bundle --cluster <cluster> --project <project_id> --api-access-cidr <cidr>
+   just gcp-cluster create-state-bucket --project <project_id> --bucket-name kops-state-<cluster>
+   just gcp-cluster replace-manifests --cluster <cluster> --force yes
+   just gcp-cluster update-cluster --cluster <cluster>
    ```
 
 ## Application Deployment with Pulumi
@@ -75,7 +78,9 @@ If needed, perform steps individually:
 
 2. Set the PULUMI_GCP_CREDENTIALS environment variable:
    ```bash
-   just set-env-var --name PULUMI_GCP_CREDENTIALS --value "${PWD}/credentials/pulumi-manager.json"
+   just create-cluster-env --env <env> --cluster <cluster> --force yes \
+     --credentials credentials/<project_id>/kops-cluster-creator.json \
+     --pulumi-gcp-credentials credentials/<project_id>/pulumi-manager.json
    ```
 
 3. Create Key Ring and Key for Pulumi secrets:
@@ -90,10 +95,8 @@ If needed, perform steps individually:
 
 5. Initialize Project Stack:
    ```bash
-   # Set the PULUMI_SECRET_PROVIDER environment variable
-   export PULUMI_SECRET_PROVIDER="gcpkms://projects/<project_id>/locations/<location>/keyRings/<keyring_name>/cryptoKeys/<key_name>"
-   
-   # Initialize a new stack from an existing one
+   # Persist PULUMI_SECRET_PROVIDER and PULUMI_BACKEND_URL in .env.<env>.<cluster>, then:
+   just cluster-env --env <env> --cluster <cluster>
    just gcp-pulumi new-stack-from --folder <folder> --stack <stack> --from-stack <from-stack>
    ```
 

@@ -7,6 +7,8 @@
   - [1.1 The GCP Project](#11-the-gcp-project)
   - [1.2 Core System Tools](#12-core-system-tools)
   - [1.3 Execution Context & Authentication](#13-execution-context--authentication)
+    - [1.3.1 Git vs per-cluster env file](#131-git-vs-per-cluster-env-file)
+    - [1.3.2 Variables overview](#132-variables-overview)
   - [1.4 asdf-Managed Tools](#14-asdf-managed-tools)
   - [1.5 SSH Keypair & File Isolation](#15-ssh-keypair--file-isolation)
 - [2. Service Accounts & Authentication](#2-service-accounts--authentication)
@@ -50,7 +52,7 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 - **Who it's for**: Platform operators who have access to a GCP project and the `sa-manager` service account key.
 - **What you'll end up with**: A fully provisioned Kubernetes cluster (GCE instances, networking, IAM, state storage) plus the Pulumi scaffolding for deploying applications.
 - **How long it takes**: ~30–45 minutes for a clean run (most of that is waiting for GCE instances to boot and pass health checks).
-- **Single Source of Truth**: The cluster spec (control plane, worker pools, sizing, security addons) lives **exclusively in Git** under `config/kops/<cluster>/`. No cluster shape variables in `.env` files.
+- **Single Source of Truth**: The cluster spec (control plane, worker pools, sizing, security addons, cluster DNS name, state store, GCP project) lives **exclusively in Git** under `config/kops/<cluster>/`. Credentials and local paths live in a gitignored `.env.<env>.<cluster>` file.
 - **Pulumi post-provisioning**: Once the cluster is up, deploying the application stack is covered separately in [`docs/pulumi-setup.md`](pulumi-setup.md).
 
 ## Quick Setup
@@ -59,11 +61,12 @@ This guide walks you through bootstrapping a kops-managed Kubernetes cluster on 
 2. [Install asdf tools.](#14-asdf-managed-tools) Run `just install-tools` at the repository root.
 3. [Generate SSH keypair.](#15-ssh-keypair--file-isolation) Run `just gcp-cluster generate-ssh-key --project <project-id>`.
 4. [Authenticate with GCP.](#2-service-accounts--authentication) Configure `sa-manager` credential and gcloud named configuration.
-5. [Enable APIs and create creator SA.](#phase-1a) Run Phase 1a and Phase 2.
-6. [Bootstrap the local bundle.](#step-31--bootstrap-local-manifest-bundle) Run `just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr <cidr>`.
-7. [Review and commit YAML.](#step-32--customize-yaml-in-git) Customize `config/kops/<cluster>/cluster.yaml` and `instancegroups.yaml`, then commit to Git.
-8. [Provision cluster.](#step-33--create-state-bucket) Create state bucket, push bundle, upload SSH key, preview, and apply.
-9. [Validate & explore.](#step-37--validate-ha-topology--hardening) Run `just gcp-cluster validate-kops-ha --cluster <name>`, then `just gcp-cluster k9s`.
+5. [Create the per-cluster env file.](#131-git-vs-per-cluster-env-file) Run `just create-cluster-env --env <env> --cluster <name> --credentials credentials/<project-id>/sa-manager.json`, then `just cluster-env --env <env> --cluster <name>`.
+6. [Enable APIs and create creator SA.](#phase-1a) Run Phase 1a and Phase 2, then rotate with `just cluster-cred`.
+7. [Bootstrap the local bundle.](#step-31--bootstrap-local-manifest-bundle) Run `just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr <cidr>`.
+8. [Review and commit YAML.](#step-32--customize-yaml-in-git) Customize `config/kops/<cluster>/cluster.yaml` and `instancegroups.yaml`, then commit to Git.
+9. [Provision cluster.](#step-33--create-state-bucket) Create state bucket, push bundle, upload SSH key, preview, and apply.
+10. [Validate & explore.](#step-37--validate-ha-topology--hardening) Run `just gcp-cluster validate-kops-ha --cluster <name>`, then `just gcp-cluster k9s`.
 
 <a id="1-prerequisites--execution-context"></a>
 
@@ -89,16 +92,75 @@ Install these through your system package manager:
 
 ### 1.3 Execution Context & Authentication
 
-Cluster operational recipes read parameters from **explicit command-line arguments** (e.g. `--cluster <name>`, `--project <id>`, `--state <uri>`), with optional fallback to environment variables if set in your shell:
+Cluster operational recipes read identity from **explicit command-line arguments** (e.g. `--cluster <name>`, `--project <id>`, `--state <uri>`), with optional fallback to environment variables if already set in your shell. Those identity values are **not** stored in the per-cluster env file — they already live in Git.
 
-| Parameter | Purpose | Environment Fallback (Optional) |
-|-----------|---------|---------------------------------|
-| `--cluster` | Short cluster name (e.g. `dcr-kube1`) | `CLUSTER_NAME` |
-| `--kops-name` | Full kops DNS name (e.g. `dcr-kube1-k8s.local`) | `KOPS_CLUSTER_NAME` |
-| `--project` | GCP Project ID | `PROJECT_ID` |
-| `--state` | Kops state storage URI (e.g. `gs://kops-state-dcr-kube1`) | `KOPS_STATE_STORE` |
+| Parameter | Purpose | Environment Fallback (Optional) | Canonical source |
+|-----------|---------|---------------------------------|------------------|
+| `--cluster` | Short cluster name (e.g. `dcr-kube1`) | `CLUSTER_NAME` | Directory `config/kops/<cluster>/` |
+| `--kops-name` | Full kops DNS name (e.g. `dcr-kube1-k8s.local`) | `KOPS_CLUSTER_NAME` | `cluster.yaml` → `metadata.name` |
+| `--project` | GCP Project ID | `PROJECT_ID` | `cluster.yaml` → `spec.project` |
+| `--state` | Kops state storage URI (e.g. `gs://kops-state-dcr-kube1`) | `KOPS_STATE_STORE` | `cluster.yaml` → `spec.configBase` |
 
-You do not need a per-cluster `.env` file to manage cluster shape; all shape definitions live directly in `config/kops/<cluster>/`.
+<a id="131-git-vs-per-cluster-env-file"></a>
+
+#### 1.3.1 Git vs per-cluster env file
+
+Two stores, two jobs:
+
+- **Git** (`config/kops/<cluster>/`): cluster identity and shape. Committed.
+- **`.env.<env>.<cluster>`**: operator credentials and local file paths. Gitignored. Never committed.
+
+Create the env file after you have `sa-manager.json`:
+
+```bash
+just create-cluster-env \
+  --env <env> \
+  --cluster <cluster-name> \
+  --credentials credentials/<project-id>/sa-manager.json \
+  --ssh-key credentials/<project-id>/k8sVM.pub
+```
+
+Activate it:
+
+```bash
+just cluster-env --env <env> --cluster <cluster-name>
+```
+
+After Phase 2 creates `kops-cluster-creator.json`, rotate the credential in the env file and **re-enter** the shell:
+
+```bash
+just cluster-cred --env <env> --cluster <cluster-name> \
+  --key credentials/<project-id>/kops-cluster-creator.json
+exit
+just cluster-env --env <env> --cluster <cluster-name>
+```
+
+Do **not** put cluster credentials in `.envrc`. `.envrc` is not the per-cluster credential store.
+
+<a id="132-variables-overview"></a>
+
+#### 1.3.2 Variables overview
+
+**Git-owned (do not put these in `.env.<env>.<cluster>`):**
+
+| Field | Where |
+|-------|-------|
+| Full kops DNS name | `config/kops/<cluster>/cluster.yaml` → `metadata.name` |
+| State store | `config/kops/<cluster>/cluster.yaml` → `spec.configBase` |
+| GCP project | `config/kops/<cluster>/cluster.yaml` → `spec.project` |
+| Kubernetes version | `config/kops/<cluster>/cluster.yaml` → `spec.kubernetesVersion` |
+| Topology, CIDRs, addons, instance groups | `cluster.yaml` / `instancegroups.yaml` |
+
+**Env-file-owned (credentials and local paths only):**
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to the active GCP service-account JSON |
+| `SSH_KEY` | Path to the node SSH **public** key |
+| `KUBECONFIG` | Path to the exported kubeconfig |
+| `PULUMI_GCP_CREDENTIALS` | Path to `pulumi-manager.json` |
+| `PULUMI_SECRET_PROVIDER` | `gcpkms://…` URI |
+| `PULUMI_BACKEND_URL` | Pulumi state bucket (`gs://…`) |
 
 <a id="14-asdf-managed-tools"></a>
 
@@ -133,14 +195,20 @@ Creates:
 - Private: `credentials/<project-id>/k8sVM`
 - Public: `credentials/<project-id>/k8sVM.pub`
 
+Pass the public key into the env file with `--ssh-key` on `create-cluster-env`, or regenerate the env file after the key exists.
+
 <a id="2-service-accounts--authentication"></a>
 
 ## 2. Service Accounts & Authentication
 
-Set your active Google application credentials for bootstrap:
+Set your active Google application credentials for bootstrap by creating the per-cluster env file, then entering its shell:
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/<project-id>/sa-manager.json"
+just create-cluster-env \
+  --env <env> \
+  --cluster <cluster-name> \
+  --credentials credentials/<project-id>/sa-manager.json
+just cluster-env --env <env> --cluster <cluster-name>
 ```
 
 Configure named gcloud configuration for the service account:
@@ -180,9 +248,12 @@ just gcp-sa create-sa --project <project-id> --sa-name kops-cluster-creator \
   --output-file credentials/<project-id>/kops-cluster-creator.json
 ```
 
-Rotate your credentials to the narrower `kops-cluster-creator` key:
+Rotate your credentials to the narrower `kops-cluster-creator` key, then re-enter the cluster shell so the new value is loaded:
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/<project-id>/kops-cluster-creator.json"
+just cluster-cred --env <env> --cluster <cluster-name> \
+  --key credentials/<project-id>/kops-cluster-creator.json
+exit
+just cluster-env --env <env> --cluster <cluster-name>
 ```
 
 ---
@@ -421,10 +492,10 @@ just gcp-cluster rolling-update --cluster <cluster-name>
 
 ## 5. Exploring the Cluster
 
-Export kubeconfig and launch management UI:
+Export kubeconfig and launch management UI. If `KUBECONFIG` is set (from `just cluster-env`), export writes that path:
 
 ```bash
-just gcp-cluster export-kubeconfig
+just gcp-cluster export-kubeconfig --cluster <cluster-name>
 just gcp-cluster k9s
 ```
 
@@ -436,7 +507,7 @@ just gcp-cluster k9s
 
 ### 6.1 Mindset & Durable Blueprint
 
-The blueprint — canonical manifest bundle (`config/kops/<cluster>/*.yaml`), SA keys, and state bucket — is durable in Git. GCE compute instances are transient. Recreation is fully declarative and reproducible.
+The blueprint — canonical manifest bundle (`config/kops/<cluster>/*.yaml`) — is durable in Git. SA keys and the per-cluster env file stay on the operator machine (gitignored). GCE compute instances are transient. Recreation is fully declarative and reproducible.
 
 > **Note on single-file `instancegroups.yaml` replace:** Manifest schema (`v1alpha2`) is verified cross-version compatible — `kops replace -f` accepts both files on kops v1.29.2 and v1.36.1. Full end-to-end re-creation from Git still pending a first live-target run.
 
@@ -448,6 +519,7 @@ The blueprint — canonical manifest bundle (`config/kops/<cluster>/*.yaml`), SA
 | GCS state bucket (`gs://kops-state-<cluster>`) | ✅ Yes | `kops delete` does not delete the bucket. |
 | SSH keypair (`credentials/<project>/k8sVM*`) | ✅ Yes | Local files reused across cycles. |
 | Service account keys (`credentials/<project>/*.json`) | ✅ Yes | GCP service accounts and JSON keys persist. |
+| Per-cluster env file (`.env.<env>.<cluster>`) | ✅ Yes | Gitignored local credentials/paths; recreate with `just create-cluster-env` if missing. |
 | **GCE compute instances** (control-plane + workers) | ❌ Destroyed | These are transient VMs. |
 | **Boot disks & etcd volumes** | ❌ Destroyed | Deleted with instances. |
 
@@ -483,6 +555,17 @@ Bucket name defaults to `kops-state-<cluster-name>` derived from `--cluster`. Ov
 ### 6.5 Declarative Re-Creation
 
 To bring the cluster back after teardown:
+
+0. **Re-enter the operator env** (credentials + kubeconfig path):
+   ```bash
+   just cluster-env --env <env> --cluster <cluster-name>
+   ```
+   Recreate the file first if it is gone:
+   ```bash
+   just create-cluster-env --env <env> --cluster <cluster-name> \
+     --credentials credentials/<project-id>/kops-cluster-creator.json \
+     --ssh-key credentials/<project-id>/k8sVM.pub
+   ```
 
 1. **Recreate state bucket** (only if deleted in step 6.4):
    ```bash

@@ -177,9 +177,102 @@ build-publish-backup-image ref user pass: setup
 
 # --- Cluster Operations ---
 
+# Create a per-cluster env file for credentials and local paths only.
+# Does NOT write Git-owned identity (cluster name, state store, project, kubernetesVersion).
+# Those live in config/kops/<cluster>/*.yaml.
+# Usage: just create-cluster-env --env <env> --cluster <cluster> --credentials <sa.json> [--ssh-key <pub>] [--kubeconfig <path>] [--force yes]
+[arg("env", long="env", short="e", help="Environment name (dev, staging, prod)")]
+[arg("cluster", long="cluster", short="c", help="Short cluster name; used only as the env filename suffix")]
+[arg("credentials", long="credentials", help="Path to the GCP service-account JSON (defaults to GOOGLE_APPLICATION_CREDENTIALS)")]
+[arg("ssh_key", long="ssh-key", help="SSH public key path (defaults to SSH_KEY)")]
+[arg("kubeconfig", long="kubeconfig", help="Kubeconfig path (defaults to KUBECONFIG or clusters/<cluster>/kubeconfig)")]
+[arg("pulumi_gcp_credentials", long="pulumi-gcp-credentials", help="Pulumi GCP SA JSON path (defaults to PULUMI_GCP_CREDENTIALS)")]
+[arg("pulumi_secret_provider", long="pulumi-secret-provider", help="Pulumi secrets provider URI (defaults to PULUMI_SECRET_PROVIDER)")]
+[arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to PULUMI_BACKEND_URL)")]
+[arg("force", long="force", pattern="yes|no", help="Overwrite an existing env file")]
+[group('cluster-ops')]
+create-cluster-env env="" cluster="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" force="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    env_name="{{ env }}"
+    cluster_name="{{ cluster }}"
+    if [ -z "${env_name}" ] || [ -z "${cluster_name}" ]; then
+        echo "ERROR: --env and --cluster are required."
+        exit 1
+    fi
+
+    dest="{{ justfile_directory() }}/.env.${env_name}.${cluster_name}"
+    if [ -e "${dest}" ] && [ "{{ force }}" != "yes" ]; then
+        echo "ERROR: ${dest} already exists. Pass --force yes to overwrite."
+        exit 1
+    fi
+
+    cred="${GOOGLE_APPLICATION_CREDENTIALS:-{{ credentials }}}"
+    if [ -z "${cred}" ]; then
+        echo "ERROR: credentials path required. Pass --credentials <sa.json> or set GOOGLE_APPLICATION_CREDENTIALS."
+        exit 1
+    fi
+    if [ ! -f "${cred}" ]; then
+        echo "ERROR: credentials file not found: ${cred}"
+        exit 1
+    fi
+    cred="$(cd "$(dirname "${cred}")" && pwd)/$(basename "${cred}")"
+
+    ssh_key="${SSH_KEY:-{{ ssh_key }}}"
+    if [ -n "${ssh_key}" ] && [ ! -f "${ssh_key}" ]; then
+        echo "ERROR: SSH public key not found: ${ssh_key}"
+        exit 1
+    fi
+    if [ -n "${ssh_key}" ]; then
+        ssh_key="$(cd "$(dirname "${ssh_key}")" && pwd)/$(basename "${ssh_key}")"
+    fi
+
+    kubeconfig="${KUBECONFIG:-{{ kubeconfig }}}"
+    if [ -z "${kubeconfig}" ]; then
+        kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
+    fi
+
+    pulumi_creds="${PULUMI_GCP_CREDENTIALS:-{{ pulumi_gcp_credentials }}}"
+    pulumi_kms="${PULUMI_SECRET_PROVIDER:-{{ pulumi_secret_provider }}}"
+    pulumi_backend="${PULUMI_BACKEND_URL:-{{ pulumi_backend_url }}}"
+
+    write_kv() {
+        local key="$1" val="$2"
+        if [ -z "${val}" ]; then
+            return 0
+        fi
+        if [[ "${val}" == *$'\n'* ]]; then
+            echo "ERROR: ${key} value must not contain newlines."
+            exit 1
+        fi
+        printf '%s=%s\n' "${key}" "$(printf '%q' "${val}")"
+    }
+
+    umask 077
+    tmp="$(mktemp "{{ justfile_directory() }}/.env.create.XXXXXX")"
+    trap 'rm -f "${tmp}"' EXIT
+
+    {
+        echo "# Per-cluster operator environment for ${env_name}/${cluster_name}"
+        echo "# Credentials and local paths only. Cluster identity lives in config/kops/${cluster_name}/."
+        echo "# Gitignored. Do not commit."
+        write_kv GOOGLE_APPLICATION_CREDENTIALS "${cred}"
+        write_kv SSH_KEY "${ssh_key}"
+        write_kv KUBECONFIG "${kubeconfig}"
+        write_kv PULUMI_GCP_CREDENTIALS "${pulumi_creds}"
+        write_kv PULUMI_SECRET_PROVIDER "${pulumi_kms}"
+        write_kv PULUMI_BACKEND_URL "${pulumi_backend}"
+    } > "${tmp}"
+
+    mv "${tmp}" "${dest}"
+    trap - EXIT
+    echo "Wrote ${dest}"
+    echo "Activate with: just cluster-env --env ${env_name} --cluster ${cluster_name}"
+
 # Activate a per-cluster env file by sourcing it into a sub-shell.
 # This is the recommended way to switch between clusters (dev/staging/prod).
-# The sub-shell inherits all cluster vars; 'exit' or Ctrl-D returns to the parent shell.
+# The sub-shell inherits credential/path vars; 'exit' or Ctrl-D returns to the parent shell.
 #
 # Usage: just cluster-env --env <env> --cluster <cluster>
 # Example: just cluster-env --env dev --cluster my-cluster
@@ -189,9 +282,17 @@ build-publish-backup-image ref user pass: setup
 cluster-env env cluster:
     #!/usr/bin/env bash
     set -euo pipefail
-    set -a; source ".env.{{ env }}.{{ cluster }}"; set +a
-    echo "Cluster: ${KOPS_CLUSTER_NAME}"
-    echo "State  : ${KOPS_STATE_STORE}"
+    env_file="{{ justfile_directory() }}/.env.{{ env }}.{{ cluster }}"
+    if [ ! -f "${env_file}" ]; then
+        echo "ERROR: env file not found: ${env_file}"
+        echo "Create it with: just create-cluster-env --env {{ env }} --cluster {{ cluster }} --credentials <sa.json>"
+        exit 1
+    fi
+    set -a; source "${env_file}"; set +a
+    echo "Env file: ${env_file}"
+    echo "GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-UNSET}"
+    echo "SSH_KEY=${SSH_KEY:-UNSET}"
+    echo "KUBECONFIG=${KUBECONFIG:-UNSET}"
     echo "Type 'exit' or Ctrl-D to leave this environment."
     exec "$SHELL"
 

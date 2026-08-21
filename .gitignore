@@ -36,6 +36,7 @@ config.json.old
 scratch
 .env.dev.dcr-experiments
 .env
+.env.*
 .zsh_config
 .tool-versions
 .claude

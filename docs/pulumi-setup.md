@@ -129,17 +129,18 @@ This repo’s **programs** are mostly single-instance. HA is partial: some knobs
 
 ### 3.1 Add to Your Cluster Env File
 
-Edit `.env.<env>.<cluster-name>` (same file as kops). Example values — replace placeholders:
+Put Pulumi credentials in the same gitignored `.env.<env>.<cluster-name>` file as kops operator credentials. Generate or refresh it with `just create-cluster-env` (do **not** write cluster name, state store, or project — those live in Git):
 
 ```bash
-PULUMI_GCP_CREDENTIALS="${PWD}/credentials/<project-id>/pulumi-manager.json"
-PULUMI_SECRET_PROVIDER="gcpkms://projects/<project-id>/locations/us-central1/keyRings/<keyring>/cryptoKeys/<key>"
-PULUMI_BACKEND_URL="gs://<pulumi-state-bucket>"
-# Kubernetes provider uses the cluster kubeconfig from this env file:
-# KUBECONFIG="${PWD}/clusters/<project-id>/kubeconfig"
+just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
+  --credentials credentials/<project-id>/kops-cluster-creator.json \
+  --kubeconfig clusters/<cluster-name>/kubeconfig \
+  --pulumi-gcp-credentials credentials/<project-id>/pulumi-manager.json \
+  --pulumi-secret-provider "gcpkms://projects/<project-id>/locations/us-central1/keyRings/<keyring>/cryptoKeys/<key>" \
+  --pulumi-backend-url "gs://<pulumi-state-bucket>"
 ```
 
-Also keep kops-required vars (`PROJECT_ID`, `KUBECONFIG`, etc.) already defined per [kops §1.3.2](kops-setup-draft.md#132-variables-overview).
+Credential and path variables are listed in [kops §1.3.2](kops-setup-draft.md#132-variables-overview). Cluster identity (`KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `PROJECT_ID`) is **not** in this file.
 
 > **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
 

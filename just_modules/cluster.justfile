@@ -63,8 +63,8 @@ generate-ssh-key project="" type="ed25519":
 
     if [ -z "${SSH_KEY:-}" ]; then
         echo ""
-        echo "Add this to your per-cluster env file (.env.<env>.<cluster>):"
-        echo "  SSH_KEY=\${PWD}/credentials/${project}/k8sVM.pub"
+        echo "Add this to the per-cluster env file with:"
+        echo "  just create-cluster-env --env <env> --cluster <cluster> --credentials <sa.json> --ssh-key ${key_path}.pub"
     fi
 
 # Set up the project's service accounts and roles.
@@ -330,7 +330,13 @@ export-kubeconfig cluster="" kops_name="" state="":
     state_args=()
     [ -n "${st}" ] && state_args=("--state=${st}")
 
-    kops export kubeconfig --admin "${name_args[@]}" "${state_args[@]}"
+    kube_args=()
+    if [ -n "${KUBECONFIG:-}" ]; then
+        mkdir -p "$(dirname "${KUBECONFIG}")"
+        kube_args=("--kubeconfig=${KUBECONFIG}")
+    fi
+
+    kops export kubeconfig --admin "${name_args[@]}" "${state_args[@]}" "${kube_args[@]}"
 
 # Export a kubeconfig file with a custom name and duration.
 # Usage: just gcp-cluster export-named-kubeconfig --name <name> [--duration-hours <n>]

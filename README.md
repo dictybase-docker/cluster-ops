@@ -56,9 +56,16 @@ Each call installs the exact version (creating the asdf plugin if needed) and wr
 
 ## Environmental Variables
 
-Environmental variables for the project are managed by `direnv`, which will load the variables defined in the `.envrc` file at the root of the project.
+Cluster **identity and shape** live in Git under `config/kops/<cluster>/` (name, state store, project, kubernetes version, instance groups).
 
-This file will be created automatically when running the `just set-env-var` just recipe later on, so there is no need to create it yourself.
+Operator **credentials and local paths** live in a gitignored per-cluster env file, `.env.<env>.<cluster>`:
+
+```sh
+just create-cluster-env --env <env> --cluster <cluster> --credentials credentials/<project_id>/sa-manager.json
+just cluster-env --env <env> --cluster <cluster>
+```
+
+Do **not** put cluster credentials in `.envrc`. `.envrc` is not the per-cluster credential store.
 
 ## Cluster Setup
 
@@ -80,9 +87,10 @@ This will create a service account named `sa-manager` and create a JSON key file
 
 Have the project owner send the key file to you. Save it as `./credentials/<project_id>/sa-manager.json`.
 
-Then, you can set the `GOOGLE_APPLICATION_CREDENTIALS` environmental variable by running 
+Then create the per-cluster env file and enter its shell:
 ```
-just set-env-var --name GOOGLE_APPLICATION_CREDENTIALS --value "${PWD}/credentials/<project_id>/sa-manager.json"
+just create-cluster-env --env <env> --cluster <cluster> --credentials credentials/<project_id>/sa-manager.json
+just cluster-env --env <env> --cluster <cluster>
 ```
 
 Google Application Default Credentials (ADC) is used by the Go Google Cloud client libraryto authenticate requests to your Google Cloud project. For service account keys, the use of environmental variables is the [prescribed method](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment#local-key) of setting up ADC.
@@ -120,24 +128,24 @@ just gcp-sa create-sa --project <project_id> --sa-name kops-cluster-creator --ro
 This will create a service account named `kops-cluster-creator` with the roles defined in `gcs-files/roles-permissions/kops-cluster-creator-roles.txt`, and save the JSON key file to `credentials/kops-cluster-creator.json`.
 
 ### 3. Change Application Default Credentials
-After creating the `kops-cluster-creator` key, you will need to update the value of the `GOOGLE_APPLICATION_CREDENTIAL` environmental variable to point to the key.
+After creating the `kops-cluster-creator` key, rotate it in the env file and re-enter the cluster shell:
 
-
-Run:
 ```
-export GOOGLE_APPLICATION_CREDENTIALS="${PWD}/credentials/kops-cluster-creator.json"
+just cluster-cred --env <env> --cluster <cluster> --key credentials/<project_id>/kops-cluster-creator.json
+exit
+just cluster-env --env <env> --cluster <cluster>
 ```
 
-Now, the Go Google Cloud client libraries will use the `kops-cluster-creator` service key, 
 
 ### 4. Set Up kops State Store and Initialize the Cluster
 
 Follow the [Kops Cluster Creation Guide](docs/kops-setup-draft.md) for the current phased HA provisioning workflow. The modern approach uses:
 
 ```sh
-just gcp-cluster create-state-bucket --project <project_id> --bucket-name <bucket_name>
-just gcp-cluster create-cluster-config --project <project_id> --bucket-name <bucket_name>
-just gcp-cluster update-cluster
+just gcp-cluster bootstrap-bundle --cluster <cluster> --project <project_id> --api-access-cidr <cidr>
+just gcp-cluster create-state-bucket --project <project_id> --bucket-name kops-state-<cluster>
+just gcp-cluster replace-manifests --cluster <cluster> --force yes
+just gcp-cluster update-cluster --cluster <cluster>
 ```
 ## Application Deployment with Pulumi
 
@@ -148,20 +156,22 @@ Applications are deployed to the Kubernetes cluster using [Pulumi](https://www.p
 just gcp-sa create-sa --project <project_id> --sa-name pulumi-manager --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt --output-file credentials/pulumi-manager.json
 ```
 
-### 2. Set the PULUMI_GCP_CREDENTIALS environmental variable
+### 2. Put Pulumi credentials in the per-cluster env file
 ```sh
-export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
+just create-cluster-env --env <env> --cluster <cluster> --force yes \
+  --credentials credentials/<project_id>/kops-cluster-creator.json \
+  --pulumi-gcp-credentials credentials/<project_id>/pulumi-manager.json
+just cluster-env --env <env> --cluster <cluster>
 ```
+
+Do not put Pulumi credentials in `.envrc`.
 
 ### 3. Create Key Ring and Key
 Creates a Google [Cloud Key](https://cloud.google.com/kms/docs/resource-hierarchy#keys) used to encrypt secrets in a Pulumi project's stack
 ```sh
 just gcp-kms create-keyring-and-key --project-id <project-id> --keyring-name <keyring-name> --key-name <key-name> --credentials-file credentials/pulumi-manager.json --location <location>
 ```
-Then,
-```
-export PULUMI_SECRET_PROVIDER=<GCLOUD_KMS_KEY>
-```
+Then persist `PULUMI_SECRET_PROVIDER` and `PULUMI_BACKEND_URL` in `.env.<env>.<cluster>` (see [`docs/pulumi-setup.md`](docs/pulumi-setup.md) §3.1) and re-run `just cluster-env`.
 
 Arguments:
 - `location`: Optional. The Google Cloud region where the bucket will be created. Defaults to "us-central1"

@@ -84,11 +84,6 @@ func getBucketParams(cliContext *cli.Context) CreateBucketParams {
 func validateEnvironment() error {
 	requiredVars := []string{
 		"GOOGLE_APPLICATION_CREDENTIALS",
-		"KOPS_CLUSTER_NAME",
-		"KOPS_STATE_STORE",
-		"KUBECONFIG",
-		"SSH_KEY",
-		"KUBERNETES_VERSION",
 	}
 	missingVars := checkRequiredVars(requiredVars)
 	if len(missingVars) > 0 {
