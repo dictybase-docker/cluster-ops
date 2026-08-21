@@ -269,9 +269,9 @@ just gcp-cluster replace-manifests --cluster <cluster-name> --force yes
 Upload the public SSH key into kops state:
 
 ```bash
-kops create secret sshpublickey "<cluster-name>-k8s.local" \
-  --state="gs://kops-state-<cluster-name>" \
-  -i "credentials/<project-id>/k8sVM.pub"
+just gcp-cluster upload-ssh-secret \
+  --cluster <cluster-name> \
+  --ssh-key credentials/<project-id>/k8sVM.pub
 ```
 
 <a id="step-36--preview--apply-version-aware"></a>
@@ -454,9 +454,9 @@ To bring the cluster back after teardown:
 
 3. **Restore SSH secret** (mandatory after teardown):
    ```bash
-   kops create secret sshpublickey "<cluster-name>-k8s.local" \
-     --state="gs://kops-state-<cluster-name>" \
-     -i "credentials/<project-id>/k8sVM.pub"
+   just gcp-cluster upload-ssh-secret \
+     --cluster <cluster-name> \
+     --ssh-key credentials/<project-id>/k8sVM.pub
    ```
 
 4. **Preview and provision**:
