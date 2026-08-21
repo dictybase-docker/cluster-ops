@@ -110,7 +110,7 @@ sa-accounts-setup project="" activate_api="true":
 # Update the kops cluster (version-aware apply).
 # Usage: just gcp-cluster update-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 update-cluster cluster="" kops_name="" state="": build
@@ -118,7 +118,7 @@ update-cluster cluster="" kops_name="" state="": build
     set -euo pipefail
     c="${CLUSTER_NAME:-{{ cluster }}}"
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
@@ -135,7 +135,7 @@ update-cluster cluster="" kops_name="" state="": build
 # Preview pending cluster changes without applying them (version-aware dry-run).
 # Usage: just gcp-cluster plan-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 plan-cluster cluster="" kops_name="" state="": build
@@ -143,7 +143,7 @@ plan-cluster cluster="" kops_name="" state="": build
     set -euo pipefail
     c="${CLUSTER_NAME:-{{ cluster }}}"
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
@@ -181,7 +181,7 @@ create-state-bucket project="" bucket_name="": build
 # Thin wrapper — delegates to cluster-ops.
 # Usage: just gcp-cluster validate-kops-ha [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 validate-kops-ha cluster="" kops_name="" state="": build
@@ -191,7 +191,7 @@ validate-kops-ha cluster="" kops_name="" state="": build
     if [ -n "${c}" ]; then
         export CLUSTER_NAME="${c}"
         kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-        [ -z "${kn}" ] && kn="${c}.k8s.local"
+        [ -z "${kn}" ] && kn="${c}-k8s.local"
         export KOPS_CLUSTER_NAME="${kn}"
         st="${KOPS_STATE_STORE:-{{ state }}}"
         [ -z "${st}" ] && st="gs://kops-state-${c}"
@@ -272,7 +272,7 @@ validate-hardening:
 # Checks if the cluster is correctly set up and running
 # Usage: just gcp-cluster validate-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>] [waittime]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 validate-cluster cluster="" kops_name="" state="" waittime="20":
@@ -280,7 +280,7 @@ validate-cluster cluster="" kops_name="" state="" waittime="20":
     set -euo pipefail
     c="${CLUSTER_NAME:-{{ cluster }}}"
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
@@ -313,7 +313,7 @@ k9s:
 # Export the kubeconfig for the current cluster
 # Usage: just gcp-cluster export-kubeconfig [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 export-kubeconfig cluster="" kops_name="" state="":
@@ -321,7 +321,7 @@ export-kubeconfig cluster="" kops_name="" state="":
     set -euo pipefail
     c="${CLUSTER_NAME:-{{ cluster }}}"
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
@@ -440,7 +440,7 @@ instance-groups:
 # Teardown: dry-run preview or full destroy for the target cluster.
 # Usage: just gcp-cluster delete-cluster [--cluster <name>] [--kops-name <name>] [--project <id>] [--state <uri>] [--confirm yes]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("project", long="project", short="p", help="GCP project ID (defaults to PROJECT_ID env var)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [arg("confirm", long="confirm", pattern="yes|no", help="Set to 'yes' to destroy after dry-run")]
@@ -451,7 +451,7 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
 
     c="${CLUSTER_NAME:-{{ cluster }}}"
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
     p="${PROJECT_ID:-{{ project }}}"
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
@@ -529,7 +529,7 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
 # Pure offline operation — zero cloud/state store mutation.
 # Usage: just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr <cidr> [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Short cluster name (e.g. dcr-kube1)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to <cluster>-k8s.local)")]
 [arg("project", long="project", short="p", help="GCP project ID")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to gs://kops-state-<cluster>)")]
 [arg("api_access_cidr", long="api-access-cidr", short="a", help="Administrative API CIDR (e.g. 203.0.113.10/32)")]
@@ -556,7 +556,7 @@ bootstrap-bundle cluster="" kops_name="" project="" state="" api_access_cidr="":
     fi
 
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && kn="${c}-k8s.local"
 
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
@@ -611,7 +611,7 @@ bootstrap-bundle cluster="" kops_name="" project="" state="" api_access_cidr="":
 # Break-glass recovery / adoption import only.
 # Usage: just gcp-cluster export-bundle [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 export-bundle cluster="" kops_name="" state="":
@@ -625,7 +625,7 @@ export-bundle cluster="" kops_name="" state="":
     fi
 
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && kn="${c}-k8s.local"
 
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
@@ -656,7 +656,7 @@ export-bundle cluster="" kops_name="" state="":
 # With --force yes, pass kops replace --force (create-or-update).
 # Usage: just gcp-cluster replace-manifests [--cluster <name>] [--kops-name <name>] [--state <uri>] [--force yes]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [arg("force", long="force", short="f", pattern="yes|no", help="Set to 'yes' to pass --force (create-or-update)")]
 [no-cd]
@@ -684,7 +684,7 @@ replace-manifests cluster="" kops_name="" state="" force="no":
     fi
 
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && kn="${c}-k8s.local"
 
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
@@ -704,7 +704,7 @@ replace-manifests cluster="" kops_name="" state="" force="no":
 # Diff canonical bundle files against live state storage.
 # Usage: just gcp-cluster drift-manifests [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>.k8s.local)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
 drift-manifests cluster="" kops_name="" state="":
@@ -727,7 +727,7 @@ drift-manifests cluster="" kops_name="" state="":
     fi
 
     kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
-    [ -z "${kn}" ] && kn="${c}.k8s.local"
+    [ -z "${kn}" ] && kn="${c}-k8s.local"
 
     st="${KOPS_STATE_STORE:-{{ state }}}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
