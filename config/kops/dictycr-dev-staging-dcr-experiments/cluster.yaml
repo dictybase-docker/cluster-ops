@@ -1,0 +1,87 @@
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  creationTimestamp: "2024-09-25T19:51:02Z"
+  generation: 3
+  name: dictycr-dev-staging-dcr-experiments-k8s.local
+spec:
+  api:
+    loadBalancer:
+      type: Public
+  authorization:
+    rbac: {}
+  certManager:
+    enabled: true
+  channel: stable
+  cloudConfig: {}
+  cloudProvider: gce
+  clusterAutoscaler:
+    awsUseStaticInstanceList: false
+    balanceSimilarNodeGroups: false
+    enabled: true
+    expander: least-waste
+    maxNodeProvisionTime: 15m
+    newPodScaleUpDelay: 0s
+    scaleDownDelayAfterAdd: 10m
+    scaleDownUnneededTime: 10m
+    scaleDownUtilizationThreshold: "0.5"
+    skipNodesWithLocalStorage: true
+    skipNodesWithSystemPods: true
+  configBase: gs://kops-state-dcr-experiments/dictycr-dev-staging-dcr-experiments-k8s.local
+  etcdClusters:
+  - cpuRequest: 200m
+    etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+    manager:
+      backupRetentionDays: 90
+    memoryRequest: 100Mi
+    name: main
+  - cpuRequest: 100m
+    etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+    manager:
+      backupRetentionDays: 90
+    memoryRequest: 100Mi
+    name: events
+  - cpuRequest: 100m
+    etcdMembers:
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+    manager:
+      backupRetentionDays: 90
+    memoryRequest: 100Mi
+    name: cilium
+  iam:
+    allowContainerRegistry: true
+    legacy: false
+  kubeProxy:
+    enabled: false
+  kubelet:
+    anonymousAuth: false
+  kubernetesApiAccess:
+  - 0.0.0.0/0
+  - ::/0
+  kubernetesVersion: 1.28.8
+  metricsServer:
+    enabled: true
+  networking:
+    cilium:
+      enableNodePort: true
+      etcdManaged: true
+  nodeProblemDetector:
+    enabled: true
+  nonMasqueradeCIDR: 100.64.0.0/10
+  project: dcr-experiments
+  sshAccess:
+  - 0.0.0.0/0
+  - ::/0
+  subnets:
+  - cidr: 10.0.16.0/20
+    name: us-central1
+    region: us-central1
+    type: Public
+  topology:
+    dns:
+      type: None

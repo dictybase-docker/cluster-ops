@@ -1,0 +1,44 @@
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  creationTimestamp: "2024-09-25T19:51:03Z"
+  labels:
+    kops.k8s.io/cluster: dictycr-dev-staging-dcr-experiments-k8s.local
+  name: control-plane-us-central1-c
+spec:
+  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240607
+  machineType: n1-custom-4-8192
+  maxSize: 1
+  minSize: 1
+  role: Master
+  rootVolumeSize: 75
+  subnets:
+  - us-central1
+  zones:
+  - us-central1-c
+
+---
+
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  creationTimestamp: "2024-09-25T19:51:03Z"
+  generation: 3
+  labels:
+    k8s.io/cluster-autoscaler/dictycr-dev-staging-dcr-experiments-k8s.local: owned
+    k8s.io/cluster-autoscaler/enabled: "true"
+    kops.k8s.io/cluster: dictycr-dev-staging-dcr-experiments-k8s.local
+  name: nodes-us-central1-c
+spec:
+  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240607
+  machineType: n1-custom-2-4096
+  maxSize: 6
+  minSize: 4
+  nodeLabels:
+    cloud.google.com/metadata-proxy-ready: "true"
+  role: Node
+  rootVolumeSize: 100
+  subnets:
+  - us-central1
+  zones:
+  - us-central1-c
