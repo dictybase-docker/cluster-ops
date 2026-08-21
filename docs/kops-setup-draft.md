@@ -467,10 +467,16 @@ just gcp-cluster delete-cluster --confirm yes
 
 ### 6.4 Optional: Delete the State Bucket
 
-For complete deletion:
+For complete deletion (bucket + all objects + all versions):
 ```bash
-gcloud storage rm --recursive gs://kops-state-<cluster-name>
+# Dry-run preview (lists objects, nothing deleted):
+just gcp-cluster delete-state-bucket --cluster <cluster-name>
+
+# Permanent deletion:
+just gcp-cluster delete-state-bucket --cluster <cluster-name> --confirm yes
 ```
+
+Bucket name defaults to `kops-state-<cluster-name>` derived from `--cluster`. Override with `--bucket-name <bucket|gs://bucket>` or the `BUCKET_NAME` env var.
 
 <a id="65-declarative-re-creation"></a>
 

@@ -525,6 +525,68 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
 
     echo "Teardown complete."
 
+# Delete the GCS state bucket and all objects/versions (Section 6.4).
+# Dry-run by default; pass --confirm yes to delete permanently.
+# Bucket is derived from --cluster (kops-state-<cluster>) unless --bucket-name / BUCKET_NAME is set.
+# Usage: just gcp-cluster delete-state-bucket [--cluster <name>] [--bucket-name <bucket|gs://bucket>] [--confirm yes]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var); derives bucket kops-state-<cluster>")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name or URI (defaults to BUCKET_NAME env var or kops-state-<cluster>)")]
+[arg("confirm", long="confirm", pattern="yes|no", help="Set to 'yes' to permanently delete the bucket and contents")]
+[no-cd]
+delete-state-bucket cluster="" bucket_name="" confirm="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="${CLUSTER_NAME:-{{ cluster }}}"
+    bucket="${BUCKET_NAME:-{{ bucket_name }}}"
+    if [ -z "${bucket}" ] && [ -n "${c}" ]; then
+        bucket="kops-state-${c}"
+    fi
+
+    case "${bucket}" in
+        gs://*) bucket_uri="${bucket}"; bucket_name="${bucket#gs://}" ;;
+        *)       bucket_uri="gs://${bucket}"; bucket_name="${bucket}" ;;
+    esac
+    bucket_name="${bucket_name%/}"
+    bucket_uri="gs://${bucket_name}"
+
+    if [ -z "${bucket_name}" ]; then
+        echo "ERROR: bucket name required. Pass --bucket-name <name> or --cluster <name> (or set BUCKET_NAME / CLUSTER_NAME)."
+        exit 1
+    fi
+
+    echo "=== State bucket deletion ==="
+    echo "Bucket:  ${bucket_uri}"
+    echo ""
+
+    if ! gcloud storage ls "${bucket_uri}" &>/dev/null; then
+        echo "Bucket does not exist or is not accessible: ${bucket_uri}"
+        echo "Nothing to delete."
+        exit 0
+    fi
+
+    echo "--- Dry-run: objects that would be deleted ---"
+    gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | head -n 20 || true
+    object_count="$(gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | wc -l | tr -d ' ')"
+    echo "Approx object count: ${object_count}"
+    echo ""
+
+    if [ "{{ confirm }}" != "yes" ]; then
+        echo "Dry-run complete. Nothing deleted."
+        echo "To permanently delete the bucket and all objects/versions, run with --confirm yes."
+        exit 0
+    fi
+
+    read -r -p "Type 'delete' to confirm permanent deletion: " answer
+    if [ "${answer}" != "delete" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+
+    gcloud storage rm --recursive "${bucket_uri}"
+    echo ""
+    echo "State bucket deleted: ${bucket_uri}"
+
 # Bootstrap a canonical Git manifest bundle locally from starter templates.
 # Pure offline operation — zero cloud/state store mutation.
 # Usage: just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr <cidr> [--kops-name <name>] [--state <uri>]
