@@ -180,9 +180,13 @@ build-publish-backup-image ref user pass: setup
 # Create a per-cluster env file for credentials and local paths only.
 # Does NOT write Git-owned identity (cluster name, state store, project, kubernetesVersion).
 # Those live in config/kops/<cluster>/*.yaml.
-# Usage: just create-cluster-env --env <env> --cluster <cluster> --credentials <sa.json> [--ssh-key <pub>] [--kubeconfig <path>] [--force yes]
+# Usage: just create-cluster-env --env <env> --cluster <cluster> --project <id> [--credentials <sa.json>] [--ssh-key <pub>] [--kubeconfig <path>] [--force yes]
+# Writes PROJECT_ID plus any credential/path args that exist. Credentials may be
+# added later with just cluster-cred. Does not write Git-owned identity
+# (KOPS_CLUSTER_NAME, KOPS_STATE_STORE, BUCKET_NAME, KUBERNETES_VERSION).
 [arg("env", long="env", short="e", help="Environment name (dev, staging, prod)")]
 [arg("cluster", long="cluster", short="c", help="Short cluster name; used only as the env filename suffix")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [arg("credentials", long="credentials", help="Path to the GCP service-account JSON (defaults to GOOGLE_APPLICATION_CREDENTIALS)")]
 [arg("ssh_key", long="ssh-key", help="SSH public key path (defaults to SSH_KEY)")]
 [arg("kubeconfig", long="kubeconfig", help="Kubeconfig path (defaults to KUBECONFIG or clusters/<cluster>/kubeconfig)")]
@@ -191,7 +195,7 @@ build-publish-backup-image ref user pass: setup
 [arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to PULUMI_BACKEND_URL)")]
 [arg("force", long="force", pattern="yes|no", help="Overwrite an existing env file")]
 [group('cluster-ops')]
-create-cluster-env env="" cluster="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" force="no":
+create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" force="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -208,16 +212,24 @@ create-cluster-env env="" cluster="" credentials="" ssh_key="" kubeconfig="" pul
         exit 1
     fi
 
-    cred="${GOOGLE_APPLICATION_CREDENTIALS:-{{ credentials }}}"
+    project_id="${PROJECT_ID:-{{ project }}}"
+
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: project id required. Pass --project <id> or set PROJECT_ID."
+        exit 1
+    fi
+
+    cred="{{ credentials }}"
     if [ -z "${cred}" ]; then
-        echo "ERROR: credentials path required. Pass --credentials <sa.json> or set GOOGLE_APPLICATION_CREDENTIALS."
-        exit 1
+        cred=""
     fi
-    if [ ! -f "${cred}" ]; then
-        echo "ERROR: credentials file not found: ${cred}"
-        exit 1
+    if [ -n "${cred}" ]; then
+        if [ ! -f "${cred}" ]; then
+            echo "ERROR: credentials file not found: ${cred}"
+            exit 1
+        fi
+        cred="$(cd "$(dirname "${cred}")" && pwd)/$(basename "${cred}")"
     fi
-    cred="$(cd "$(dirname "${cred}")" && pwd)/$(basename "${cred}")"
 
     ssh_key="${SSH_KEY:-{{ ssh_key }}}"
     if [ -n "${ssh_key}" ] && [ ! -f "${ssh_key}" ]; then
@@ -230,7 +242,11 @@ create-cluster-env env="" cluster="" credentials="" ssh_key="" kubeconfig="" pul
 
     kubeconfig="${KUBECONFIG:-{{ kubeconfig }}}"
     if [ -z "${kubeconfig}" ]; then
-        kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
+        if [ -n "${project_id}" ]; then
+            kubeconfig="{{ justfile_directory() }}/clusters/${project_id}/kubeconfig"
+        else
+            kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
+        fi
     fi
 
     pulumi_creds="${PULUMI_GCP_CREDENTIALS:-{{ pulumi_gcp_credentials }}}"
@@ -255,8 +271,10 @@ create-cluster-env env="" cluster="" credentials="" ssh_key="" kubeconfig="" pul
 
     {
         echo "# Per-cluster operator environment for ${env_name}/${cluster_name}"
-        echo "# Credentials and local paths only. Cluster identity lives in config/kops/${cluster_name}/."
+        echo "# PROJECT_ID plus credentials/paths. After bootstrap, cluster identity lives in config/kops/${cluster_name}/."
+        echo "# Do not store KOPS_CLUSTER_NAME, KOPS_STATE_STORE, BUCKET_NAME, or KUBERNETES_VERSION here."
         echo "# Gitignored. Do not commit."
+        write_kv PROJECT_ID "${project_id}"
         write_kv GOOGLE_APPLICATION_CREDENTIALS "${cred}"
         write_kv SSH_KEY "${ssh_key}"
         write_kv KUBECONFIG "${kubeconfig}"
@@ -285,11 +303,12 @@ cluster-env env cluster:
     env_file="{{ justfile_directory() }}/.env.{{ env }}.{{ cluster }}"
     if [ ! -f "${env_file}" ]; then
         echo "ERROR: env file not found: ${env_file}"
-        echo "Create it with: just create-cluster-env --env {{ env }} --cluster {{ cluster }} --credentials <sa.json>"
+        echo "Create it with: just create-cluster-env --env {{ env }} --cluster {{ cluster }} --project <id>"
         exit 1
     fi
     set -a; source "${env_file}"; set +a
     echo "Env file: ${env_file}"
+    echo "PROJECT_ID=${PROJECT_ID:-UNSET}"
     echo "GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-UNSET}"
     echo "SSH_KEY=${SSH_KEY:-UNSET}"
     echo "KUBECONFIG=${KUBECONFIG:-UNSET}"
