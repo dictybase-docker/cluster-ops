@@ -1,135 +1,106 @@
-# Pulumi Database Setup Guide
+# Pulumi Setup Guide
 
 ## Table of Contents
 - [Overview](#overview)
 - [Quick Setup](#quick-setup)
 - [1. Prerequisites](#1-prerequisites)
-  - [1.1 Cluster Handoff](#11-cluster-handoff)
+  - [1.1 Cluster handoff](#11-cluster-handoff)
   - [1.2 Tools](#12-tools)
   - [1.3 Access](#13-access)
-- [2. Dev vs HA Topology](#2-dev-vs-ha-topology)
-- [3. Environment Variables for Pulumi](#3-environment-variables-for-pulumi)
-  - [3.1 Add to Your Cluster Env File](#31-add-to-your-cluster-env-file)
-  - [3.2 Activate the Cluster Shell](#32-activate-the-cluster-shell)
-- [4. Pulumi Backend Bootstrap](#4-pulumi-backend-bootstrap)
-  - [4.1 Create the pulumi-manager Key](#41-create-the-pulumi-manager-key)
-  - [4.2 KMS Keyring and Crypto Key](#42-kms-keyring-and-crypto-key)
-  - [4.3 GCS State Bucket and Login](#43-gcs-state-bucket-and-login)
-- [5. Switching Between Clusters](#5-switching-between-clusters)
-- [6. Stacks and Configuration](#6-stacks-and-configuration)
-  - [6.1 Stack Names](#61-stack-names)
-  - [6.2 Config Sources](#62-config-sources)
-  - [6.3 Creating a Stack](#63-creating-a-stack)
-- [7. Deploy the Database Layer](#7-deploy-the-database-layer)
-  - [7.1 Order of Operations](#71-order-of-operations)
-  - [7.2 Phase A — StorageClass](#72-phase-a--storageclass)
-  - [7.3 Phase B — Operators](#73-phase-b--operators)
-  - [7.4 Phase C — ArangoDB](#74-phase-c--arangodb)
-  - [7.5 Phase D — PostgreSQL (CloudNativePG)](#75-phase-d--postgresql-cloudnativepg)
-  - [7.6 Phase E — Redis](#76-phase-e--redis)
-  - [7.7 Phase F — MinIO](#77-phase-f--minio)
-- [8. Verify Database Readiness](#8-verify-database-readiness)
-- [9. Database Setup Complete](#9-database-setup-complete)
+- [2. Environment Variables for Pulumi](#2-environment-variables-for-pulumi)
+  - [2.1 Add to the cluster env file](#21-add-to-the-cluster-env-file)
+  - [2.2 Activate the cluster shell](#22-activate-the-cluster-shell)
+- [3. Pulumi Backend Bootstrap](#3-pulumi-backend-bootstrap)
+  - [3.1 Create the pulumi-manager key](#31-create-the-pulumi-manager-key)
+  - [3.2 KMS keyring and crypto key](#32-kms-keyring-and-crypto-key)
+  - [3.3 GCS state bucket and login](#33-gcs-state-bucket-and-login)
+- [4. Switching Between Clusters](#4-switching-between-clusters)
+- [5. Stacks and Configuration](#5-stacks-and-configuration)
+  - [5.1 Stack names](#51-stack-names)
+  - [5.2 Config sources](#52-config-sources)
+  - [5.3 Creating a stack](#53-creating-a-stack)
+  - [5.4 Recipe reference](#54-recipe-reference)
+- [6. First Apply — StorageClass](#6-first-apply--storageclass)
+  - [6.1 Why StorageClass first](#61-why-storageclass-first)
+  - [6.2 Deploy storage_class](#62-deploy-storage_class)
+  - [6.3 Verify](#63-verify)
+- [7. Pulumi Setup Complete](#7-pulumi-setup-complete)
+- [8. Next Steps](#8-next-steps)
 
-**Last tested**: 2026-07-16
+**Status**:
+- **Pulumi backend recipes** (`just gcp-pulumi`, KMS, `pulumi-manager`): aligned with this repo as of 2026-08-24.
+- **Live `pulumi up` of a new backend**: not re-run in the session that rewrote this file.
 
-> **Document type:** This is a **provisioning guide** — a sequential walkthrough for deploying the **database layer and its dependencies** on a kops cluster with Pulumi. It starts where [`README.md`](../README.md) ends (cluster up and validated). ArangoDB install / import / teardown is in [`arangodb-deploy.md`](arangodb-deploy.md). It does **not** cover application services or Velero whole-cluster backup.
+> **Document type:** This is a **provisioning guide** — a sequential
+> walkthrough for wiring Pulumi to a kOps cluster and applying the first
+> data-plane resource (StorageClass). It starts where [`README.md`](../README.md)
+> ends (cluster up and validated). It **stops at the start of ArangoDB**.
+> ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
 
 ## Overview
 
-After the cluster is healthy, install only what data plane needs:
+This guide takes you from a healthy kOps cluster to a working Pulumi backend and the StorageClass every database PVC needs. After Section 7 you are ready to start ArangoDB — not to finish the data plane.
 
-| Component | Pulumi project | Role |
-|-----------|----------------|------|
-| StorageClass | `storage_class` | GCE CSI class used by DB PVCs (`dictycr-balanced`) |
-| ArangoDB operator | `arangodb-operator` | Helm operator for ArangoDB CRDs |
-| ArangoDB instance | `arangodb-single` | Single-mode ArangoDB deployment + root secret |
-| Logical DBs | `create-arangodb-databases` | Job: ensure user/DBs/grants |
-| CNPG operator | `cloudnative-pg-operator` | CloudNativePG operator (Helm) |
-| PostgreSQL | `cloudnative-pg-cluster` | CNPG `Cluster` + user secret + backup bucket |
-| Redis | `redis-standalone` | Single-replica Redis Deployment + PVC |
-| MinIO | `minio` | Object store (Helm) used by data/backup-related flows |
-
-- **Who it's for**: Operators who finished [kops cluster creation](../README.md) through [Step 3.7](../README.md#step-37--validate-ha-topology--hardening).
-- **What you'll end up with**: Storage class, ArangoDB (+ app databases), PostgreSQL via CNPG, Redis, MinIO — ready for application stacks.
-- **How long**: Roughly 20–45 minutes after Pulumi backend exists (download images + PVC bind dominate).
-- **One project = one cluster**: Same rule as the kops guide. SA keys and paths use `credentials/<project-id>/`.
-- **Out of scope here**: `event-messenger`, GraphQL/frontends, `install-velero`. Loaders and ArangoDB teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
+- **Who it's for**: Operators who finished [kOps cluster creation](../README.md) through [Step 3.7](../README.md#step-37--validate-ha-topology--hardening).
+- **What you'll end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, `PULUMI_BACKEND_URL` in the cluster env file, and StorageClass `dictycr-balanced`.
+- **How long**: ~10–20 minutes after the cluster is Ready (GCS + KMS + one Pulumi apply).
+- **One project = one cluster**: Same rule as the kOps guide. SA keys live under `credentials/<project-id>/`.
+- **Out of scope here**: ArangoDB operator and instance, CNPG, Redis, MinIO, loaders, Velero, application charts.
 
 ## Quick Setup
 
-Work inside an activated cluster env shell (`just cluster-env --env <env> --cluster <cluster-name>`). Assume kubeconfig already works (`kubectl get nodes`).
+Work inside `just cluster-env --env <env> --cluster <cluster-name>`. `kubectl get nodes` must already work.
 
-1. [Prerequisites](#1-prerequisites) — cluster validated; `pulumi`, `kubectl`, credentials ready.
-2. [Add Pulumi env vars](#3-environment-variables-for-pulumi) to the per-cluster env file; re-enter `cluster-env`.
-3. [Bootstrap Pulumi backend](#4-pulumi-backend-bootstrap) — `pulumi-manager` key, KMS, GCS state, set `PULUMI_BACKEND_URL` in the env file.
-4. [Set up switching](#5-switching-between-clusters) so `just cluster-env` targets the right state backend every time.
-5. [Create stacks](#6-stacks-and-configuration) for your stack name (often `dev`, copy from a base stack when available).
-6. [Deploy in order](#7-deploy-the-database-layer) — StorageClass → operators → ArangoDB + DBs → PostgreSQL → Redis → MinIO.
-7. [Verify](#8-verify-database-readiness) with the kubectl checks.
-8. **Stop** at [Section 9](#9-database-setup-complete). Do not continue into application charts in this guide.
+1. [Confirm cluster handoff.](#11-cluster-handoff) Cluster validated; CSI `pdCSIDriver` enabled.
+2. [Confirm tools.](#12-tools) `just`, `kubectl`, `pulumi`, `gcloud`, `jq`.
+3. [Add Pulumi env vars.](#21-add-to-the-cluster-env-file) Run `just create-cluster-env` with `--pulumi-*` flags; re-enter `cluster-env`.
+4. [Create pulumi-manager.](#31-create-the-pulumi-manager-key) `just gcp-sa create-sa --sa-name pulumi-manager …`
+5. [Create KMS key.](#32-kms-keyring-and-crypto-key) `just gcp-kms create-keyring-and-key …` then persist `PULUMI_SECRET_PROVIDER`.
+6. [Create state bucket.](#33-gcs-state-bucket-and-login) `just gcp-pulumi pulumi-gcs-setup …` then set real `PULUMI_BACKEND_URL` and re-enter the shell.
+7. [Verify switching.](#4-switching-between-clusters) `echo "$PULUMI_BACKEND_URL"` and `pulumi -C storage_class stack ls`.
+8. [Apply StorageClass.](#62-deploy-storage_class) `just gcp-pulumi preview` then `create-resource` on `storage_class`.
+9. **Stop.** Go to [`arangodb-deploy.md`](arangodb-deploy.md) for ArangoDB.
 
 ## 1. Prerequisites
 
-### 1.1 Cluster Handoff
+### 1.1 Cluster handoff
 
 Finish [`README.md`](../README.md) first:
 
 - Cluster env file active (`just cluster-env --env <env> --cluster <cluster-name>`)
-- `kubectl` talks to the cluster (`kubectl get nodes` healthy)
-- Phase 4c security edits applied if you care about production access controls
-- Storage-friendly topology in place for your target:
-  - **Simple dev**: single control plane / small worker pool is enough
-  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [README Step 3.2](../README.md#step-32--customize-yaml-in-git) and [Step 3.7](../README.md#step-37--validate-ha-topology--hardening))
+- `kubectl get nodes` healthy
+- CSI for GCE PD enabled (`spec.cloudProvider.gce.pdCSIDriver.enabled: true`)
+- Storage-friendly topology if this cluster will host databases:
+  - **Lab**: a small worker pool is enough
+  - **Production HA**: private topology + multi-zone workers + `stateful-db` InstanceGroup ([README Step 3.2](../README.md#step-32--customize-yaml-in-git), [Step 3.7](../README.md#step-37--validate-ha-topology--hardening), [`kops-gcp-architecture.md`](kops-gcp-architecture.md))
 
-CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the kops manifest). StorageClass creation assumes that.
+StorageClass creation assumes the CSI driver. Without it, PVCs stay Pending.
 
 ### 1.2 Tools
 
-Same tooling baseline as the kops guide: `just`, `asdf` tools (`kubectl`, `pulumi`, `gcloud`), `jq`, `direnv` optional. Re-run if needed:
+Same baseline as the kOps guide: `just`, `asdf` tools (`kubectl`, `pulumi`, `gcloud`), `jq`. `direnv` optional.
 
 ```bash
 just install-tool --name <tool> --version <version>
+pulumi version
+gcloud version
 ```
 
 ### 1.3 Access
 
 | Need | Why |
 |------|-----|
-| Working kubeconfig | Pulumi Kubernetes provider applies CRDs/Deployments |
+| Working kubeconfig | Pulumi Kubernetes provider applies StorageClass |
 | IAM to create SA keys / KMS / GCS | Pulumi manager identity and state |
-| Project-scoped paths under `credentials/<project-id>/` | Matches per-project isolation |
+| Paths under `credentials/<project-id>/` | Per-project isolation, same as kOps |
 
 Do **not** put Pulumi credentials in `.envrc`. Put them in the per-cluster env file only.
 
-## 2. Dev vs HA Topology
+## 2. Environment Variables for Pulumi
 
-This repo’s **programs** are mostly single-instance. HA is partial: some knobs exist; some HA modes are **not implemented**. Treat the matrix as source of truth when choosing stack values.
+### 2.1 Add to the cluster env file
 
-| Layer | Pulumi project | Simple dev (supported) | HA (supported?) | Notes |
-|-------|----------------|------------------------|-----------------|-------|
-| StorageClass | `storage_class` | `pd-balanced` / `dictycr-balanced` | Same class; durability is disk + multi-AZ scheduling | Not a HA toggle — cluster/zone layout decides risk |
-| ArangoDB operator | `arangodb-operator` | Deploy operator | Same | `deploymentReplication` flag exists on operator chart; current stack files set `false` |
-| ArangoDB data | `arangodb-single` | **Single** mode (hardcoded in code) | **Not implemented** | `Mode: "Single"` in `arangodb-single/main.go`. Production Cluster-mode path is in [`arangodb-deploy.md`](arangodb-deploy.md). Do **not** change `Pulumi.dev.yaml` / `Pulumi.experiments.yaml` / `Pulumi.local.yaml` |
-| Arango logical DBs | `create-arangodb-databases` | Job creates named DBs + grants | Same | Needs running Arango + root secret. Stacks: `experiments` / `local` only (no `Pulumi.dev.yaml`) |
-| CNPG operator | `cloudnative-pg-operator` | Operator in `operators` (or configured ns) | Same | Prerequisite for any CNPG cluster |
-| PostgreSQL | `cloudnative-pg-cluster` | `instances: 1` in shipped stacks | **Config knob only** — set `instances: 3` for multi-instance CNPG | Program passes `Instances` into CR. Stock `Pulumi.*.yaml` still use `1`. Prefer stateful nodes + multi-zone for true HA |
-| Redis | `redis-standalone` | 1 replica Deployment | **Not implemented** | Replicas hardcoded to `1` |
-| MinIO | `minio` | Single Helm release + PVC | **Not implemented** as distributed MinIO | Bitnami chart values in code are standalone-style; no multi-node HA mode in project |
-
-**Practical guidance**
-
-- **Simple dev**: Use existing `dev` / small disk sizes; keep `instances: 1` on CNPG; Arango Single is expected.
-- **HA-oriented production**:
-  - Place DB pods on the **stateful** node pool (taints/labels as designed in kops InstanceGroups).
-  - Raise CNPG `instances` (e.g. `3`) and size disks up in stack config before `pulumi up`.
-  - Accept gaps: Arango stays Single until a separate Cluster-mode project exists; Redis and MinIO stay single-node — plan external managed services or new projects if you need HA for those.
-
-## 3. Environment Variables for Pulumi
-
-### 3.1 Add to Your Cluster Env File
-
-Put Pulumi credentials in the same gitignored `.env.<env>.<cluster-name>` file as kops operator credentials. Generate or refresh it with `just create-cluster-env` (do **not** write cluster name, state store, or project — those live in Git):
+Put Pulumi credentials in the same gitignored `.env.<env>.<cluster-name>` file as kOps operator credentials. Generate or refresh it with `just create-cluster-env` (do **not** write cluster name, state store, or project — those live in Git):
 
 ```bash
 just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
@@ -140,13 +111,13 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
   --pulumi-backend-url "gs://<pulumi-state-bucket>"
 ```
 
-Credential and path variables are listed in [kops §1.3.2](../README.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION` — those live in Git after bootstrap.
+Credential and path variables: [kOps §1.3.2](../README.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION`.
 
-> **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
+> **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to `~/.pulumi/credentials.yaml`, not to the shell. Switching clusters without this env var leaves Pulumi on the last backend. The per-cluster env file makes kubeconfig, credentials, **and** state backend follow `just cluster-env`.
 
-Recipes under `just gcp-pulumi` export `GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"` for the duration of Pulumi commands. Your active cluster credential can stay as `kops-cluster-creator` for plain `kubectl`.
+Recipes under `just gcp-pulumi` export `GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"` for the duration of Pulumi commands. The active cluster credential can stay as `kops-cluster-creator` for plain `kubectl`.
 
-### 3.2 Activate the Cluster Shell
+### 2.2 Activate the cluster shell
 
 ```bash
 just cluster-env --env <env> --cluster <cluster-name>
@@ -161,13 +132,13 @@ echo "$PULUMI_BACKEND_URL"
 kubectl get nodes
 ```
 
-> The `pulumi stack ls` check isn't available until after backend bootstrap ([§4](#4-pulumi-backend-bootstrap)). Skip it for now — you'll verify the backend when switching clusters in [§5](#5-switching-between-clusters).
+> `pulumi stack ls` is not useful until after [§3](#3-pulumi-backend-bootstrap). Skip it for now.
 
-## 4. Pulumi Backend Bootstrap
+## 3. Pulumi Backend Bootstrap
 
-Do this **once per GCP project** (thereafter re-login if needed).
+Do this **once per GCP project**. Re-login later if the global Pulumi credentials file is wiped.
 
-### 4.1 Create the pulumi-manager Key
+### 3.1 Create the pulumi-manager key
 
 ```bash
 mkdir -p credentials/${PROJECT_ID}
@@ -176,13 +147,13 @@ just gcp-sa create-sa --sa-name pulumi-manager \
   --output-file credentials/${PROJECT_ID}/pulumi-manager.json
 ```
 
-Roles listed in that file include storage admin and KMS crypto operator (needed for state + secret decryption).
+Roles in that file include Storage Admin and KMS Crypto Operator (state + secret decrypt).
 
-Set / refresh `PULUMI_GCP_CREDENTIALS` in the env file to that path, then re-run `just cluster-env`.
+Set `PULUMI_GCP_CREDENTIALS` in the env file to that path, then re-run `just cluster-env`.
 
-> Root `initialize-pulumi` still defaults to a flat `credentials/pulumi-manager.json`. Prefer the project subdirectory command above so paths stay consistent with the kops guide.
+> Root `initialize-pulumi` still defaults to a flat `credentials/pulumi-manager.json`. Prefer the project subdirectory so paths match the kOps guide.
 
-### 4.2 KMS Keyring and Crypto Key
+### 3.2 KMS keyring and crypto key
 
 ```bash
 just gcp-kms create-keyring-and-key \
@@ -200,7 +171,7 @@ PULUMI_SECRET_PROVIDER="gcpkms://projects/${PROJECT_ID}/locations/us-central1/ke
 
 Persist the same line in the cluster env file.
 
-### 4.3 GCS State Bucket and Login
+### 3.3 GCS state bucket and login
 
 Pick a **globally unique** bucket (example: `pulumi-state-<project-id>`):
 
@@ -213,125 +184,120 @@ just gcp-pulumi pulumi-gcs-setup \
 
 This creates the bucket if missing (versioning on) and runs `pulumi login gs://<pulumi-state-bucket>`.
 
-> After bootstrap, edit the cluster env file and replace the `PULUMI_BACKEND_URL` placeholder with the real bucket name (`gs://<pulumi-state-bucket>`). Then **re-enter the shell** so the new value takes effect:
+> After bootstrap, edit the cluster env file and replace the `PULUMI_BACKEND_URL` placeholder with the real bucket. Then **re-enter the shell**:
 >
 > ```bash
-> exit                                    # leave current sub-shell
-> just cluster-env --env <env> --cluster <cluster-name>   # re-enter — now PULUMI_BACKEND_URL is real
-> echo "$PULUMI_BACKEND_URL"             # should show gs://<pulumi-state-bucket>
+> exit
+> just cluster-env --env <env> --cluster <cluster-name>
+> echo "$PULUMI_BACKEND_URL"   # must show gs://<pulumi-state-bucket>
 > ```
 >
-> The env var overrides the global `pulumi login` setting, so each `just cluster-env` activation targets the correct state backend automatically. You can still run `pulumi login` for interactive use outside the sub-shell, but the env var is the safe default.
+> The env var overrides the global `pulumi login` setting. You can still run `pulumi login` outside the sub-shell; the env var is the safe default.
 
-## 5. Switching Between Clusters
+## 4. Switching Between Clusters
 
-Each cluster env file carries its own `KUBECONFIG`, GCP credentials, KMS key, **and** `PULUMI_BACKEND_URL`. Switching is a single command:
+Each cluster env file carries `KUBECONFIG`, GCP credentials, KMS key, **and** `PULUMI_BACKEND_URL`. Switching is one command:
 
 ```bash
-# Working on cluster A
-exit                                    # leave sub-shell
-just cluster-env --env dev --cluster cluster-b         # enter cluster B
-# KUBECONFIG, PULUMI_BACKEND_URL, KMS all changed together
-pulumi -C storage_class stack ls       # shows stacks from cluster B's bucket
+exit
+just cluster-env --env dev --cluster cluster-b
+pulumi -C storage_class stack ls
 ```
 
-**Verify you're targeting the right backend** before any `pulumi up`:
+Verify before any `pulumi up`:
 
 ```bash
 echo "$PULUMI_BACKEND_URL"
-pulumi -C storage_class stack ls       # confirm stacks from this backend are visible
-kubectl get nodes                      # confirm you're talking to the right cluster
+pulumi -C storage_class stack ls
+kubectl get nodes
 ```
 
-> **Common mistake.** `pulumi login` is global state. If you run `just cluster-env` without `PULUMI_BACKEND_URL` set, Pulumi stays pointed at whatever backend was last logged into — often the wrong project. The env var (set in [§3.1](#31-add-to-your-cluster-env-file)) prevents this.
+> **Common mistake.** `pulumi login` is global. `just cluster-env` without `PULUMI_BACKEND_URL` leaves Pulumi on the last backend — often the wrong project. Set the env var in [§2.1](#21-add-to-the-cluster-env-file).
 
-## 6. Stacks and Configuration
+## 5. Stacks and Configuration
 
-### 6.1 Stack Names
+### 5.1 Stack names
 
-Examples in-repo: `dev`, `experiments`, `local`. Choose one stack name and use it for **every** database project you deploy so config and secrets stay aligned.
+Examples in-repo: `dev`, `experiments`, `local`. Pick one name and reuse it for every project you deploy on that cluster.
 
-| Profile | Typical stack | Disk sizes | CNPG `instances` |
-|---------|---------------|------------|------------------|
-| Simple dev | `dev` | Smaller PVCs (see shipped `Pulumi.dev.yaml`) | `1` |
-| Larger / shared lab | `experiments` | Larger PVCs | `1` unless you change config |
-| HA-oriented | new stack copied from closest base | Larger PVCs; multi-zone nodes | Set `instances: 3` (or more) **before** first successful create if possible |
+| Profile | Typical stack | Notes |
+|---------|---------------|-------|
+| Simple lab | `dev` | Matches many shipped `Pulumi.dev.yaml` files |
+| Shared lab | `experiments` | Larger disks in several projects |
+| Production | `prod` (new) | New files only — do not overwrite lab stacks. See [`arangodb-deploy.md`](arangodb-deploy.md) |
 
-### 6.2 Config Sources
+### 5.2 Config sources
 
-- Each project directory holds `Pulumi.yaml` plus `Pulumi.<stack>.yaml` config.
-- Secrets use the KMS secrets provider — you need `PULUMI_SECRET_PROVIDER` and the manager key.
-- **Copy-from** a known stack when one exists for that project:
+- Each project directory holds `Pulumi.yaml` plus `Pulumi.<stack>.yaml`.
+- Secrets use the KMS provider — you need `PULUMI_SECRET_PROVIDER` and the manager key.
+- Copy from a known stack when one exists:
 
 ```bash
 just gcp-pulumi new-stack-from --folder <project-folder> --stack <stack> --from-stack <from-stack>
 ```
 
-When no base stack exists (e.g. some projects lack `Pulumi.dev.yaml`):
+When no base stack exists:
 
 ```bash
 just gcp-pulumi new-stack --folder <project-folder> --stack <stack>
+pulumi -C <folder> -s <stack> config set --path "<key>" "<value>"
 ```
 
-Then edit config with `pulumi -C <folder> -s <stack> config` / `config set --path` as needed (passwords, bucket names, `instances`).
+### 5.3 Creating a stack
 
-### 6.3 Creating a Stack
+Always from repo root, env shell active.
 
-Always from repo root, with env shell active. The pattern is the same for every project:
+```bash
+export STACK="<stack-name>"          # e.g. dev
+export FROM_STACK="<base-stack>"     # e.g. experiments
+```
 
-**When a base stack exists** (e.g. `experiments` → `dev`):
+**When a base stack exists:**
 
 ```bash
 just gcp-pulumi new-stack-from --folder <project-folder> --stack ${STACK} --from-stack ${FROM_STACK}
 ```
 
-**When no base stack exists** (project has no `Pulumi.<from-stack>.yaml`):
+**When none exists:**
 
 ```bash
 just gcp-pulumi new-stack --folder <project-folder> --stack ${STACK}
-# Then set config manually:
-pulumi -C <project-folder> -s ${STACK} config set --path "<key>" "<value>"
 ```
 
-**Always preview before apply**:
+**Always preview before apply:**
 
 ```bash
 just gcp-pulumi preview --folder <project-folder> --stack ${STACK}
 just gcp-pulumi create-resource --folder <project-folder> --stack ${STACK}
 ```
 
-> **Do not** use `just pulumi-init-and-deploy` for this guide. That entrypoint also deploys non-database projects from `pulumi-files/resources/*.txt` and continues after mid-list failures. Run projects **one at a time** in the order below.
+> **Do not** use `just pulumi-init-and-deploy` for this guide. That entrypoint also deploys non-database projects from `pulumi-files/resources/*.txt` and continues after mid-list failures. Run projects **one at a time**.
 
-## 7. Deploy the Database Layer
+### 5.4 Recipe reference
 
-Set once in the shell:
+| Recipe | What it does |
+|--------|----------------|
+| `just gcp-pulumi pulumi-gcs-setup` | Create/version GCS bucket + `pulumi login` |
+| `just gcp-pulumi new-stack` | `stack init` with KMS secrets provider |
+| `just gcp-pulumi new-stack-from` | Init + copy config from another stack |
+| `just gcp-pulumi preview` | `pulumi preview` |
+| `just gcp-pulumi create-resource` | `pulumi up -f -y` |
+| `just gcp-pulumi remove-resource` | `pulumi destroy -f -y` |
+| `just gcp-pulumi cleanup-resource` | `stack rm --preserve-config` |
 
-```bash
-export STACK="<stack-name>"          # e.g. dev
-export FROM_STACK="<base-stack>"     # e.g. experiments — or omit copy-from path when empty
-```
+All of these export `GOOGLE_APPLICATION_CREDENTIALS` from `PULUMI_GCP_CREDENTIALS`.
 
-<a id="71-order-of-operations"></a>
+## 6. First Apply — StorageClass
 
-### 7.1 Order of Operations
+This is the last resource in **this** guide. ArangoDB is next.
 
-```
-storage_class
-    → arangodb-operator
-    → cloudnative-pg-operator
-    → arangodb-single → create-arangodb-databases
-    → cloudnative-pg-cluster
-    → redis-standalone
-    → minio
-```
+### 6.1 Why StorageClass first
 
-Both operators run **after** StorageClass and **before** any database instance. The two operator installs may run back-to-back (or in parallel if you split terminals). Instances must wait for their operator + StorageClass.
+Every later PVC (`dictycr-balanced`) needs this class. ArangoDB, CNPG, Redis, and MinIO all assume it exists. Deploy it once per cluster.
 
-<a id="72-phase-a--storageclass"></a>
+### 6.2 Deploy storage_class
 
-### 7.2 Phase A — StorageClass
-
-Creates the GCE PD StorageClass used by Arango/CNPG/Redis/MinIO PVCs (shipped name: `dictycr-balanced`, type `pd-balanced`).
+Creates the GCE PD StorageClass (shipped name `dictycr-balanced`, type `pd-balanced`).
 
 ```bash
 just gcp-pulumi new-stack-from --folder storage_class --stack ${STACK} --from-stack ${FROM_STACK}
@@ -339,219 +305,53 @@ just gcp-pulumi preview --folder storage_class --stack ${STACK}
 just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
 ```
 
-Check:
+If the project has no base stack:
+
+```bash
+just gcp-pulumi new-stack --folder storage_class --stack ${STACK}
+just gcp-pulumi preview --folder storage_class --stack ${STACK}
+just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
+```
+
+### 6.3 Verify
 
 ```bash
 kubectl get storageclass dictycr-balanced
+echo "$PULUMI_BACKEND_URL"
+pulumi -C storage_class -s ${STACK} stack output
 ```
 
-<a id="73-phase-b--operators"></a>
+Expect the StorageClass to exist and `PROVISIONER` to be the GCE PD CSI driver.
 
-### 7.3 Phase B — Operators
-
-**ArangoDB operator**
-
-```bash
-just gcp-pulumi new-stack-from --folder arangodb-operator --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder arangodb-operator --stack ${STACK}
-just gcp-pulumi create-resource --folder arangodb-operator --stack ${STACK}
-```
-
-Check:
-
-```bash
-kubectl get pods -n operators
-# or the namespace set in that stack's config
-```
-
-**CloudNativePG operator**
-
-```bash
-just gcp-pulumi new-stack-from --folder cloudnative-pg-operator --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder cloudnative-pg-operator --stack ${STACK}
-just gcp-pulumi create-resource --folder cloudnative-pg-operator --stack ${STACK}
-```
-
-Check:
-
-```bash
-kubectl get pods -n operators
-kubectl get crd | grep postgresql.cnpg.io
-```
-
-<a id="74-phase-c--arangodb"></a>
-
-### 7.4 Phase C — ArangoDB
-
-**C1 — Single instance** (`arangodb-single`)
-
-Deploys ArangoDB **Single** mode, root password secret, and PVC via the StorageClass.
-
-```bash
-just gcp-pulumi new-stack-from --folder arangodb-single --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder arangodb-single --stack ${STACK}
-just gcp-pulumi create-resource --folder arangodb-single --stack ${STACK}
-```
-
-**Dev vs HA:** existing stacks change storage size / version only. Mode remains Single. Do not edit current `dev` / `experiments` / `local` ArangoDB stacks. Production lifecycle: [`arangodb-deploy.md`](arangodb-deploy.md).
-
-Check:
-
-```bash
-kubectl get arangodeployment -A
-kubectl get pods -n dev -l "arango_deployment=arangodb" 2>/dev/null || kubectl get pods -n dev | grep -i arango
-```
-
-Wait until the deployment reports ready before logical DB creation.
-
-**C2 — Logical databases** (`create-arangodb-databases`)
-
-Creates AppDB user secret + Job (`ensure-user` / `ensure-database` / `ensure-grant`). Default experiments list includes annotation, order, stock, content, and related DBs.
-
-```bash
-# Often no Pulumi.dev.yaml — init empty or copy from experiments/local
-just gcp-pulumi new-stack-from --folder create-arangodb-databases --stack ${STACK} --from-stack ${FROM_STACK}
-# or: just gcp-pulumi new-stack --folder create-arangodb-databases --stack ${STACK}
-just gcp-pulumi preview --folder create-arangodb-databases --stack ${STACK}
-just gcp-pulumi create-resource --folder create-arangodb-databases --stack ${STACK}
-```
-
-Check:
-
-```bash
-kubectl get jobs -n dev | grep create-databases
-kubectl logs -n dev job/<job-name>
-```
-
-Job must complete successfully. Failures are usually wrong root secret name/key or Arango not reachable.
-
-<a id="75-phase-d--postgresql-cloudnativepg"></a>
-
-### 7.5 Phase D — PostgreSQL (CloudNativePG)
-
-Depends on CNPG operator + StorageClass. Program also creates a GCS backup bucket and wires Barman backups using a GCP SA JSON referenced in config (`backupSecret.filepath`).
-
-**Before apply (HA path):** edit stack config so the cluster entry has `instances: 3` (or desired odd number), adequate `storage.size` / WAL settings, and a unique backup bucket name in your project.
-
-```bash
-just gcp-pulumi new-stack-from --folder cloudnative-pg-cluster --stack ${STACK} --from-stack ${FROM_STACK}
-# Adjust instances / buckets / secrets for your project, then:
-just gcp-pulumi preview --folder cloudnative-pg-cluster --stack ${STACK}
-just gcp-pulumi create-resource --folder cloudnative-pg-cluster --stack ${STACK}
-```
-
-Ensure the GCP SA JSON path in config points at a real file under `credentials/<project-id>/…` with rights to the backup bucket.
-
-**Dev vs HA**
-
-| Profile | `instances` | Notes |
-|---------|-------------|-------|
-| Simple dev | `1` | Matches shipped YAML |
-| HA-oriented | `3` | CNPG manages primary/replicas; still place pods on durable node pool |
-
-Check:
-
-```bash
-kubectl get clusters.postgresql.cnpg.io -A
-kubectl get pods -n dev -l cnpg.io/cluster=logto   # name may differ per config
-```
-
-<a id="76-phase-e--redis"></a>
-
-### 7.6 Phase E — Redis
-
-```bash
-just gcp-pulumi new-stack-from --folder redis-standalone --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder redis-standalone --stack ${STACK}
-just gcp-pulumi create-resource --folder redis-standalone --stack ${STACK}
-```
-
-**HA:** not available — Deployment `replicas: 1` only.
-
-Check:
-
-```bash
-kubectl get deploy,svc,pvc -n dev | grep -i redis
-```
-
-<a id="77-phase-f--minio"></a>
-
-### 7.7 Phase F — MinIO
-
-Object storage used alongside the data plane (credentials secret + Bitnami chart). Simple dev often disables web UI and API ingress; lab/prod-like stacks may enable ingress + larger disks (see `Pulumi.experiments.yaml`).
-
-```bash
-just gcp-pulumi new-stack-from --folder minio --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder minio --stack ${STACK}
-just gcp-pulumi create-resource --folder minio --stack ${STACK}
-```
-
-**HA:** not implemented as distributed MinIO in this project.
-
-Check:
-
-```bash
-kubectl get pods,svc,pvc -n dev | grep -i minio
-```
-
-## 8. Verify Database Readiness
-
-Run after all phases for the chosen profile:
-
-```bash
-# Nodes + storage
-kubectl get nodes
-kubectl get storageclass dictycr-balanced
-
-# Operators
-kubectl get pods -n operators
-
-# ArangoDB
-kubectl get arangodeployment -A
-kubectl get jobs -n dev | grep -i create-databases
-
-# PostgreSQL (CNPG)
-kubectl get clusters.postgresql.cnpg.io -A
-kubectl get pods -n dev | grep -E 'logto|cnpg|postgres' || true
-
-# Redis + MinIO
-kubectl get deploy,svc -n dev | grep -iE 'redis|minio'
-```
-
-Pulumi-side (optional, per project):
-
-```bash
-pulumi -C arangodb-single -s ${STACK} stack output
-pulumi -C cloudnative-pg-cluster -s ${STACK} stack output
-```
-
-All DB pods should be Running/Ready; CNPG cluster condition healthy; ArangoDB create-databases Job succeeded.
-
-## 9. Database Setup Complete
+## 7. Pulumi Setup Complete
 
 You are done with **this** guide when:
 
-1. StorageClass exists.
-2. ArangoDB Single is up and logical DB Job succeeded.
-3. CNPG operator + PostgreSQL cluster are healthy (1 instance for simple dev, or multi-instance if you configured HA).
-4. Redis and MinIO are Running.
-
-**Stop here.** Application Deployments, ingress for apps, and Velero are separate workstreams. ArangoDB import, backup, and teardown: [`arangodb-deploy.md`](arangodb-deploy.md).
+1. Cluster env file has `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, and a real `PULUMI_BACKEND_URL`.
+2. `pulumi-manager.json` exists under `credentials/<project-id>/`.
+3. `just cluster-env` shows the right backend (`echo "$PULUMI_BACKEND_URL"`).
+4. `kubectl get storageclass dictycr-balanced` succeeds.
 
 **Handoff checklist**
 
 | Item | Where |
 |------|--------|
-| Cluster env file with `PULUMI_*` + `KUBECONFIG` + `PULUMI_BACKEND_URL` | `.env.<env>.<cluster>` |
+| Cluster env with `PULUMI_*` + `KUBECONFIG` + `PULUMI_BACKEND_URL` | `.env.<env>.<cluster>` |
 | `pulumi-manager` key | `credentials/<project-id>/pulumi-manager.json` |
 | Pulumi state | `gs://<pulumi-state-bucket>` |
-| Stack name used | documented for the team (`dev` / `experiments` / custom) |
-| Known HA gaps | Arango Single-only in current stacks; Redis single; MinIO single. Production ArangoDB plan: [`arangodb-deploy.md`](arangodb-deploy.md) |
+| Stack name | documented (`dev` / `experiments` / `prod`) |
+| StorageClass | `dictycr-balanced` |
 
-To tear down a single database project (careful — destructive):
+To tear down only the StorageClass (destructive if PVCs still reference it):
 
 ```bash
-just gcp-pulumi remove-resource --folder <project-folder> --stack ${STACK}
+just gcp-pulumi remove-resource --folder storage_class --stack ${STACK}
 ```
 
-Prefer snapshot/backup policy before destroy on shared environments.
+**Stop here.** Do not install the ArangoDB operator or instance in this guide.
+
+## 8. Next Steps
+
+- **ArangoDB (production lifecycle):** [`arangodb-deploy.md`](arangodb-deploy.md). Implementation plan: [`plans/arangodb-production.md`](plans/arangodb-production.md).
+- **Architecture (pool sizing, HA):** [`kops-gcp-architecture.md`](kops-gcp-architecture.md).
+- **Cluster day-2 / teardown:** [`README.md`](../README.md) §§4 and 6.
