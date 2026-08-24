@@ -33,7 +33,7 @@
 
 **Last tested**: 2026-07-16
 
-> **Document type:** This is a **provisioning guide** — a sequential walkthrough for deploying the **database layer and its dependencies** on a kops cluster with Pulumi. It starts where [`docs/kops-setup-draft.md`](kops-setup-draft.md) ends (cluster up and validated). It does **not** cover application services, Velero whole-cluster backup, or loaders.
+> **Document type:** This is a **provisioning guide** — a sequential walkthrough for deploying the **database layer and its dependencies** on a kops cluster with Pulumi. It starts where [`README.md`](../README.md) ends (cluster up and validated). ArangoDB install / import / teardown is in [`arangodb-deploy.md`](arangodb-deploy.md). It does **not** cover application services or Velero whole-cluster backup.
 
 ## Overview
 
@@ -50,11 +50,11 @@ After the cluster is healthy, install only what data plane needs:
 | Redis | `redis-standalone` | Single-replica Redis Deployment + PVC |
 | MinIO | `minio` | Object store (Helm) used by data/backup-related flows |
 
-- **Who it's for**: Operators who finished [kops cluster creation](kops-setup-draft.md) through Phase 6/7 validation.
+- **Who it's for**: Operators who finished [kops cluster creation](../README.md) through [Step 3.7](../README.md#step-37--validate-ha-topology--hardening).
 - **What you'll end up with**: Storage class, ArangoDB (+ app databases), PostgreSQL via CNPG, Redis, MinIO — ready for application stacks.
 - **How long**: Roughly 20–45 minutes after Pulumi backend exists (download images + PVC bind dominate).
 - **One project = one cluster**: Same rule as the kops guide. SA keys and paths use `credentials/<project-id>/`.
-- **Out of scope here**: `event-messenger`, GraphQL/frontends, `install-velero`, `arangodb-dataloader`, and other non-database apps.
+- **Out of scope here**: `event-messenger`, GraphQL/frontends, `install-velero`. Loaders and ArangoDB teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
 
 ## Quick Setup
 
@@ -73,14 +73,14 @@ Work inside an activated cluster env shell (`just cluster-env --env <env> --clus
 
 ### 1.1 Cluster Handoff
 
-Finish [`docs/kops-setup-draft.md`](kops-setup-draft.md) first:
+Finish [`README.md`](../README.md) first:
 
 - Cluster env file active (`just cluster-env --env <env> --cluster <cluster-name>`)
 - `kubectl` talks to the cluster (`kubectl get nodes` healthy)
 - Phase 4c security edits applied if you care about production access controls
 - Storage-friendly topology in place for your target:
   - **Simple dev**: single control plane / small worker pool is enough
-  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [kops Phase 4b](kops-setup-draft.md#phase-4b) and [Phase 4d](kops-setup-draft.md#phase-4d))
+  - **HA-oriented**: private topology + multi-zone workers + **stateful** InstanceGroup for database pods (see [README Step 3.2](../README.md#step-32--customize-yaml-in-git) and [Step 3.7](../README.md#step-37--validate-ha-topology--hardening))
 
 CSI for GCE PD should already be enabled on the cluster (`pdCSIDriver` in the kops manifest). StorageClass creation assumes that.
 
@@ -110,7 +110,7 @@ This repo’s **programs** are mostly single-instance. HA is partial: some knobs
 |-------|----------------|------------------------|-----------------|-------|
 | StorageClass | `storage_class` | `pd-balanced` / `dictycr-balanced` | Same class; durability is disk + multi-AZ scheduling | Not a HA toggle — cluster/zone layout decides risk |
 | ArangoDB operator | `arangodb-operator` | Deploy operator | Same | `deploymentReplication` flag exists on operator chart; current stack files set `false` |
-| ArangoDB data | `arangodb-single` | **Single** mode (hardcoded in code) | **Not implemented** | `Mode: "Single"` in `arangodb-single/main.go`. No Cluster/ActiveFailover project in this repo |
+| ArangoDB data | `arangodb-single` | **Single** mode (hardcoded in code) | **Not implemented** | `Mode: "Single"` in `arangodb-single/main.go`. Production Cluster-mode path is in [`arangodb-deploy.md`](arangodb-deploy.md). Do **not** change `Pulumi.dev.yaml` / `Pulumi.experiments.yaml` / `Pulumi.local.yaml` |
 | Arango logical DBs | `create-arangodb-databases` | Job creates named DBs + grants | Same | Needs running Arango + root secret. Stacks: `experiments` / `local` only (no `Pulumi.dev.yaml`) |
 | CNPG operator | `cloudnative-pg-operator` | Operator in `operators` (or configured ns) | Same | Prerequisite for any CNPG cluster |
 | PostgreSQL | `cloudnative-pg-cluster` | `instances: 1` in shipped stacks | **Config knob only** — set `instances: 3` for multi-instance CNPG | Program passes `Instances` into CR. Stock `Pulumi.*.yaml` still use `1`. Prefer stateful nodes + multi-zone for true HA |
@@ -140,7 +140,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
   --pulumi-backend-url "gs://<pulumi-state-bucket>"
 ```
 
-Credential and path variables are listed in [kops §1.3.2](kops-setup-draft.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION` — those live in Git after bootstrap.
+Credential and path variables are listed in [kops §1.3.2](../README.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION` — those live in Git after bootstrap.
 
 > **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to a global file (`~/.pulumi/credentials.yaml`), not to the shell. If you switch to a different cluster whose state lives in a different GCS bucket, Pulumi commands silently target the wrong backend. Setting `PULUMI_BACKEND_URL` in the per-cluster env file makes the backend follow the shell — each `just cluster-env` activation switches the cluster, kubeconfig, credentials, **and** state backend together.
 
@@ -393,7 +393,7 @@ just gcp-pulumi preview --folder arangodb-single --stack ${STACK}
 just gcp-pulumi create-resource --folder arangodb-single --stack ${STACK}
 ```
 
-**Dev vs HA:** config changes storage size / version only. Mode remains Single. HA Cluster mode is a repo gap.
+**Dev vs HA:** existing stacks change storage size / version only. Mode remains Single. Do not edit current `dev` / `experiments` / `local` ArangoDB stacks. Production lifecycle: [`arangodb-deploy.md`](arangodb-deploy.md).
 
 Check:
 
@@ -536,7 +536,7 @@ You are done with **this** guide when:
 3. CNPG operator + PostgreSQL cluster are healthy (1 instance for simple dev, or multi-instance if you configured HA).
 4. Redis and MinIO are Running.
 
-**Stop here.** Application Deployments, ingress for apps, graph loaders (`arangodb-dataloader`), and cluster backup (`install-velero`, optional `arangodb-backup`) are separate workstreams.
+**Stop here.** Application Deployments, ingress for apps, and Velero are separate workstreams. ArangoDB import, backup, and teardown: [`arangodb-deploy.md`](arangodb-deploy.md).
 
 **Handoff checklist**
 
@@ -546,7 +546,7 @@ You are done with **this** guide when:
 | `pulumi-manager` key | `credentials/<project-id>/pulumi-manager.json` |
 | Pulumi state | `gs://<pulumi-state-bucket>` |
 | Stack name used | documented for the team (`dev` / `experiments` / custom) |
-| Known HA gaps | Arango Single-only; Redis single; MinIO single — track if production needs more |
+| Known HA gaps | Arango Single-only in current stacks; Redis single; MinIO single. Production ArangoDB plan: [`arangodb-deploy.md`](arangodb-deploy.md) |
 
 To tear down a single database project (careful — destructive):
 
