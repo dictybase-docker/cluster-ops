@@ -677,4 +677,5 @@ To bring the cluster back after teardown:
 ## 7. Next Steps
 
 - **Deploy applications:** Follow [`docs/pulumi-setup.md`](docs/pulumi-setup.md).
+- **Production ArangoDB:** Follow [`docs/arangodb-deploy.md`](docs/arangodb-deploy.md). Implementation plan: [`docs/plans/arangodb-production.md`](docs/plans/arangodb-production.md).
 - **Architecture deep dive:** Read [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md).
