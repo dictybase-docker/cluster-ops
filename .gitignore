@@ -29,11 +29,14 @@ config.json
 .aider*
 kops/kops-cluster-creator
 bin
+/cluster-ops
+/kops
 gcs-files/service-accounts
 config.json.old
 scratch
 .env.dev.dcr-experiments
 .env
+.env.*
 .zsh_config
 .tool-versions
 .claude
@@ -45,3 +48,11 @@ pulumi-files/local-state/.pulumi
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+/.pi
+
+# opencode-codebase-index local storage
+.codebase-index/index/
+/.pi-subagents/artifacts
+.worktree/
+/.env.prod.dcr-kube1
+/.tool-versions.prod.dcr-kube1

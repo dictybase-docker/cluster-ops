@@ -9,6 +9,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+const appLabel = "app"
+
 func (gs *GraphqlServer) CreateDeploymentMetaData() *metav1.ObjectMetaArgs {
 	config := gs.Config
 	deploymentName := fmt.Sprintf("%s-api-server", config.Name)
@@ -24,13 +26,13 @@ func (gs *GraphqlServer) CreateDeploymentSpec() *appsv1.DeploymentSpecArgs {
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(deploymentName),
+				appLabel: pulumi.String(deploymentName),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(deploymentName),
+					appLabel: pulumi.String(deploymentName),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{

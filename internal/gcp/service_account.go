@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 
 	"github.com/urfave/cli/v2"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
@@ -244,12 +245,7 @@ func (c *IAMClient) memberExistsInBinding(
 	binding *cloudresourcemanager.Binding,
 	member string,
 ) bool {
-	for _, existingMember := range binding.Members {
-		if existingMember == member {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(binding.Members, member)
 }
 
 // setProjectIAMPolicy applies the updated policy to the project

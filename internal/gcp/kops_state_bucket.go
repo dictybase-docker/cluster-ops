@@ -31,6 +31,7 @@ type CreateBucketParams struct {
 func CreateKopsStateBucket(cliContext *cli.Context) error {
 	ctx := context.Background()
 	params := getBucketParams(cliContext)
+	harden := cliContext.Bool("harden")
 
 	if err := validateEnvironment(); err != nil {
 		return err
@@ -49,11 +50,19 @@ func CreateKopsStateBucket(cliContext *cli.Context) error {
 	}
 
 	if !exists {
-		if err := setupNewBucket(ctx, params, bucket); err != nil {
+		if err := setupNewBucket(ctx, params, bucket, harden); err != nil {
 			return err
 		}
 	} else {
 		logger.Info("Bucket already exists. Updating configuration.", slog.String("bucket", params.BucketName))
+		if harden {
+			if err := enableUniformBucketLevelAccess(ctx, bucket); err != nil {
+				return err
+			}
+			if err := enablePublicAccessPrevention(ctx, bucket); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := setLifecycleConfig(ctx, bucket, params.MaxVersions); err != nil {
@@ -75,11 +84,6 @@ func getBucketParams(cliContext *cli.Context) CreateBucketParams {
 func validateEnvironment() error {
 	requiredVars := []string{
 		"GOOGLE_APPLICATION_CREDENTIALS",
-		"KOPS_CLUSTER_NAME",
-		"KOPS_STATE_STORE",
-		"KUBECONFIG",
-		"SSH_KEY",
-		"KUBERNETES_VERSION",
 	}
 	missingVars := checkRequiredVars(requiredVars)
 	if len(missingVars) > 0 {
@@ -117,6 +121,7 @@ func setupNewBucket(
 	ctx context.Context,
 	params CreateBucketParams,
 	bucket *storage.BucketHandle,
+	harden bool,
 ) error {
 	if err := createBucket(params); err != nil {
 		return err
@@ -128,6 +133,15 @@ func setupNewBucket(
 
 	if err := enableSoftDelete(ctx, bucket); err != nil {
 		return err
+	}
+
+	if harden {
+		if err := enableUniformBucketLevelAccess(ctx, bucket); err != nil {
+			return err
+		}
+		if err := enablePublicAccessPrevention(ctx, bucket); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -205,4 +219,30 @@ func checkRequiredVars(vars []string) []string {
 		}
 	}
 	return missingVars
+}
+
+// enableUniformBucketLevelAccess enables uniform bucket-level IAM.
+func enableUniformBucketLevelAccess(ctx context.Context, bucket *storage.BucketHandle) error {
+	_, err := bucket.Update(ctx, storage.BucketAttrsToUpdate{
+		UniformBucketLevelAccess: &storage.UniformBucketLevelAccess{
+			Enabled: true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("enable UBLA: %w", err)
+	}
+	logger.Info("Uniform bucket-level access enabled")
+	return nil
+}
+
+// enablePublicAccessPrevention enforces public access prevention.
+func enablePublicAccessPrevention(ctx context.Context, bucket *storage.BucketHandle) error {
+	_, err := bucket.Update(ctx, storage.BucketAttrsToUpdate{
+		PublicAccessPrevention: storage.PublicAccessPreventionEnforced,
+	})
+	if err != nil {
+		return fmt.Errorf("enable PAP: %w", err)
+	}
+	logger.Info("Public access prevention enforced")
+	return nil
 }

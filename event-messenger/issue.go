@@ -122,7 +122,7 @@ func (emn *EventMessenger) CreateIssueDeploymentMetadata() *metav1.ObjectMetaArg
 		Namespace: pulumi.String(emn.Config.Namespace),
 		Name:      pulumi.String(emn.Config.IssueDeployment.Name),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(emn.Config.IssueDeployment.Name),
+			appLabel: pulumi.String(emn.Config.IssueDeployment.Name),
 		},
 	}
 }
@@ -131,13 +131,13 @@ func (emn *EventMessenger) CreateIssueDeploymentSpec() *appsv1.DeploymentSpecArg
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(emn.Config.IssueDeployment.Name),
+				appLabel: pulumi.String(emn.Config.IssueDeployment.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(emn.Config.IssueDeployment.Name),
+					appLabel: pulumi.String(emn.Config.IssueDeployment.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{

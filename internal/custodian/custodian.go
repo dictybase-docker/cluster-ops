@@ -343,11 +343,10 @@ func (cus *Custodian) excludeVolumesForPod(pod *corev1.Pod) error {
 	}
 
 	annotationValue := strings.Join(volumeNames, ",")
-	patchData := []byte(
-		fmt.Sprintf(
-			`{"metadata":{"annotations":{"backup.velero.io/backup-volumes-excludes":"%s"}}}`,
-			annotationValue,
-		),
+	patchData := fmt.Appendf(
+		nil,
+		`{"metadata":{"annotations":{"backup.velero.io/backup-volumes-excludes":"%s"}}}`,
+		annotationValue,
 	)
 
 	_, err := cus.clientset.CoreV1().Pods(cus.namespace).Patch(

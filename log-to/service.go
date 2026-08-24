@@ -26,7 +26,7 @@ func (lt *Logto) CreateServiceSpec(
 ) *corev1.ServiceSpecArgs {
 	return &corev1.ServiceSpecArgs{
 		Selector: pulumi.StringMap{
-			"app": deploymentName,
+			appLabel: deploymentName,
 		},
 		Ports: corev1.ServicePortArray{
 			&corev1.ServicePortArgs{
@@ -53,7 +53,7 @@ func (lt *Logto) CreateService(
 		},
 		Spec: &corev1.ServiceSpecArgs{
 			Selector: pulumi.StringMap{
-				"app": appName,
+				appLabel: appName,
 			},
 			Ports: corev1.ServicePortArray{
 				&corev1.ServicePortArgs{

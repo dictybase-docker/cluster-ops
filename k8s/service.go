@@ -22,7 +22,7 @@ func ServiceSpecArgs(
 ) *corev1.ServiceSpecArgs {
 	return &corev1.ServiceSpecArgs{
 		Selector: pulumi.StringMap{
-			"app": pulumi.String(deploymentName),
+			appLabel: pulumi.String(deploymentName),
 		},
 		Ports: servicePortSpec(serviceName, port),
 		Type:  pulumi.String("NodePort"),

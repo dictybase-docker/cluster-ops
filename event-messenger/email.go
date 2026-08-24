@@ -139,7 +139,7 @@ func (emn *EventMessenger) CreateEmailDeploymentMetadata() *metav1.ObjectMetaArg
 		Name:      pulumi.String(emn.Config.EmailDeployment.Name),
 		Namespace: pulumi.String(emn.Config.Namespace),
 		Labels: pulumi.StringMap{
-			"app": pulumi.String(emn.Config.EmailDeployment.Name),
+			appLabel: pulumi.String(emn.Config.EmailDeployment.Name),
 		},
 	}
 }
@@ -148,13 +148,13 @@ func (emn *EventMessenger) CreateEmailDeploymentSpec() *appsv1.DeploymentSpecArg
 	return &appsv1.DeploymentSpecArgs{
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: pulumi.StringMap{
-				"app": pulumi.String(emn.Config.EmailDeployment.Name),
+				appLabel: pulumi.String(emn.Config.EmailDeployment.Name),
 			},
 		},
 		Template: &corev1.PodTemplateSpecArgs{
 			Metadata: &metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"app": pulumi.String(emn.Config.EmailDeployment.Name),
+					appLabel: pulumi.String(emn.Config.EmailDeployment.Name),
 				},
 			},
 			Spec: &corev1.PodSpecArgs{
