@@ -54,5 +54,6 @@ pulumi-files/local-state/.pulumi
 .codebase-index/index/
 /.pi-subagents/artifacts
 .worktree/
+.worktrees/
 /.env.prod.dcr-kube1
 /.tool-versions.prod.dcr-kube1
