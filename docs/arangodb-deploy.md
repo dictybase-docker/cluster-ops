@@ -183,7 +183,7 @@ Do **not** bolt this onto `dictycr-dev-staging-dcr-experiments`. That bundle has
 
 ### 3.2 Pulumi backend
 
-[`pulumi-setup.md`](pulumi-setup.md) §§3–5, then Phase A StorageClass. Production state lives in the **production** GCS backend and KMS key — not the devenv-194321 lab key.
+[`pulumi-setup.md`](pulumi-setup.md) through [StorageClass](pulumi-setup.md#6-first-apply--storageclass). Production state lives in the **production** GCS backend and KMS key — not the devenv-194321 lab key.
 
 ### 3.3 Tools and access
 
