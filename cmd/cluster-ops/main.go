@@ -229,6 +229,11 @@ func apiCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
 					&cli.StringFlag{Name: "api-file-path", Aliases: []string{"f"}, Required: true},
+					&cli.BoolFlag{
+						Name: "disable-dependent-services",
+						Usage: "Also disable services that depend on the listed APIs. " +
+							"For bigquery.googleapis.com this can include container.googleapis.com (GKE).",
+					},
 				},
 			},
 		},

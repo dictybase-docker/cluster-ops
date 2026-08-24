@@ -56,12 +56,13 @@ list-enabled-apis project="" output_file:
     fi
 
 # Disable multiple Google Cloud API services from a file.
-# Usage: just gcp-api disable-apis [--project <project-id>] --api-file <path>
+# Usage: just gcp-api disable-apis [--project <project-id>] --api-file <path> [--disable-dependent-services]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [arg("api_file", long="api-file", short="f", help="Path to the API list file")]
+[arg("disable_dependent", long="disable-dependent-services", help="Also disable services that depend on the listed APIs")]
 [group('api-management')]
 [no-cd]
-disable-apis project="" api_file:
+disable-apis project="" api_file disable_dependent="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -74,7 +75,11 @@ disable-apis project="" api_file:
     echo "Disabling APIs for project ${project_id} from file {{ api_file }}"
 
     go build -o bin/cluster-ops cmd/cluster-ops/main.go
-    ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ api_file }}
+    if [ "{{ disable_dependent }}" = "true" ]; then
+        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ api_file }} --disable-dependent-services
+    else
+        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ api_file }}
+    fi
 
     echo "Finished disabling APIs"
 
