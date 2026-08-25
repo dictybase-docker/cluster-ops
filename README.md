@@ -336,6 +336,54 @@ just gcp-cluster bootstrap-bundle \
 - Pre-configures repository defaults (CSI driver, pd-ssd etcd volumes, cluster autoscaler, cert-manager, node-local DNS, and 3 worker pools: `stateless-web`, `stateful-db`, `batch-spot`).
 - **Pure local operation:** Zero cloud API calls, zero state store mutations.
 
+#### Choosing `--api-access-cidr`
+
+`--api-access-cidr` sets GCP firewall rules to restrict Kubernetes API server access (`spec.kubernetesApiAccess`).
+
+- **Find public IPv4:**
+  ```bash
+  curl -sS -4 https://api.ipify.org
+  ```
+  *(Do not use private CIDRs such as `192.168.0.0/16`, `10.0.0.0/8`, or `172.16.0.0/12`.)*
+
+- **Dynamic / Home ISP (e.g. Comcast, Xfinity):**
+  Comcast residential addresses use dynamic DHCP leases. Pass your current public IP formatted with `/32`:
+  ```bash
+  just gcp-cluster bootstrap-bundle \
+    --cluster <cluster-name> \
+    --project <project-id> \
+    --api-access-cidr "$(curl -sS -4 https://api.ipify.org)/32"
+  ```
+
+- **Static VPN / Office network:**
+  If operating through a VPN or office gateway with a fixed egress CIDR, pass that range (e.g. `198.51.100.0/24`).
+
+- **Open access (`0.0.0.0/0`):**
+  Opens API endpoint to all IPs. Use only as a temporary dev/break-glass fallback; not recommended for production.
+
+#### Updating API Access CIDR (If Your IP Changes)
+
+If your dynamic ISP reassigns your IP, `kubectl` will lose connectivity. Update the allowed CIDR using Git-native workflow:
+
+1. Query new public IP:
+   ```bash
+   curl -sS -4 https://api.ipify.org
+   ```
+2. Update `spec.kubernetesApiAccess` in `config/kops/<cluster-name>/cluster.yaml`:
+   ```yaml
+   spec:
+     kubernetesApiAccess:
+       - "<new-ip>/32"
+   ```
+3. Commit and apply changes:
+   ```bash
+   git add config/kops/<cluster-name>/cluster.yaml
+   git commit -m "<cluster-name>: update API access CIDR"
+   just gcp-cluster replace-manifests --cluster <cluster-name>
+   just gcp-cluster plan-cluster --cluster <cluster-name>
+   just gcp-cluster update-cluster --cluster <cluster-name>
+   ```
+
 <a id="step-32--customize-yaml-in-git"></a>
 
 ### Step 3.2 — Customize YAML in Git
@@ -349,7 +397,7 @@ $EDITOR config/kops/<cluster-name>/instancegroups.yaml
 
 **Cluster defaults in `cluster.yaml`:**
 - `spec.kubernetesVersion`: `1.28.8`
-- `spec.api.access`: `["<your-ip>/32"]`
+- `spec.kubernetesApiAccess`: `["<your-ip>/32"]`
 - `spec.networking.cilium`: enabled
 - `spec.etcdClusters[*].volumeType`: `pd-ssd`
 - `spec.cloudProvider.gce.pdCSIDriver`: `enabled: true`
