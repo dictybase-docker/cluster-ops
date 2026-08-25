@@ -1,0 +1,25 @@
+# Production configuration template for create-arangodb-databases
+# Configure required secrets before deployment via:
+#   pulumi -C create-arangodb-databases -s prod config set --path --secret properties.arangodbSecret.pass "<app-password>"
+config:
+  create-arangodb-databases:properties:
+    arangodbCredentials:
+      name: arangodb-pass
+      passkey: password
+    arangodbSecret:
+      name: backend
+      passkey: password
+      userkey: user
+    databases:
+      - annotation
+      - order
+      - stock
+      - content
+      - cgm_ddb
+      - chado
+      - annofeature
+    grant: rw
+    image:
+      name: ghcr.io/dictybase-docker/arangoadmin
+      tag: fec50dd
+    namespace: prod
