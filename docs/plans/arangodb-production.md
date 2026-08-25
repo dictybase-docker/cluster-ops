@@ -18,7 +18,7 @@
 - [Acceptance](#acceptance)
 - [Risks](#risks)
 
-**Status**: Plan only. No code in this change. Operator procedure: [`../arangodb-deploy.md`](../arangodb-deploy.md). Sizing: [`../kops-gcp-architecture.md`](../kops-gcp-architecture.md).
+**Status**: Implemented (Historical Reference & Architecture Rationale). Core Pulumi program implemented in `arangodb-cluster/` with supporting `prod` stacks for `storage_class`, `arangodb-operator`, `create-arangodb-databases`, and `arangodb-backup`. Lab stacks remain frozen. Active deployment runbook: [`../arangodb-deploy.md`](../arangodb-deploy.md). Architecture sizing: [`../kops-gcp-architecture.md`](../kops-gcp-architecture.md).
 
 ## Goal
 
