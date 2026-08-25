@@ -1,0 +1,24 @@
+config:
+  arangodb-backup:properties:
+    arangodbSecret:
+      key: password
+      name: arangodb-pass
+    bucket: restic-arangodb-backup-prod
+    bucketSecret:
+      key: gcsCredentials
+      name: dictycr
+    folder: arangodump
+    image:
+      name: dictybase/database-backup
+      tag: sha-9c3b8ea
+    namespace: prod
+    projectSecret:
+      key: gcsProject
+      name: dictycr
+    resticSecret:
+      key: resticPass
+      name: dictycr
+    storage:
+      class: dictycr-balanced
+      name: arangodb-backup-ephemeral
+      size: 150Gi
