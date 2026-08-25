@@ -1,0 +1,51 @@
+# Production configuration template for arangodb-cluster
+# Configure required secrets before deployment via:
+#   pulumi -C arangodb-cluster -s prod config set --path --secret properties.secret.password "<strong-password>"
+config:
+  arangodb-cluster:properties:
+    name: arangodb
+    namespace: prod
+    version: 3.12.10.1
+    environment: Production
+    architecture: amd64
+    tls:
+      caSecretName: "None"
+    secret:
+      name: arangodb-pass
+    agents:
+      count: 3
+      storageClass: dictycr-ssd
+      storageSize: 20Gi
+      cpuRequest: 250m
+      memoryRequest: 1Gi
+      nodeSelector:
+        pool: database
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: database
+          effect: NoSchedule
+    dbservers:
+      count: 3
+      storageClass: dictycr-balanced
+      storageSize: 150Gi
+      cpuRequest: "2"
+      memoryRequest: 12Gi
+      nodeSelector:
+        pool: database
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: database
+          effect: NoSchedule
+    coordinators:
+      count: 3
+      cpuRequest: 500m
+      memoryRequest: 2Gi
+      nodeSelector:
+        pool: database
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: database
+          effect: NoSchedule
