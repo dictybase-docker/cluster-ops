@@ -47,13 +47,13 @@ DictyCR production needs a graph database that survives a zone loss. The archite
 
 | Layer | Production choice | Why |
 |-------|-------------------|-----|
-| Cluster topology | Private VPC, 3 control planes, Cilium | [`kops-gcp-architecture.md`](kops-gcp-architecture.md) §§3, 7, 8 |
-| Database pool | 3× `n2-standard-4` (or `n2-highmem-4`), static, 100 GB `pd-balanced` boot | Architecture §4.2 |
-| ArangoDB mode | **Cluster** (3 agents + 3 dbservers + 3 coordinators) | Architecture §6 Option B — engine-level HA, not a single replica |
+| Cluster topology | Private VPC, 3 control planes, Cilium | [`kops-gcp-architecture.md`](kops-gcp-architecture.md) [§3](kops-gcp-architecture.md#-3-control-plane-sizing--storage), [§7](kops-gcp-architecture.md#-7-gcp-kops-specific-quirks-networking--security), [§8](kops-gcp-architecture.md#-8-high-availability-vs-cost-optimized-comparison) |
+| Database pool | 3× `n2-standard-4` (or `n2-highmem-4`), static, 100 GB `pd-balanced` boot | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
+| ArangoDB mode | **Cluster** (3 agents + 3 dbservers + 3 coordinators) | [Architecture §6 Option B](kops-gcp-architecture.md#option-b-self-hosted-in-cluster-database) — engine-level HA, not a single replica |
 | Image | `arangodb:3.12.10.1` (amd64) | Latest 3.12 patch; 3.11 is EOL |
 | Placement | `nodeSelector: pool=database` + taint `dedicated=database:NoSchedule` | Isolate DB from web/spot |
-| PVC | `dictycr-balanced`, one volume **per member** | Architecture §6 — no shared disk |
-| Cloud SQL | **Not used** | Architecture Option A is PostgreSQL/MySQL only |
+| PVC | `dictycr-balanced`, one volume **per member** | [Architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval) — no shared disk |
+| Cloud SQL | **Not used** | [Architecture Option A](kops-gcp-architecture.md#option-a-fully-managed-database-strongly-recommended) is PostgreSQL/MySQL only |
 
 - **Who it's for**: Operators standing up the **production** DictyCR cluster.
 - **What you end up with**: ArangoDB Cluster on `stateful-db`, app databases, optional imports, restic backups, a teardown path.
@@ -120,25 +120,25 @@ Source: [`kops-gcp-architecture.md`](kops-gcp-architecture.md) Highly Available 
         └── 0–4 × e2-standard-4   batch-spot      (optional)
 ```
 
-Do **not** use the architecture’s Cost-Optimized plan for production ArangoDB. That plan is a consolidated pool + single replica. Architecture §8 calls that low-to-moderate zone tolerance.
+Do **not** use the architecture’s Cost-Optimized plan for production ArangoDB. That plan is a consolidated pool + single replica. [Architecture §8](kops-gcp-architecture.md#-8-high-availability-vs-cost-optimized-comparison) calls that low-to-moderate zone tolerance.
 
 ### 2.2 Stateful database pool
 
 | Knob | Production value | Source |
 |------|------------------|--------|
-| Machine | `n2-standard-4` (4/16) default; `n2-highmem-4` (4/32) if indexes must stay in RAM | Architecture §4.2 |
-| Count | **3 / 3**, static | Architecture §4.2 — no scale-to-zero |
-| Zones | `us-central1-a`, `b`, `c` | Architecture §3 / §4 |
-| Boot disk | 100 GB `pd-balanced` | Architecture §4.2 |
-| Data disks | Separate PVC per Arango member, `dictycr-balanced` | Architecture §6 |
+| Machine | `n2-standard-4` (4/16) default; `n2-highmem-4` (4/32) if indexes must stay in RAM | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
+| Count | **3 / 3**, static | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) — no scale-to-zero |
+| Zones | `us-central1-a`, `b`, `c` | [Architecture §4](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity) / [§3](kops-gcp-architecture.md#-3-control-plane-sizing--storage) |
+| Boot disk | 100 GB `pd-balanced` | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
+| Data disks | Separate PVC per Arango member, `dictycr-balanced` | [Architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval) |
 | Label | `pool: database` | Starter IG + this guide |
-| Taint | `dedicated=database:NoSchedule` | Isolate from web/spot (architecture §4.3 pattern) |
+| Taint | `dedicated=database:NoSchedule` | Isolate from web/spot (architecture §4.3 [pattern](kops-gcp-architecture.md#3-analyticalbatch-node-pool-optional-cost-optimized)) |
 
-`n2-standard-4` × 3 is the architecture default. Cluster mode runs **9** members (3+3+3). If CPU/RAM pressure shows after first deploy, step the pool to `n2-highmem-4` (same count) rather than adding nodes. Adding nodes is allowed only if you also raise dbserver/coordinator counts and keep odd quorum.
+`n2-standard-4` × 3 is the [architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) default. Cluster mode runs **9** members (3+3+3). If CPU/RAM pressure shows after first deploy, step the pool to `n2-highmem-4` (same count) rather than adding nodes. Adding nodes is allowed only if you also raise dbserver/coordinator counts and keep odd quorum.
 
 ### 2.3 Why Cluster mode
 
-Architecture §6 Option B: production self-hosted HA is an **operator-managed replica set**, one PVC per replica, anti-affinity across zones, PDB, backups.
+[Architecture §6 Option B](kops-gcp-architecture.md#option-b-self-hosted-in-cluster-database) ([§6](kops-gcp-architecture.md#-6-database-storage--retrieval)): production self-hosted HA is an **operator-managed replica set**, one PVC per replica, anti-affinity across zones, PDB, backups.
 
 For ArangoDB 3.12:
 
@@ -148,14 +148,14 @@ For ArangoDB 3.12:
 | ActiveFailover | Removed in 3.12 | Do not use |
 | Cluster (3/3/3) | Yes, if members spread | **Production target** — needs new code |
 
-Cloud SQL (architecture Option A) is not an ArangoDB option.
+Cloud SQL ([architecture Option A](kops-gcp-architecture.md#option-a-fully-managed-database-strongly-recommended)) is not an ArangoDB option.
 
 ### 2.4 Storage and backups
 
 - StorageClass: `dictycr-balanced` (GCE `pd-balanced` via CSI). Enable `pdCSIDriver` on the cluster.
 - One PVC per agent / dbserver. Coordinators are stateless; still pin them to the pool.
 - Community 3.12 binaries are under the ArangoDB Community / BSL license. Confirm current license terms before the dataset grows; do not assume a free unlimited disk.
-- Backups: `arangodump` + restic → GCS, plus restore drills (architecture §6).
+- Backups: `arangodump` + restic → GCS, plus restore drills ([architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval)).
 
 Suggested first-cut PVC sizes (tune after measuring data):
 
@@ -203,7 +203,7 @@ This step is Git/kOps only. It does not change Pulumi lab stacks.
 
 ### 4.1 Target manifest
 
-In `config/kops/<prod-cluster>/instancegroups.yaml`, `stateful-db` should look like the architecture pool:
+In `config/kops/<prod-cluster>/instancegroups.yaml`, `stateful-db` should look like the [architecture pool](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity):
 
 ```yaml
 apiVersion: kops.k8s.io/v1alpha2
@@ -248,7 +248,7 @@ After the taint, CNPG / Redis / MinIO / loaders will **not** schedule on this po
 # 1. Edit the production bundle
 $EDITOR config/kops/<prod-cluster>/instancegroups.yaml
 
-# 2. Commit, push to state, apply (README §4)
+# 2. Commit, push to state, apply ([README §4](../README.md#4-day-2-operations-git-first-workflow))
 git commit -am "<prod-cluster>: isolate stateful-db for production ArangoDB"
 just gcp-cluster replace-manifests --cluster <prod-cluster>
 just gcp-cluster plan-cluster --cluster <prod-cluster>
@@ -368,7 +368,7 @@ Give the Job the database toleration or it will not schedule after [§4.2](#42-i
 
 New `arangodb-backup/Pulumi.prod.yaml`. Larger ephemeral PVC than lab 20Gi if dbservers are 150Gi.
 
-Architecture §6: scheduled backups are not enough — prove restore.
+[Architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval): scheduled backups are not enough — prove restore.
 
 ### 7.2 Restore drill
 
@@ -446,7 +446,7 @@ Pass bar:
 | Pod Pending, `arm64` | Lab program hardcoded arm64 | Production must set `amd64` |
 | Only one Arango pod | You applied lab `arangodb-single` | Wrong stack. Stop. Do not “fix” by editing `Pulumi.dev.yaml` |
 | Members pile in one zone | Missing anti-affinity | Plan: pod anti-affinity on each group |
-| PVC Pending | No StorageClass / CSI | `pulumi-setup` Phase A |
+| PVC Pending | No StorageClass / CSI | [`pulumi-setup.md`](pulumi-setup.md) |
 | Quorum loss after drain | No PDB | Plan: PDB `minAvailable` for agents/dbservers |
 | Loader Pending after taint | Job has no toleration | Add toleration or schedule on `stateless-web` |
 
