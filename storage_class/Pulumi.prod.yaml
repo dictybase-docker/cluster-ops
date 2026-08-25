@@ -1,0 +1,9 @@
+config:
+  storage-class:properties:
+    classes:
+      - name: dictycr-balanced
+        diskType: pd-balanced
+        provisioner: pd.csi.storage.gke.io
+      - name: dictycr-ssd
+        diskType: pd-ssd
+        provisioner: pd.csi.storage.gke.io
