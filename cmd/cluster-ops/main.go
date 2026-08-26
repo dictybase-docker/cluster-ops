@@ -14,6 +14,7 @@ import (
 const (
 	projectFlag = "project"
 	nameFlag    = "name"
+	createCmd   = "create"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 			envCommand(),
 			apiCommand(),
 			saCommand(),
+			kmsCommand(),
 		},
 	}
 
@@ -145,7 +147,7 @@ func bucketCommand() *cli.Command {
 		Usage: "Manage GCS state bucket",
 		Subcommands: []*cli.Command{
 			{
-				Name:   "create",
+				Name:   createCmd,
 				Usage:  "Create and harden a GCS state bucket",
 				Action: gcp.CreateKopsStateBucket,
 				Flags: []cli.Flag{
@@ -248,7 +250,7 @@ func saCommand() *cli.Command {
 		Usage: "Create service accounts and keys",
 		Subcommands: []*cli.Command{
 			{
-				Name:   "create",
+				Name:   createCmd,
 				Usage:  "Create a service account with roles from a file",
 				Action: gcp.CreateServiceAccount,
 				Flags: []cli.Flag{
@@ -268,6 +270,54 @@ func saCommand() *cli.Command {
 					&cli.StringFlag{Name: nameFlag, Required: true},
 					&cli.StringFlag{Name: projectFlag, Required: true},
 					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+				},
+			},
+		},
+	}
+}
+
+// ---------- kms ----------
+
+func kmsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "kms",
+		Usage: "Manage Cloud KMS keyrings and keys",
+		Subcommands: []*cli.Command{
+			{
+				Name:   createCmd,
+				Usage:  "Create KMS keyring and key",
+				Action: gcp.CreateKeyringAndKey,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "project-id",
+						Aliases:  []string{"p"},
+						EnvVars:  []string{"PROJECT_ID"},
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "keyring-name",
+						Aliases:  []string{"r"},
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "key-name",
+						Aliases:  []string{"k"},
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:    "location",
+						Aliases: []string{"l"},
+						Value:   "us-central1",
+					},
+					&cli.StringFlag{
+						Name:    "credentials",
+						Aliases: []string{"c"},
+						EnvVars: []string{
+							"PULUMI_GCP_CREDENTIALS",
+							"GOOGLE_APPLICATION_CREDENTIALS",
+						},
+						Required: true,
+					},
 				},
 			},
 		},
