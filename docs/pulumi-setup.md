@@ -53,10 +53,10 @@ Work inside `just cluster-env --env <env> --cluster <cluster-name>`. `kubectl ge
 
 1. [Confirm cluster handoff.](#11-cluster-handoff) Cluster validated; CSI `pdCSIDriver` enabled.
 2. [Confirm tools.](#12-tools) `just`, `kubectl`, `pulumi`, `gcloud`, `jq`.
-3. [Configure all Pulumi env vars.](#21-add-to-the-cluster-env-file) Run `just create-cluster-env` with all `--pulumi-*` flags and enter the shell.
-4. [Create pulumi-manager key.](#31-create-the-pulumi-manager-key) `just gcp-sa create-sa ...` writing to `${PULUMI_GCP_CREDENTIALS}`.
-5. [Create KMS key.](#32-kms-keyring-and-crypto-key) `just gcp-kms create-keyring-and-key ...` matching `${PULUMI_SECRET_PROVIDER}`.
-6. [Create state bucket & initialize login.](#33-gcs-state-bucket-and-login) `just gcp-pulumi pulumi-gcs-setup ...`.
+3. [Generate cluster env file.](#21-add-to-the-cluster-env-file) Run `just create-cluster-env --env <env> --cluster <cluster-name> --force yes` and activate shell.
+4. [Create pulumi-manager key.](#31-create-the-pulumi-manager-key) Run `just gcp-sa create-sa --sa-name pulumi-manager`.
+5. [Create KMS keyring & key.](#32-kms-keyring-and-crypto-key) Run `just gcp-kms create-keyring-and-key`.
+6. [Create state bucket & initialize login.](#33-gcs-state-bucket-and-login) Run `just gcp-pulumi pulumi-gcs-setup`.
 7. [Verify switching & state.](#4-switching-between-clusters) `echo "$PULUMI_BACKEND_URL"` and `pulumi -C storage_class stack ls`.
 8. [Apply StorageClass.](#62-deploy-storage_class) `just gcp-pulumi preview` then `create-resource` on `storage_class`.
 9. **Stop.** Go to [`arangodb-deploy.md`](arangodb-deploy.md) for ArangoDB.
@@ -100,27 +100,29 @@ Do **not** put Pulumi credentials in `.envrc`. Put them in the per-cluster env f
 
 ### 2.1 Add to the cluster env file
 
-Define all Pulumi variables upfront in the gitignored `.env.<env>.<cluster-name>` file alongside kOps operator credentials. Generate or refresh the env file with `just create-cluster-env`:
+Generate or refresh the gitignored `.env.<env>.<cluster-name>` file with `just create-cluster-env`.
+
+`create-cluster-env` automatically detects the GCP project from `config/kops/<cluster-name>/cluster.yaml` (or environment variables) and derives standard paths and URIs:
 
 ```bash
-just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
-  --credentials credentials/<project-id>/kops-cluster-creator.json \
-  --kubeconfig clusters/<cluster-name>/kubeconfig \
-  --pulumi-gcp-credentials credentials/<project-id>/pulumi-manager.json \
-  --pulumi-secret-provider "gcpkms://projects/<project-id>/locations/us-central1/keyRings/<keyring>/cryptoKeys/<key>" \
-  --pulumi-backend-url "gs://<pulumi-state-bucket>"
+# Standard invocation — infers project and sets canonical defaults
+just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 ```
 
-**Environment Variable Contract**:
-- `PULUMI_GCP_CREDENTIALS`: Path to the service account key for Pulumi operations (`credentials/<project-id>/pulumi-manager.json`).
-- `PULUMI_SECRET_PROVIDER`: Full GCP KMS cryptoKey URI for encrypting stack secrets.
-- `PULUMI_BACKEND_URL`: GCS bucket URI (`gs://<pulumi-state-bucket>`) for state storage.
-- `PROJECT_ID`: Target GCP project ID.
+**Derived Defaults & Conventions**:
+- `PROJECT_ID`: Inferred from `spec.project` in `config/kops/<cluster-name>/cluster.yaml` (or `$PROJECT_ID` / `--project`).
+- `GOOGLE_APPLICATION_CREDENTIALS`: Defaults to `credentials/<project-id>/kops-cluster-creator.json`.
+- `KUBECONFIG`: Defaults to `clusters/<cluster-name>/kubeconfig`.
+- `PULUMI_GCP_CREDENTIALS`: Defaults to `credentials/<project-id>/pulumi-manager.json`.
+- `PULUMI_SECRET_PROVIDER`: Defaults to `gcpkms://projects/<project-id>/locations/us-central1/keyRings/<cluster-name>/cryptoKeys/<cluster-name>`.
+- `PULUMI_BACKEND_URL`: Defaults to `gs://pulumi-state-<project-id>`.
 
-**How variables are consumed**:
-- **Implicitly in `just gcp-pulumi` recipes**: Operational recipes (`preview`, `new-stack`, `new-stack-from`, `create-resource`, `remove-resource`) automatically read `${PULUMI_GCP_CREDENTIALS}` for GCP authentication and `${PULUMI_SECRET_PROVIDER}` for KMS encryption. They fail fast (`set -u`) if these variables are unset.
-- **Implicitly by the `pulumi` CLI**: The `pulumi` CLI automatically uses `${PULUMI_BACKEND_URL}` for GCS state backend routing.
-- **Explicitly in bootstrap helper commands**: Setup recipes (`gcp-sa create-sa`, `gcp-kms create-keyring-and-key`, `pulumi-gcs-setup`) require specific CLI flags, which you supply directly from these exported environment variables (e.g. `--output-file "${PULUMI_GCP_CREDENTIALS}"`).
+If custom paths or key names are required, override them with explicit flags (e.g. `--pulumi-secret-provider "..."`). If `PROJECT_ID` cannot be inferred, the recipe stops immediately and prompts for input.
+
+**Environment Variable Contract**:
+- Every recipe (`gcp-sa create-sa`, `gcp-kms create-keyring-and-key`, `gcp-pulumi pulumi-gcs-setup`, `gcp-pulumi preview`, `create-resource`, etc.) automatically pulls configuration from exported environment variables.
+- If command-line options are passed explicitly, they override environment variables.
+- If a required value cannot be inferred, the recipe aborts immediately with a clear error.
 
 ### 2.2 Activate the cluster shell
 
@@ -139,51 +141,30 @@ kubectl get nodes
 
 ## 3. Pulumi Backend Bootstrap
 
-Execute bootstrap recipes directly from within the activated `just cluster-env` shell.
+Execute bootstrap recipes directly from within the activated `just cluster-env` shell. All commands automatically pick up their configuration from the environment variables.
 
 ### 3.1 Create the pulumi-manager key
 
-Generate the service account key at the path specified by `${PULUMI_GCP_CREDENTIALS}`:
+Creates the service account with required roles and saves the JSON key to `${PULUMI_GCP_CREDENTIALS}`:
 
 ```bash
-mkdir -p "credentials/${PROJECT_ID}"
-just gcp-sa create-sa --sa-name pulumi-manager \
-  --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt \
-  --output-file "${PULUMI_GCP_CREDENTIALS}"
+just gcp-sa create-sa --sa-name pulumi-manager
 ```
-
-Roles assigned include Storage Admin and Cloud KMS CryptoKey Encrypter/Decrypter.
 
 ### 3.2 KMS keyring and crypto key
 
-Create the KMS keyring and key matching the `${PULUMI_SECRET_PROVIDER}` URI:
+Creates the Cloud KMS keyring and cryptoKey defined by `${PULUMI_SECRET_PROVIDER}` using `${PULUMI_GCP_CREDENTIALS}`:
 
 ```bash
-just gcp-kms create-keyring-and-key \
-  --keyring-name <keyring-name> \
-  --key-name <key-name> \
-  --credentials-file "${PULUMI_GCP_CREDENTIALS}" \
-  --location us-central1
+just gcp-kms create-keyring-and-key
 ```
 
 ### 3.3 GCS state bucket and login
 
-Create the state bucket and initialize the Pulumi backend:
+Creates the GCS state bucket defined by `${PULUMI_BACKEND_URL}` with object versioning and logs in Pulumi CLI:
 
 ```bash
-just gcp-pulumi pulumi-gcs-setup \
-  --sa-json-path "${PULUMI_GCP_CREDENTIALS}" \
-  --gcs-bucket <pulumi-state-bucket> \
-  --location us-central1
-```
-
-`pulumi-gcs-setup` creates the bucket with versioning enabled and executes `pulumi login "gs://<pulumi-state-bucket>"`.
-
-Whenever you update or add environment variables in `.env.<env>.<cluster-name>`, refresh the active shell:
-
-```bash
-# Refresh shell with updated cluster env file
-just cluster-env --env <env> --cluster <cluster-name>
+just gcp-pulumi pulumi-gcs-setup
 ```
 
 ## 4. Switching Between Clusters

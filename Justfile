@@ -213,15 +213,28 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
     fi
 
     project_id="${PROJECT_ID:-{{ project }}}"
+    if [ -z "${project_id}" ]; then
+        cluster_manifest="{{ justfile_directory() }}/config/kops/${cluster_name}/cluster.yaml"
+        if [ -f "${cluster_manifest}" ]; then
+            project_id="$(grep -E '^[[:space:]]*project:[[:space:]]*' "${cluster_manifest}" | head -n 1 | awk '{print $2}' | tr -d '"'\''')"
+        fi
+    fi
 
     if [ -z "${project_id}" ]; then
-        echo "ERROR: project id required. Pass --project <id> or set PROJECT_ID."
+        echo "ERROR: Could not determine GCP project id. Pass --project <id>, set PROJECT_ID, or define 'project:' in config/kops/${cluster_name}/cluster.yaml."
         exit 1
     fi
 
     cred="{{ credentials }}"
     if [ -z "${cred}" ]; then
-        cred=""
+        cred="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+    fi
+    if [ -z "${cred}" ]; then
+        if [ -f "{{ justfile_directory() }}/credentials/${project_id}/kops-cluster-creator.json" ]; then
+            cred="{{ justfile_directory() }}/credentials/${project_id}/kops-cluster-creator.json"
+        elif [ -f "{{ justfile_directory() }}/credentials/kops-cluster-creator.json" ]; then
+            cred="{{ justfile_directory() }}/credentials/kops-cluster-creator.json"
+        fi
     fi
     if [ -n "${cred}" ]; then
         if [ ! -f "${cred}" ]; then
@@ -232,6 +245,15 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
     fi
 
     ssh_key="${SSH_KEY:-{{ ssh_key }}}"
+    if [ -z "${ssh_key}" ]; then
+        if [ -f "{{ justfile_directory() }}/clusters/${cluster_name}/${cluster_name}.pub" ]; then
+            ssh_key="{{ justfile_directory() }}/clusters/${cluster_name}/${cluster_name}.pub"
+        elif [ -f "{{ justfile_directory() }}/clusters/${project_id}/${project_id}.pub" ]; then
+            ssh_key="{{ justfile_directory() }}/clusters/${project_id}/${project_id}.pub"
+        elif [ -f "{{ justfile_directory() }}/credentials/${project_id}/k8sVM.pub" ]; then
+            ssh_key="{{ justfile_directory() }}/credentials/${project_id}/k8sVM.pub"
+        fi
+    fi
     if [ -n "${ssh_key}" ] && [ ! -f "${ssh_key}" ]; then
         echo "ERROR: SSH public key not found: ${ssh_key}"
         exit 1
@@ -242,7 +264,9 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
 
     kubeconfig="${KUBECONFIG:-{{ kubeconfig }}}"
     if [ -z "${kubeconfig}" ]; then
-        if [ -n "${project_id}" ]; then
+        if [ -f "{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig" ]; then
+            kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
+        elif [ -f "{{ justfile_directory() }}/clusters/${project_id}/kubeconfig" ]; then
             kubeconfig="{{ justfile_directory() }}/clusters/${project_id}/kubeconfig"
         else
             kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
@@ -250,8 +274,19 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
     fi
 
     pulumi_creds="${PULUMI_GCP_CREDENTIALS:-{{ pulumi_gcp_credentials }}}"
+    if [ -z "${pulumi_creds}" ]; then
+        pulumi_creds="{{ justfile_directory() }}/credentials/${project_id}/pulumi-manager.json"
+    fi
+
     pulumi_kms="${PULUMI_SECRET_PROVIDER:-{{ pulumi_secret_provider }}}"
+    if [ -z "${pulumi_kms}" ]; then
+        pulumi_kms="gcpkms://projects/${project_id}/locations/us-central1/keyRings/${cluster_name}/cryptoKeys/${cluster_name}"
+    fi
+
     pulumi_backend="${PULUMI_BACKEND_URL:-{{ pulumi_backend_url }}}"
+    if [ -z "${pulumi_backend}" ]; then
+        pulumi_backend="gs://pulumi-state-${project_id}"
+    fi
 
     write_kv() {
         local key="$1" val="$2"

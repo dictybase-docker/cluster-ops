@@ -1,12 +1,12 @@
 # Create a new service account.
-# Usage: just gcp-sa create-sa [--project <project-id>] --sa-name <name> --roles-file <path> [--output-file <path>]
+# Usage: just gcp-sa create-sa [--project <project-id>] [--sa-name <name>] [--roles-file <path>] [--output-file <path>]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
-[arg("sa_name", long="sa-name", short="s", help="Service account name")]
+[arg("sa_name", long="sa-name", short="s", help="Service account name (defaults to pulumi-manager)")]
 [arg("roles_file", long="roles-file", short="r", help="File listing roles for the SA")]
 [arg("output_file", long="output-file", short="o", help="Optional output file")]
 [group('service-account-management')]
 [no-cd]
-create-sa project="" sa_name roles_file output_file="":
+create-sa project="" sa_name="pulumi-manager" roles_file="" output_file="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -16,16 +16,42 @@ create-sa project="" sa_name roles_file output_file="":
         exit 1
     fi
 
+    sa_name="{{ sa_name }}"
+    if [ -z "$sa_name" ]; then
+        sa_name="pulumi-manager"
+    fi
+
+    roles_file="{{ roles_file }}"
+    if [ -z "$roles_file" ]; then
+        if [ -f "gcs-files/roles-permissions/${sa_name}-roles.txt" ]; then
+            roles_file="gcs-files/roles-permissions/${sa_name}-roles.txt"
+        else
+            echo "ERROR: --roles-file required."
+            exit 1
+        fi
+    fi
+
+    output_file="{{ output_file }}"
+    if [ -z "$output_file" ]; then
+        if [ "$sa_name" = "pulumi-manager" ] && [ -n "${PULUMI_GCP_CREDENTIALS:-}" ]; then
+            output_file="${PULUMI_GCP_CREDENTIALS}"
+        else
+            output_file="credentials/${project_id}/${sa_name}.json"
+        fi
+    fi
+
+    mkdir -p "$(dirname "${output_file}")"
+
     # Build and run cluster-ops
     go build -o ./bin/cluster-ops ./cmd/cluster-ops
 
     ./bin/cluster-ops sa create \
-      --name={{ sa_name }} \
+      --name="${sa_name}" \
       --project="${project_id}" \
-      --description={{ sa_name }} \
-      --display-name={{ sa_name }} \
-      --roles-file={{ roles_file }} \
-      --output-file={{ output_file }} \
+      --description="${sa_name}" \
+      --display-name="${sa_name}" \
+      --roles-file="${roles_file}" \
+      --output-file="${output_file}"
 
 # Create a JSON-formatted key for a service account.
 # Usage: just gcp-sa create-sa-key [--project <project-id>] --sa-name <name> --key-file <path>

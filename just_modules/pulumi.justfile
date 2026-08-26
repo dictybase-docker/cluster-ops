@@ -1,42 +1,62 @@
 # Set up Pulumi with a GCS backend.
 # This target sets up a Google Cloud Storage (GCS) bucket for Pulumi state management.
-# Usage: just gcp-pulumi pulumi-gcs-setup --sa-json-path <path> --gcs-bucket <bucket> [--lifecycle-config <path>] [--location <zone>]
+# Usage: just gcp-pulumi pulumi-gcs-setup [--sa-json-path <path>] [--gcs-bucket <bucket>] [--lifecycle-config <path>] [--location <zone>]
 [arg("location", long="location", short="l", help="GCS bucket location")]
-[arg("gcs_bucket", long="gcs-bucket", short="b", help="GCS bucket name for Pulumi state")]
-[arg("sa_json_path", long="sa-json-path", short="j", help="Path to the service account JSON file")]
+[arg("gcs_bucket", long="gcs-bucket", short="b", help="GCS bucket name (defaults from PULUMI_BACKEND_URL)")]
+[arg("sa_json_path", long="sa-json-path", short="j", help="Path to SA JSON (defaults from PULUMI_GCP_CREDENTIALS)")]
 [arg("lifecycle_config", long="lifecycle-config", short="c", help="Path to a lifecycle configuration file (optional)")]
 [group('pulumi-management')]
-pulumi-gcs-setup sa_json_path gcs_bucket lifecycle_config="" location="us-central1":
+pulumi-gcs-setup sa_json_path="" gcs_bucket="" lifecycle_config="" location="us-central1":
     #!/usr/bin/env bash
     set -euo pipefail
     gcloud config set disable_prompts true
 
-    full_sa_json_path=$(realpath "{{ sa_json_path }}")
+    sa_path="{{ sa_json_path }}"
+    if [ -z "$sa_path" ]; then
+        sa_path="${PULUMI_GCP_CREDENTIALS:-${GOOGLE_APPLICATION_CREDENTIALS:-}}"
+    fi
+    if [ -z "$sa_path" ]; then
+        echo "ERROR: Service account key required — set PULUMI_GCP_CREDENTIALS or pass --sa-json-path."
+        exit 1
+    fi
+    if [ ! -f "$sa_path" ]; then
+        echo "ERROR: Service account key file not found: $sa_path"
+        exit 1
+    fi
+    full_sa_json_path=$(realpath "$sa_path")
 
     export GOOGLE_APPLICATION_CREDENTIALS="$full_sa_json_path"
 
     project_id=$(jq -r '.project_id' "$full_sa_json_path")
 
+    bucket="{{ gcs_bucket }}"
+    if [ -z "$bucket" ] && [ -n "${PULUMI_BACKEND_URL:-}" ]; then
+        bucket="${PULUMI_BACKEND_URL#gs://}"
+    fi
+    if [ -z "$bucket" ]; then
+        bucket="pulumi-state-${project_id}"
+    fi
+
     echo "Using project: $project_id"
-    echo "Setting up GCS bucket: {{ gcs_bucket }}"
+    echo "Setting up GCS bucket: ${bucket}"
     echo "Location: {{ location }}"
 
-    if ! gcloud storage buckets describe "gs://{{ gcs_bucket }}" --project="$project_id" &>/dev/null; then
+    if ! gcloud storage buckets describe "gs://${bucket}" --project="$project_id" &>/dev/null; then
         echo "Bucket does not exist. Creating it..."
-        gcloud storage buckets create "gs://{{ gcs_bucket }}" --project="$project_id" --location="{{ location }}"
-        gcloud storage buckets update "gs://{{ gcs_bucket }}" --project="$project_id" --versioning
+        gcloud storage buckets create "gs://${bucket}" --project="$project_id" --location="{{ location }}"
+        gcloud storage buckets update "gs://${bucket}" --project="$project_id" --versioning
     else
         echo "Bucket already exists."
     fi
 
     if [ -n "{{ lifecycle_config }}" ]; then
         echo "Applying lifecycle configuration from {{ lifecycle_config }}"
-        gcloud storage buckets update "gs://{{ gcs_bucket }}" --project="$project_id" --lifecycle-file="{{ lifecycle_config }}"
+        gcloud storage buckets update "gs://${bucket}" --project="$project_id" --lifecycle-file="{{ lifecycle_config }}"
     fi
 
-    pulumi login "gs://{{ gcs_bucket }}"
+    pulumi login "gs://${bucket}"
 
-    echo "Pulumi has been set up to use GCS bucket {{ gcs_bucket }} as the backend in location {{ location }} with object versioning enabled."
+    echo "Pulumi has been set up to use GCS bucket ${bucket} as the backend in location {{ location }} with object versioning enabled."
     if [ -n "{{ lifecycle_config }}" ]; then
         echo "Lifecycle configuration has been applied from {{ lifecycle_config }}."
     fi
