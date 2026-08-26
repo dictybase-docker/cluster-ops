@@ -66,7 +66,7 @@ kubectl get nodes -l pool=database -o wide
 
 Expect three Ready amd64 nodes, one per zone, each with that taint. Missing pool or taint: edit YAML and apply via [README Day-2](../README.md#4-day-2-operations-git-first-workflow). Do not use `dictycr-dev-staging-dcr-experiments`. HA sizing background: [`kops-gcp-architecture.md` §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static).
 
-Also needed before [§2](#2-install-arangodb): CSI + StorageClasses ([`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass)), namespace `prod`, and (for backup) Secret `dictycr` with `gcsCredentials`, `gcsProject`, `resticPass`.
+Also needed before [§2](#2-install-arangodb): CSI + StorageClasses ([`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass)), namespace `prod`, and (for backup, [§4.1](#41-scheduled-backup)) Secret `dictycr` with `gcsCredentials`, `gcsProject`, `resticPass` — provisioned by the separate `backup_secrets` Pulumi project, which has **no `Pulumi.prod.yaml` yet**. Author one before [§4.1](#41-scheduled-backup).
 
 ## 2. Install ArangoDB
 
@@ -175,9 +175,38 @@ Same rule for `load-content-from-s3` and `load-uniprot-mapping`.
 
 ## 4. Backup and restore
 
+`arangodb-backup/Pulumi.prod.yaml` provisions the GCS bucket and the Kubernetes Jobs that dump and upload backups. There is **no** restore Pulumi program — restoring is always a manual drill ([§4.2](#42-restore-drill)) using `restic` and `arangorestore` against a separate clone, never the live database.
+
 ### 4.1 Scheduled backup
 
-`arangodb-backup/Pulumi.prod.yaml`: CronJob `arangodb-backup-cronjob` at 02:00 UTC plus Job `arangodb-backup-job` on apply. Dump → restic → `restic-arangodb-backup-prod`. Ephemeral PVC 150Gi on `dictycr-balanced`. Secret `dictycr` in `prod`.
+**What it does**: One Pulumi apply creates four things:
+
+| Resource | Detail |
+|----------|--------|
+| GCS bucket `restic-arangodb-backup-prod` | Versioned, 58-day soft-delete retention, deletes ARCHIVED objects once 3 newer versions exist. **`ForceDestroy: true`** — see warning below. |
+| Ephemeral PVC `arangodb-backup-ephemeral` | 150Gi `dictycr-balanced`, ReadWriteOnce. Recreated per pod run and deleted with it — scratch space for the dump, not a persistent archive. |
+| Job `arangodb-backup-job` | Runs once immediately on `pulumi up`. Self-deletes 15 minutes after finishing (`ttlSecondsAfterFinished: 900`). Use it to prove the pipeline works without waiting for 02:00. |
+| CronJob `arangodb-backup-cronjob` | Schedule `0 2 * * *`. This repo does not set `spec.timeZone`, so "02:00" means whatever timezone your kOps nodes report — verify it, do not assume UTC. Its triggered Jobs have **no** TTL and accumulate until you clean them up. |
+
+The backup container (`dictybase/database-backup:sha-9c3b8ea`) runs `arangodb-backup --user root --password $(PASSWORD) --output arangodump --repository gs:restic-arangodb-backup-prod:/`, which internally does `arangodump --all-databases --include-system-collections` against coordinator `arangodb:8529` (short in-namespace DNS name, no override needed) into the ephemeral volume, then `restic backup` uploads that directory, initializing the restic repository on first run.
+
+**Secrets it reads** (creates none of its own):
+
+| Env var | Secret | Key | Created by |
+|---------|--------|-----|------------|
+| `PASSWORD` | `arangodb-pass` | `password` | `arangodb-cluster` ([§2.2](#22-cluster-instance)) — already applied by this point |
+| `RESTIC_PASSWORD` | `dictycr` | `resticPass` | `backup_secrets` project (separate from `arangodb-backup`) |
+| `GOOGLE_APPLICATION_CREDENTIALS` (mounted file) | `dictycr` | `gcsCredentials` | `backup_secrets` — this key name is itself a config value (`properties.secret.serviceAccount.keyname`), so it must be set to literally `gcsCredentials` for this to line up |
+| `GOOGLE_PROJECT_ID` | `dictycr` | `gcsProject` | `backup_secrets` |
+
+`backup_secrets/main.go` also creates the target namespace and namespace `operators`, from a **local file** on the machine running `pulumi up` (`properties.secret.serviceAccount.filepath`, a GCS-capable service account JSON key) plus plaintext `resticPass`/`gcsProject` config values — not from anything already in the cluster. **It has `Pulumi.experiments.yaml` but no `Pulumi.prod.yaml`.** Author one (namespace `prod`, `keyname: gcsCredentials`, a production GCS service account key file, and a generated restic password) and apply it before this stack:
+
+```bash
+just gcp-pulumi ensure-stack --folder backup_secrets
+just gcp-pulumi preview --folder backup_secrets
+just gcp-pulumi create-resource --folder backup_secrets
+kubectl get secret dictycr -n prod
+```
 
 ```bash
 just gcp-pulumi ensure-stack --folder arangodb-backup
@@ -185,18 +214,60 @@ just gcp-pulumi preview --folder arangodb-backup
 just gcp-pulumi create-resource --folder arangodb-backup
 ```
 
-Prove restore ([architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval)).
+**Verify:**
+
+```bash
+kubectl get jobs -n prod arangodb-backup-job
+kubectl logs -n prod job/arangodb-backup-job
+kubectl get cronjobs -n prod arangodb-backup-cronjob
+```
+
+The Job must show `Completed`; the log tail should end with restic's backup summary. If it fails on the first run, that is not "repository already exists" (the recipe initializes it automatically) — look for a secret-key typo or an `arangodump` auth error (root password mismatch, [§7](#7-troubleshooting)).
+
+> **Teardown warning**: because of `ForceDestroy: true`, `just gcp-pulumi remove-resource --folder arangodb-backup` deletes the GCS bucket **and every snapshot in it**, immediately, with no confirmation prompt. Do not run it against a bucket you still need ([§5.1](#51-reverse-destroy-order)).
 
 ### 4.2 Restore drill
 
-On a **clone** cluster or scratch namespace:
+Run this on a **clone** cluster or scratch namespace — never the live production database. You need `restic` and either a local ArangoDB/`arangorestore` install or Docker.
 
-1. Empty Cluster via `storage_class`, operator, `arangodb-cluster`.
-2. One-off pod with backup image + Secret `dictycr`.
-3. `restic restore latest` from `gs://restic-arangodb-backup-prod/`.
-4. `arangorestore` into `http://<coordinator-service>.<namespace>.svc.cluster.local:8529` using Secret `arangodb-pass`.
-5. Re-run logical DB Job if users/grants are missing.
-6. Record RPO/RTO.
+1. **Fetch the backup credentials from the production cluster** (read-only; does not touch the live database). This repo already has a recipe for this — it fetches `kubeconfig` via `kops export kubeconfig`, reads Secret `dictycr` from the given namespace, and restores the latest restic snapshot to a local directory:
+
+   ```bash
+   just arangodb restore-latest-snapshot \
+     --bucket restic-arangodb-backup-prod \
+     --namespace prod \
+     --output-dir ./restore-scratch
+   ```
+
+   Run `just cluster-env --env prod --cluster <prod-cluster>` first so `kops export kubeconfig` targets the right cluster. Result: `./restore-scratch/arangodump/` on your machine.
+
+2. **Stand up an empty target.** On the clone/scratch cluster, apply `storage_class`, `arangodb-operator`, and `arangodb-cluster` ([§2.1](#21-operator)–[§2.2](#22-cluster-instance)) so there is a coordinator to restore into. Note the root password you set in that step — you need it in step 4. This is a fresh install; it does **not** reuse production's `arangodb-pass` unless you are restoring in place into the same cluster after a real data-loss event (not a drill).
+
+3. **Port-forward the target coordinator:**
+
+   ```bash
+   kubectl port-forward -n <namespace> svc/<coordinator-service> 8529:8529
+   ```
+
+4. **Run `arangorestore`** against that port-forward, pointing at the `arangodump` directory from step 1 (macOS needs `--add-host`; drop it and use `127.0.0.1` on Linux, matching the OS branching this repo's local restore recipe already uses):
+
+   ```bash
+   docker run --rm --add-host=host.docker.internal:host-gateway \
+     -v "$(pwd)/restore-scratch/arangodump:/dump" \
+     arangodb/arangodb:3.12.10.1 \
+     arangorestore \
+       --server.endpoint tcp://host.docker.internal:8529 \
+       --server.username root \
+       --server.password "<target-cluster-root-password>" \
+       --input-directory /dump \
+       --all-databases true \
+       --include-system-collections \
+       --create-database true
+   ```
+
+5. **Re-run logical databases** ([§2.3](#23-logical-databases)) if application user `backend` or its grants did not come back with the restore.
+
+6. **Record RPO/RTO.** `restic snapshots` (from step 1's underlying command) shows the snapshot timestamp — that is your RPO. Wall-clock time from step 1 to a verified-working coordinator is your RTO.
 
 ## 5. Teardown
 
