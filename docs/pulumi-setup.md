@@ -53,11 +53,11 @@ Work inside `just cluster-env --env <env> --cluster <cluster-name>`. `kubectl ge
 
 1. [Confirm cluster handoff.](#11-cluster-handoff) Cluster validated; CSI `pdCSIDriver` enabled.
 2. [Confirm tools.](#12-tools) `just`, `kubectl`, `pulumi`, `gcloud`, `jq`.
-3. [Add Pulumi env vars.](#21-add-to-the-cluster-env-file) Run `just create-cluster-env` with `--pulumi-*` flags; re-enter `cluster-env`.
-4. [Create pulumi-manager.](#31-create-the-pulumi-manager-key) `just gcp-sa create-sa --sa-name pulumi-manager …`
-5. [Create KMS key.](#32-kms-keyring-and-crypto-key) `just gcp-kms create-keyring-and-key …` then persist `PULUMI_SECRET_PROVIDER`.
-6. [Create state bucket.](#33-gcs-state-bucket-and-login) `just gcp-pulumi pulumi-gcs-setup …` then set real `PULUMI_BACKEND_URL` and re-enter the shell.
-7. [Verify switching.](#4-switching-between-clusters) `echo "$PULUMI_BACKEND_URL"` and `pulumi -C storage_class stack ls`.
+3. [Configure all Pulumi env vars.](#21-add-to-the-cluster-env-file) Run `just create-cluster-env` with all `--pulumi-*` flags and enter the shell.
+4. [Create pulumi-manager key.](#31-create-the-pulumi-manager-key) `just gcp-sa create-sa ...` writing to `${PULUMI_GCP_CREDENTIALS}`.
+5. [Create KMS key.](#32-kms-keyring-and-crypto-key) `just gcp-kms create-keyring-and-key ...` matching `${PULUMI_SECRET_PROVIDER}`.
+6. [Create state bucket & initialize login.](#33-gcs-state-bucket-and-login) `just gcp-pulumi pulumi-gcs-setup ...`.
+7. [Verify switching & state.](#4-switching-between-clusters) `echo "$PULUMI_BACKEND_URL"` and `pulumi -C storage_class stack ls`.
 8. [Apply StorageClass.](#62-deploy-storage_class) `just gcp-pulumi preview` then `create-resource` on `storage_class`.
 9. **Stop.** Go to [`arangodb-deploy.md`](arangodb-deploy.md) for ArangoDB.
 
@@ -100,7 +100,7 @@ Do **not** put Pulumi credentials in `.envrc`. Put them in the per-cluster env f
 
 ### 2.1 Add to the cluster env file
 
-Put Pulumi credentials in the same gitignored `.env.<env>.<cluster-name>` file as kOps operator credentials. Generate or refresh it with `just create-cluster-env` (do **not** write cluster name, state store, or project — those live in Git):
+Define all Pulumi variables upfront in the gitignored `.env.<env>.<cluster-name>` file alongside kOps operator credentials. Generate or refresh the env file with `just create-cluster-env`:
 
 ```bash
 just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
@@ -111,11 +111,16 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes \
   --pulumi-backend-url "gs://<pulumi-state-bucket>"
 ```
 
-Credential and path variables: [kOps §1.3.2](../README.md#132-variables-overview). `PROJECT_ID` may already be in the env file (needed before bootstrap). Do **not** add `KOPS_CLUSTER_NAME`, `KOPS_STATE_STORE`, `BUCKET_NAME`, or `KUBERNETES_VERSION`.
+**Environment Variable Contract**:
+- `PULUMI_GCP_CREDENTIALS`: Path to the service account key for Pulumi operations (`credentials/<project-id>/pulumi-manager.json`).
+- `PULUMI_SECRET_PROVIDER`: Full GCP KMS cryptoKey URI for encrypting stack secrets.
+- `PULUMI_BACKEND_URL`: GCS bucket URI (`gs://<pulumi-state-bucket>`) for state storage.
+- `PROJECT_ID`: Target GCP project ID.
 
-> **Why `PULUMI_BACKEND_URL` matters.** `pulumi login` writes to `~/.pulumi/credentials.yaml`, not to the shell. Switching clusters without this env var leaves Pulumi on the last backend. The per-cluster env file makes kubeconfig, credentials, **and** state backend follow `just cluster-env`.
-
-Recipes under `just gcp-pulumi` export `GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"` for the duration of Pulumi commands. The active cluster credential can stay as `kops-cluster-creator` for plain `kubectl`.
+**How variables are consumed**:
+- **Implicitly in `just gcp-pulumi` recipes**: Operational recipes (`preview`, `new-stack`, `new-stack-from`, `create-resource`, `remove-resource`) automatically read `${PULUMI_GCP_CREDENTIALS}` for GCP authentication and `${PULUMI_SECRET_PROVIDER}` for KMS encryption. They fail fast (`set -u`) if these variables are unset.
+- **Implicitly by the `pulumi` CLI**: The `pulumi` CLI automatically uses `${PULUMI_BACKEND_URL}` for GCS state backend routing.
+- **Explicitly in bootstrap helper commands**: Setup recipes (`gcp-sa create-sa`, `gcp-kms create-keyring-and-key`, `pulumi-gcs-setup`) require specific CLI flags, which you supply directly from these exported environment variables (e.g. `--output-file "${PULUMI_GCP_CREDENTIALS}"`).
 
 ### 2.2 Activate the cluster shell
 
@@ -123,7 +128,7 @@ Recipes under `just gcp-pulumi` export `GOOGLE_APPLICATION_CREDENTIALS="${PULUMI
 just cluster-env --env <env> --cluster <cluster-name>
 ```
 
-Confirm:
+Confirm exported variables:
 
 ```bash
 echo "$PULUMI_GCP_CREDENTIALS"
@@ -132,67 +137,54 @@ echo "$PULUMI_BACKEND_URL"
 kubectl get nodes
 ```
 
-> `pulumi stack ls` is not useful until after [§3](#3-pulumi-backend-bootstrap). Skip it for now.
-
 ## 3. Pulumi Backend Bootstrap
 
-Do this **once per GCP project**. Re-login later if the global Pulumi credentials file is wiped.
+Execute bootstrap recipes directly from within the activated `just cluster-env` shell.
 
 ### 3.1 Create the pulumi-manager key
 
+Generate the service account key at the path specified by `${PULUMI_GCP_CREDENTIALS}`:
+
 ```bash
-mkdir -p credentials/${PROJECT_ID}
+mkdir -p "credentials/${PROJECT_ID}"
 just gcp-sa create-sa --sa-name pulumi-manager \
   --roles-file gcs-files/roles-permissions/pulumi-manager-roles.txt \
-  --output-file credentials/${PROJECT_ID}/pulumi-manager.json
+  --output-file "${PULUMI_GCP_CREDENTIALS}"
 ```
 
-Roles in that file include Storage Admin and KMS Crypto Operator (state + secret decrypt).
-
-Set `PULUMI_GCP_CREDENTIALS` in the env file to that path, then re-run `just cluster-env`.
-
-> Root `initialize-pulumi` still defaults to a flat `credentials/pulumi-manager.json`. Prefer the project subdirectory so paths match the kOps guide.
+Roles assigned include Storage Admin and Cloud KMS CryptoKey Encrypter/Decrypter.
 
 ### 3.2 KMS keyring and crypto key
+
+Create the KMS keyring and key matching the `${PULUMI_SECRET_PROVIDER}` URI:
 
 ```bash
 just gcp-kms create-keyring-and-key \
   --keyring-name <keyring-name> \
   --key-name <key-name> \
-  --credentials-file credentials/${PROJECT_ID}/pulumi-manager.json \
+  --credentials-file "${PULUMI_GCP_CREDENTIALS}" \
   --location us-central1
 ```
 
-Then set:
-
-```bash
-PULUMI_SECRET_PROVIDER="gcpkms://projects/${PROJECT_ID}/locations/us-central1/keyRings/<keyring-name>/cryptoKeys/<key-name>"
-```
-
-Persist the same line in the cluster env file.
-
 ### 3.3 GCS state bucket and login
 
-Pick a **globally unique** bucket (example: `pulumi-state-<project-id>`):
+Create the state bucket and initialize the Pulumi backend:
 
 ```bash
 just gcp-pulumi pulumi-gcs-setup \
-  --sa-json-path credentials/${PROJECT_ID}/pulumi-manager.json \
+  --sa-json-path "${PULUMI_GCP_CREDENTIALS}" \
   --gcs-bucket <pulumi-state-bucket> \
   --location us-central1
 ```
 
-This creates the bucket if missing (versioning on) and runs `pulumi login gs://<pulumi-state-bucket>`.
+`pulumi-gcs-setup` creates the bucket with versioning enabled and executes `pulumi login "gs://<pulumi-state-bucket>"`.
 
-> After bootstrap, edit the cluster env file and replace the `PULUMI_BACKEND_URL` placeholder with the real bucket. Then **re-enter the shell**:
->
-> ```bash
-> exit
-> just cluster-env --env <env> --cluster <cluster-name>
-> echo "$PULUMI_BACKEND_URL"   # must show gs://<pulumi-state-bucket>
-> ```
->
-> The env var overrides the global `pulumi login` setting. You can still run `pulumi login` outside the sub-shell; the env var is the safe default.
+Whenever you update or add environment variables in `.env.<env>.<cluster-name>`, refresh the active shell:
+
+```bash
+# Refresh shell with updated cluster env file
+just cluster-env --env <env> --cluster <cluster-name>
+```
 
 ## 4. Switching Between Clusters
 
@@ -245,47 +237,42 @@ pulumi -C <folder> -s <stack> config set --path "<key>" "<value>"
 
 ### 5.3 Creating a stack
 
-Always from repo root, env shell active.
+Run stack operations directly from the repository root with your cluster environment active:
+
+**When a base configuration exists to copy from:**
 
 ```bash
-export STACK="<stack-name>"          # e.g. dev
-export FROM_STACK="<base-stack>"     # e.g. experiments
+just gcp-pulumi new-stack-from --folder <project-folder> --stack <stack-name> --from-stack <base-stack>
 ```
 
-**When a base stack exists:**
+**When initializing a fresh stack without a base:**
 
 ```bash
-just gcp-pulumi new-stack-from --folder <project-folder> --stack ${STACK} --from-stack ${FROM_STACK}
+just gcp-pulumi new-stack --folder <project-folder> --stack <stack-name>
 ```
 
-**When none exists:**
+**Preview and apply:**
+
+Always preview changes before applying:
 
 ```bash
-just gcp-pulumi new-stack --folder <project-folder> --stack ${STACK}
+just gcp-pulumi preview --folder <project-folder> --stack <stack-name>
+just gcp-pulumi create-resource --folder <project-folder> --stack <stack-name>
 ```
 
-**Always preview before apply:**
-
-```bash
-just gcp-pulumi preview --folder <project-folder> --stack ${STACK}
-just gcp-pulumi create-resource --folder <project-folder> --stack ${STACK}
-```
-
-> **Do not** use `just pulumi-init-and-deploy` for this guide. That entrypoint also deploys non-database projects from `pulumi-files/resources/*.txt` and continues after mid-list failures. Run projects **one at a time**.
+> **Do not** use `just pulumi-init-and-deploy` for this guide. That entrypoint deploys non-database projects from `pulumi-files/resources/*.txt` in bulk. Run individual projects one at a time.
 
 ### 5.4 Recipe reference
 
-| Recipe | What it does |
-|--------|----------------|
-| `just gcp-pulumi pulumi-gcs-setup` | Create/version GCS bucket + `pulumi login` |
-| `just gcp-pulumi new-stack` | `stack init` with KMS secrets provider |
-| `just gcp-pulumi new-stack-from` | Init + copy config from another stack |
-| `just gcp-pulumi preview` | `pulumi preview` |
-| `just gcp-pulumi create-resource` | `pulumi up -f -y` |
-| `just gcp-pulumi remove-resource` | `pulumi destroy -f -y` |
-| `just gcp-pulumi cleanup-resource` | `stack rm --preserve-config` |
-
-All of these export `GOOGLE_APPLICATION_CREDENTIALS` from `PULUMI_GCP_CREDENTIALS`.
+| Recipe | What it does | Environment Variable Dependencies |
+|--------|--------------|-----------------------------------|
+| `just gcp-pulumi pulumi-gcs-setup` | Creates/versions GCS state bucket and runs `pulumi login` | `PULUMI_GCP_CREDENTIALS` |
+| `just gcp-pulumi new-stack` | Initializes stack with KMS secrets provider | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL` |
+| `just gcp-pulumi new-stack-from` | Initializes stack copying config from another stack | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL` |
+| `just gcp-pulumi preview` | Runs `pulumi preview` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` |
+| `just gcp-pulumi create-resource` | Runs non-interactive `pulumi up` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` |
+| `just gcp-pulumi remove-resource` | Runs non-interactive `pulumi destroy` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` |
+| `just gcp-pulumi cleanup-resource` | Removes stack metadata (`stack rm`) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` |
 
 ## 6. First Apply — StorageClass
 
@@ -293,24 +280,25 @@ This is the last resource in **this** guide. ArangoDB is next.
 
 ### 6.1 Why StorageClass first
 
-Every later PVC (`dictycr-balanced`) needs this class. ArangoDB, CNPG, Redis, and MinIO all assume it exists. Deploy it once per cluster.
+Every later PVC (`dictycr-balanced`, `dictycr-ssd`) needs storage classes defined before pods request volumes. Deploy storage classes once per cluster.
 
 ### 6.2 Deploy storage_class
 
-Creates the GCE PD StorageClass (shipped name `dictycr-balanced`, type `pd-balanced`).
+Creates the GCE PD StorageClass (`dictycr-balanced` for standard disk, plus `dictycr-ssd` on prod):
+
+**For lab clusters (`dev` / `experiments`):**
 
 ```bash
-just gcp-pulumi new-stack-from --folder storage_class --stack ${STACK} --from-stack ${FROM_STACK}
-just gcp-pulumi preview --folder storage_class --stack ${STACK}
-just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
+just gcp-pulumi new-stack-from --folder storage_class --stack dev --from-stack experiments
+just gcp-pulumi preview --folder storage_class --stack dev
+just gcp-pulumi create-resource --folder storage_class --stack dev
 ```
 
-If the project has no base stack:
+**For production clusters (`prod`):**
 
 ```bash
-just gcp-pulumi new-stack --folder storage_class --stack ${STACK}
-just gcp-pulumi preview --folder storage_class --stack ${STACK}
-just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
+just gcp-pulumi preview --folder storage_class --stack prod
+just gcp-pulumi create-resource --folder storage_class --stack prod
 ```
 
 ### 6.3 Verify
@@ -318,18 +306,18 @@ just gcp-pulumi create-resource --folder storage_class --stack ${STACK}
 ```bash
 kubectl get storageclass dictycr-balanced
 echo "$PULUMI_BACKEND_URL"
-pulumi -C storage_class -s ${STACK} stack output
+pulumi -C storage_class -s <stack-name> stack output
 ```
 
-Expect the StorageClass to exist and `PROVISIONER` to be the GCE PD CSI driver.
+Expect the StorageClass to exist and `PROVISIONER` to be the GCE PD CSI driver (`pd.csi.storage.gke.io`).
 
 ## 7. Pulumi Setup Complete
 
 You are done with **this** guide when:
 
-1. Cluster env file has `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, and a real `PULUMI_BACKEND_URL`.
+1. Cluster env file has `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, and `PULUMI_BACKEND_URL`.
 2. `pulumi-manager.json` exists under `credentials/<project-id>/`.
-3. `just cluster-env` shows the right backend (`echo "$PULUMI_BACKEND_URL"`).
+3. `just cluster-env` loads the correct backend URL.
 4. `kubectl get storageclass dictycr-balanced` succeeds.
 
 **Handoff checklist**
@@ -340,12 +328,12 @@ You are done with **this** guide when:
 | `pulumi-manager` key | `credentials/<project-id>/pulumi-manager.json` |
 | Pulumi state | `gs://<pulumi-state-bucket>` |
 | Stack name | documented (`dev` / `experiments` / `prod`) |
-| StorageClass | `dictycr-balanced` |
+| StorageClass | `dictycr-balanced` (and `dictycr-ssd` for prod) |
 
 To tear down only the StorageClass (destructive if PVCs still reference it):
 
 ```bash
-just gcp-pulumi remove-resource --folder storage_class --stack ${STACK}
+just gcp-pulumi remove-resource --folder storage_class --stack <stack-name>
 ```
 
 **Stop here.** Do not install the ArangoDB operator or instance in this guide.
