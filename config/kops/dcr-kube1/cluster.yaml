@@ -1,0 +1,82 @@
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  name: dcr-kube1-k8s.local
+spec:
+  api:
+    loadBalancer:
+      type: Public
+  authorization:
+    rbac: {}
+  certManager:
+    enabled: true
+  channel: stable
+  cloudConfig:
+    gce:
+      pdCSIDriver:
+        enabled: true
+  cloudProvider: gce
+  clusterAutoscaler:
+    enabled: true
+  configBase: gs://kops-state-dcr-kube1/dcr-kube1-k8s.local
+  etcdClusters:
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-a
+      name: a
+      volumeType: pd-ssd
+    - instanceGroup: control-plane-us-central1-b
+      name: b
+      volumeType: pd-ssd
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+      volumeType: pd-ssd
+    name: main
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-a
+      name: a
+      volumeType: pd-ssd
+    - instanceGroup: control-plane-us-central1-b
+      name: b
+      volumeType: pd-ssd
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+      volumeType: pd-ssd
+    name: events
+  - etcdMembers:
+    - instanceGroup: control-plane-us-central1-a
+      name: a
+    - instanceGroup: control-plane-us-central1-b
+      name: b
+    - instanceGroup: control-plane-us-central1-c
+      name: c
+    name: cilium
+  iam:
+    legacy: false
+  kubeDNS:
+    nodeLocalDNS:
+      enabled: true
+  kubeProxy:
+    enabled: false
+  kubernetesApiAccess:
+  - 73.58.107.39/32
+  kubernetesVersion: 1.35.8
+  metricsServer:
+    enabled: true
+  networking:
+    cilium:
+      enableNodePort: true
+      etcdManaged: true
+  nodeProblemDetector:
+    enabled: true
+  nonMasqueradeCIDR: 100.64.0.0/10
+  project: dcr-kube1
+  subnets:
+  - cidr: 10.0.16.0/20
+    name: us-central1
+    region: us-central1
+    type: Private
+  topology:
+    dns:
+      type: None
+    masters: private
+    nodes: private
