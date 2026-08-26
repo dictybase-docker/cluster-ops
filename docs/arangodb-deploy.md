@@ -3,497 +3,268 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Quick Setup](#quick-setup)
-- [1. Scope and freeze](#1-scope-and-freeze)
-  - [1.1 What this guide is](#11-what-this-guide-is)
-  - [1.2 Frozen lab stacks](#12-frozen-lab-stacks)
-  - [1.3 Implemented components & operational status](#13-implemented-components--operational-status)
-- [2. Production shape from the architecture](#2-production-shape-from-the-architecture)
-  - [2.1 Highly Available plan](#21-highly-available-plan)
-  - [2.2 Stateful database pool](#22-stateful-database-pool)
-  - [2.3 Cluster mode](#23-cluster-mode)
-  - [2.4 Tiered storage and backups](#24-tiered-storage-and-backups)
-- [3. Prerequisites](#3-prerequisites)
-  - [3.1 Production cluster & namespace](#31-production-cluster--namespace)
-  - [3.2 Pulumi backend](#32-pulumi-backend)
-  - [3.3 Tools, secrets & access](#33-tools-secrets--access)
-- [4. Prepare the stateful-db pool](#4-prepare-the-stateful-db-pool)
-  - [4.1 Target manifest](#41-target-manifest)
-  - [4.2 Isolation](#42-isolation)
-  - [4.3 Apply and validate](#43-apply-and-validate)
-- [5. Install ArangoDB](#5-install-arangodb)
-  - [5.0 Storage classes](#50-storage-classes)
-  - [5.1 Operator](#51-operator)
-  - [5.2 Production cluster instance](#52-production-cluster-instance)
-  - [5.3 Logical databases](#53-logical-databases)
-- [6. Import data](#6-import-data)
-  - [6.1 Graph dumps](#61-graph-dumps)
-  - [6.2 Content and UniProt](#62-content-and-uniprot)
-- [7. Backup and restore](#7-backup-and-restore)
-  - [7.1 Scheduled backup](#71-scheduled-backup)
-  - [7.2 Restore drill](#72-restore-drill)
-- [8. Teardown](#8-teardown)
-  - [8.1 Reverse destroy order](#81-reverse-destroy-order)
-  - [8.2 Disks and the node pool](#82-disks-and-the-node-pool)
-- [9. Verify](#9-verify)
-- [10. Troubleshooting](#10-troubleshooting)
-- [11. Related documents](#11-related-documents)
+- [1. Shape and pool check](#1-shape-and-pool-check)
+- [2. Install ArangoDB](#2-install-arangodb)
+  - [2.1 Operator](#21-operator)
+  - [2.2 Cluster instance](#22-cluster-instance)
+  - [2.3 Logical databases](#23-logical-databases)
+- [3. Import data](#3-import-data)
+  - [3.1 Graph dumps](#31-graph-dumps)
+  - [3.2 Content and UniProt](#32-content-and-uniprot)
+- [4. Backup and restore](#4-backup-and-restore)
+  - [4.1 Scheduled backup](#41-scheduled-backup)
+  - [4.2 Restore drill](#42-restore-drill)
+- [5. Teardown](#5-teardown)
+  - [5.1 Reverse destroy order](#51-reverse-destroy-order)
+  - [5.2 Disks and the node pool](#52-disks-and-the-node-pool)
+- [6. Verify](#6-verify)
+- [7. Troubleshooting](#7-troubleshooting)
+- [8. Related documents](#8-related-documents)
 
-**Status**: Production procedure. Core infrastructure programs (`arangodb-cluster`, `storage_class`, `arangodb-operator`, `create-arangodb-databases`, `arangodb-backup`) have `prod` configurations implemented. Lab `dev` / `experiments` / `local` ArangoDB stacks remain frozen. Production kOps bundle, data loaders, and PDB policies remain operational prerequisites.
+**Status**: Production procedure. Production `Pulumi.prod.yaml` configs exist for `arangodb-cluster`, `storage_class`, `arangodb-operator`, `create-arangodb-databases`, and `arangodb-backup`, deployed under whatever stack name `$PULUMI_STACK` resolves to for your cluster ([`pulumi-setup.md` §5.1](pulumi-setup.md#51-stack-names)). Do not edit lab `arangodb-single` stacks. Remaining gaps: production kOps bundle, loader prod stacks, PDBs.
 
-> **Document type:** Provisioning guide for a **production** ArangoDB Cluster on the kOps **stateful/database** pool. Cluster sizing comes from [`kops-gcp-architecture.md`](kops-gcp-architecture.md). Cluster bootstrap is [`README.md`](../README.md). Shared Pulumi backend / StorageClass is [`pulumi-setup.md`](pulumi-setup.md). Architecture plan is [`plans/arangodb-production.md`](plans/arangodb-production.md).
+> Provisioning guide for a production ArangoDB **Cluster** on kOps `stateful-db`. Related docs: [§8](#8-related-documents).
 
 ## Overview
 
-DictyCR production requires a resilient graph database deployment across failure zones. The architecture doc’s **Highly Available plan** hosts databases on a **static** 3-zone pool. Production ArangoDB provides:
+This guide deploys ArangoDB Cluster 3.12 on an existing HA kOps cluster. Confirm the pool and member shape in [§1](#1-shape-and-pool-check), then apply Pulumi in [§2](#2-install-arangodb).
 
-| Layer | Production choice | Why |
-|-------|-------------------|-----|
-| Cluster topology | Private VPC, 3 control planes, Cilium | [`kops-gcp-architecture.md`](kops-gcp-architecture.md) [§3](kops-gcp-architecture.md#-3-control-plane-sizing--storage), [§7](kops-gcp-architecture.md#-7-gcp-kops-specific-quirks-networking--security), [§8](kops-gcp-architecture.md#-8-high-availability-vs-cost-optimized-comparison) |
-| Database pool | 3× `n2-standard-4` (or `n2-highmem-4`), static, 100 GB `pd-balanced` boot | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
-| ArangoDB mode | **Cluster** (3 agents + 3 dbservers + 3 coordinators) | [Architecture §6 Option B](kops-gcp-architecture.md#option-b-self-hosted-in-cluster-database) — engine-level replication and coordinator query routing |
-| Image | `arangodb:3.12.10.1` (amd64) | Latest 3.12 patch; 3.11 is EOL |
-| Placement | `nodeSelector: pool=database` + taint `dedicated=database:NoSchedule` | Dedicated isolation from stateless web and spot batch pods |
-| PVC | Tiered: `dictycr-ssd` (20Gi) for agents, `dictycr-balanced` (150Gi) for dbservers | Raft agency state on fast SSD; collection storage on balanced PD |
-| In-cluster networking | `externalAccess.type: None`, ClusterIP coordinator Service | Internal traffic only; services connect via in-cluster DNS |
-| Cloud SQL | **Not used** | [Architecture Option A](kops-gcp-architecture.md#option-a-fully-managed-database-strongly-recommended) is PostgreSQL/MySQL only |
-
-- **Who it's for**: Operators provisioning or maintaining the **production** DictyCR database layer.
-- **What you end up with**: ArangoDB Cluster on `stateful-db`, app databases, automated restic backups to GCS, teardown path.
-- **What you must not do**: Edit `arangodb-single/Pulumi.dev.yaml`, `Pulumi.experiments.yaml`, or `Pulumi.local.yaml`. Leave lab stacks alone.
+Work in `just cluster-env --env prod --cluster <prod-cluster>`. That shell sets `PULUMI_STACK` for you (defaults to `<prod-cluster>`); every `just gcp-pulumi` command below uses it automatically — no `--stack` flag needed unless you want to override it.
 
 ## Quick Setup
 
-Work against the **production** cluster environment (`just cluster-env --env prod --cluster <prod-cluster>`).
+1. Confirm Arango shape and `stateful-db` pool ([§1](#1-shape-and-pool-check)).
+2. Operator → Cluster → logical DBs ([§2](#2-install-arangodb)).
+3. Backup and restore drill ([§4](#4-backup-and-restore)).
+4. Optional import ([§3](#3-import-data)) — no loader `Pulumi.prod.yaml` in repo yet.
+5. Tear down on a clone only ([§5](#5-teardown)).
 
-1. Confirm the production cluster matches [§2](#2-production-shape-from-the-architecture).
-2. Ensure the production namespace (`prod`) exists.
-3. Deploy StorageClasses (`storage_class` with `Pulumi.prod.yaml`) and verify backend ([`pulumi-setup.md`](pulumi-setup.md)).
-4. Isolate `stateful-db` pool ([§4](#4-prepare-the-stateful-db-pool)).
-5. Deploy operator → Cluster → logical DBs ([§5](#5-install-arangodb)).
-6. Configure scheduled backup ([§7](#7-backup-and-restore)) and run a restore drill.
-7. Optional data import ([§6](#6-import-data)) if seeding from legacy dumps (requires authoring prod loader stacks).
-8. Tear down with [§8](#8-teardown) on a disposable clone — never on live production.
+## 1. Shape and pool check
 
-## 1. Scope and freeze
+**ArangoDB** (`arangodb-cluster`, image `arangodb:3.12.10.1`, amd64, `externalAccess: None`):
 
-### 1.1 What this guide is
+| Role | Count | CPU | Memory | Disk |
+|------|-------|-----|--------|------|
+| Agents | 3 | 250m | 1Gi | 20Gi `dictycr-ssd` |
+| DBServers | 3 | 2 | 12Gi | 150Gi `dictycr-balanced` |
+| Coordinators | 3 | 500m | 2Gi | none |
 
-End-to-end **production** lifecycle: pool isolation → storage classes → operator → ArangoDB Cluster 3.12 → databases → backup → teardown.
+Anti-affinity is **preferred** (hostname 100, zone 50), not required. No PDBs. Lab `arangodb-single` stays Single / 3.11 / arm64 — do not edit it. Use `Pulumi.prod.yaml` only.
 
-### 1.2 Frozen lab stacks
+**Kubernetes pool** — already installed if `config/kops/<prod-cluster>/instancegroups.yaml` `stateful-db` matches [README Step 3.2](../README.md#step-32--customize-yaml-in-git) **plus** the production taint. Starter has the pool; production adds `dedicated=database:NoSchedule`.
 
-These lab files remain byte-frozen and untouched:
-
-| File | Role | Status |
-|------|------|--------|
-| `arangodb-single/Pulumi.dev.yaml` | Lab Single, **3.11.6**, 75Gi, untainted pool | Frozen |
-| `arangodb-single/Pulumi.experiments.yaml` | Lab Single, **3.11.6**, 150Gi | Frozen |
-| `arangodb-single/Pulumi.local.yaml` | Local Single, **3.11.6**, 20Gi, arm64 | Frozen |
-| `arangodb-single/main.go` | Hardcodes `Mode: Single`, `architecture: arm64` | Frozen |
-| `create-arangodb-databases/Pulumi.experiments.yaml` / `Pulumi.local.yaml` | Lab DB bootstrap | Frozen |
-
-### 1.3 Implemented components & operational status
-
-| Component | Repository Path | Implemented State |
-|-----------|-----------------|-------------------|
-| Storage classes | `storage_class/` | `Pulumi.prod.yaml` defines both `dictycr-balanced` (`pd-balanced`) and `dictycr-ssd` (`pd-ssd`) |
-| ArangoDB operator | `arangodb-operator/` | `Pulumi.prod.yaml` pins chart `kube-arangodb/kube-arangodb` 1.2.42 in `operators` namespace |
-| ArangoDB Cluster | `arangodb-cluster/` | Standalone program generating `database.arangodb.com/v1` `ArangoDeployment` (mode: Cluster, 3+3+3, amd64, 3.12.10.1) |
-| Logical databases | `create-arangodb-databases/` | `Pulumi.prod.yaml` creates Secret `backend` and executes Job `backend-create-databases` for 7 application databases |
-| Backup | `arangodb-backup/` | `Pulumi.prod.yaml` manages GCS bucket `restic-arangodb-backup-prod`, CronJob `arangodb-backup-cronjob`, and Job `arangodb-backup-job` |
-| kOps cluster bundle | `config/kops/<prod-cluster>/` | Prerequisite: operator bootstraps `<prod-cluster>` with tainted `stateful-db` InstanceGroup |
-| Data loaders | `arangodb-dataloader/`, `load-*/` | Lab configs only (`Pulumi.experiments.yaml`); prod stacks authored when migration is needed |
-
-## 2. Production shape from the architecture
-
-Source: [`kops-gcp-architecture.md`](kops-gcp-architecture.md) Highly Available plan (§§3–8).
-
-### 2.1 Highly Available plan
-
-```
-[ Custom GCP VPC, private topology, Cloud NAT, Cilium ]
-        │
-        ├── 3 × e2-standard-2     control plane   (one per zone, etcd on pd-ssd)
-        ├── 3–6 × e2-standard-4   stateless-web   (elastic)
-        ├── 3 × n2-standard-4     stateful-db     (static)   ← ArangoDB lives here
-        └── 0–4 × e2-standard-4   batch-spot      (optional)
-```
-
-Do **not** use the architecture’s Cost-Optimized plan for production ArangoDB. That plan consolidates workloads onto a single node pool without zone isolation.
-
-### 2.2 Stateful database pool
-
-| Knob | Production value | Source |
-|------|------------------|--------|
-| Machine | `n2-standard-4` (4 vCPU / 16 GB RAM) default; `n2-highmem-4` (4 vCPU / 32 GB RAM) if working sets exceed RAM | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
-| Count | **3 / 3**, static | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) — no scale-to-zero |
-| Zones | `us-central1-a`, `b`, `c` | [Architecture §4](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity) / [§3](kops-gcp-architecture.md#-3-control-plane-sizing--storage) |
-| Boot disk | 100 GB `pd-balanced` | [Architecture §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static) |
-| Data disks | Separate PVC per Agent and DBServer member | [Architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval) |
-| Label | `pool: database` | Target for pod `nodeSelector` |
-| Taint | `dedicated=database:NoSchedule` | Prevents non-database workloads from landing on stateful nodes |
-
-`n2-standard-4` × 3 hosts the 9 cluster members (3 agents, 3 dbservers, 3 coordinators). If RAM utilization becomes high under production load, step the pool to `n2-highmem-4` rather than expanding node count.
-
-### 2.3 Cluster mode
-
-[Architecture §6 Option B](kops-gcp-architecture.md#option-b-self-hosted-in-cluster-database): production HA uses an **operator-managed replica set**, dedicated PVCs, anti-affinity preferences, and backups.
-
-| Role | Count | CPU Request | Memory Request | Storage | Role in Cluster |
-|------|-------|-------------|----------------|---------|-----------------|
-| **Agents** | 3 | 250m | 1Gi | 20Gi `dictycr-ssd` | Agency Raft consensus & cluster state |
-| **DBServers** | 3 | 2 | 12Gi | 150Gi `dictycr-balanced` | Sharded data storage & RocksDB engine |
-| **Coordinators** | 3 | 500m | 2Gi | None (stateless) | Query optimization, routing, API endpoint |
-
-- **Pod Anti-Affinity**: `spec.go` applies `preferredDuringSchedulingIgnoredDuringExecution` (hostname weight 100, zone weight 50) for each server role. While designed to distribute members across nodes and zones, this is a soft scheduling preference. Operators should verify zone balance across nodes during deployment.
-- **Disruption Management**: The custom resource does not generate custom PodDisruptionBudgets. Safe node draining and maintenance must be performed in coordination with the ArangoDB operator.
-
-### 2.4 Tiered storage and backups
-
-- **StorageClasses**:
-  - `dictycr-ssd` (`pd-ssd` via GCP PD CSI driver): Used for Agents. Sub-millisecond fsync guarantees Raft consensus performance.
-  - `dictycr-balanced` (`pd-balanced` via GCP PD CSI driver): Used for DBServers and backup scratch volumes.
-- **Licensing**: ArangoDB Community 3.12 is used. Confirm current license terms before expanding dataset footprints.
-- **Backups**: `arangodump` + restic → GCS bucket `restic-arangodb-backup-prod` daily at 02:00 UTC.
-
-## 3. Prerequisites
-
-### 3.1 Production cluster & namespace
-
-Finish [`README.md`](../README.md) through [Step 3.7](../README.md#step-37--validate-ha-topology--hardening) for a **new production** cluster (`<prod-cluster>`).
-
-Required before deploying ArangoDB:
-
-- Private VPC topology + Cloud NAT + Cilium
-- 3-zone control plane
-- `stateful-db` InstanceGroup present in the cluster manifest
-- `pdCSIDriver.enabled: true` in cluster spec
-- Production namespace `prod` created:
-  ```bash
-  kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
-  ```
-
-### 3.2 Pulumi backend
-
-Follow [`pulumi-setup.md`](pulumi-setup.md). Production stacks must use the **production** GCS backend and KMS encryption key (not devenv lab keys).
-
-### 3.3 Tools, secrets & access
-
-| Item | Requirement |
-|------|-------------|
-| `kubectl` | Configured with production cluster context |
-| `pulumi` & `just` | Pulumi CLI 3.x and project `Justfile` |
-| GCP KMS Key | Permissions to encrypt/decrypt production stack secrets |
-| GCS Bucket | Bucket permissions for state and backup destinations |
-| K8s Secret `dictycr` | Secret in namespace `prod` containing keys: `gcsCredentials`, `gcsProject`, `resticPass` |
-
-## 4. Prepare the stateful-db pool
-
-This step is Git/kOps only.
-
-### 4.1 Target manifest
-
-In `config/kops/<prod-cluster>/instancegroups.yaml`, configure `stateful-db`:
-
-```yaml
-apiVersion: kops.k8s.io/v1alpha2
-kind: InstanceGroup
-metadata:
-  labels:
-    kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
-  name: stateful-db
-spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
-  role: Node
-  machineType: n2-standard-4    # or n2-highmem-4
-  minSize: 3
-  maxSize: 3
-  rootVolumeSize: 100
-  subnets:
-  - us-central1
-  zones:
-  - us-central1-a
-  - us-central1-b
-  - us-central1-c
-  taints:
-  - dedicated=database:NoSchedule
-  nodeLabels:
-    pool: database
-```
-
-### 4.2 Isolation
-
-| Setting | Value | Effect |
-|---------|-------|--------|
-| `nodeLabels.pool` | `database` | Target for pod `nodeSelector` |
-| `taints` | `dedicated=database:NoSchedule` | Prevents non-database pods from scheduling on stateful nodes |
-
-All `arangodb-cluster` pods declare matching nodeSelectors and tolerations.
-
-### 4.3 Apply and validate
-
-```bash
-# 1. Edit the production kOps cluster bundle
-$EDITOR config/kops/<prod-cluster>/instancegroups.yaml
-
-# 2. Apply via Git-first workflow
-git commit -am "<prod-cluster>: isolate stateful-db for production ArangoDB"
-just gcp-cluster replace-manifests --cluster <prod-cluster>
-just gcp-cluster plan-cluster --cluster <prod-cluster>
-just gcp-cluster update-cluster --cluster <prod-cluster>
-just gcp-cluster rolling-update \
-  --cluster <prod-cluster> \
-  --instance-group stateful-db \
-  --yes yes
-```
-
-Validate nodes and taints:
+| Field | Expect |
+|-------|--------|
+| `machineType` | `n2-standard-4` (or `n2-highmem-4` if RAM is tight) |
+| `minSize` / `maxSize` | `3` / `3`, zones `us-central1-a/b/c` |
+| `nodeLabels.pool` | `database` |
+| `taints` | `dedicated=database:NoSchedule` |
 
 ```bash
 kubectl get nodes -l pool=database -o wide
-kubectl get nodes -l pool=database -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.taints}{"\n"}{end}'
 ```
 
-Expect 3 nodes (one per zone in `us-central1-a`, `b`, `c`), each with `dedicated=database:NoSchedule`.
+Expect three Ready amd64 nodes, one per zone, each with that taint. Missing pool or taint: edit YAML and apply via [README Day-2](../README.md#4-day-2-operations-git-first-workflow). Do not use `dictycr-dev-staging-dcr-experiments`. HA sizing background: [`kops-gcp-architecture.md` §4.2](kops-gcp-architecture.md#2-statefuldatabase-node-pool-static).
 
-## 5. Install ArangoDB
+Also needed before [§2](#2-install-arangodb): CSI + StorageClasses ([`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass)), namespace `prod`, and (for backup) Secret `dictycr` with `gcsCredentials`, `gcsProject`, `resticPass`.
 
-Set active stack environment:
+## 2. Install ArangoDB
+
+Three Pulumi projects, applied **in order**: operator → cluster → logical databases. Each follows the same four steps — `ensure-stack` (select or init `$PULUMI_STACK`), set a secret if one is required, preview, apply. Run all commands from repo root with `just cluster-env --env prod --cluster <prod-cluster>` active, and only after [§1](#1-shape-and-pool-check) passes.
+
+### 2.1 Operator
+
+**What it does**: Installs the `kube-arangodb` Helm chart (pinned **1.2.42**, `arangodb-operator/Pulumi.prod.yaml`) into namespace `operators`. The operator watches for `ArangoDeployment` custom resources and manages the Cluster's pods, PVCs, and internal Service.
+
+**No secrets to set for this stack.**
 
 ```bash
-STACK=prod
+just gcp-pulumi ensure-stack --folder arangodb-operator
+just gcp-pulumi preview --folder arangodb-operator
+just gcp-pulumi create-resource --folder arangodb-operator
 ```
 
-### 5.0 Storage classes
-
-Deploy both `dictycr-balanced` and `dictycr-ssd` using `storage_class/Pulumi.prod.yaml`:
+**Verify before continuing:**
 
 ```bash
-# Initialize stack if needed, then preview and apply
-pulumi -C storage_class stack select prod || pulumi -C storage_class stack init prod
-just gcp-pulumi preview --folder storage_class --stack prod
-just gcp-pulumi create-resource --folder storage_class --stack prod
-
-# Verify both StorageClasses exist
-kubectl get sc dictycr-balanced dictycr-ssd
-```
-
-### 5.1 Operator
-
-Deploy the `kube-arangodb` operator (pinned to chart version `1.2.42` in `arangodb-operator/Pulumi.prod.yaml`):
-
-```bash
-pulumi -C arangodb-operator stack select prod || pulumi -C arangodb-operator stack init prod
-just gcp-pulumi preview --folder arangodb-operator --stack prod
-just gcp-pulumi create-resource --folder arangodb-operator --stack prod
-
-# Verify operator deployment and CRDs
 kubectl get pods -n operators -l app.kubernetes.io/name=kube-arangodb
 kubectl get crd arangodeployments.database.arangodb.com
 ```
 
-### 5.2 Production cluster instance
+Both must exist and the operator pod must be Running before [§2.2](#22-cluster-instance).
 
-The `arangodb-cluster` program creates Secret `arangodb-pass` and emits an `ArangoDeployment` custom resource configured for production:
-- 3 Agents (20Gi SSD) + 3 DBServers (150Gi Balanced) + 3 Coordinators (stateless).
-- `externalAccess.type: None` (internal-only traffic).
-- TLS `caSecretName: "None"` (HTTP inside cluster).
-- Pod nodeSelector `pool: database` and toleration `dedicated=database:NoSchedule`.
+### 2.2 Cluster instance
+
+**What it does**: `arangodb-cluster/Pulumi.prod.yaml` creates the root-password Secret `arangodb-pass`, then an `ArangoDeployment` Cluster CR matching the shape in [§1](#1-shape-and-pool-check) — 3 agents, 3 dbservers, 3 coordinators, image `arangodb:3.12.10.1`, `externalAccess: None`, TLS `caSecretName: "None"` (plain HTTP, internal only).
+
+**Set the root password first** — this is the one secret this stack needs:
 
 ```bash
-# 1. Select/init stack and configure the root password secret
-pulumi -C arangodb-cluster stack select prod || pulumi -C arangodb-cluster stack init prod
-pulumi -C arangodb-cluster -s prod config set --path --secret properties.secret.password "<strong-root-password>"
+just gcp-pulumi ensure-stack --folder arangodb-cluster
+pulumi -C arangodb-cluster -s "${PULUMI_STACK}" config set --path --secret properties.secret.password "<strong-root-password>"
+```
 
-# 2. Preview and apply
-just gcp-pulumi preview --folder arangodb-cluster --stack prod
-just gcp-pulumi create-resource --folder arangodb-cluster --stack prod
+**Preview and apply:**
 
-# 3. Monitor rollout
+```bash
+just gcp-pulumi preview --folder arangodb-cluster
+just gcp-pulumi create-resource --folder arangodb-cluster
+```
+
+**Verify:**
+
+```bash
 kubectl get arangodeployment -n prod arangodb
 kubectl get pods -n prod -l "arango_deployment=arangodb" -o wide
-kubectl get pvc -n prod -l "arango_deployment=arangodb"
 ```
 
-Verify the coordinator Service generated by the operator:
+Wait until all 9 pods are Running before [§2.3](#23-logical-databases). Full PVC/zone checks: [§6](#6-verify).
 
-```bash
-kubectl get svc -n prod -l "arango_deployment=arangodb"
+**Coordinator address** — the next steps, imports, and app services all reach the database at:
+
+```
+http://arangodb.prod.svc.cluster.local:8529
 ```
 
-Workloads access ArangoDB inside the cluster at `http://arangodb.prod.svc.cluster.local:8529`.
+If the operator names the Service differently, find it with `kubectl get svc -n prod -l arango_deployment=arangodb` and use that instead everywhere below.
 
-### 5.3 Logical databases
+### 2.3 Logical databases
 
-The `create-arangodb-databases` stack creates Secret `backend` and runs Job `backend-create-databases` to create 7 application databases (`annotation`, `order`, `stock`, `content`, `cgm_ddb`, `chado`, `annofeature`) and grant user `backend` read-write permissions.
+**What it does**: `create-arangodb-databases/Pulumi.prod.yaml` runs a one-shot Job (`backend-create-databases`, label `app=arangodb-create-databases`) against the coordinator address from [§2.2](#22-cluster-instance). It creates application user Secret `backend`, then creates and grants `rw` on seven databases: `annotation`, `order`, `stock`, `content`, `cgm_ddb`, `chado`, `annofeature`.
+
+**Set the application user's password first:**
 
 ```bash
-# 1. Select/init stack and configure application user password
-pulumi -C create-arangodb-databases stack select prod || pulumi -C create-arangodb-databases stack init prod
-pulumi -C create-arangodb-databases -s prod config set --path --secret properties.arangodbSecret.pass "<app-password>"
+just gcp-pulumi ensure-stack --folder create-arangodb-databases
+pulumi -C create-arangodb-databases -s "${PULUMI_STACK}" config set --path --secret properties.arangodbSecret.pass "<app-password>"
+```
 
-# 2. Preview and apply
-just gcp-pulumi preview --folder create-arangodb-databases --stack prod
-just gcp-pulumi create-resource --folder create-arangodb-databases --stack prod
+**Preview and apply:**
 
-# 3. Verify Job completion and created secret
+```bash
+just gcp-pulumi preview --folder create-arangodb-databases
+just gcp-pulumi create-resource --folder create-arangodb-databases
+```
+
+**Verify:**
+
+```bash
 kubectl get jobs -n prod -l app=arangodb-create-databases
 kubectl get secret -n prod backend
 ```
 
-## 6. Import data
+The Job must show `Completed`. ArangoDB is now ready for application traffic; continue to [§3 Import data](#3-import-data) (optional) or [§4 Backup and restore](#4-backup-and-restore).
 
-Data loaders are optional one-shot migration tasks.
+## 3. Import data
 
-> **Note:** Production stack configurations (`Pulumi.prod.yaml`) for data loaders are not checked into the repository by default. When performing data migration, author prod stack configs pointing to production object storage and secret endpoints.
+Optional. Needs Cluster Ready, databases created, production object storage. No loader `Pulumi.prod.yaml` in repo — author when importing.
 
-### 6.1 Graph dumps
+### 3.1 Graph dumps
 
-`arangodb-dataloader` imports `chado` and `cgm_ddb` collections from object storage.
-
-When creating `arangodb-dataloader/Pulumi.prod.yaml`:
-- Set namespace to `prod`.
-- Set ArangoDB host to `arangodb.prod.svc.cluster.local`.
-- Reference production MinIO/S3 credentials.
-- Ensure the Job schedules on `stateless-web` nodes (or add the database toleration if running on `stateful-db`).
+`arangodb-dataloader`: MinIO `export/chado` → `chado`, `export/cgm_ddb` → `cgm_ddb`. Namespace `prod`, host from [§2.2](#22-cluster-instance). Prefer `stateless-web`; add the database toleration only if the Job must sit on `stateful-db`.
 
 ```bash
-just gcp-pulumi preview --folder arangodb-dataloader --stack prod
-just gcp-pulumi create-resource --folder arangodb-dataloader --stack prod
+just gcp-pulumi ensure-stack --folder arangodb-dataloader
+just gcp-pulumi preview --folder arangodb-dataloader
+just gcp-pulumi create-resource --folder arangodb-dataloader
 ```
 
-### 6.2 Content and UniProt
+### 3.2 Content and UniProt
 
-`load-content-from-s3` and `load-uniprot-mapping` follow the same procedure: author `Pulumi.prod.yaml` pointing to production services and apply.
+Same rule for `load-content-from-s3` and `load-uniprot-mapping`.
 
-## 7. Backup and restore
+## 4. Backup and restore
 
-### 7.1 Scheduled backup
+### 4.1 Scheduled backup
 
-`arangodb-backup` creates GCS bucket `restic-arangodb-backup-prod`, a Kubernetes `CronJob` (`arangodb-backup-cronjob`) running daily at 02:00 UTC, and an immediate verification Job (`arangodb-backup-job`). It executes `arangodump`, bundles the archive, and writes encrypted restic snapshots directly to GCS.
-
-`arangodb-backup/Pulumi.prod.yaml` configuration:
-- Destination bucket: `restic-arangodb-backup-prod`.
-- Ephemeral PVC: `150Gi` on StorageClass `dictycr-balanced`.
-- Credentials Secret: `dictycr` in namespace `prod` (providing `gcsCredentials`, `gcsProject`, `resticPass`).
+`arangodb-backup/Pulumi.prod.yaml`: CronJob `arangodb-backup-cronjob` at 02:00 UTC plus Job `arangodb-backup-job` on apply. Dump → restic → `restic-arangodb-backup-prod`. Ephemeral PVC 150Gi on `dictycr-balanced`. Secret `dictycr` in `prod`.
 
 ```bash
-# Preview and apply
-pulumi -C arangodb-backup stack select prod || pulumi -C arangodb-backup stack init prod
-just gcp-pulumi preview --folder arangodb-backup --stack prod
-just gcp-pulumi create-resource --folder arangodb-backup --stack prod
-
-# Verify CronJob and initial Job
-kubectl get cronjobs,jobs -n prod -l app=arangodb-backup
-kubectl logs -n prod -l app=arangodb-backup --tail=50
+just gcp-pulumi ensure-stack --folder arangodb-backup
+just gcp-pulumi preview --folder arangodb-backup
+just gcp-pulumi create-resource --folder arangodb-backup
 ```
 
-### 7.2 Restore drill
+Prove restore ([architecture §6](kops-gcp-architecture.md#-6-database-storage--retrieval)).
 
-Conduct restore drills on a disposable clone cluster or temporary namespace:
+### 4.2 Restore drill
 
-1. Deploy `storage_class`, `arangodb-operator`, and an empty `arangodb-cluster` in the target namespace.
-2. Deploy a temporary restore container mounting Secret `dictycr` and ephemeral storage.
-3. Execute `restic restore latest` from `gs://restic-arangodb-backup-prod/arangodump`.
-4. Run `arangorestore` against `http://<coordinator-service>.<namespace>.svc.cluster.local:8529` using root credentials from Secret `arangodb-pass`.
-5. Run `create-arangodb-databases` if application users or permissions need re-initialization.
-6. Verify collection document counts and record recovery metrics (RTO and RPO).
+On a **clone** cluster or scratch namespace:
 
-## 8. Teardown
+1. Empty Cluster via `storage_class`, operator, `arangodb-cluster`.
+2. One-off pod with backup image + Secret `dictycr`.
+3. `restic restore latest` from `gs://restic-arangodb-backup-prod/`.
+4. `arangorestore` into `http://<coordinator-service>.<namespace>.svc.cluster.local:8529` using Secret `arangodb-pass`.
+5. Re-run logical DB Job if users/grants are missing.
+6. Record RPO/RTO.
 
-To destroy the database layer on a disposable test cluster:
+## 5. Teardown
 
-### 8.1 Reverse destroy order
+Destructive. Snapshot first. Disposable clone only. Never `dev` / `experiments` / `local`.
+
+### 5.1 Reverse destroy order
+
+All default to `$PULUMI_STACK`; pass `--stack <name>` only if this shell's cluster differs from the one you are tearing down.
 
 ```bash
-# 1. Destroy loaders (if created)
-just gcp-pulumi remove-resource --folder load-uniprot-mapping --stack prod
-just gcp-pulumi remove-resource --folder load-content-from-s3 --stack prod
-just gcp-pulumi remove-resource --folder arangodb-dataloader --stack prod
-
-# 2. Destroy backup CronJob and initial job
-just gcp-pulumi remove-resource --folder arangodb-backup --stack prod
-
-# 3. Destroy database bootstrap job
-just gcp-pulumi remove-resource --folder create-arangodb-databases --stack prod
-
-# 4. Destroy ArangoDB Cluster deployment and secret
-just gcp-pulumi remove-resource --folder arangodb-cluster --stack prod
-
-# 5. Destroy operator (only if no other Arango deployments remain)
-just gcp-pulumi remove-resource --folder arangodb-operator --stack prod
+just gcp-pulumi remove-resource --folder load-uniprot-mapping
+just gcp-pulumi remove-resource --folder load-content-from-s3
+just gcp-pulumi remove-resource --folder arangodb-dataloader
+just gcp-pulumi remove-resource --folder arangodb-backup
+just gcp-pulumi remove-resource --folder create-arangodb-databases
+just gcp-pulumi remove-resource --folder arangodb-cluster
+just gcp-pulumi remove-resource --folder arangodb-operator
 ```
 
-### 8.2 Disks and the node pool
+Skip stacks you never created. Operator last, only if no `ArangoDeployment` remains.
 
-The ArangoDB operator preserves PersistentVolumeClaims after CR deletion to prevent accidental data loss.
+### 5.2 Disks and the node pool
+
+Operator often **keeps** PVCs after CR delete.
 
 ```bash
-# Inspect and delete PVCs if data is no longer needed
 kubectl get pvc -n prod -l arango_deployment=arangodb
-kubectl delete pvc -n prod -l arango_deployment=arangodb
+kubectl delete pvc -n prod -l arango_deployment=arangodb   # only if data may go
 ```
 
-If decommissioning the dedicated node pool, edit `config/kops/<prod-cluster>/instancegroups.yaml` and update the cluster.
+Remove `stateful-db` only if nothing else should stay: [README §4](../README.md#4-day-2-operations-git-first-workflow). Full cluster teardown: [README §6](../README.md#6-disposable-cluster-lifecycle).
 
-## 9. Verify
-
-Audit the production ArangoDB deployment after installation:
+## 6. Verify
 
 ```bash
-# 1. Check dedicated node pool and taints
 kubectl get nodes -l pool=database -o wide
 kubectl get nodes -l pool=database -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.taints}{"\n"}{end}'
-
-# 2. Check operator pod
 kubectl get pods -n operators -l app.kubernetes.io/name=kube-arangodb
-
-# 3. Check ArangoDeployment custom resource
+kubectl get sc dictycr-balanced dictycr-ssd
 kubectl get arangodeployment -n prod arangodb -o yaml
-
-# 4. Check all 9 cluster member pods
 kubectl get pods -n prod -l "arango_deployment=arangodb" -o wide
-
-# 5. Check bound PVCs (3 ssd for agents, 3 balanced for dbservers)
 kubectl get pvc -n prod -l "arango_deployment=arangodb"
-
-# 6. Check internal coordinator Service
 kubectl get svc -n prod -l "arango_deployment=arangodb"
-
-# 7. Check database bootstrap Job status
 kubectl get jobs -n prod -l app=arangodb-create-databases
-
-# 8. Check backup CronJob and immediate Job
-kubectl get cronjobs,jobs -n prod -l app=arangodb-backup
+kubectl get cronjobs,jobs -n prod arangodb-backup-cronjob arangodb-backup-job
 ```
 
-**Verification Checklist**:
-- [ ] 3 `stateful-db` nodes Ready across 3 zones, each with taint `dedicated=database:NoSchedule`.
-- [ ] Operator pod in `operators` namespace is Running and Ready.
-- [ ] StorageClasses `dictycr-balanced` and `dictycr-ssd` present and backed by `pd.csi.storage.gke.io`.
-- [ ] 9 ArangoDB pods Running in namespace `prod` (3 agents, 3 dbservers, 3 coordinators).
-- [ ] All member pods scheduled exclusively on `pool=database` nodes.
-- [ ] 3 Agent PVCs bound on `dictycr-ssd` (20Gi); 3 DBServer PVCs bound on `dictycr-balanced` (150Gi).
-- [ ] Coordinator Service reachable on port 8529.
-- [ ] Logical DB Job `backend-create-databases` completed successfully.
-- [ ] Secret `backend` contains application user credentials.
-- [ ] `arangodb-backup` CronJob created and initial verification Job completed.
+Pass: 3 tainted `pool=database` nodes; operator Ready; both StorageClasses; 9 members Running; agent PVCs 20Gi `dictycr-ssd` and dbserver PVCs 150Gi `dictycr-balanced` Bound; coordinator :8529; DB Job Complete; backup CronJob present if that stack was applied. Zone spread is preferred, not guaranteed.
 
-## 10. Troubleshooting
+## 7. Troubleshooting
 
-| Symptom | Cause | Solution |
-|---------|-------|----------|
-| Member pods stuck in `Pending` with taint error | Nodes lack taint toleration or wrong taint applied | Verify nodes have `dedicated=database:NoSchedule` and `arangodb-cluster/Pulumi.prod.yaml` tolerations match |
-| Member pods stuck in `Pending` with architecture mismatch | Image architecture incompatibility | Ensure `architecture: amd64` is configured in `Pulumi.prod.yaml` for `n2` nodes |
-| Agent/DBServer PVCs stuck in `Pending` | StorageClasses missing or CSI driver disabled | Run `just gcp-pulumi create-resource --folder storage_class --stack prod` and confirm `pdCSIDriver.enabled: true` |
-| Application cannot connect to ArangoDB | Connecting via wrong endpoint or missing credentials | Use internal Service URL `http://arangodb.prod.svc.cluster.local:8529` and credentials from Secret `backend` |
-| `backend-create-databases` Job fails with 401 Unauthorized | Root password mismatch | Verify Secret `arangodb-pass` password matches `properties.secret.password` in `arangodb-cluster` |
-| Backup Job fails with permission error | GCS credentials or bucket missing | Ensure `restic-arangodb-backup-prod` exists and Secret `dictycr` contains valid GCP service account keys |
-| Pods unevenly distributed across zones | Soft anti-affinity constraint under node capacity pressure | Check node distribution across `us-central1-a`, `b`, `c`; pod anti-affinity is soft (preferred) |
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| No `stateful-db` nodes | IG missing or wrong cluster | [§1](#1-shape-and-pool-check) + [README §3.2](../README.md#step-32--customize-yaml-in-git) |
+| Pod Pending, taint | CR missing toleration | `arangodb-cluster/Pulumi.prod.yaml` vs node taint |
+| Pod Pending, `arm64` | Lab Single | Wrong stack. Do not edit `Pulumi.dev.yaml` |
+| Only one Arango pod | Applied `arangodb-single` | Use `arangodb-cluster` with `$PULUMI_STACK`, not the lab `dev`/`experiments` stacks |
+| PVC Pending | No StorageClass / CSI | [`pulumi-setup.md`](pulumi-setup.md) |
+| Members pile in one zone | Soft anti-affinity | Expected under pressure; [§1](#1-shape-and-pool-check) |
+| Quorum loss after drain | No PDB | Drain via operator |
+| Loader Pending after taint | Job has no toleration | Toleration or `stateless-web` |
+| App cannot connect | Wrong host or secret | [§2.2](#22-cluster-instance) DNS + Secret `backend` |
+| DB Job 401 | Root password mismatch | Secret `arangodb-pass` vs stack config |
+| Backup permission error | Missing bucket or `dictycr` | [§4.1](#41-scheduled-backup) |
 
-## 11. Related documents
+## 8. Related documents
 
-- Architecture (sizing, HA vs cost, storage): [`kops-gcp-architecture.md`](kops-gcp-architecture.md)
+- Architecture: [`kops-gcp-architecture.md`](kops-gcp-architecture.md)
 - Cluster bootstrap: [`README.md`](../README.md)
 - Pulumi backend + StorageClass: [`pulumi-setup.md`](pulumi-setup.md)
-- Implementation plan & rationale: [`plans/arangodb-production.md`](plans/arangodb-production.md)
+- Implementation plan (historical): [`plans/arangodb-production.md`](plans/arangodb-production.md)
