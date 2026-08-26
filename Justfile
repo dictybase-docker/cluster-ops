@@ -338,15 +338,53 @@ cluster-env env cluster:
     env_file="{{ justfile_directory() }}/.env.{{ env }}.{{ cluster }}"
     if [ ! -f "${env_file}" ]; then
         echo "ERROR: env file not found: ${env_file}"
-        echo "Create it with: just create-cluster-env --env {{ env }} --cluster {{ cluster }} --project <id>"
+        echo "Create it with: just create-cluster-env --env {{ env }} --cluster {{ cluster }}"
         exit 1
     fi
     set -a; source "${env_file}"; set +a
-    echo "Env file: ${env_file}"
-    echo "PROJECT_ID=${PROJECT_ID:-UNSET}"
-    echo "GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-UNSET}"
-    echo "SSH_KEY=${SSH_KEY:-UNSET}"
-    echo "KUBECONFIG=${KUBECONFIG:-UNSET}"
+
+    echo "=== Cluster Environment: {{ env }}/{{ cluster }} ==="
+    echo "Source: ${env_file}"
+    echo ""
+
+    vars=(
+        "PROJECT_ID"
+        "GOOGLE_APPLICATION_CREDENTIALS"
+        "KUBECONFIG"
+        "SSH_KEY"
+        "PULUMI_GCP_CREDENTIALS"
+        "PULUMI_SECRET_PROVIDER"
+        "PULUMI_BACKEND_URL"
+        "SA_MANAGER_KEY"
+        "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME"
+    )
+
+    set_list=()
+    unset_list=()
+
+    for v in "${vars[@]}"; do
+        val="${!v:-}"
+        if [ -n "${val}" ]; then
+            set_list+=("  ${v}=${val}")
+        else
+            unset_list+=("  ${v}")
+        fi
+    done
+
+    echo "Set variables (${#set_list[@]}):"
+    for item in "${set_list[@]}"; do
+        echo "$item"
+    done
+    echo ""
+
+    if [ ${#unset_list[@]} -gt 0 ]; then
+        echo "Yet to be set (${#unset_list[@]}):"
+        for item in "${unset_list[@]}"; do
+            echo "$item"
+        done
+        echo ""
+    fi
+
     echo "Type 'exit' or Ctrl-D to leave this environment."
     exec "$SHELL"
 
