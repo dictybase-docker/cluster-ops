@@ -193,9 +193,10 @@ build-publish-backup-image ref user pass: setup
 [arg("pulumi_gcp_credentials", long="pulumi-gcp-credentials", help="Pulumi GCP SA JSON path (defaults to PULUMI_GCP_CREDENTIALS)")]
 [arg("pulumi_secret_provider", long="pulumi-secret-provider", help="Pulumi secrets provider URI (defaults to PULUMI_SECRET_PROVIDER)")]
 [arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to PULUMI_BACKEND_URL)")]
+[arg("pulumi_stack", long="pulumi-stack", help="Pulumi stack name for every project on this cluster (defaults to the cluster name)")]
 [arg("force", long="force", pattern="yes|no", help="Overwrite an existing env file")]
 [group('cluster-ops')]
-create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" force="no":
+create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" pulumi_stack="" force="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -288,6 +289,11 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         pulumi_backend="gs://pulumi-state-${project_id}"
     fi
 
+    pulumi_stack="${PULUMI_STACK:-{{ pulumi_stack }}}"
+    if [ -z "${pulumi_stack}" ]; then
+        pulumi_stack="${cluster_name}"
+    fi
+
     write_kv() {
         local key="$1" val="$2"
         if [ -z "${val}" ]; then
@@ -316,6 +322,7 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         write_kv PULUMI_GCP_CREDENTIALS "${pulumi_creds}"
         write_kv PULUMI_SECRET_PROVIDER "${pulumi_kms}"
         write_kv PULUMI_BACKEND_URL "${pulumi_backend}"
+        write_kv PULUMI_STACK "${pulumi_stack}"
     } > "${tmp}"
 
     mv "${tmp}" "${dest}"
@@ -355,6 +362,7 @@ cluster-env env cluster:
         "PULUMI_GCP_CREDENTIALS"
         "PULUMI_SECRET_PROVIDER"
         "PULUMI_BACKEND_URL"
+        "PULUMI_STACK"
         "SA_MANAGER_KEY"
         "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME"
     )
