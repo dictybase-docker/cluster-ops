@@ -101,7 +101,7 @@ Both must exist and the operator pod must be Running before [§2.2](#22-cluster-
 
 ```bash
 just gcp-pulumi ensure-stack --folder arangodb-cluster
-pulumi -C arangodb-cluster -s "${PULUMI_STACK}" config set --path --secret properties.secret.password "<strong-root-password>"
+just gcp-pulumi set-secret --folder arangodb-cluster --key properties.secret.password --value "<strong-root-password>"
 ```
 
 **Preview and apply:**
@@ -136,7 +136,7 @@ If the operator names the Service differently, find it with `kubectl get svc -n 
 
 ```bash
 just gcp-pulumi ensure-stack --folder create-arangodb-databases
-pulumi -C create-arangodb-databases -s "${PULUMI_STACK}" config set --path --secret properties.arangodbSecret.pass "<app-password>"
+just gcp-pulumi set-secret --folder create-arangodb-databases --key properties.arangodbSecret.pass --value "<app-password>"
 ```
 
 **Preview and apply:**

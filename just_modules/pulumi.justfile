@@ -87,6 +87,21 @@ ensure-stack folder stack="":
         pulumi -C {{ folder }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
     fi
 
+# Set an encrypted config value on a stack (config set --path --secret).
+# Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> --value <secret> [--stack <name>]
+[arg("value", long="value", short="v", help="Secret value to store")]
+[arg("key", long="key", short="k", help="Config key path, e.g. properties.secret.password")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+set-secret folder key value stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ folder }} -s "${stack_name}" config set --path --secret "{{ key }}" "{{ value }}"
+
 # Preview Pulumi changes for a stack in a folder.
 # Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
