@@ -36,6 +36,8 @@ Check only the system tools, before asdf is set up:
 just check-tools --skip-asdf yes
 ```
 
+Once the env shell is active, install and verify the asdf-pinned tools in one call: `just prepare-tools` ([tool versions](tool-versions.md)).
+
 ## Two Stores, One Handoff
 
 Until the first YAML exists, the operator env file `.env.<env>.<cluster>` holds `PROJECT_ID` plus credentials and local paths.

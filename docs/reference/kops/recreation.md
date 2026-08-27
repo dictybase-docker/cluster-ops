@@ -2,9 +2,11 @@
 
 Back to: [kOps Cluster Setup](../../kops-setup.md)
 
-Rebuild a torn-down cluster from the Git bundle. Everything needed survives teardown except the VMs themselves ([what survives](teardown.md#what-survives-teardown)).
+Rebuild a torn-down cluster from the Git bundle. Everything needed survives teardown except the VMs themselves and the SSH secret ([what survives](teardown.md#what-survives-teardown)).
 
 ## Step 0 — Re-enter the Operator Env
+
+The one step that genuinely can't be folded — a shell that just exited (or never existed) can't remember `--env`/`--cluster` for you.
 
 ```bash
 just cluster-env --env <env> --cluster <cluster-name>
@@ -19,46 +21,25 @@ just create-cluster-env --env <env> --cluster <cluster-name> \
   --ssh-key credentials/<project-id>/k8sVM.pub
 ```
 
-## Step 1 — Recreate State Bucket
-
-Only if it was deleted ([bucket deletion](teardown.md#optional-delete-the-state-bucket)):
+## Steps 1–5 — One Recipe
 
 ```bash
-just gcp-cluster create-state-bucket \
-  --project <project-id> \
-  --bucket-name kops-state-<cluster-name>
+just gcp-cluster create-cluster
 ```
 
-## Step 2 — Push the Git Bundle to the State Store
+This is the **same recipe** used at [initial bootstrap](../../kops-setup.md#3-cluster-bootstrap-git-native-flow) — recreation and first-time creation share the same precondition (no live cluster, SSH secret not yet uploaded), so they share the same steps:
 
-```bash
-just gcp-cluster replace-manifests --cluster <cluster-name> --force yes
-```
+| Step | Equivalent standalone recipe |
+|------|-------------------------------|
+| 1. Recreate state bucket (idempotent \u2014 no-ops if it survived teardown) | `just gcp-cluster create-state-bucket` |
+| 2. Push the Git bundle to the state store | `just gcp-cluster replace-manifests --force yes` |
+| 3. Restore SSH secret (mandatory \u2014 teardown wipes it, unlike the bucket) | `just gcp-cluster upload-ssh-secret` |
+| 4. Preview and provision | `just gcp-cluster plan-cluster` then `just gcp-cluster update-cluster` |
+| 5. Validate | `just gcp-cluster validate-cluster`, `validate-kops-ha`, `validate-hardening` |
 
-## Step 3 — Restore SSH Secret
+All five steps default `--cluster`/`--project`/etc. from the active shell — no flags needed beyond what step 0 already established.
 
-**Mandatory after teardown** — the secret lives in kops state, not in Git:
-
-```bash
-just gcp-cluster upload-ssh-secret \
-  --cluster <cluster-name> \
-  --ssh-key credentials/<project-id>/k8sVM.pub
-```
-
-## Step 4 — Preview and Provision
-
-```bash
-just gcp-cluster plan-cluster --cluster <cluster-name>
-just gcp-cluster update-cluster --cluster <cluster-name>
-```
-
-## Step 5 — Validate
-
-```bash
-just gcp-cluster validate-cluster
-just gcp-cluster validate-kops-ha
-just gcp-cluster validate-hardening
-```
+Use the standalone recipes directly only if `create-cluster` fails partway and you need to resume from a specific step (e.g. the bucket recreated fine but the SSH upload needs a different `--ssh-key` path).
 
 ## After the Cluster Is Back
 

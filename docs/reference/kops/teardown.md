@@ -38,13 +38,13 @@ For complete deletion — bucket, all objects, all versions:
 
 ```bash
 # Dry-run preview (lists objects, nothing deleted):
-just gcp-cluster delete-state-bucket --cluster <cluster-name>
+just gcp-cluster delete-state-bucket
 
 # Permanent deletion:
-just gcp-cluster delete-state-bucket --cluster <cluster-name> --confirm yes
+just gcp-cluster delete-state-bucket --confirm yes
 ```
 
-Bucket name defaults to `kops-state-<cluster-name>` derived from `--cluster`. Override with `--bucket-name <bucket|gs://bucket>` or the `BUCKET_NAME` env var.
+Bucket name defaults to `kops-state-<cluster-name>` derived from `CLUSTER_NAME` (same convention `create-state-bucket` uses). Override with `--bucket-name <bucket|gs://bucket>` or the `BUCKET_NAME` env var.
 
 > Deleting the bucket discards every manifest version kops stored. The Git bundle still lets you rebuild, but the state history is gone permanently.
 

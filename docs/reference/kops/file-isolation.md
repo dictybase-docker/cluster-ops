@@ -23,10 +23,10 @@ KUBECONFIG="${PWD}/clusters/${PROJECT_ID}/kubeconfig"
 
 ## SSH Keypair
 
-Generate a dedicated Ed25519 keypair (RSA-4096 via `--type rsa`). The recipe refuses to overwrite an existing key:
+Generate a dedicated Ed25519 keypair (RSA-4096 via `--type rsa`). The recipe refuses to overwrite an existing key. Inside an active `cluster-env` shell it needs no flags — the key path is derived from `PROJECT_ID`:
 
 ```bash
-just gcp-cluster generate-ssh-key --project <project-id>
+just gcp-cluster generate-ssh-key
 ```
 
 Creates:

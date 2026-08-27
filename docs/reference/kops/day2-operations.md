@@ -7,38 +7,39 @@ After bootstrap, **all configuration and scaling changes follow the declarative 
 ## The Full Loop
 
 ```bash
-# 1. Edit the canonical local YAML
-$EDITOR config/kops/<cluster-name>/cluster.yaml        # cluster settings, security, CIDRs
-$EDITOR config/kops/<cluster-name>/instancegroups.yaml # pool sizing, machine types
+# 1. Edit the canonical local YAML (human decision — not automatable)
+$EDITOR config/kops/${CLUSTER_NAME}/cluster.yaml        # cluster settings, security, CIDRs
+$EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml # pool sizing, machine types
 
-# 2. Commit the change to Git
-git commit -am "<cluster-name>: scale stateless-web pool to 8"
+# 2. Commit the change to Git (human decision — the commit message)
+git commit -am "${CLUSTER_NAME}: scale stateless-web pool to 8"
 
-# 3. Push to kops state store
-just gcp-cluster replace-manifests --cluster <cluster-name>
+# 3. Push, preview, apply, confirm zero drift — one recipe
+just gcp-cluster apply-cluster
 
-# 4. Preview pending cloud changes (dry-run review)
-just gcp-cluster plan-cluster --cluster <cluster-name>
-
-# 5. Apply changes to GCP
-just gcp-cluster update-cluster --cluster <cluster-name>
-
-# 6. Verify zero drift between Git and state store
-just gcp-cluster drift-manifests --cluster <cluster-name>
-
-# 7. If VM sizes or boot disks changed, roll the instances
-just gcp-cluster rolling-update \
-  --cluster <cluster-name> \
-  --instance-group stateless-web \
-  --yes yes
+# 4. If VM sizes or boot disks changed, roll the instances
+just gcp-cluster rolling-update --instance-group stateless-web --yes yes
 ```
+
+`apply-cluster` folds what used to be four separate recipe calls:
+
+| Step it runs | Equivalent standalone recipe |
+|--------------|-------------------------------|
+| Push to kops state store | `just gcp-cluster replace-manifests` |
+| Preview pending cloud changes | `just gcp-cluster plan-cluster` |
+| Apply changes to GCP | `just gcp-cluster update-cluster` |
+| Verify zero drift | `just gcp-cluster drift-manifests` |
+
+Each standalone recipe still works and still defaults `--cluster`/`--kops-name`/`--state` from the active shell — use them directly for diagnostics or partial recovery (e.g. re-running just `drift-manifests` after a manual `kops edit`).
+
+`apply-cluster` intentionally does **not** touch the SSH secret. `kops create secret` is not safely repeatable against a live cluster — re-running it here would error. SSH secret upload only happens in `create-cluster` ([bootstrap](bootstrap.md) / [recreation](recreation.md)), where the secret is guaranteed not to exist yet.
 
 ## Break-Glass Emergency Edits
 
 If an operator must run `kops edit` during a live outage, reconcile Git immediately after:
 
 ```bash
-just gcp-cluster export-bundle --cluster <cluster-name>
+just gcp-cluster export-bundle
 git diff
 git commit -am "HOTFIX: reconcile emergency live edits"
 ```
@@ -77,7 +78,7 @@ CI runs with a read-only service account (`roles/compute.viewer` + bucket read).
 Run `rolling-update` without `--yes` — it defaults to dry-run inspection:
 
 ```bash
-just gcp-cluster rolling-update --cluster <cluster-name>
+just gcp-cluster rolling-update
 ```
 
 | Output | Meaning |
@@ -88,7 +89,7 @@ just gcp-cluster rolling-update --cluster <cluster-name>
 To execute:
 
 ```bash
-just gcp-cluster rolling-update --cluster <cluster-name> --yes yes
+just gcp-cluster rolling-update --yes yes
 ```
 
 ### Change Trigger Matrix

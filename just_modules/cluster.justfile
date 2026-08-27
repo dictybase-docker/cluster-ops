@@ -30,7 +30,8 @@ generate-ssh-key project="" type="ed25519":
                 ;;
         esac
     else
-        project="${PROJECT_ID:-{{ project }}}"
+        project="{{ project }}"
+        [ -z "${project}" ] && project="${PROJECT_ID:-}"
         if [ -z "${project}" ]; then
             echo "ERROR: no key path. Set SSH_KEY, PROJECT_ID, or pass --project <project-id>."
             exit 1
@@ -78,7 +79,8 @@ sa-accounts-setup project="" activate_api="true":
 
     gcloud config set disable_prompts true
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -116,10 +118,13 @@ sa-accounts-setup project="" activate_api="true":
 update-cluster cluster="" kops_name="" state="": build
     #!/usr/bin/env bash
     set -euo pipefail
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     [ -n "${c}" ] && export CLUSTER_NAME="${c}"
@@ -141,10 +146,13 @@ update-cluster cluster="" kops_name="" state="": build
 plan-cluster cluster="" kops_name="" state="": build
     #!/usr/bin/env bash
     set -euo pipefail
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     [ -n "${c}" ] && export CLUSTER_NAME="${c}"
@@ -157,25 +165,34 @@ plan-cluster cluster="" kops_name="" state="": build
     fi
     ./bin/cluster-ops kops plan
 
-# Create and harden the GCS state bucket for kops.
+# Create and harden the GCS state bucket for kops. Idempotent — safe to re-run
+# against an existing bucket, which just updates its configuration.
 # Usage: just gcp-cluster create-state-bucket [--project <project-id>] [--bucket-name <bucket>]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
-[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to BUCKET_NAME env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to BUCKET_NAME env var, else kops-state-<CLUSTER_NAME>)")]
 [no-cd]
 create-state-bucket project="" bucket_name="": build
     #!/usr/bin/env bash
     set -euo pipefail
-    project_id="${PROJECT_ID:-{{ project }}}"
-    bucket="${BUCKET_NAME:-{{ bucket_name }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    bucket="{{ bucket_name }}"
+    [ -z "${bucket}" ] && bucket="${BUCKET_NAME:-}"
+    # Same convention as delete-state-bucket: derive kops-state-<cluster> from
+    # CLUSTER_NAME when no explicit bucket name is given.
+    if [ -z "${bucket}" ] && [ -n "${CLUSTER_NAME:-}" ]; then
+        bucket="kops-state-${CLUSTER_NAME}"
+    fi
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
     fi
     if [ -z "$bucket" ]; then
-        echo "ERROR: no bucket name — set BUCKET_NAME or pass --bucket-name."
+        echo "ERROR: no bucket name — set BUCKET_NAME / CLUSTER_NAME, or pass --bucket-name."
         exit 1
     fi
     ./bin/cluster-ops bucket create --project="${project_id}" --bucket="${bucket}" --harden
+    echo "State bucket ready: gs://${bucket}"
 
 # Validate HA production topology.
 # Thin wrapper — delegates to cluster-ops.
@@ -187,13 +204,16 @@ create-state-bucket project="" bucket_name="": build
 validate-kops-ha cluster="" kops_name="" state="": build
     #!/usr/bin/env bash
     set -euo pipefail
-    c="${CLUSTER_NAME:-{{ cluster }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     if [ -n "${c}" ]; then
         export CLUSTER_NAME="${c}"
-        kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+        kn="{{ kops_name }}"
+        [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
         [ -z "${kn}" ] && kn="${c}-k8s.local"
         export KOPS_CLUSTER_NAME="${kn}"
-        st="${KOPS_STATE_STORE:-{{ state }}}"
+        st="{{ state }}"
+        [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
         [ -z "${st}" ] && st="gs://kops-state-${c}"
         export KOPS_STATE_STORE="${st}"
     fi
@@ -270,18 +290,22 @@ validate-hardening:
 
 # Validate the kops cluster
 # Checks if the cluster is correctly set up and running
-# Usage: just gcp-cluster validate-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>] [waittime]
+# Usage: just gcp-cluster validate-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>] [--waittime <min>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("waittime", long="waittime", short="w", help="Minutes to wait for validation (default 20)")]
 [no-cd]
 validate-cluster cluster="" kops_name="" state="" waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     name_args=()
@@ -289,7 +313,7 @@ validate-cluster cluster="" kops_name="" state="" waittime="20":
     state_args=()
     [ -n "${st}" ] && state_args=("--state=${st}")
 
-    kops validate cluster "${name_args[@]}" "${state_args[@]}" --wait {{ waittime }}m
+    kops validate cluster "${name_args[@]+"${name_args[@]}"}" "${state_args[@]+"${state_args[@]}"}" --wait {{ waittime }}m
 
 # Display the current status of the cluster
 # Shows version, cluster info, and nodes
@@ -319,10 +343,13 @@ k9s:
 export-kubeconfig cluster="" kops_name="" state="":
     #!/usr/bin/env bash
     set -euo pipefail
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     name_args=()
@@ -336,7 +363,7 @@ export-kubeconfig cluster="" kops_name="" state="":
         kube_args=("--kubeconfig=${KUBECONFIG}")
     fi
 
-    kops export kubeconfig --admin "${name_args[@]}" "${state_args[@]}" "${kube_args[@]}"
+    kops export kubeconfig --admin "${name_args[@]+"${name_args[@]}"}" "${state_args[@]+"${state_args[@]}"}" "${kube_args[@]+"${kube_args[@]}"}"
 
 # Export a kubeconfig file with a custom name and duration.
 # Usage: just gcp-cluster export-named-kubeconfig --name <name> [--duration-hours <n>]
@@ -455,11 +482,15 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    p="${PROJECT_ID:-{{ project }}}"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    p="{{ project }}"
+    [ -z "${p}" ] && p="${PROJECT_ID:-}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     echo "=== Cluster teardown ==="
@@ -543,8 +574,10 @@ delete-state-bucket cluster="" bucket_name="" confirm="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    bucket="${BUCKET_NAME:-{{ bucket_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    bucket="{{ bucket_name }}"
+    [ -z "${bucket}" ] && bucket="${BUCKET_NAME:-}"
     if [ -z "${bucket}" ] && [ -n "${c}" ]; then
         bucket="kops-state-${c}"
     fi
@@ -606,9 +639,12 @@ bootstrap-bundle cluster="" kops_name="" project="" state="" api_access_cidr="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    p="${PROJECT_ID:-{{ project }}}"
-    api="${API_ACCESS_CIDR:-{{ api_access_cidr }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    p="{{ project }}"
+    [ -z "${p}" ] && p="${PROJECT_ID:-}"
+    api="{{ api_access_cidr }}"
+    [ -z "${api}" ] && api="${API_ACCESS_CIDR:-}"
 
     if [ -z "${c}" ]; then
         echo "ERROR: cluster name is required. Pass --cluster <name> or set CLUSTER_NAME."
@@ -623,10 +659,12 @@ bootstrap-bundle cluster="" kops_name="" project="" state="" api_access_cidr="":
         exit 1
     fi
 
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && kn="${c}-k8s.local"
 
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
     st="${st%/}"
 
@@ -686,16 +724,19 @@ export-bundle cluster="" kops_name="" state="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     if [ -z "${c}" ]; then
         echo "ERROR: cluster name required. Pass --cluster <name> or set CLUSTER_NAME."
         exit 1
     fi
 
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && kn="${c}-k8s.local"
 
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
 
     target_dir="{{ invocation_directory() }}/config/kops/${c}"
@@ -732,7 +773,8 @@ replace-manifests cluster="" kops_name="" state="" force="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     if [ -z "${c}" ]; then
         echo "ERROR: cluster name required. Pass --cluster <name> or set CLUSTER_NAME."
         exit 1
@@ -751,10 +793,12 @@ replace-manifests cluster="" kops_name="" state="" force="no":
         exit 1
     fi
 
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && kn="${c}-k8s.local"
 
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
 
     force_args=()
@@ -763,10 +807,10 @@ replace-manifests cluster="" kops_name="" state="" force="no":
     fi
 
     echo "Replacing cluster configuration from ${cluster_yaml}..."
-    kops replace -f "${cluster_yaml}" --state="${st}" --name="${kn}" "${force_args[@]}"
+    kops replace -f "${cluster_yaml}" --state="${st}" --name="${kn}" "${force_args[@]+"${force_args[@]}"}"
 
     echo "Replacing instance groups configuration from ${igs_yaml}..."
-    kops replace -f "${igs_yaml}" --state="${st}" --name="${kn}" "${force_args[@]}"
+    kops replace -f "${igs_yaml}" --state="${st}" --name="${kn}" "${force_args[@]+"${force_args[@]}"}"
     echo "Manifests replaced in state store: ${st}"
 
 # Diff canonical bundle files against live state storage.
@@ -779,7 +823,8 @@ drift-manifests cluster="" kops_name="" state="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     if [ -z "${c}" ]; then
         echo "ERROR: cluster name required. Pass --cluster <name> or set CLUSTER_NAME."
         exit 1
@@ -794,10 +839,12 @@ drift-manifests cluster="" kops_name="" state="":
         exit 1
     fi
 
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && kn="${c}-k8s.local"
 
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && st="gs://kops-state-${c}"
 
     tmp_dir=$(mktemp -d)
@@ -836,13 +883,17 @@ upload-ssh-secret cluster="" kops_name="" state="" ssh_key="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
-    key="${SSH_KEY:-{{ ssh_key }}}"
+    key="{{ ssh_key }}"
+    [ -z "${key}" ] && key="${SSH_KEY:-}"
     [ -z "${key}" ] && [ -n "${PROJECT_ID:-}" ] && key="credentials/${PROJECT_ID}/k8sVM.pub"
 
     if [ -z "${kn}" ] || [ -z "${st}" ]; then
@@ -871,10 +922,13 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     #!/usr/bin/env bash
     set -euo pipefail
 
-    c="${CLUSTER_NAME:-{{ cluster }}}"
-    kn="${KOPS_CLUSTER_NAME:-{{ kops_name }}}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
     [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
-    st="${KOPS_STATE_STORE:-{{ state }}}"
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
     [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
 
     if [ -z "${kn}" ] || [ -z "${st}" ]; then
@@ -888,7 +942,7 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     [ "{{ yes }}" = "yes" ] && cmd_args+=("--yes")
 
     echo "Running rolling-update for ${kn}..."
-    kops rolling-update cluster "${kn}" --state="${st}" "${cmd_args[@]}"
+    kops rolling-update cluster "${kn}" --state="${st}" "${cmd_args[@]+"${cmd_args[@]}"}"
 
 
 # ── operator convenience recipes ──────────────────────────────────────────────
@@ -993,3 +1047,214 @@ configure-gcloud name="sa-manager" project="" key_file="" zone="us-central1-c":
     echo
     echo "Active gcloud configuration:"
     gcloud config configurations list --filter="name=$CFG" 2>/dev/null || true
+
+# ── higher-order lifecycle recipes ────────────────────────────────────────────
+# These fold the sequences documented in docs/kops-setup.md into single
+# commands, mirroring arangodb's deploy-operator/deploy-cluster and pulumi's
+# configure-backup-secrets. Steps that require a human decision (reviewing
+# generated YAML, choosing an --api-access-cidr) or a shell login/logout
+# (cluster-cred rotation, cluster-env re-entry) stay as separate manual steps —
+# see docs/reference/kops/*.md for exactly which boundaries are which.
+
+# Enable required APIs, disable unused ones, and create the least-privilege
+# kops-cluster-creator service account. Folds Phase 1a + 1b + 2 into one call.
+# Usage: just gcp-cluster setup-kops-creator [--project <project-id>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[group('cluster-management')]
+[no-cd]
+setup-kops-creator project="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project." >&2
+        exit 1
+    fi
+
+    root="{{ invocation_directory() }}"
+
+    echo "=== 1/3: enabling required APIs ==="
+    just gcp-api enable-apis --project "${project_id}" \
+        --api-file "${root}/gcs-files/apis/enabled_apis.txt"
+
+    echo
+    echo "=== 2/3: disabling unused APIs ==="
+    just gcp-api disable-apis --project "${project_id}" \
+        --api-file "${root}/gcs-files/apis/disable_enabled_apis.txt"
+
+    echo
+    echo "=== 3/3: creating kops-cluster-creator service account ==="
+    just gcp-sa create-sa --project "${project_id}" --sa-name kops-cluster-creator \
+        --roles-file "${root}/gcs-files/roles-permissions/kops-cluster-creator-roles.txt" \
+        --output-file "${root}/credentials/${project_id}/kops-cluster-creator.json"
+
+    echo
+    echo "kops-cluster-creator ready: credentials/${project_id}/kops-cluster-creator.json"
+    echo "Rotate to it, then reconfigure gcloud (both require a shell re-entry):"
+    echo "  just cluster-cred --key credentials/${project_id}/kops-cluster-creator.json"
+    echo "  exit"
+    echo "  just cluster-env --env <env> --cluster <cluster-name>"
+    echo "  just gcp-cluster configure-gcloud --name kops-cluster-creator"
+
+# Push Git-canonical manifests to state storage, preview, apply, and confirm
+# zero drift. The repeatable Day-2 loop — folds replace-manifests + plan-cluster
+# + update-cluster + drift-manifests. Pass --force yes only for the very first
+# replace after bootstrap-bundle (see create-cluster, which does this for you).
+# Usage: just gcp-cluster apply-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>] [--force yes]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("force", long="force", short="f", pattern="yes|no", help="Force the manifest replace (only needed on the first push after bootstrap)")]
+[group('cluster-management')]
+[no-cd]
+apply-cluster cluster="" kops_name="" state="" force="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
+    replace_args=("${args[@]+"${args[@]}"}")
+    [ "{{ force }}" = "yes" ] && replace_args+=(--force yes)
+
+    echo "=== 1/2: pushing manifests to state store ==="
+    just gcp-cluster replace-manifests "${replace_args[@]+"${replace_args[@]}"}"
+
+    echo
+    echo "=== 2/2: preview, apply, confirm no drift ==="
+    just gcp-cluster _plan-update-drift "${args[@]+"${args[@]}"}"
+
+    echo
+    echo "Applied cleanly. If machineType, disk, image, or kubernetesVersion changed,"
+    echo "also roll the affected instances:"
+    echo "  just gcp-cluster rolling-update --yes yes"
+
+# Private helper shared by apply-cluster and create-cluster: preview, apply,
+# then confirm zero drift. Does NOT push manifests — callers run
+# replace-manifests first, since the target of a fresh replace differs
+# (create-cluster needs --force yes on the very first push; apply-cluster does not).
+# Usage: just gcp-cluster _plan-update-drift [--cluster <name>] [--kops-name <name>] [--state <uri>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[group('cluster-management')]
+[no-cd]
+_plan-update-drift cluster="" kops_name="" state="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
+    echo "--- preview (dry-run) ---"
+    just gcp-cluster plan-cluster "${args[@]+"${args[@]}"}"
+
+    echo
+    echo "--- applying to GCP ---"
+    just gcp-cluster update-cluster "${args[@]+"${args[@]}"}"
+
+    echo
+    echo "--- confirming zero drift ---"
+    just gcp-cluster drift-manifests "${args[@]+"${args[@]}"}"
+
+# Validate cluster health, HA topology, and hardening addons in one pass.
+# Folds validate-cluster + validate-kops-ha + validate-hardening.
+# Usage: just gcp-cluster verify-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>] [--waittime <min>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("waittime", long="waittime", short="w", help="Minutes to wait for cluster validation (default 20)")]
+[group('cluster-management')]
+[no-cd]
+verify-cluster cluster="" kops_name="" state="" waittime="20":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
+    echo "=== 1/3: cluster health ==="
+    just gcp-cluster validate-cluster "${args[@]+"${args[@]}"}" --waittime "{{ waittime }}"
+
+    echo
+    echo "=== 2/3: HA topology ==="
+    just gcp-cluster validate-kops-ha "${args[@]+"${args[@]}"}"
+
+    echo
+    echo "=== 3/3: hardening addons ==="
+    just gcp-cluster validate-hardening
+
+    echo
+    echo "All validations passed."
+
+# Create (or recreate, after teardown) the state bucket, push manifests, upload
+# the SSH secret, apply, and validate — in that order. Folds create-state-bucket
+# + replace-manifests(force=yes) + upload-ssh-secret + plan-cluster +
+# update-cluster + drift-manifests + verify-cluster into one command.
+#
+# Order matters: manifests must be pushed to state BEFORE the SSH secret is
+# uploaded, since kops needs the cluster object to exist in state first.
+#
+# This is the SAME recipe for first-time creation and for post-teardown
+# recreation — both start from "no live cluster, SSH secret not yet uploaded",
+# so the steps and their idempotency requirements are identical. See
+# docs/reference/kops/recreation.md.
+#
+# Precondition: config/kops/<cluster>/*.yaml already exists, reviewed, and
+# committed (bootstrap-bundle, or already in Git if recreating).
+# Usage: just gcp-cluster create-cluster [--cluster <name>] [--project <id>] [--kops-name <name>] [--state <uri>] [--bucket-name <name>] [--ssh-key <path>] [--waittime <min>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to kops-state-<cluster>)")]
+[arg("ssh_key", long="ssh-key", short="k", help="SSH public key path (defaults to SSH_KEY env var or credentials/<project>/k8sVM.pub)")]
+[arg("waittime", long="waittime", short="w", help="Minutes to wait for cluster validation (default 20)")]
+[group('cluster-management')]
+[no-cd]
+create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_key="" waittime="20":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
+    bucket_args=()
+    [ -n "{{ project }}" ] && bucket_args+=(--project "{{ project }}")
+    [ -n "{{ bucket_name }}" ] && bucket_args+=(--bucket-name "{{ bucket_name }}")
+
+    ssh_args=("${args[@]+"${args[@]}"}")
+    [ -n "{{ ssh_key }}" ] && ssh_args+=(--ssh-key "{{ ssh_key }}")
+
+    echo "=== 1/5: state bucket ==="
+    just gcp-cluster create-state-bucket "${bucket_args[@]+"${bucket_args[@]}"}"
+
+    echo
+    echo "=== 2/5: pushing manifests to state store (forced first push) ==="
+    just gcp-cluster replace-manifests "${args[@]+"${args[@]}"}" --force yes
+
+    echo
+    echo "=== 3/5: SSH secret ==="
+    echo "(must come after the manifest push — kops needs the cluster in state first)"
+    just gcp-cluster upload-ssh-secret "${ssh_args[@]+"${ssh_args[@]}"}"
+
+    echo
+    echo "=== 4/5: preview, apply, confirm no drift ==="
+    just gcp-cluster _plan-update-drift "${args[@]+"${args[@]}"}"
+
+    echo
+    echo "=== 5/5: validate ==="
+    just gcp-cluster verify-cluster "${args[@]+"${args[@]}"}" --waittime "{{ waittime }}"
+
+    echo
+    echo "Cluster created and validated."
