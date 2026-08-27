@@ -142,14 +142,14 @@ Do not change `Pulumi.dev.yaml` / `experiments` / `local`.
 1. `create-arangodb-databases`: same DB list; coordinator Service DNS; new secrets; optional toleration if the Job must run on `stateful-db`.
 2. `arangodb-dataloader` / content / UniProt: prod stacks; prefer `stateless-web` unless they need the dump PVC next to the DB.
 3. `arangodb-backup`: prod GCS bucket; size ephemeral PVC for 3× dbserver dumps; keep CronJob + first Job.
-4. Restore is an in-cluster Job (`arangodb-restore`, not a follow-up anymore): init container `restic restore`, main container `arangorestore`, shared scratch volume, no laptop/Docker/port-forward involved ([deploy guide §4.2](../arangodb-deploy.md#42-restore-drill)).
+4. Restore is an in-cluster Job (`arangodb-restore`, not a follow-up anymore): init container `restic restore`, main container `arangorestore`, shared scratch volume, no laptop/Docker/port-forward involved ([deploy guide §5.2](../arangodb-deploy.md#52-restore-drill)).
 
 ### 7. Verification
 
 - `go test` / `golangci-lint` on new packages.
 - `pulumi preview` on **prod** stack only — must not require opening lab stacks.
 - Preview of **unchanged** `arangodb-single` `dev` stack must show **no** resource replacements (prove freeze).
-- kubectl checks in [deploy guide §6](../arangodb-deploy.md#6-verify).
+- kubectl checks in [deploy guide §7](../arangodb-deploy.md#7-verify).
 
 ## Suggested file layout
 
