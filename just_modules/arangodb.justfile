@@ -34,6 +34,131 @@ _discover-arango-svc namespace="dev":
     fi
     echo "$SVC"
 
+# Resolve the Pulumi stack name, or fail. Never falls back to "dev" — every
+# production recipe routes through this so a missing cluster env cannot
+# silently target the lab stack.
+# Usage: STACK=$(just arangodb _require-stack [--stack <name>])
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('arangodb')]
+[no-cd]
+_require-stack stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    STACK="{{ stack }}"
+    if [[ -z "$STACK" ]]; then
+        STACK="${PULUMI_STACK:-}"
+    fi
+    if [[ -z "$STACK" ]]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    echo "$STACK"
+
+# Wait until at least <count> pods matching a selector are Running with every
+# container ready, or time out.
+# Usage: just arangodb _wait-ready --namespace <ns> --selector <sel> [--count <n>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace to watch")]
+[arg("selector", long="selector", short="l", help="Label selector for the pods")]
+[arg("count", long="count", short="c", help="How many ready pods to wait for")]
+[arg("retries", long="retries", short="r", help="Probe attempts before failing")]
+[arg("interval", long="interval", short="i", help="Seconds between probes")]
+[group('arangodb')]
+[no-cd]
+_wait-ready namespace selector count="1" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    SEL="{{ selector }}"
+    WANT="{{ count }}"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+
+    for i in $(seq 1 "$RETRIES"); do
+        set +e
+        out=$(kubectl get pods -n "$NS" -l "$SEL" -o json 2>&1)
+        status=$?
+        set -e
+        if [[ $status -ne 0 ]]; then
+            echo "$out" >&2
+            echo "Error: kubectl get pods -n $NS -l $SEL failed." >&2
+            exit 1
+        fi
+        ready=$(printf '%s\n' "$out" | jq '[.items[]
+            | select(.status.phase == "Running")
+            | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)]
+            | length')
+        if [[ "$ready" -ge "$WANT" ]]; then
+            echo "$ready/$WANT pod(s) ready in $NS ($SEL)."
+            exit 0
+        fi
+        echo "Waiting for pods in $NS ($SEL): $ready/$WANT ready (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo "Error: only $ready/$WANT pod(s) ready in $NS ($SEL) after $((RETRIES * INTERVAL))s." >&2
+    kubectl get pods -n "$NS" -l "$SEL" -o wide || true
+    exit 1
+
+# Wait for a Job to succeed. Fails fast (and tails logs) if the Job fails.
+# A Job that disappears after we have already seen it counts as done — these
+# Jobs set ttlSecondsAfterFinished and the GC can win the race.
+# Usage: just arangodb _wait-job --namespace <ns> --job <name> [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace holding the Job")]
+[arg("job", long="job", short="j", help="Job name")]
+[arg("retries", long="retries", short="r", help="Probe attempts before failing")]
+[arg("interval", long="interval", short="i", help="Seconds between probes")]
+[group('arangodb')]
+[no-cd]
+_wait-job namespace job retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    JOB="{{ job }}"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+    seen=0
+
+    for i in $(seq 1 "$RETRIES"); do
+        set +e
+        out=$(kubectl get job -n "$NS" "$JOB" -o json 2>&1)
+        status=$?
+        set -e
+        if [[ $status -ne 0 ]]; then
+            if [[ $seen -eq 1 ]]; then
+                echo "Job $JOB is gone from $NS — it finished and its TTL removed it."
+                exit 0
+            fi
+            if echo "$out" | grep -qi "not found"; then
+                echo "Waiting for job $JOB to appear in $NS (try $i/$RETRIES)..."
+                sleep "$INTERVAL"
+                continue
+            fi
+            echo "$out" >&2
+            echo "Error: kubectl get job $JOB -n $NS failed." >&2
+            exit 1
+        fi
+        seen=1
+        succeeded=$(printf '%s\n' "$out" | jq -r '.status.succeeded // 0')
+        failed=$(printf '%s\n' "$out" | jq -r '.status.failed // 0')
+        if [[ "$succeeded" -ge 1 ]]; then
+            echo "Job $JOB completed in $NS."
+            exit 0
+        fi
+        if [[ "$failed" -ge 1 ]]; then
+            echo "Error: job $JOB in $NS failed. Last 100 log lines:" >&2
+            kubectl logs -n "$NS" "job/$JOB" --all-containers --tail=100 || true
+            exit 1
+        fi
+        echo "Waiting for job $JOB in $NS (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo "Error: job $JOB in $NS did not finish after $((RETRIES * INTERVAL))s." >&2
+    kubectl get job -n "$NS" "$JOB" || true
+    exit 1
+
 # ── public recipes ────────────────────────────────────────────────────────────
 
 # Dump a remote ArangoDB database to a local compressed file.
@@ -464,3 +589,709 @@ configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
     echo "Config written. Next:"
     echo "  just gcp-pulumi preview --folder arangodb-restore"
     echo "  just gcp-pulumi create-resource --folder arangodb-restore"
+
+# Probe until a namespaced resource list is empty, or time out.
+# Missing CRD / resource type counts as gone (operator already uninstalled).
+# Usage: just arangodb _wait-gone --namespace <ns> --kind <kind> [--selector <label>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace to watch")]
+[arg("kind", long="kind", short="k", help="Resource kind, e.g. pods or arangodeployment")]
+[arg("selector", long="selector", short="l", help="Optional label selector")]
+[arg("retries", long="retries", short="r", help="Probe attempts before failing")]
+[arg("interval", long="interval", short="i", help="Seconds between probes")]
+[group('arangodb')]
+[no-cd]
+_wait-gone namespace kind selector="" retries="36" interval="5":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    KIND="{{ kind }}"
+    SELECTOR="{{ selector }}"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+    extra=()
+    if [[ -n "$SELECTOR" ]]; then
+        extra+=(-l "$SELECTOR")
+    fi
+
+    for i in $(seq 1 "$RETRIES"); do
+        set +e
+        out=$(kubectl get "$KIND" -n "$NS" "${extra[@]}" -o json 2>&1)
+        status=$?
+        set -e
+        if [[ $status -ne 0 ]]; then
+            if echo "$out" | grep -qiE "doesn.t have a resource type|the server could not find the requested resource|namespaces? \"$NS\" not found"; then
+                echo "$KIND gone in $NS (API type or namespace not found)."
+                exit 0
+            fi
+            echo "$out" >&2
+            echo "Error: kubectl get $KIND -n $NS failed." >&2
+            exit 1
+        fi
+        count=$(printf '%s\n' "$out" | jq '.items | length')
+        if [[ "$count" -eq 0 ]]; then
+            echo "$KIND gone in $NS."
+            exit 0
+        fi
+        echo "Waiting for $KIND in $NS to go ($count left, try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo "Error: $KIND in $NS still present after $((RETRIES * INTERVAL))s." >&2
+    kubectl get "$KIND" -n "$NS" "${extra[@]}" || true
+    exit 1
+
+# Destroy a Pulumi folder if that stack exists; skip (do not fail) if it never did.
+# Usage: just arangodb _destroy-stack --folder <dir> [--stack <name>]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[group('arangodb')]
+[no-cd]
+_destroy-stack folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    STACK="{{ stack }}"
+    if [[ -z "$STACK" ]]; then
+        STACK="${PULUMI_STACK:-}"
+    fi
+    if [[ -z "$STACK" ]]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    FOLDER="{{ folder }}"
+
+    if ! json=$(pulumi -C "$FOLDER" stack ls --json); then
+        echo "Error: cannot list Pulumi stacks in $FOLDER." >&2
+        exit 1
+    fi
+    if echo "$json" | jq -e --arg n "$STACK" 'any(.[]; (.name == $n) or (.name | endswith("/" + $n)))' >/dev/null; then
+        echo "Destroying $FOLDER stack '$STACK'..."
+        just gcp-pulumi remove-resource --folder "$FOLDER" --stack "$STACK"
+    else
+        echo "Stack '$STACK' not found in $FOLDER — skipping."
+    fi
+
+# Delete leftover ArangoDB PVCs. Operator often keeps them after the CR is gone.
+# Usage: just arangodb _remove-pvcs --namespace <ns>
+[arg("namespace", long="namespace", short="n", help="Namespace whose Arango PVCs to delete")]
+[group('arangodb')]
+[no-cd]
+_remove-pvcs namespace:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NS="{{ namespace }}"
+    echo "Deleting PVCs labelled arango_deployment=arangodb in $NS..."
+    kubectl delete pvc -n "$NS" -l arango_deployment=arangodb --ignore-not-found --wait=false
+
+# Print leftover Arango instance resources and exit 1 if the instance is not clean.
+# Leftover PVCs fail only when --delete-pvcs yes (otherwise they are a warning).
+# Usage: just arangodb _report-clean --namespace <ns> [--delete-pvcs yes] [--operator-namespace <ns>]
+[arg("namespace", long="namespace", short="n", help="Namespace that held the ArangoDeployment")]
+[arg("delete_pvcs", long="delete-pvcs", pattern="yes|no", help="Whether leftover PVCs are a failure")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace that held the operator")]
+[group('arangodb')]
+[no-cd]
+_report-clean namespace delete_pvcs="no" operator_namespace="operators":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    OP_NS="{{ operator_namespace }}"
+    DELETE_PVCS="{{ delete_pvcs }}"
+
+    count_kind() {
+        local kind="$1" ns="$2" sel="${3:-}"
+        local extra=()
+        if [[ -n "$sel" ]]; then
+            extra+=(-l "$sel")
+        fi
+        set +e
+        local out
+        out=$(kubectl get "$kind" -n "$ns" "${extra[@]}" -o json 2>&1)
+        local status=$?
+        set -e
+        if [[ $status -ne 0 ]]; then
+            if echo "$out" | grep -qiE "doesn.t have a resource type|the server could not find the requested resource|namespaces? \"$ns\" not found"; then
+                echo 0
+                return 0
+            fi
+            echo "$out" >&2
+            echo "Error: kubectl get $kind -n $ns failed." >&2
+            exit 1
+        fi
+        printf '%s\n' "$out" | jq '.items | length'
+    }
+
+    cr=$(count_kind arangodeployment "$NS")
+    pods=$(count_kind pods "$NS" arango_deployment=arangodb)
+    svcs=$(count_kind svc "$NS" arango_deployment=arangodb)
+    pvcs=$(count_kind pvc "$NS" arango_deployment=arangodb)
+    operator=$(count_kind pods "$OP_NS" app.kubernetes.io/name=kube-arangodb)
+
+    echo
+    echo "arangodb teardown report ($NS)"
+    echo "  ArangoDeployment : $cr"
+    echo "  member pods      : $pods"
+    echo "  member services  : $svcs"
+    echo "  member PVCs      : $pvcs"
+    echo "  operator pods    : $operator (ns $OP_NS)"
+    echo
+
+    dirty=0
+    if [[ "$cr" -ne 0 || "$pods" -ne 0 || "$svcs" -ne 0 || "$operator" -ne 0 ]]; then
+        dirty=1
+    fi
+    if [[ "$pvcs" -ne 0 ]]; then
+        if [[ "$DELETE_PVCS" == "yes" ]]; then
+            dirty=1
+        else
+            echo "Warning: $pvcs PVC(s) remain. Re-run with --delete-pvcs yes if those disks may go."
+        fi
+    fi
+
+    if [[ "$dirty" -ne 0 ]]; then
+        echo "Error: ArangoDB instance is not clean." >&2
+        exit 1
+    fi
+    echo "ArangoDB instance is clean."
+
+# Tear down the ArangoDB Cluster instance, then the operator, then leftover PVCs.
+# Waits for each step to go before the next. Does not touch backup, loaders, or backup_secrets.
+# Usage: just arangodb teardown --namespace <ns> [--delete-pvcs yes] [--stack <name>] [--retries <n>] [--interval <s>] [--operator-namespace <ns>]
+[arg("namespace", long="namespace", short="n", help="Namespace that holds the ArangoDeployment (required)")]
+[arg("delete_pvcs", long="delete-pvcs", pattern="yes|no", help="Delete leftover Arango PVCs after the operator is gone")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per wait (default 36)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 5)")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace that holds the operator")]
+[group('arangodb')]
+[no-cd]
+teardown namespace delete_pvcs="no" stack="" retries="36" interval="5" operator_namespace="operators":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    OP_NS="{{ operator_namespace }}"
+    DELETE_PVCS="{{ delete_pvcs }}"
+    STACK="{{ stack }}"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+
+    if [[ -z "$NS" ]]; then
+        echo "Error: --namespace is required; there is no safe default teardown target." >&2
+        exit 1
+    fi
+    if [[ -z "$STACK" ]]; then
+        STACK="${PULUMI_STACK:-}"
+    fi
+    if [[ -z "$STACK" ]]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    if [[ ! "$RETRIES" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: --retries must be a positive integer, got '$RETRIES'." >&2
+        exit 1
+    fi
+    if [[ ! "$INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: --interval must be a positive integer, got '$INTERVAL'." >&2
+        exit 1
+    fi
+    WAIT=(--retries "$RETRIES" --interval "$INTERVAL")
+
+    echo "Destroying arangodb-cluster..."
+    just arangodb _destroy-stack --folder arangodb-cluster --stack "$STACK"
+    just arangodb _wait-gone --namespace "$NS" --kind arangodeployment "${WAIT[@]}"
+    just arangodb _wait-gone --namespace "$NS" --kind pods --selector arango_deployment=arangodb "${WAIT[@]}"
+    just arangodb _wait-gone --namespace "$NS" --kind svc --selector arango_deployment=arangodb "${WAIT[@]}"
+
+    echo "Destroying arangodb-operator..."
+    just arangodb _destroy-stack --folder arangodb-operator --stack "$STACK"
+    just arangodb _wait-gone --namespace "$OP_NS" --kind pods --selector app.kubernetes.io/name=kube-arangodb "${WAIT[@]}"
+
+    if [[ "$DELETE_PVCS" == "yes" ]]; then
+        just arangodb _remove-pvcs --namespace "$NS"
+        just arangodb _wait-gone --namespace "$NS" --kind pvc --selector arango_deployment=arangodb "${WAIT[@]}"
+    fi
+
+    just arangodb _report-clean --namespace "$NS" --delete-pvcs "$DELETE_PVCS" --operator-namespace "$OP_NS"
+
+# Deploy the kube-arangodb operator stack, then wait until it is serving.
+# One command for: ensure-stack, preview, apply, operator pod ready, CRD present.
+# Usage: just arangodb deploy-operator [--stack <name>] [--namespace <ns>] [--retries <n>] [--interval <s>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("namespace", long="namespace", short="n", help="Namespace the operator is installed into")]
+[arg("retries", long="retries", short="r", help="Readiness probe attempts (default 60)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+deploy-operator stack="" namespace="operators" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-operator"
+    NS="{{ namespace }}"
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    echo "Deploying $FOLDER (stack '$STACK') into namespace '$NS'..."
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just arangodb _wait-ready --namespace "$NS" \
+        --selector app.kubernetes.io/name=kube-arangodb \
+        --count 1 --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo "Checking the ArangoDeployment CRD is registered..."
+    kubectl get crd arangodeployments.database.arangodb.com
+
+    echo "Operator ready in namespace '$NS'."
+
+# Deploy the production ArangoDB Cluster, then wait for every member pod.
+# One command for: ensure-stack, root-password secret, preview, apply, readiness.
+# The root password is never generated or defaulted — you supply it.
+# Usage: just arangodb deploy-cluster --root-password <pw> [--namespace <ns>] [--stack <name>] [--members <n>] [--retries <n>] [--interval <s>]
+[arg("root_password", long="root-password", short="p", help="ArangoDB root password (required; stored encrypted as properties.secret.password)")]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the ArangoDeployment")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("members", long="members", short="m", help="Expected member pod count (3 agents + 3 dbservers + 3 coordinators)")]
+[arg("retries", long="retries", short="r", help="Readiness probe attempts (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-cluster"
+    NS="{{ namespace }}"
+    ROOT_PASSWORD="{{ root_password }}"
+
+    if [[ -z "$ROOT_PASSWORD" ]]; then
+        echo "Error: --root-password is required; this recipe never invents a root password." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    echo "Deploying $FOLDER (stack '$STACK') into namespace '$NS'..."
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi set-secret --folder "$FOLDER" --stack "$STACK" \
+        --key properties.secret.password --value "$ROOT_PASSWORD"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just arangodb _wait-ready --namespace "$NS" \
+        --selector arango_deployment=arangodb \
+        --count "{{ members }}" --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    echo "Coordinator Services in $NS:"
+    kubectl get svc -n "$NS" -l arango_deployment=arangodb
+
+# Create the application user and the seven logical databases, then wait.
+# One command for: ensure-stack, user+password secrets, preview, apply, Job wait.
+# Usage: just arangodb create-databases --app-user <user> --app-password <pw> [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("app_user", long="app-user", short="u", help="Application database user (required; stored encrypted)")]
+[arg("app_password", long="app-password", short="p", help="Application user password (required; stored encrypted)")]
+[arg("namespace", long="namespace", short="n", help="Namespace the Job runs in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 60)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+create-databases app_user app_password namespace="prod" stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="create-arangodb-databases"
+    NS="{{ namespace }}"
+    APP_USER="{{ app_user }}"
+    APP_PASSWORD="{{ app_password }}"
+
+    if [[ -z "$APP_USER" || -z "$APP_PASSWORD" ]]; then
+        echo "Error: --app-user and --app-password are both required." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --secret "$FOLDER:properties.arangodbSecret.user=$APP_USER" \
+        --secret "$FOLDER:properties.arangodbSecret.pass=$APP_PASSWORD"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    # Job name is "<arangodbSecret.name>-create-databases" (main.go createJob).
+    SECRET_NAME=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.arangodbSecret.name 2>/dev/null || echo "backend")
+    just arangodb _wait-job --namespace "$NS" --job "${SECRET_NAME}-create-databases" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    kubectl get secret -n "$NS" "$SECRET_NAME"
+
+# Create namespaces prod + operators and the shared `dictycr` backup Secret.
+# One command for: ensure-stack, all four secret values, preview, apply, verify.
+# Apply this FIRST — the operator's Helm release does not create its namespace.
+# Usage: just arangodb configure-backup-secrets --restic-password <pw> --gcs-project <id> --gcs-key-file <path> [--key-name <k>] [--namespace <ns>] [--stack <name>]
+[arg("restic_password", long="restic-password", short="p", help="restic repository password (required)")]
+[arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (required)")]
+[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (required; read at pulumi up time)")]
+[arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
+[arg("namespace", long="namespace", short="n", help="Namespace the Secret is created in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[no-cd]
+configure-backup-secrets restic_password gcs_project gcs_key_file key_name="gcsCredentials" namespace="prod" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="backup_secrets"
+    NS="{{ namespace }}"
+    RESTIC_PASSWORD="{{ restic_password }}"
+    GCS_PROJECT="{{ gcs_project }}"
+    KEY_FILE="{{ gcs_key_file }}"
+    KEY_NAME="{{ key_name }}"
+
+    if [[ -z "$RESTIC_PASSWORD" || -z "$GCS_PROJECT" || -z "$KEY_FILE" ]]; then
+        echo "Error: --restic-password, --gcs-project and --gcs-key-file are all required." >&2
+        exit 1
+    fi
+    if [[ ! -f "$KEY_FILE" ]]; then
+        echo "Error: service account key '$KEY_FILE' does not exist on this machine." >&2
+        exit 1
+    fi
+    # Absolute path: backup_secrets/main.go reads this file with os.ReadFile at
+    # `pulumi up` time, and pulumi -C changes the working directory, so a
+    # relative path would resolve against the project dir, not your shell.
+    KEY_FILE=$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --secret "$FOLDER:properties.secret.resticPass=$RESTIC_PASSWORD" \
+        --secret "$FOLDER:properties.secret.gcsProject=$GCS_PROJECT" \
+        --secret "$FOLDER:properties.secret.serviceAccount.keyname=$KEY_NAME" \
+        --secret "$FOLDER:properties.secret.serviceAccount.filepath=$KEY_FILE"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    SECRET_NAME=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.secret.name 2>/dev/null || echo "dictycr")
+    EXTRA_NS=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.extraNamespace 2>/dev/null || echo "operators")
+
+    echo
+    kubectl get namespace "$NS" "$EXTRA_NS"
+    kubectl get secret "$SECRET_NAME" -n "$NS"
+    echo "Keys in $SECRET_NAME:"
+    kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -r '.data | keys[] | "  " + .'
+
+# Deploy the backup bucket, CronJob and immediate Job, then wait for that Job.
+# One command for: ensure-stack, preview, apply, Job wait, log tail, CronJob check.
+# Usage: just arangodb deploy-backup [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Namespace the backup Job runs in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+deploy-backup namespace="prod" stack="" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-backup"
+    NS="{{ namespace }}"
+    JOB="arangodb-backup-job"
+    CRONJOB="arangodb-backup-cronjob"
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    echo "Backup log tail (restic summary should be at the end):"
+    kubectl logs -n "$NS" "job/$JOB" --tail=30 || \
+        echo "Job already removed by its 15-minute TTL — nothing left to tail."
+
+    echo
+    kubectl get cronjob -n "$NS" "$CRONJOB"
+
+# Apply one of the optional loader projects (arangodb-dataloader,
+# load-content-from-s3, load-uniprot-mapping).
+# One command for: stack config check, ensure-stack, preview, apply, Job listing.
+# Usage: just arangodb deploy-loader --folder <project> [--namespace <ns>] [--stack <name>]
+[arg("folder", long="folder", short="f", help="Loader project folder (required)")]
+[arg("namespace", long="namespace", short="n", help="Namespace whose Jobs are listed afterwards")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[no-cd]
+deploy-loader folder namespace="prod" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="{{ folder }}"
+    NS="{{ namespace }}"
+
+    if [[ ! -f "$FOLDER/Pulumi.yaml" ]]; then
+        echo "Error: '$FOLDER' is not a Pulumi project (no Pulumi.yaml)." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    if [[ ! -f "$FOLDER/Pulumi.$STACK.yaml" ]]; then
+        echo "Error: $FOLDER/Pulumi.$STACK.yaml does not exist." >&2
+        echo "Loader projects have no production stack config in this repo yet — author it before deploying." >&2
+        exit 1
+    fi
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo
+    kubectl get jobs -n "$NS"
+
+# Run the restore Job that `configure-restore` set up, then follow it to the end.
+# One command for: preview, apply, init-container wait, both container logs,
+# Job completion, scratch PVC report. Every value is read back from the stack
+# config, so it cannot drift from what configure-restore wrote.
+# Usage: just arangodb apply-restore [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 180)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+apply-restore stack="" retries="180" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-restore"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    read_cfg() {
+        local key="$1"
+        if ! pulumi -C "$FOLDER" config get --stack "$STACK" --path "properties.$key" 2>/dev/null; then
+            echo "Error: properties.$key is not set on $FOLDER stack '$STACK'." >&2
+            echo "Run: just arangodb configure-restore --namespace <ns>" >&2
+            exit 1
+        fi
+    }
+
+    NS=$(read_cfg namespace)
+    RESTORE_ID=$(read_cfg restoreId)
+    SERVER=$(read_cfg server)
+    SNAPSHOT=$(read_cfg snapshot)
+    JOB="arangodb-restore-${RESTORE_ID}"
+
+    echo
+    echo "Restoring into ${NS}/${SERVER} as job ${JOB} from snapshot '${SNAPSHOT}'."
+    echo
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo "Waiting for the restic-restore init container to finish..."
+    for i in $(seq 1 "$RETRIES"); do
+        phase=$(kubectl get pods -n "$NS" -l "restore-id=$RESTORE_ID" \
+            -o jsonpath='{.items[0].status.initContainerStatuses[0].state.terminated.reason}' 2>/dev/null || true)
+        code=$(kubectl get pods -n "$NS" -l "restore-id=$RESTORE_ID" \
+            -o jsonpath='{.items[0].status.initContainerStatuses[0].state.terminated.exitCode}' 2>/dev/null || true)
+        if [[ "$phase" == "Completed" ]]; then
+            echo "restic-restore completed."
+            break
+        fi
+        if [[ -n "$phase" && "$code" != "0" && -n "$code" ]]; then
+            echo "Error: restic-restore terminated with reason '$phase' (exit $code)." >&2
+            kubectl logs -n "$NS" "job/$JOB" -c restic-restore --tail=100 || true
+            exit 1
+        fi
+        echo "Waiting for restic-restore (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo
+    echo "--- restic-restore log ---"
+    kubectl logs -n "$NS" "job/$JOB" -c restic-restore --tail=50 || true
+
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "$RETRIES" --interval "$INTERVAL"
+
+    echo
+    echo "--- arangorestore log ---"
+    kubectl logs -n "$NS" "job/$JOB" -c arangorestore --tail=50 || true
+
+    echo
+    kubectl get pvc -n "$NS" -l type=arangodb-restore-scratch || true
+    echo
+    echo "Job and scratch PVC self-delete 1 hour after finishing (ttlSecondsAfterFinished: 3600)."
+    echo "Destroy the stack when done inspecting: just gcp-pulumi remove-resource --folder $FOLDER --stack $STACK"
+
+# List restic snapshots from inside the cluster, using the same `dictycr`
+# secret wiring the restore Job uses. No local restic, no kops state store.
+# Usage: just arangodb list-snapshots-in-cluster --namespace <ns> [--bucket <b>] [--secret <name>] [--image <ref>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the dictycr secret (required)")]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
+[arg("secret", long="secret", short="c", help="Secret holding resticPass/gcsProject/gcsCredentials")]
+[arg("image", long="image", short="m", help="restic image reference")]
+[group('arangodb')]
+[no-cd]
+list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret="dictycr" image="restic/restic:0.17.0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    BUCKET="{{ bucket }}"
+    SECRET="{{ secret }}"
+    IMAGE="{{ image }}"
+    POD="restic-list-$(date -u +%s)"
+
+    # restic's GCS backend needs GOOGLE_APPLICATION_CREDENTIALS to be a file
+    # path, so the key is mounted from the secret rather than passed inline.
+    OVERRIDES=$(jq -nc \
+        --arg name "$POD" --arg image "$IMAGE" --arg repo "gs:${BUCKET}:/" --arg secret "$SECRET" \
+        '{spec:{containers:[{name:$name,image:$image,args:["-r",$repo,"snapshots"],
+          env:[{name:"RESTIC_PASSWORD",valueFrom:{secretKeyRef:{name:$secret,key:"resticPass"}}},
+               {name:"GOOGLE_PROJECT_ID",valueFrom:{secretKeyRef:{name:$secret,key:"gcsProject"}}},
+               {name:"GOOGLE_APPLICATION_CREDENTIALS",value:"/var/secret/gcs-credentials"}],
+          volumeMounts:[{name:"gcs-credentials",mountPath:"/var/secret",readOnly:true}]}],
+          volumes:[{name:"gcs-credentials",secret:{secretName:$secret,items:[{key:"gcsCredentials",path:"gcs-credentials"}]}}]}}')
+
+    kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
+        --image "$IMAGE" --overrides="$OVERRIDES"
+
+# Full post-install check of the pool, operator, storage, members and jobs.
+# Prints one line per check and exits non-zero if a required check fails.
+# Usage: just arangodb verify [--namespace <ns>] [--operator-namespace <ns>] [--members <n>] [--pool <label>] [--node-count <n>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the ArangoDeployment")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace holding the operator")]
+[arg("members", long="members", short="m", help="Expected member pod count (default 9)")]
+[arg("pool", long="pool", short="p", help="Value of the node label 'pool' (default database)")]
+[arg("node_count", long="node-count", short="c", help="Expected node count in that pool (default 3)")]
+[group('arangodb')]
+[no-cd]
+verify namespace="prod" operator_namespace="operators" members="9" pool="database" node_count="3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    OP_NS="{{ operator_namespace }}"
+    WANT_MEMBERS="{{ members }}"
+    POOL="{{ pool }}"
+    WANT_NODES="{{ node_count }}"
+    failures=0
+
+    ok()   { printf 'PASS  %s\n' "$1"; }
+    bad()  { printf 'FAIL  %s\n' "$1"; failures=$((failures + 1)); }
+    warn() { printf 'WARN  %s\n' "$1"; }
+
+    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
+    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
+    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
+        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
+    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
+        ok "$node_count node(s) with pool=$POOL"
+    else
+        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    fi
+    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
+        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
+    else
+        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
+    fi
+
+    operator=$(kubectl get pods -n "$OP_NS" -l app.kubernetes.io/name=kube-arangodb -o json 2>/dev/null \
+        | jq '[.items[] | select(.status.phase == "Running")] | length' || echo 0)
+    if [[ "$operator" -ge 1 ]]; then
+        ok "operator Running in $OP_NS"
+    else
+        bad "no Running operator pod in $OP_NS"
+    fi
+
+    for sc in dictycr-balanced dictycr-ssd; do
+        if kubectl get sc "$sc" >/dev/null 2>&1; then
+            ok "StorageClass $sc present"
+        else
+            bad "StorageClass $sc missing"
+        fi
+    done
+
+    if kubectl get arangodeployment -n "$NS" arangodb >/dev/null 2>&1; then
+        ok "ArangoDeployment arangodb present in $NS"
+    else
+        bad "ArangoDeployment arangodb missing in $NS"
+    fi
+
+    members_ready=$(kubectl get pods -n "$NS" -l arango_deployment=arangodb -o json \
+        | jq '[.items[] | select(.status.phase == "Running")
+        | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)] | length')
+    if [[ "$members_ready" -eq "$WANT_MEMBERS" ]]; then
+        ok "$members_ready/$WANT_MEMBERS member pods Running and ready"
+    else
+        bad "$members_ready/$WANT_MEMBERS member pods Running and ready"
+    fi
+
+    pvc_json=$(kubectl get pvc -n "$NS" -l arango_deployment=arangodb -o json)
+    check_pvcs() {
+        local class="$1" size="$2" want="$3" label="$4"
+        local n
+        n=$(printf '%s\n' "$pvc_json" | jq --arg c "$class" --arg s "$size" \
+            '[.items[] | select(.spec.storageClassName == $c)
+              | select(.status.phase == "Bound")
+              | select(.spec.resources.requests.storage == $s)] | length')
+        if [[ "$n" -eq "$want" ]]; then
+            ok "$n Bound $label PVC(s) at $size on $class"
+        else
+            bad "$n Bound $label PVC(s) at $size on $class, expected $want"
+        fi
+    }
+    check_pvcs dictycr-ssd 20Gi 3 agent
+    check_pvcs dictycr-balanced 150Gi 3 dbserver
+
+    coord=$(kubectl get svc -n "$NS" -l arango_deployment=arangodb -o json \
+        | jq '[.items[] | select([.spec.ports[]? | select(.port == 8529)] | length > 0)] | length')
+    if [[ "$coord" -ge 1 ]]; then
+        ok "$coord Service(s) exposing port 8529 in $NS"
+    else
+        bad "no Service exposing port 8529 in $NS"
+    fi
+
+    dbjobs=$(kubectl get jobs -n "$NS" -l app=arangodb-create-databases -o json 2>/dev/null \
+        | jq '[.items[] | select((.status.succeeded // 0) >= 1)] | length' || echo 0)
+    total_dbjobs=$(kubectl get jobs -n "$NS" -l app=arangodb-create-databases -o json 2>/dev/null \
+        | jq '.items | length' || echo 0)
+    if [[ "$dbjobs" -ge 1 ]]; then
+        ok "create-databases Job succeeded"
+    elif [[ "$total_dbjobs" -eq 0 ]]; then
+        warn "no create-databases Job found — it has a 15-minute TTL, check Secret 'backend' instead"
+    else
+        bad "create-databases Job present but not succeeded"
+    fi
+
+    if kubectl get cronjob -n "$NS" arangodb-backup-cronjob >/dev/null 2>&1; then
+        ok "backup CronJob present"
+    else
+        warn "no arangodb-backup-cronjob — expected only if the backup stack was applied"
+    fi
+
+    echo
+    echo "Zone spread is preferred (soft anti-affinity), not guaranteed — not checked here."
+    if [[ "$failures" -ne 0 ]]; then
+        echo "Error: $failures check(s) failed." >&2
+        exit 1
+    fi
+    echo "All required checks passed."
