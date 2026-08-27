@@ -234,22 +234,32 @@ The Job must show `Completed`; the log tail should end with restic's backup summ
 
 ### 4.2 Restore drill
 
-`arangodb-restore/Pulumi.prod.yaml` runs entirely inside the target cluster: one Job, an init container (`restic restore <snapshot> --target /restore`) followed by a main container (`arangorestore --input-directory /restore/arangodump ...`), sharing a generic ephemeral scratch volume. No laptop download, no Docker-on-your-machine, no port-forward — the same shape as [§4.1](#41-scheduled-backup)'s backup Job, run in reverse.
+One in-cluster Job: init container `restic restore` → main container `arangorestore`, sharing an ephemeral scratch volume. [§4.1](#41-scheduled-backup)'s backup Job in reverse — no laptop download, no local Docker, no port-forward.
 
-Run this against a **clone** cluster or scratch namespace for a drill. The same Job is also the real disaster-recovery mechanism if you are restoring in place after data loss — the only thing that changes is which cluster's `$PULUMI_STACK`/kubeconfig is active and which `namespace`/`server` you configure.
+Run a drill against a **clone** cluster or scratch namespace. The same Job is the real disaster-recovery path when restoring in place after data loss; only the active kubeconfig/`$PULUMI_STACK` and the `namespace`/`server` you configure differ.
 
-1. **Choose a `restoreId`, `snapshot`, and `confirmTarget`.** `restoreId` is a short DNS-1123-safe label (e.g. `drill-2026-06-01`) embedded in the Job name (`arangodb-restore-<restoreId>`), so a repeated apply with the same id updates that Job while a new id always creates a fresh one instead of colliding with a prior attempt. `snapshot` is `latest` or a specific restic snapshot ID (list them first if you need a point in time older than the most recent backup — see the verify step below). `confirmTarget` must **exactly** equal `<namespace>/<server>/<restoreId>` — this is a deliberate typed-confirmation gate; `arangodb-restore/main.go` refuses to build the Job spec if it doesn't match, so a stale or copy-pasted config can't silently restore into the wrong target.
+**Before step 1**, the target namespace needs a reachable coordinator — on a clone that means a fresh `arangodb-cluster` apply ([§2.1](#21-operator)–[§2.2](#22-cluster-instance)) there first — plus Secrets `arangodb-pass` and `dictycr`, which this stack reads and never creates (same refs as [§4.1](#41-scheduled-backup)'s table).
+
+1. **Configure the stack** — one non-interactive command replaces `ensure-stack` plus a single `pulumi config set-all`:
 
    ```bash
-   just gcp-pulumi ensure-stack --folder arangodb-restore
-   just gcp-pulumi set-config --folder arangodb-restore --key properties.namespace --value "<target-namespace>"
-   just gcp-pulumi set-config --folder arangodb-restore --key properties.server --value "<coordinator-service-name>"
-   just gcp-pulumi set-config --folder arangodb-restore --key properties.restoreId --value "<restoreId>"
-   just gcp-pulumi set-config --folder arangodb-restore --key properties.snapshot --value "latest"
-   just gcp-pulumi set-config --folder arangodb-restore --key properties.confirmTarget --value "<target-namespace>/<coordinator-service-name>/<restoreId>"
+   just arangodb configure-restore --namespace <target-namespace>
    ```
 
-   Confirm the target coordinator's real Service name first with `kubectl get svc -n <target-namespace> -l arango_deployment=arangodb` if it's not the `arangodb` default — it must be reachable from the restore Job's namespace, so on a clone cluster this is usually a fresh `arangodb-cluster` apply ([§2.1](#21-operator)–[§2.2](#22-cluster-instance)) in that same namespace first. `arangodb-pass` and `dictycr` must already exist there too (they're read, not created, by this stack — same secret refs as [§4.1](#41-scheduled-backup)'s table).
+   `--namespace` is the only required flag; everything else is derived and printed as a summary before the config is written:
+
+   | Config key | Derived by default | Override |
+   |------------|--------------------|----------|
+   | `namespace` | none — your call, no safe default | `--namespace <ns>` (required) |
+   | `server` | first Service in that namespace labelled `arango_deployment=arangodb`, skipping per-member (`-agnt-`/`-crdn-`/`-prmr-`/`-sngl-`) and `-int`/`-ea` Services; falls back to literal `arangodb` **with a printed warning** if nothing matches or `kubectl` can't reach the cluster | `--server <svc>` |
+   | `restoreId` | `drill-<UTC YYYYMMDD-HHMMSS>` — DNS-1123-safe and unique per run | `--restore-id <id>` |
+   | `snapshot` | `latest` | `--snapshot <restic-snapshot-id>` |
+   | `confirmTarget` | computed `<namespace>/<server>/<restoreId>` | never typed by hand, not a flag |
+   | stack | `$PULUMI_STACK` from `cluster-env` | `--stack <name>` |
+
+   Read the printed summary before moving on. Two things still need your judgment: the namespace, and whether the resolved `server` is really the coordinator you mean — if the fallback warning fired, discovery found nothing, so re-run with `--server`. For a point in time older than the last backup, get a snapshot id from step 3 and pass `--snapshot <id>`.
+
+   > **Why the ceremony**: `arangodb-restore` refuses to build the Job unless `confirmTarget` equals `<namespace>/<server>/<restoreId>` exactly (`types.go`, `validateConfirmTarget`), so a stale or copy-pasted config cannot silently restore into the wrong target. The recipe computes that string from the values it just resolved — the gate is unchanged, only the double-typing is gone. It also rejects a `--restore-id` that isn't a DNS-1123 label or is over 46 chars, matching the Go-side limit that keeps the Job name `arangodb-restore-<restoreId>` under 63 chars. Reusing an id updates that same Job; a new id always creates a fresh one.
 
 2. **Preview and apply:**
 
@@ -266,13 +276,15 @@ Run this against a **clone** cluster or scratch namespace for a drill. The same 
    kubectl logs -n <target-namespace> job/arangodb-restore-<restoreId> -c arangorestore
    ```
 
-   `restic-restore` failing usually means a wrong `snapshot` ID, a `dictycr` secret mismatch, or the bucket has no snapshots yet (backup never succeeded, [§4.1](#41-scheduled-backup)). List available snapshots by running the same restic image manually if needed:
+   `restic-restore` failing usually means a wrong `snapshot` ID, a `dictycr` secret mismatch, or an empty bucket (backup never succeeded, [§4.1](#41-scheduled-backup)). To list available snapshots, run restic in-cluster with the same secret wiring the restore Job uses (`RESTIC_PASSWORD` from `dictycr.resticPass`, credentials mounted as a file — restic's GCS backend needs a path, not an inline value):
 
    ```bash
    kubectl run restic-list --rm -it --restart=Never -n <target-namespace> \
      --image restic/restic:0.17.0 \
-     --overrides='{"spec":{"containers":[{"name":"restic-list","image":"restic/restic:0.17.0","args":["-r","gs:restic-arangodb-backup-prod:/","snapshots"],"envFrom":[{"secretRef":{"name":"dictycr"}}]}]}}'
+     --overrides='{"spec":{"containers":[{"name":"restic-list","image":"restic/restic:0.17.0","args":["-r","gs:restic-arangodb-backup-prod:/","snapshots"],"env":[{"name":"RESTIC_PASSWORD","valueFrom":{"secretKeyRef":{"name":"dictycr","key":"resticPass"}}},{"name":"GOOGLE_PROJECT_ID","valueFrom":{"secretKeyRef":{"name":"dictycr","key":"gcsProject"}}},{"name":"GOOGLE_APPLICATION_CREDENTIALS","value":"/var/secret/gcs-credentials"}],"volumeMounts":[{"name":"gcs-credentials","mountPath":"/var/secret","readOnly":true}]}],"volumes":[{"name":"gcs-credentials","secret":{"secretName":"dictycr","items":[{"key":"gcsCredentials","path":"gcs-credentials"}]}}]}}'
    ```
+
+   With `restic` installed locally and a kops state store in the shell, `just arangodb list-restic-snapshots --bucket restic-arangodb-backup-prod --namespace <target-namespace>` does the same thing from your laptop. Either way, re-run step 1 with `--snapshot <id>`, then re-apply.
 
 4. **Verify:**
 
@@ -357,7 +369,7 @@ Pass: 3 tainted `pool=database` nodes; operator Ready; both StorageClasses; 9 me
 | App cannot connect | Wrong host or secret | [§2.2](#22-cluster-instance) DNS + Secret `backend` |
 | DB Job 401 | Root password mismatch | Secret `arangodb-pass` vs stack config |
 | Backup permission error | Missing bucket or `dictycr` | [§4.1](#41-scheduled-backup) |
-| `arangodb-restore` apply fails, "confirmTarget must exactly equal" | Typo, or reused a stale `restoreId`/`namespace`/`server` combo | Recompute the exact string and re-run `set-config` — do not weaken the check, it exists to stop restores into the wrong target |
+| `arangodb-restore` apply fails, "confirmTarget must exactly equal" | Hand-edited config, or a stale `restoreId`/`namespace`/`server` combo left from a prior run | Re-run `just arangodb configure-restore --namespace <ns>` ([§4.2](#42-restore-drill)) — it recomputes all five values consistently. Do not weaken the check; it exists to stop restores into the wrong target |
 | `restic-restore` init container fails | Wrong `snapshot` ID, `dictycr` mismatch, or bucket has no snapshots | List snapshots ([§4.2](#42-restore-drill) step 3); confirm [§4.1](#41-scheduled-backup) actually completed at least once |
 | `arangorestore` container never starts | Init container still running or failed | `kubectl get pods -n <ns> -l restore-id=<id>` — initContainers must show `Completed` before the main container starts, that's Job ordering, not a bug |
 
