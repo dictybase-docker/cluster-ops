@@ -10,7 +10,8 @@ create-sa project="" sa_name="pulumi-manager" roles_file="" output_file="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -64,7 +65,8 @@ create-sa-key project="" sa_name key_file:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -92,7 +94,8 @@ sa-details project_id="" sa_name output_file:
     set -euo pipefail
     gcloud config set disable_prompts true
 
-    project_id="${PROJECT_ID:-{{ project_id }}}"
+    project_id="{{ project_id }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project-id."
         exit 1
@@ -122,7 +125,8 @@ create-hmac-key project="" sa_name output_file:
     set -euo pipefail
     gcloud config set disable_prompts true
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -162,7 +166,8 @@ setup-sa-manager project_id="" key_file="":
 
     root="{{ invocation_directory() }}"
 
-    project_id="${PROJECT_ID:-{{ project_id }}}"
+    project_id="{{ project_id }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "${project_id}" ]; then
         echo "ERROR: --project-id is required (or set PROJECT_ID in the cluster env file)."
         exit 1

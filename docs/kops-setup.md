@@ -9,6 +9,8 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 - **Declarative Git bundle (`_starter`) schema**: Verified cross-version compatible on kops v1.29.2 (dev) and v1.36.1 (prod) — both `cluster.yaml` and `instancegroups.yaml` pass `kops replace` validation on both binaries. Full end-to-end re-creation still pending first live-target run.
 
 > **Two stores, one handoff.** Before [§3](#3-cluster-bootstrap-git-native-flow), the env file `.env.<env>.<cluster>` holds `PROJECT_ID`, credentials, and local paths. From §3 onward, cluster identity and shape live **only** in Git under `config/kops/<cluster>/`.
+>
+> **Once inside `just cluster-env`, stop typing `--cluster` and `--project`.** The shell exports `CLUSTER_NAME` and `PROJECT_ID`; every recipe below reads them automatically. Pass a flag only to override, or when a command runs *before* you've entered the shell.
 
 ## Table of Contents
 
@@ -27,62 +29,50 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 
 ## Quick Reference
 
-For experienced users. Full details in the sections below.
+For experienced users. Each composite recipe folds several lower-level ones — see [§8](#8-related-documents) for what each one does internally. Comments mark the four points that genuinely need a human: a shell login/logout, or a review decision.
 
 ```bash
-# 1. Verify core system tools (go, just, gcloud, jq, envsubst)
+# 1. Verify tools, then create and enter the cluster shell
 just check-tools --skip-asdf yes
+just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>
+just cluster-env --env <env> --cluster <cluster-name>
 
-# 2. Create and enter the cluster env file
-just create-cluster-env --env <env> --cluster <name> --project <project-id>
-just cluster-env --env <env> --cluster <name>
+# --- everything below runs inside that shell; CLUSTER_NAME/PROJECT_ID are set ---
 
-# 3. Install pinned tools, then verify everything
-just install-tools
-just check-tools
+# 2. Install pinned tools and verify, generate the node SSH keypair
+just prepare-tools
+just gcp-cluster generate-ssh-key
 
-# 4. Generate the node SSH keypair
-just gcp-cluster generate-ssh-key --project <project-id>
-
-# 5. Point the env file at sa-manager, re-enter, configure gcloud
-just cluster-cred --env <env> --cluster <name> --key credentials/<project-id>/sa-manager.json
+# 3. Get sa-manager, then rotate credential + gcloud identity
+just gcp-sa setup-sa-manager
+just cluster-cred --key credentials/${PROJECT_ID}/sa-manager.json
+# >>> shell boundary: re-enter so the new credential takes effect
 exit
-just cluster-env --env <env> --cluster <name>
+just cluster-env --env <env> --cluster <cluster-name>
 just gcp-cluster configure-gcloud
 
-# 6. Enable APIs and create the least-privilege SA
-just gcp-api enable-apis  --project ${PROJECT_ID} --api-file gcs-files/apis/enabled_apis.txt
-just gcp-api disable-apis --project ${PROJECT_ID} --api-file gcs-files/apis/disable_enabled_apis.txt
-just gcp-sa create-sa --project ${PROJECT_ID} --sa-name kops-cluster-creator \
-  --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
-  --output-file credentials/${PROJECT_ID}/kops-cluster-creator.json
-
-# 7. Rotate to the narrower key
-just cluster-cred --env <env> --cluster <name> --key credentials/${PROJECT_ID}/kops-cluster-creator.json
+# 4. Enable APIs, create the least-privilege SA, rotate again
+just gcp-cluster setup-kops-creator
+just cluster-cred --key credentials/${PROJECT_ID}/kops-cluster-creator.json
+# >>> shell boundary: re-enter so the narrower credential takes effect
 exit
-just cluster-env --env <env> --cluster <name>
+just cluster-env --env <env> --cluster <cluster-name>
+just gcp-cluster configure-gcloud --name kops-cluster-creator
 
-# 8. Bootstrap the Git bundle — Git owns identity from here
+# 5. Find your API-access IP, then bootstrap the local Git bundle (zero cloud calls)
 just gcp-cluster show-public-ip
-just gcp-cluster bootstrap-bundle --cluster <name> --project <project-id> --api-access-cidr "<ip>/32"
+just gcp-cluster bootstrap-bundle --api-access-cidr "<ip>/32"
 
-# 9. Review, then commit the bundle
-git add config/kops/<name>/ && git commit -m "<name>: initial cluster manifest bundle"
+# >>> human boundary: review the generated YAML before it touches the cloud
+$EDITOR config/kops/${CLUSTER_NAME}/cluster.yaml
+$EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
+git add config/kops/${CLUSTER_NAME}/ && git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 
-# 10. Provision
-just gcp-cluster create-state-bucket --project <project-id> --bucket-name kops-state-<name>
-just gcp-cluster replace-manifests  --cluster <name> --force yes
-just gcp-cluster upload-ssh-secret  --cluster <name> --ssh-key credentials/<project-id>/k8sVM.pub
-just gcp-cluster plan-cluster       --cluster <name>
-just gcp-cluster update-cluster     --cluster <name>
+# 6. Create the state bucket, push manifests, upload SSH secret, apply, validate
+just gcp-cluster create-cluster
 
-# 11. Validate
-just gcp-cluster validate-cluster
-just gcp-cluster validate-kops-ha
-just gcp-cluster validate-hardening
-
-# 12. Explore
-just gcp-cluster export-kubeconfig --cluster <name>
+# 7. Explore
+just gcp-cluster export-kubeconfig
 just gcp-cluster k9s
 ```
 
@@ -107,24 +97,18 @@ You need a GCP project with billing enabled and the core system tools installed.
 → [Prerequisites](reference/kops/prerequisites.md) · [Cluster env](reference/kops/cluster-env.md) · [Tool versions](reference/kops/tool-versions.md) · [File isolation](reference/kops/file-isolation.md)
 
 ```bash
-# Core system tools: go, just, gcloud, jq, envsubst
 just check-tools --skip-asdf yes
 
-# Create the per-cluster env file, then enter its sub-shell
 just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>
 just cluster-env --env <env> --cluster <cluster-name>
 
-# Install and verify the asdf-pinned tools (kubectl, kops, pulumi, velero, helm, k9s)
-just install-tools
-just check-tools
-
-# Generate the node SSH keypair
-just gcp-cluster generate-ssh-key --project <project-id>
+just prepare-tools
+just gcp-cluster generate-ssh-key
 ```
 
-Stay inside the `cluster-env` sub-shell for the rest of this guide. The file is gitignored and holds `PROJECT_ID`, credential paths, kubeconfig path, and the SSH public key — never kops name, state store, or Kubernetes version, which become Git fields at [§3](#3-cluster-bootstrap-git-native-flow).
+`cluster-env` exports `PROJECT_ID` and `CLUSTER_NAME` (session-only — never written to the gitignored `.env.<env>.<cluster>` file) for the life of that shell. `prepare-tools` folds `install-tools` + `check-tools`. `generate-ssh-key` needs no flags once `PROJECT_ID` is set.
 
-Need a different `kops`/`kubectl` binary for this cluster than the repo default? Use `just pin-tool-versions --env <env> --cluster <cluster-name>` ([tool versions](reference/kops/tool-versions.md#create-a-per-cluster-pin-file)).
+Stay inside the `cluster-env` sub-shell for the rest of this guide. Need a different `kops`/`kubectl` binary for this cluster than the repo default? Use `just pin-tool-versions` ([tool versions](reference/kops/tool-versions.md#create-a-per-cluster-pin-file)).
 
 ---
 
@@ -134,40 +118,30 @@ Need a different `kops`/`kubectl` binary for this cluster than the repo default?
 
 ## 2. Service Accounts & Authentication
 
-Start with the broad `sa-manager` identity, use it to enable APIs and mint the least-privilege `kops-cluster-creator`, then rotate to that narrower key.
+Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two shell logins are unavoidable — each new credential must be re-sourced.
 → [Service accounts](reference/kops/service-accounts.md)
 
 ```bash
 # Obtain sa-manager (project owners only; otherwise ask the owner for the JSON key)
-just gcp-sa setup-sa-manager --project-id ${PROJECT_ID}
+just gcp-sa setup-sa-manager
 
-# Point the env file at it, re-enter the shell, configure gcloud
-just cluster-cred --env <env> --cluster <cluster-name> \
-  --key credentials/${PROJECT_ID}/sa-manager.json
+# Rotate credential + gcloud identity to sa-manager
+just cluster-cred --key credentials/${PROJECT_ID}/sa-manager.json
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 just gcp-cluster configure-gcloud
 
-# Phase 1a / 1b — enable required APIs, disable unused ones
-just gcp-api enable-apis  --project ${PROJECT_ID} --api-file gcs-files/apis/enabled_apis.txt
-just gcp-api disable-apis --project ${PROJECT_ID} --api-file gcs-files/apis/disable_enabled_apis.txt
+# Enable required APIs, disable unused ones, create kops-cluster-creator
+just gcp-cluster setup-kops-creator
 
-# Phase 2 — create the least-privilege SA
-just gcp-sa create-sa --project ${PROJECT_ID} --sa-name kops-cluster-creator \
-  --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
-  --output-file credentials/${PROJECT_ID}/kops-cluster-creator.json
-
-# Rotate to the narrower key — both the env credential AND the gcloud identity
-just cluster-cred --env <env> --cluster <cluster-name> \
-  --key credentials/${PROJECT_ID}/kops-cluster-creator.json
+# Rotate credential + gcloud identity to kops-cluster-creator
+just cluster-cred --key credentials/${PROJECT_ID}/kops-cluster-creator.json
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 just gcp-cluster configure-gcloud --name kops-cluster-creator
 ```
 
-`configure-gcloud` replaces the five-command `gcloud config configurations` sequence and reads the identity from the key's own `client_email`.
-
-> **Rotate both halves.** `cluster-cred` only changes `GOOGLE_APPLICATION_CREDENTIALS`, which authenticates recipes and libraries. Direct `gcloud` commands authenticate through the *named configuration*, so without the second `configure-gcloud` call your shell keeps acting as `sa-manager`. Running it with `--name kops-cluster-creator` creates a separate configuration, leaving `sa-manager` intact for the rare task that still needs it ([service accounts](reference/kops/service-accounts.md#rotate-to-the-narrower-key)).
+`setup-kops-creator` folds Phase 1a (enable APIs) + Phase 1b (disable unused APIs) + Phase 2 (create the SA) into one call. `cluster-cred` defaults `--env`/`--cluster` from the active shell, so only `--key` needs typing. `configure-gcloud --name kops-cluster-creator` uses a *separate* named configuration, so `sa-manager` stays available for the rare task that needs it.
 
 ---
 
@@ -181,47 +155,27 @@ just gcp-cluster configure-gcloud --name kops-cluster-creator
 
 ## 3. Cluster Bootstrap (Git-Native Flow)
 
-`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**.
+`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**. Review and commit before `create-cluster` touches the cloud.
 → [Bootstrap detail](reference/kops/bootstrap.md)
 
 ```bash
-# Step 3.1 — render the local bundle (find your CIDR first)
+# Step 3.1 — find your API-access IP, then render the local bundle
 just gcp-cluster show-public-ip
-just gcp-cluster bootstrap-bundle \
-  --cluster <cluster-name> \
-  --project <project-id> \
-  --api-access-cidr "<your-ip>/32"
+just gcp-cluster bootstrap-bundle --api-access-cidr "<your-ip>/32"
 
 # Step 3.2 — review the generated YAML, then commit it
-$EDITOR config/kops/<cluster-name>/cluster.yaml
-$EDITOR config/kops/<cluster-name>/instancegroups.yaml
-git add config/kops/<cluster-name>/
-git commit -m "<cluster-name>: initial cluster manifest bundle"
+$EDITOR config/kops/${CLUSTER_NAME}/cluster.yaml
+$EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
+git add config/kops/${CLUSTER_NAME}/
+git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 
-# Step 3.3 — create the hardened state bucket
-just gcp-cluster create-state-bucket \
-  --project <project-id> \
-  --bucket-name kops-state-<cluster-name>
-
-# Step 3.4 — push the committed bundle into state storage
-just gcp-cluster replace-manifests --cluster <cluster-name> --force yes
-
-# Step 3.5 — upload the public SSH key into kops state
-just gcp-cluster upload-ssh-secret \
-  --cluster <cluster-name> \
-  --ssh-key credentials/<project-id>/k8sVM.pub
-
-# Step 3.6 — preview, then apply (both are kOps-version aware)
-just gcp-cluster plan-cluster   --cluster <cluster-name>
-just gcp-cluster update-cluster --cluster <cluster-name>
-
-# Step 3.7 — validate health, HA topology, and hardening addons
-just gcp-cluster validate-cluster
-just gcp-cluster validate-kops-ha
-just gcp-cluster validate-hardening
+# Steps 3.3–3.7 — bucket, push manifests, SSH secret, apply, validate
+just gcp-cluster create-cluster
 ```
 
-`show-public-ip` prints a ready-to-paste `<ip>/32` and refuses a private address that would lock you out. Generated defaults — Kubernetes 1.28.8, Cilium, pd-ssd etcd, CSI driver, hardening addons, and the `stateless-web` / `stateful-db` / `batch-spot` pools — are listed in [bootstrap detail](reference/kops/bootstrap.md#generated-defaults).
+`create-cluster` folds create-state-bucket (idempotent) → replace-manifests (with the one-time `--force` a first push needs) → upload-ssh-secret → plan-cluster → update-cluster → drift-manifests → validate-cluster → validate-kops-ha → validate-hardening, in that order. It is the **same recipe** used for [post-teardown recreation](#65-declarative-re-creation) — both start from "no live cluster, SSH secret not yet uploaded," so the steps are identical.
+
+`show-public-ip` prints a ready-to-paste `<ip>/32` and refuses a private address that would lock you out — deliberately not auto-applied, since choosing between your current IP, a VPN range, or `0.0.0.0/0` is an operator decision. Generated defaults — Kubernetes 1.28.8, Cilium, pd-ssd etcd, CSI driver, hardening addons, and the `stateless-web` / `stateful-db` / `batch-spot` pools — are listed in [bootstrap detail](reference/kops/bootstrap.md#generated-defaults).
 
 ---
 
@@ -230,23 +184,23 @@ just gcp-cluster validate-hardening
 
 ## 4. Day-2 Operations (Git-First Workflow)
 
-Every configuration and scaling change is edit YAML → commit → push to state store → preview → apply → verify no drift.
+Every configuration and scaling change is edit YAML → commit → apply → verify no drift.
 → [Day-2 operations](reference/kops/day2-operations.md)
 
 ```bash
-$EDITOR config/kops/<cluster-name>/instancegroups.yaml
-git commit -am "<cluster-name>: scale stateless-web pool to 8"
-just gcp-cluster replace-manifests --cluster <cluster-name>
-just gcp-cluster plan-cluster      --cluster <cluster-name>
-just gcp-cluster update-cluster    --cluster <cluster-name>
-just gcp-cluster drift-manifests   --cluster <cluster-name>
+$EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
+git commit -am "${CLUSTER_NAME}: scale stateless-web pool to 8"
+
+just gcp-cluster apply-cluster
 ```
+
+`apply-cluster` folds replace-manifests → plan-cluster → update-cluster → drift-manifests. It does **not** touch the SSH secret — `kops create secret` is not safely repeatable against a live cluster, unlike `create-cluster` which only ever runs against a cluster that doesn't have one yet.
 
 Changing `machineType`, disk size, `image`, or `kubernetesVersion` also needs a rolling update; pool scaling and CIDR changes do not ([change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix)):
 
 ```bash
-just gcp-cluster rolling-update --cluster <cluster-name>            # dry-run inspection
-just gcp-cluster rolling-update --cluster <cluster-name> --yes yes  # execute
+just gcp-cluster rolling-update            # dry-run inspection
+just gcp-cluster rolling-update --yes yes  # execute
 ```
 
 Wire `drift-manifests` (blocking) and `plan-cluster` (review output) into CI on PR and a nightly cron ([CI drift detection](reference/kops/day2-operations.md#drift-detection-ci)). After any break-glass `kops edit`, reconcile Git immediately with `just gcp-cluster export-bundle`.
@@ -255,10 +209,10 @@ Wire `drift-manifests` (blocking) and `plan-cluster` (review output) into CI on 
 
 ## 5. Exploring the Cluster
 
-Export the kubeconfig and open the terminal UI. If `KUBECONFIG` is set from `just cluster-env`, export writes that path.
+Export the kubeconfig and open the terminal UI. `KUBECONFIG` is already set from `just cluster-env`, so export writes that path with no flags.
 
 ```bash
-just gcp-cluster export-kubeconfig --cluster <cluster-name>
+just gcp-cluster export-kubeconfig
 just gcp-cluster k9s
 ```
 
@@ -280,37 +234,20 @@ VMs are transient; the blueprint in Git plus local credentials are durable. Tear
 just gcp-cluster delete-cluster --confirm yes
 
 # Optional: also delete the state bucket and every object version
-just gcp-cluster delete-state-bucket --cluster <cluster-name> --confirm yes
+just gcp-cluster delete-state-bucket --confirm yes
 ```
 
 ### 6.5 Declarative Re-Creation
 
-Rebuild from the Git bundle. Steps 0 and 3 are the ones people forget.
+Rebuild from the Git bundle with the same `create-cluster` recipe used at [initial bootstrap](#3-cluster-bootstrap-git-native-flow) — the preconditions are identical (no live cluster, SSH secret absent). Only step 0 differs: you must re-enter the operator shell first.
 → [Recreation detail](reference/kops/recreation.md)
 
 ```bash
 # 0. Re-enter the operator env (recreate the file first if it is gone)
 just cluster-env --env <env> --cluster <cluster-name>
 
-# 1. Recreate the state bucket — only if it was deleted
-just gcp-cluster create-state-bucket \
-  --project <project-id> --bucket-name kops-state-<cluster-name>
-
-# 2. Push the canonical Git bundle to the state store
-just gcp-cluster replace-manifests --cluster <cluster-name> --force yes
-
-# 3. Restore the SSH secret — mandatory, it lives in kops state, not Git
-just gcp-cluster upload-ssh-secret \
-  --cluster <cluster-name> --ssh-key credentials/<project-id>/k8sVM.pub
-
-# 4. Preview and provision
-just gcp-cluster plan-cluster   --cluster <cluster-name>
-just gcp-cluster update-cluster --cluster <cluster-name>
-
-# 5. Validate
-just gcp-cluster validate-cluster
-just gcp-cluster validate-kops-ha
-just gcp-cluster validate-hardening
+# 1–5. Bucket, manifests, SSH secret, apply, validate — one recipe
+just gcp-cluster create-cluster
 ```
 
 The Kubernetes layer comes back empty — reapply [`pulumi-setup.md`](pulumi-setup.md) then [`arangodb-deploy.md`](arangodb-deploy.md).
@@ -329,7 +266,7 @@ The Kubernetes layer comes back empty — reapply [`pulumi-setup.md`](pulumi-set
 
 ## 8. Related Documents
 
-**Reference details for this guide:**
+**Reference details for this guide** — including exactly which low-level recipes each composite command folds together:
 - [Prerequisites & execution context](reference/kops/prerequisites.md)
 - [The cluster env file](reference/kops/cluster-env.md)
 - [asdf-managed tool versions](reference/kops/tool-versions.md)

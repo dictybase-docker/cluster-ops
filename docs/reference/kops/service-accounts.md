@@ -16,19 +16,22 @@ Work inside the env shell ([cluster env](cluster-env.md)) so `${PROJECT_ID}` is 
 **If you are the project owner**, create the SA and download its key:
 
 ```bash
-just gcp-sa setup-sa-manager --project-id ${PROJECT_ID}
+just gcp-sa setup-sa-manager
 ```
 
 **Otherwise**, ask the owner for the JSON key and save it as `credentials/${PROJECT_ID}/sa-manager.json`.
 
 ## Point the Env File at the Key
 
+Inside an active `cluster-env` shell, `--env`/`--cluster` default from `CLUSTER_ENV`/`CLUSTER_NAME` — only `--key` needs typing:
+
 ```bash
-just cluster-cred --env <env> --cluster <cluster-name> \
-  --key credentials/${PROJECT_ID}/sa-manager.json
+just cluster-cred --key credentials/${PROJECT_ID}/sa-manager.json
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 ```
+
+(Re-entering the shell always needs `--env`/`--cluster` typed — that's the one thing a shell that just exited can't remember for you.)
 
 Optional extra line in the same file (not written by `cluster-cred`):
 
@@ -62,27 +65,25 @@ Creates (or reuses) the `sa-manager` configuration, activates it, authenticates 
 
 The service-account email is read from the key's own `client_email` field, so a differently named key still activates the identity it actually contains.
 
-## Phase 1a — Enable APIs
+## Phases 1a, 1b, 2 — Enable APIs, Disable Unused APIs, Create kops-cluster-creator
+
+One recipe folds all three phases:
 
 ```bash
-just gcp-api enable-apis --project ${PROJECT_ID} \
-  --api-file gcs-files/apis/enabled_apis.txt
+just gcp-cluster setup-kops-creator
 ```
 
-## Phase 1b — Disable Unused APIs
+Internally, in order:
 
-```bash
-just gcp-api disable-apis --project ${PROJECT_ID} \
-  --api-file gcs-files/apis/disable_enabled_apis.txt
-```
+| Phase | Equivalent standalone recipe |
+|-------|-------------------------------|
+| 1a — enable required APIs | `just gcp-api enable-apis --api-file gcs-files/apis/enabled_apis.txt` |
+| 1b — disable unused APIs | `just gcp-api disable-apis --api-file gcs-files/apis/disable_enabled_apis.txt` |
+| 2 — create kops-cluster-creator | `just gcp-sa create-sa --sa-name kops-cluster-creator --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt --output-file credentials/${PROJECT_ID}/kops-cluster-creator.json` |
 
-## Phase 2 — Create kops-cluster-creator
+All three already default `--project` from `PROJECT_ID`; only `--api-file`/`--roles-file`/`--output-file` need typing when run standalone.
 
-```bash
-just gcp-sa create-sa --project ${PROJECT_ID} --sa-name kops-cluster-creator \
-  --roles-file gcs-files/roles-permissions/kops-cluster-creator-roles.txt \
-  --output-file credentials/${PROJECT_ID}/kops-cluster-creator.json
-```
+Use the standalone recipes directly only if you need to re-run one phase in isolation (e.g. re-enabling a single API without touching the SA).
 
 ## Rotate to the Narrower Key
 
@@ -90,8 +91,7 @@ Rotate **both** authentication paths, or direct `gcloud` keeps running as the br
 
 ```bash
 # 1. Env credential — used by recipes, libraries, Pulumi
-just cluster-cred --env <env> --cluster <cluster-name> \
-  --key credentials/${PROJECT_ID}/kops-cluster-creator.json
+just cluster-cred --key credentials/${PROJECT_ID}/kops-cluster-creator.json
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 

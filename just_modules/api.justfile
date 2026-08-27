@@ -9,7 +9,8 @@ enable-apis project="" api_file:
     set -euo pipefail
     gcloud config set disable_prompts true
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -32,7 +33,8 @@ list-enabled-apis project="" output_file:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1
@@ -66,7 +68,8 @@ disable-apis project="" api_file disable_dependent="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project."
         exit 1

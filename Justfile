@@ -116,6 +116,12 @@ install-tools:
     asdf install
     echo "Done: every tool in ${file} installed."
 
+# Install every pinned asdf tool, then verify the full toolchain (core + asdf).
+# Composite of install-tools + check-tools — the one command to run in Section 1.
+# Usage: just prepare-tools
+[group('setup-tools')]
+prepare-tools: install-tools check-tools
+
 # --- Development & Testing ---
 
 # Run Golang tests using Dagger
@@ -213,7 +219,8 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         exit 1
     fi
 
-    project_id="${PROJECT_ID:-{{ project }}}"
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "${project_id}" ]; then
         cluster_manifest="{{ justfile_directory() }}/config/kops/${cluster_name}/cluster.yaml"
         if [ -f "${cluster_manifest}" ]; then
@@ -245,7 +252,8 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         cred="$(cd "$(dirname "${cred}")" && pwd)/$(basename "${cred}")"
     fi
 
-    ssh_key="${SSH_KEY:-{{ ssh_key }}}"
+    ssh_key="{{ ssh_key }}"
+    [ -z "${ssh_key}" ] && ssh_key="${SSH_KEY:-}"
     if [ -z "${ssh_key}" ]; then
         if [ -f "{{ justfile_directory() }}/clusters/${cluster_name}/${cluster_name}.pub" ]; then
             ssh_key="{{ justfile_directory() }}/clusters/${cluster_name}/${cluster_name}.pub"
@@ -263,7 +271,8 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         ssh_key="$(cd "$(dirname "${ssh_key}")" && pwd)/$(basename "${ssh_key}")"
     fi
 
-    kubeconfig="${KUBECONFIG:-{{ kubeconfig }}}"
+    kubeconfig="{{ kubeconfig }}"
+    [ -z "${kubeconfig}" ] && kubeconfig="${KUBECONFIG:-}"
     if [ -z "${kubeconfig}" ]; then
         if [ -f "{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig" ]; then
             kubeconfig="{{ justfile_directory() }}/clusters/${cluster_name}/kubeconfig"
@@ -274,22 +283,26 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         fi
     fi
 
-    pulumi_creds="${PULUMI_GCP_CREDENTIALS:-{{ pulumi_gcp_credentials }}}"
+    pulumi_creds="{{ pulumi_gcp_credentials }}"
+    [ -z "${pulumi_creds}" ] && pulumi_creds="${PULUMI_GCP_CREDENTIALS:-}"
     if [ -z "${pulumi_creds}" ]; then
         pulumi_creds="{{ justfile_directory() }}/credentials/${project_id}/pulumi-manager.json"
     fi
 
-    pulumi_kms="${PULUMI_SECRET_PROVIDER:-{{ pulumi_secret_provider }}}"
+    pulumi_kms="{{ pulumi_secret_provider }}"
+    [ -z "${pulumi_kms}" ] && pulumi_kms="${PULUMI_SECRET_PROVIDER:-}"
     if [ -z "${pulumi_kms}" ]; then
         pulumi_kms="gcpkms://projects/${project_id}/locations/us-central1/keyRings/${cluster_name}/cryptoKeys/${cluster_name}"
     fi
 
-    pulumi_backend="${PULUMI_BACKEND_URL:-{{ pulumi_backend_url }}}"
+    pulumi_backend="{{ pulumi_backend_url }}"
+    [ -z "${pulumi_backend}" ] && pulumi_backend="${PULUMI_BACKEND_URL:-}"
     if [ -z "${pulumi_backend}" ]; then
         pulumi_backend="gs://pulumi-state-${project_id}"
     fi
 
-    pulumi_stack="${PULUMI_STACK:-{{ pulumi_stack }}}"
+    pulumi_stack="{{ pulumi_stack }}"
+    [ -z "${pulumi_stack}" ] && pulumi_stack="${PULUMI_STACK:-}"
     if [ -z "${pulumi_stack}" ]; then
         pulumi_stack="${cluster_name}"
     fi
@@ -350,11 +363,23 @@ cluster-env env cluster:
     fi
     set -a; source "${env_file}"; set +a
 
+    # Session-only convenience exports. NEVER written to the .env.<env>.<cluster>
+    # file itself — Git remains the source of truth for cluster identity after
+    # bootstrap (see docs/reference/kops/cluster-env.md). These exist only so that
+    # recipes invoked inside this shell can default --cluster / --env / --key
+    # instead of the operator retyping them on every command.
+    export CLUSTER_NAME="{{ cluster }}"
+    export CLUSTER_ENV="{{ env }}"
+    export CLUSTER_ENV_FILE="${env_file}"
+
     echo "=== Cluster Environment: {{ env }}/{{ cluster }} ==="
     echo "Source: ${env_file}"
     echo ""
 
     vars=(
+        "CLUSTER_NAME"
+        "CLUSTER_ENV"
+        "CLUSTER_ENV_FILE"
         "PROJECT_ID"
         "GOOGLE_APPLICATION_CREDENTIALS"
         "KUBECONFIG"
@@ -403,15 +428,37 @@ build:
 
 # Update the GOOGLE_APPLICATION_CREDENTIALS line in a per-cluster env file.
 # Thin wrapper — delegates platform-safe credential update to cluster-ops.
+# Inside an active 'cluster-env' shell, --env/--cluster default from
+# CLUSTER_ENV/CLUSTER_NAME so only --key needs to be typed.
 #
-# Usage: just cluster-cred --env <env> --cluster <cluster> --key <path>
-# Example: just cluster-cred --env dev --cluster my-cluster --key credentials/kops-cluster-creator.json
-[arg("env", long="env", short="e", help="Environment name")]
+# Usage: just cluster-cred --key <path> [--env <env>] [--cluster <cluster>]
+# Example (inside cluster-env): just cluster-cred --key credentials/kops-cluster-creator.json
+# Example (cold shell):         just cluster-cred --env dev --cluster my-cluster --key credentials/kops-cluster-creator.json
+[arg("env", long="env", short="e", help="Environment name (defaults to CLUSTER_ENV env var)")]
 [arg("key", long="key", short="k", help="Service account key path")]
-[arg("cluster", long="cluster", short="c", help="Cluster name")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [group('cluster-ops')]
-cluster-cred env cluster key: build
-    ./bin/cluster-ops env set-cred {{ env }} {{ cluster }} {{ key }}
+cluster-cred env="" cluster="" key="": build
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    e="{{ env }}"
+    [ -z "${e}" ] && e="${CLUSTER_ENV:-}"
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    k="{{ key }}"
+
+    if [ -z "${e}" ] || [ -z "${c}" ]; then
+        echo "ERROR: --env and --cluster are required outside an active cluster-env shell." >&2
+        echo "Enter one with 'just cluster-env --env <env> --cluster <cluster>', or pass both flags." >&2
+        exit 1
+    fi
+    if [ -z "${k}" ]; then
+        echo "ERROR: --key is required." >&2
+        exit 1
+    fi
+
+    ./bin/cluster-ops env set-cred "${e}" "${c}" "${k}"
 
 # --- Pulumi Operations ---
 # Setup Pulumi deployment environment
@@ -432,7 +479,8 @@ initialize-pulumi project_id="" keyring_name key_name bucket_name location="us-c
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project_id }}}"
+    project_id="{{ project_id }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project-id."
         exit 1
@@ -473,7 +521,8 @@ pulumi-init-and-deploy stack from-stack project_id="" keyring_name key_name buck
     #!/usr/bin/env bash
     set -euo pipefail
 
-    project_id="${PROJECT_ID:-{{ project_id }}}"
+    project_id="{{ project_id }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
     if [ -z "$project_id" ]; then
         echo "ERROR: no project id — set PROJECT_ID or pass --project-id."
         exit 1
@@ -549,19 +598,30 @@ check-tools skip_asdf="no":
     fi
 
 # Create a per-cluster asdf pin file by copying the repo default.
-# Refuses to overwrite an existing pin file.
-# Usage: just pin-tool-versions --env <env> --cluster <cluster-name>
-[arg("env", long="env", short="e", help="Environment name (env file suffix)")]
-[arg("cluster", long="cluster", short="c", help="Short cluster name (env file suffix)")]
+# Refuses to overwrite an existing pin file. Inside an active cluster-env
+# shell, --env/--cluster default from CLUSTER_ENV/CLUSTER_NAME.
+# Usage: just pin-tool-versions [--env <env>] [--cluster <cluster-name>]
+[arg("env", long="env", short="e", help="Environment name (defaults to CLUSTER_ENV env var)")]
+[arg("cluster", long="cluster", short="c", help="Short cluster name (defaults to CLUSTER_NAME env var)")]
 [group('setup-tools')]
-pin-tool-versions env cluster:
+pin-tool-versions env="" cluster="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
+    env_name="{{ env }}"
+    [ -z "${env_name}" ] && env_name="${CLUSTER_ENV:-}"
+    cluster_name="{{ cluster }}"
+    [ -z "${cluster_name}" ] && cluster_name="${CLUSTER_NAME:-}"
+
+    if [ -z "${env_name}" ] || [ -z "${cluster_name}" ]; then
+        echo "ERROR: --env and --cluster are required outside an active cluster-env shell." >&2
+        exit 1
+    fi
+
     src=".tool-versions"
-    dest=".tool-versions.{{ env }}.{{ cluster }}"
-    envfile=".env.{{ env }}.{{ cluster }}"
+    dest=".tool-versions.${env_name}.${cluster_name}"
+    envfile=".env.${env_name}.${cluster_name}"
 
     if [[ ! -f "$src" ]]; then
         echo "Error: $src not found at repo root." >&2
@@ -589,5 +649,5 @@ pin-tool-versions env cluster:
     echo
     echo "Then re-enter the shell and install:"
     echo "    exit"
-    echo "    just cluster-env --env {{ env }} --cluster {{ cluster }}"
+    echo "    just cluster-env --env ${env_name} --cluster ${cluster_name}"
     echo "    just install-tools"

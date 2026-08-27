@@ -15,17 +15,13 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 | `helm` | Kubernetes package manager | [helm.sh](https://helm.sh/docs/) |
 | `k9s` | Terminal cluster UI | [k9scli.io](https://k9scli.io/) |
 
-Install everything pinned in the active manifest:
+Install everything pinned in the active manifest, then verify — one recipe folds both:
 
 ```bash
-just install-tools
+just prepare-tools
 ```
 
-Verify afterwards:
-
-```bash
-just check-tools
-```
+Equivalent to running `just install-tools` then `just check-tools` separately; use those two directly if you only want one half (e.g. `check-tools` alone as a repeatable health probe).
 
 ## Which Manifest Is Used
 
@@ -41,6 +37,14 @@ Both files are gitignored.
 > This pin file is **not** `spec.kubernetesVersion`. The cluster's Kubernetes version lives in Git after bootstrap. Use a per-cluster pin file only when that cluster needs a different `kops`/`kubectl` binary than the repo default.
 
 ## Create a Per-Cluster Pin File
+
+Inside an active `cluster-env` shell, `--env`/`--cluster` default from `CLUSTER_ENV`/`CLUSTER_NAME`:
+
+```bash
+just pin-tool-versions
+```
+
+Outside that shell, or to target a different cluster, pass both explicitly:
 
 ```bash
 just pin-tool-versions --env <env> --cluster <cluster-name>

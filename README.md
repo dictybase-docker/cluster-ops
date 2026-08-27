@@ -50,15 +50,15 @@ Then follow [`docs/kops-setup.md`](docs/kops-setup.md).
 | Path | Contents |
 |------|----------|
 | `config/kops/<cluster>/` | Canonical cluster manifests — the source of truth |
-| `config/kops/_starter/` | Templates `bootstrap-bundle` renders new clusters from |
-| `just_modules/` | `just` recipe modules (`gcp-cluster`, `gcp-pulumi`, `arangodb`, …) |
-| `docs/` | Provisioning guides |
-| `docs/reference/` | Detailed reference for each guide |
+| [`config/kops/_starter/`](config/kops/_starter/) | Templates `bootstrap-bundle` renders new clusters from |
+| [`just_modules/`](just_modules/) | `just` recipe modules ([`gcp-cluster`](just_modules/cluster.justfile), [`gcp-pulumi`](just_modules/pulumi.justfile), [`arangodb`](just_modules/arangodb.justfile), …) |
+| [`docs/`](docs/) | Provisioning guides |
+| [`docs/reference/`](docs/reference/) | Detailed reference for each guide |
 | `credentials/<project-id>/` | Service-account keys and SSH keypairs (gitignored) |
 | `clusters/<project-id>/` | Exported kubeconfigs (gitignored) |
-| `gcs-files/` | API lists and IAM role definitions |
+| [`gcs-files/`](gcs-files/) | API lists and IAM role definitions |
 
-Pulumi projects live in their own top-level directories (`storage_class/`, `arangodb-cluster/`, `arangodb-backup/`, …), each with `Pulumi.yaml` plus one `Pulumi.<stack>.yaml` per cluster.
+Pulumi projects live in their own top-level directories ([`storage_class/`](storage_class/), [`arangodb-cluster/`](arangodb-cluster/), [`arangodb-backup/`](arangodb-backup/), …), each with `Pulumi.yaml` plus one `Pulumi.<stack>.yaml` per cluster.
 
 ## Conventions
 
@@ -92,7 +92,7 @@ just arangodb verify                # full ArangoDB install
 | Area | State |
 |------|-------|
 | Tooling & infrastructure recipes | Tested 2026-08-20 |
-| Declarative Git bundle (`_starter`) | Cross-version verified on kops v1.29.2 and v1.36.1; full end-to-end re-creation pending a first live-target run |
+| Declarative Git bundle ([`_starter`](config/kops/_starter/)) | Cross-version verified on kops v1.29.2 and v1.36.1; full end-to-end re-creation pending a first live-target run |
 | Pulumi backend recipes | Aligned with this repo as of 2026-08-24 |
 | Production ArangoDB | Prod configs exist for operator, cluster, databases, backup, restore. Gaps: production kOps bundle, loader prod stacks, PDBs |
 

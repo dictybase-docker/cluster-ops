@@ -4,7 +4,13 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 
 ## The Handoff
 
-`bootstrap-bundle` is where Git takes over as source of truth. Pass `--cluster` and `--project` (the latter may default from `PROJECT_ID` in the activated env). The recipe writes identity into YAML.
+`bootstrap-bundle` is where Git takes over as source of truth. Inside an active `cluster-env` shell, `--cluster` and `--project` default from `CLUSTER_NAME`/`PROJECT_ID` — only `--api-access-cidr` needs typing, since there's no safe default for it (see [choosing the CIDR](#choosing---api-access-cidr) below). The recipe writes identity into YAML.
+
+```bash
+just gcp-cluster bootstrap-bundle --api-access-cidr "<your-ip>/32"
+```
+
+Outside that shell, or to target a different cluster than the active one, pass both explicitly:
 
 ```bash
 just gcp-cluster bootstrap-bundle \
@@ -55,14 +61,12 @@ If a dynamic ISP reassigns your address, `kubectl` loses connectivity. Fix it th
    ```
 3. Commit and apply:
    ```bash
-   git add config/kops/<cluster-name>/cluster.yaml
-   git commit -m "<cluster-name>: update API access CIDR"
-   just gcp-cluster replace-manifests --cluster <cluster-name>
-   just gcp-cluster plan-cluster --cluster <cluster-name>
-   just gcp-cluster update-cluster --cluster <cluster-name>
+   git add config/kops/${CLUSTER_NAME}/cluster.yaml
+   git commit -m "${CLUSTER_NAME}: update API access CIDR"
+   just gcp-cluster apply-cluster
    ```
 
-No rolling update is needed — this is a firewall rule change only ([change trigger matrix](day2-operations.md#change-trigger-matrix)).
+No rolling update is needed — this is a firewall rule change only ([change trigger matrix](day2-operations.md#change-trigger-matrix)). `apply-cluster` folds replace-manifests → plan-cluster → update-cluster → drift-manifests; see [day-2 operations](day2-operations.md) for what each step does.
 
 ## Generated Defaults
 
