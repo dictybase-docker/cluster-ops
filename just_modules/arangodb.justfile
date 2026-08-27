@@ -1174,6 +1174,78 @@ list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret=
     kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
         --image "$IMAGE" --overrides="$OVERRIDES"
 
+# Verify stateful-db pool prerequisites before ArangoDB installation.
+# Checks node count, architecture, taint, and zones. Exits non-zero if any check fails.
+# Usage: just arangodb check-pool [--pool <label>] [--node-count <n>]
+[arg("pool", long="pool", short="p", help="Value of the node label 'pool' (default database)")]
+[arg("node_count", long="node-count", short="c", help="Expected node count in that pool (default 3)")]
+[group('arangodb')]
+[no-cd]
+check-pool pool="database" node_count="3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    POOL="{{ pool }}"
+    WANT_NODES="{{ node_count }}"
+    failures=0
+
+    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
+    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
+
+    echo "Checking stateful-db pool prerequisites..."
+    echo
+
+    # Fetch node data once
+    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
+    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
+
+    # Node count
+    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
+        ok "$node_count node(s) with pool=$POOL"
+    else
+        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    fi
+
+    # Architecture check (must be amd64 for production ArangoDB)
+    amd64_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select(.status.nodeInfo.architecture == "amd64")] | length')
+    if [[ "$amd64_count" -eq "$node_count" && "$node_count" -gt 0 ]]; then
+        ok "all $amd64_count node(s) are amd64"
+    else
+        bad "$amd64_count/$node_count node(s) are amd64 — ArangoDB Cluster requires amd64"
+    fi
+
+    # Taint check
+    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
+        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
+    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
+        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
+    else
+        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
+    fi
+
+    # Zone spread (informational)
+    zones=$(printf '%s\n' "$nodes_json" | jq -r '[.items[].metadata.labels["topology.kubernetes.io/zone"] // "unknown"] | unique | sort | join(", ")')
+    zone_count=$(printf '%s\n' "$nodes_json" | jq '[.items[].metadata.labels["topology.kubernetes.io/zone"] // "unknown"] | unique | length')
+    info "zones: $zones ($zone_count unique)"
+
+    # Ready status
+    ready_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.status.conditions[] | select(.type == "Ready" and .status == "True")] | length > 0)] | length')
+    if [[ "$ready_count" -eq "$node_count" && "$node_count" -gt 0 ]]; then
+        ok "all $ready_count node(s) are Ready"
+    else
+        bad "$ready_count/$node_count node(s) are Ready"
+    fi
+
+    # Summary
+    echo
+    if [[ "$failures" -eq 0 ]]; then
+        printf '\033[32mAll pool checks passed.\033[0m Proceed to §2 Install ArangoDB.\n'
+    else
+        printf '\033[31m%d check(s) failed.\033[0m See reference/arangodb/pool-requirements.md for fixes.\n' "$failures"
+        exit 1
+    fi
+
 # Full post-install check of the pool, operator, storage, members and jobs.
 # Prints one line per check and exits non-zero if a required check fails.
 # Usage: just arangodb verify [--namespace <ns>] [--operator-namespace <ns>] [--members <n>] [--pool <label>] [--node-count <n>]
