@@ -1,0 +1,3 @@
+name: arangodb-restore
+runtime: go
+description: A Pulumi program to run an in-cluster ArangoDB restic+arangorestore restore Job

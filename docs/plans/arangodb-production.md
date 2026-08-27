@@ -18,7 +18,7 @@
 - [Acceptance](#acceptance)
 - [Risks](#risks)
 
-**Status**: Implemented (Historical Reference & Architecture Rationale). Core Pulumi program implemented in `arangodb-cluster/` with supporting `prod` stacks for `storage_class`, `arangodb-operator`, `create-arangodb-databases`, and `arangodb-backup`. Lab stacks remain frozen. Active deployment runbook: [`../arangodb-deploy.md`](../arangodb-deploy.md). Architecture sizing: [`../kops-gcp-architecture.md`](../kops-gcp-architecture.md).
+**Status**: Implemented (Historical Reference & Architecture Rationale). Core Pulumi program implemented in `arangodb-cluster/` with supporting `prod` stacks for `backup_secrets`, `storage_class`, `arangodb-operator`, `create-arangodb-databases`, `arangodb-backup`, and `arangodb-restore`. Lab stacks remain frozen. Active deployment runbook: [`../arangodb-deploy.md`](../arangodb-deploy.md). Architecture sizing: [`../kops-gcp-architecture.md`](../kops-gcp-architecture.md).
 
 ## Goal
 
@@ -142,7 +142,7 @@ Do not change `Pulumi.dev.yaml` / `experiments` / `local`.
 1. `create-arangodb-databases`: same DB list; coordinator Service DNS; new secrets; optional toleration if the Job must run on `stateful-db`.
 2. `arangodb-dataloader` / content / UniProt: prod stacks; prefer `stateless-web` unless they need the dump PVC next to the DB.
 3. `arangodb-backup`: prod GCS bucket; size ephemeral PVC for 3× dbserver dumps; keep CronJob + first Job.
-4. Restore remains a documented manual drill ([deploy guide §4.2](../arangodb-deploy.md#42-restore-drill)). A restore Job is optional follow-up.
+4. Restore is an in-cluster Job (`arangodb-restore`, not a follow-up anymore): init container `restic restore`, main container `arangorestore`, shared scratch volume, no laptop/Docker/port-forward involved ([deploy guide §4.2](../arangodb-deploy.md#42-restore-drill)).
 
 ### 7. Verification
 

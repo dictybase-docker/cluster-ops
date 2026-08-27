@@ -7,7 +7,7 @@ config:
     bucketSecret:
       key: gcsCredentials
       name: dictycr
-    folder: arangodump
+    folder: /arangodump
     image:
       name: dictybase/database-backup
       tag: sha-9c3b8ea
