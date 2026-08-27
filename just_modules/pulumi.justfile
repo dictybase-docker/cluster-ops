@@ -240,3 +240,222 @@ create-multiple-resources stack from-stack resources_file:
     done < "{{ resources_file }}"
 
     echo "Deployment process completed!"
+
+# ── verification recipes ──────────────────────────────────────────────────────
+
+# Verify the local toolchain required by this repo's Pulumi workflow.
+# Prints one line per tool with its version and exits non-zero if any is missing.
+# Usage: just gcp-pulumi check-tools
+[group('pulumi-management')]
+[no-cd]
+check-tools:
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    failures=0
+
+    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
+
+    echo "Checking Pulumi workflow toolchain..."
+    echo
+
+    check_tool() {
+        local bin="$1" label="$2" version=""
+        if ! command -v "$bin" >/dev/null 2>&1; then
+            bad "$label not found on PATH"
+            return
+        fi
+        case "$bin" in
+            pulumi)  version=$(pulumi version 2>/dev/null | head -n1) ;;
+            gcloud)  version=$(gcloud version 2>/dev/null | awk '/^Google Cloud SDK/ {print $NF; exit}') ;;
+            kubectl) version=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion' 2>/dev/null) ;;
+            jq)      version=$(jq --version 2>/dev/null) ;;
+            *)       version=$("$bin" --version 2>/dev/null | head -n1) ;;
+        esac
+        [[ -z "$version" || "$version" == "null" ]] && version="version unknown"
+        ok "$label $version"
+    }
+
+    check_tool pulumi  "pulumi"
+    check_tool gcloud  "gcloud"
+    check_tool kubectl "kubectl"
+    check_tool jq      "jq"
+
+    echo
+    if [[ "$failures" -eq 0 ]]; then
+        printf '\033[32mAll required tools present.\033[0m\n'
+    else
+        printf '\033[31m%d tool(s) missing.\033[0m Install with: just install-tool --name <tool> --version <version>\n' "$failures"
+        exit 1
+    fi
+
+# Verify the Pulumi backend wiring for the active cluster shell.
+# Checks PULUMI_* variables, the GCS state bucket, the KMS key and the active login.
+# Usage: just gcp-pulumi check-backend
+[group('pulumi-management')]
+[no-cd]
+check-backend:
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    failures=0
+
+    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
+    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
+
+    echo "Checking Pulumi backend wiring..."
+    echo
+
+    # Required environment variables
+    for var in PULUMI_GCP_CREDENTIALS PULUMI_SECRET_PROVIDER PULUMI_BACKEND_URL PULUMI_STACK; do
+        if [[ -n "${!var:-}" ]]; then
+            ok "$var is set"
+        else
+            bad "$var is empty — enter the cluster shell with 'just cluster-env'"
+        fi
+    done
+
+    # Credentials file must exist before anything can authenticate
+    creds="${PULUMI_GCP_CREDENTIALS:-}"
+    if [[ -n "$creds" && -f "$creds" ]]; then
+        ok "manager key present at $creds"
+        export GOOGLE_APPLICATION_CREDENTIALS="$creds"
+        project_id=$(jq -r '.project_id // empty' "$creds" 2>/dev/null)
+        [[ -n "$project_id" ]] && info "project: $project_id"
+    elif [[ -n "$creds" ]]; then
+        bad "manager key missing at $creds — run 'just gcp-sa create-sa --sa-name pulumi-manager'"
+        project_id=""
+    else
+        project_id=""
+    fi
+
+    # State bucket: exists and has versioning enabled
+    bucket="${PULUMI_BACKEND_URL:-}"
+    bucket="${bucket#gs://}"
+    if [[ -n "$bucket" ]]; then
+        if gcloud storage buckets describe "gs://${bucket}" ${project_id:+--project="$project_id"} >/dev/null 2>&1; then
+            ok "state bucket gs://${bucket} exists"
+            versioned=$(gcloud storage buckets describe "gs://${bucket}" \
+                ${project_id:+--project="$project_id"} --format="value(versioning.enabled)" 2>/dev/null)
+            if [[ "$versioned" == "True" || "$versioned" == "true" ]]; then
+                ok "state bucket versioning enabled"
+            else
+                bad "state bucket versioning NOT enabled — re-run 'just gcp-pulumi pulumi-gcs-setup'"
+            fi
+        else
+            bad "state bucket gs://${bucket} not found or unreachable"
+        fi
+    fi
+
+    # KMS key referenced by the secrets provider must be readable.
+    # gcloud needs KEY plus explicit --keyring/--location/--project, so parse the URI
+    # rather than passing the full resource path as a bare positional.
+    provider="${PULUMI_SECRET_PROVIDER:-}"
+    if [[ "$provider" == gcpkms://* ]]; then
+        key_path="${provider#gcpkms://}"
+        key_path="${key_path%%\?*}"
+        if [[ "$key_path" =~ ^projects/([^/]+)/locations/([^/]+)/keyRings/([^/]+)/cryptoKeys/([^/]+)$ ]]; then
+            k_project="${BASH_REMATCH[1]}"
+            k_location="${BASH_REMATCH[2]}"
+            k_ring="${BASH_REMATCH[3]}"
+            k_name="${BASH_REMATCH[4]}"
+            if gcloud kms keys describe "$k_name" \
+                    --keyring="$k_ring" --location="$k_location" --project="$k_project" \
+                    >/dev/null 2>&1; then
+                ok "KMS key $k_name reachable in keyring $k_ring"
+            else
+                bad "KMS key not reachable: $key_path — run 'just gcp-kms create-keyring-and-key'"
+            fi
+        else
+            bad "PULUMI_SECRET_PROVIDER is not a well-formed gcpkms URI: $provider"
+        fi
+    elif [[ -n "$provider" ]]; then
+        info "secrets provider is not gcpkms, skipping KMS check"
+    fi
+
+    # Active pulumi login must match the backend this shell expects.
+    # Prefer --json; fall back to parsing --verbose for older Pulumi builds.
+    if command -v pulumi >/dev/null 2>&1; then
+        current=$(pulumi whoami --json 2>/dev/null | jq -r '.url // .backendURL // empty' 2>/dev/null)
+        if [[ -z "$current" ]]; then
+            current=$(pulumi whoami --verbose 2>/dev/null | awk -F': *' '/[Bb]ackend URL/ {print $2; exit}')
+        fi
+        if [[ -z "$current" ]]; then
+            bad "cannot determine the active Pulumi backend (not logged in?) — run 'just gcp-pulumi pulumi-gcs-setup'"
+        elif [[ -n "$bucket" && "$current" == *"$bucket"* ]]; then
+            ok "active login matches $PULUMI_BACKEND_URL"
+        else
+            bad "active login is '$current', expected ${PULUMI_BACKEND_URL:-unset} — pulumi login is global, re-run pulumi-gcs-setup"
+        fi
+    fi
+
+    echo
+    if [[ "$failures" -eq 0 ]]; then
+        printf '\033[32mBackend wiring looks correct.\033[0m\n'
+    else
+        printf '\033[31m%d check(s) failed.\033[0m See docs/reference/pulumi/backend-bootstrap.md\n' "$failures"
+        exit 1
+    fi
+
+# Verify the StorageClasses this repo's database stacks depend on.
+# Prints the provisioner for each class and exits non-zero if one is missing or wrong.
+# Usage: just gcp-pulumi check-storageclass [--classes <comma-separated>] [--provisioner <name>]
+[arg("classes", long="classes", short="c", help="Comma-separated StorageClass names to require")]
+[arg("provisioner", long="provisioner", short="p", help="Expected provisioner")]
+[group('pulumi-management')]
+[no-cd]
+check-storageclass classes="dictycr-balanced" provisioner="pd.csi.storage.gke.io":
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    WANT_PROVISIONER="{{ provisioner }}"
+    failures=0
+
+    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
+    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
+
+    echo "Checking StorageClasses (expected provisioner: ${WANT_PROVISIONER})..."
+    echo
+
+    sc_json=$(kubectl get storageclass -o json 2>/dev/null)
+    if [[ -z "$sc_json" ]]; then
+        printf '\033[31mFAIL\033[0m  cannot reach the cluster — check KUBECONFIG\n'
+        exit 1
+    fi
+
+    IFS=',' read -ra WANT_CLASSES <<< "{{ classes }}"
+    for raw in "${WANT_CLASSES[@]}"; do
+        sc="${raw// /}"
+        [[ -z "$sc" ]] && continue
+        found=$(printf '%s\n' "$sc_json" | jq -r --arg n "$sc" '.items[] | select(.metadata.name == $n) | .provisioner')
+        if [[ -z "$found" ]]; then
+            bad "StorageClass $sc missing — is it declared in storage_class/Pulumi.<stack>.yaml?"
+            continue
+        fi
+        if [[ "$found" == "$WANT_PROVISIONER" ]]; then
+            ok "StorageClass $sc uses $found"
+        else
+            bad "StorageClass $sc uses $found, expected $WANT_PROVISIONER"
+        fi
+    done
+
+    # Report the default class, if any — a surprise default causes silent misplacement
+    default_sc=$(printf '%s\n' "$sc_json" | jq -r '.items[]
+        | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true")
+        | .metadata.name' | paste -sd, -)
+    if [[ -n "$default_sc" ]]; then
+        info "default StorageClass: $default_sc"
+    else
+        info "no default StorageClass set — every PVC must name one explicitly"
+    fi
+
+    echo
+    if [[ "$failures" -eq 0 ]]; then
+        printf '\033[32mAll StorageClass checks passed.\033[0m\n'
+    else
+        printf '\033[31m%d check(s) failed.\033[0m PVCs will stay Pending. See docs/reference/pulumi/storage-class.md\n' "$failures"
+        exit 1
+    fi
