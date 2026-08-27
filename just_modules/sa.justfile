@@ -209,4 +209,4 @@ setup-sa-manager project_id="" key_file="":
     echo "  SA email : ${sa_email}"
     echo "  Key file : ${key_file}"
     echo ""
-    echo "Next: set up your environment — see docs/kops-setup-draft.md Section 2."
+    echo "Next: set up your environment — see docs/kops-setup.md Section 2."

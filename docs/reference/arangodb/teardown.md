@@ -37,4 +37,4 @@ Stack comes from `$PULUMI_STACK`.
 - Loaders
 - Restore stack (`arangodb-restore`)
 - `backup_secrets`
-- `stateful-db` pool — see [README §4](../../../README.md#4-day-2-operations-git-first-workflow) / [§6](../../../README.md#6-disposable-cluster-lifecycle)
+- `stateful-db` pool — see [README §4](../../kops-setup.md#4-day-2-operations-git-first-workflow) / [§6](../../kops-setup.md#6-disposable-cluster-lifecycle)

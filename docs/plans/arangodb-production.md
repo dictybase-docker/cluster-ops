@@ -64,7 +64,7 @@ Image tag `3.12.10.1` exists on Docker Hub (`library/arangodb`) and as git tag `
 
 ### 1. Production kOps bundle
 
-1. Bootstrap a **new** cluster name with `just gcp-cluster bootstrap-bundle` ([README](../../README.md) Step 3.1).
+1. Bootstrap a **new** cluster name with `just gcp-cluster bootstrap-bundle` ([kops-setup](../kops-setup.md) Step 3.1).
 2. Edit `config/kops/<prod-cluster>/instancegroups.yaml`:
    - Keep architecture HA sizes (3 CP, stateless 3–6, stateful 3 static).
    - Add taint `dedicated=database:NoSchedule` on `stateful-db` only.

@@ -2,7 +2,7 @@
 
 Wires Pulumi to a healthy kOps cluster and applies the first data-plane resource (StorageClass).
 
-Starts where [`README.md`](../README.md) ends (cluster up and validated). Stops after StorageClass — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
+Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Stops after StorageClass — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
 
 **Status**:
 - **Pulumi backend recipes** (`just gcp-pulumi`, KMS, `pulumi-manager`): aligned with this repo as of 2026-08-24.
@@ -68,7 +68,7 @@ just gcp-pulumi check-backend
 
 ## 1. Prerequisites
 
-Cluster must be up and validated through [README Step 3.7](../README.md#step-37--validate-ha-topology--hardening), with the PD CSI driver enabled — without it PVCs stay Pending.
+Cluster must be up and validated through [README Step 3.7](kops-setup.md#step-37--validate-ha-topology--hardening), with the PD CSI driver enabled — without it PVCs stay Pending.
 → [Prerequisites detail](reference/pulumi/prerequisites.md)
 
 ```bash
@@ -193,7 +193,7 @@ Tearing down only the StorageClass is destructive if PVCs still reference it —
 
 | Document | Use it for |
 |----------|------------|
-| [`README.md`](../README.md) | Cluster bootstrap, [env files](../README.md#13-environment-variables--the-cluster-env-file), [day-2](../README.md#4-day-2-operations-git-first-workflow), [teardown](../README.md#6-disposable-cluster-lifecycle) |
+| [`kops-setup.md`](kops-setup.md) | Cluster bootstrap, [env files](kops-setup.md#13-environment-variables--the-cluster-env-file), [day-2](kops-setup.md#4-day-2-operations-git-first-workflow), [teardown](kops-setup.md#6-disposable-cluster-lifecycle) |
 | [`kops-gcp-architecture.md`](kops-gcp-architecture.md) | HA vs cost, [stateful-db pool](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity), [database storage](kops-gcp-architecture.md#-6-database-storage--retrieval) |
 | [`arangodb-deploy.md`](arangodb-deploy.md) | Production ArangoDB Cluster after StorageClass |
 | [`plans/arangodb-production.md`](plans/arangodb-production.md) | Why Cluster mode, frozen lab stacks, remaining gaps |

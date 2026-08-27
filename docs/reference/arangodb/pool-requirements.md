@@ -18,7 +18,7 @@ Anti-affinity is **preferred** (hostname 100, zone 50), not required. No PDBs.
 
 ## Kubernetes Pool Requirements
 
-The `stateful-db` pool should already exist if `config/kops/<prod-cluster>/instancegroups.yaml` matches [README Step 3.2](../../../README.md#step-32--customize-yaml-in-git) **plus** the production taint.
+The `stateful-db` pool should already exist if `config/kops/<prod-cluster>/instancegroups.yaml` matches [README Step 3.2](../../kops-setup.md#step-32--customize-yaml-in-git) **plus** the production taint.
 
 | Field | Expected Value |
 |-------|----------------|
@@ -42,7 +42,7 @@ Checks and prints PASS/FAIL for:
 
 ### Missing Pool or Taint
 
-Edit YAML and apply via [README Day-2](../../../README.md#4-day-2-operations-git-first-workflow). Do not use `dictycr-dev-staging-dcr-experiments`.
+Edit YAML and apply via [README Day-2](../../kops-setup.md#4-day-2-operations-git-first-workflow). Do not use `dictycr-dev-staging-dcr-experiments`.
 
 ### HA Sizing Background
 

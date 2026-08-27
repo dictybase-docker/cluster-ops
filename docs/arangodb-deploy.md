@@ -224,6 +224,6 @@ Common issues:
 
 **Other documentation:**
 - Architecture: [`kops-gcp-architecture.md`](kops-gcp-architecture.md)
-- Cluster bootstrap: [`README.md`](../README.md)
+- Cluster bootstrap: [`kops-setup.md`](kops-setup.md)
 - Pulumi backend + StorageClass: [`pulumi-setup.md`](pulumi-setup.md)
 - Implementation plan (historical): [`plans/arangodb-production.md`](plans/arangodb-production.md)

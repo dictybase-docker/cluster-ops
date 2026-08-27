@@ -4,7 +4,7 @@ Back to: [Pulumi Setup Guide](../../pulumi-setup.md)
 
 ## What It Is
 
-`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` file — see [README §1.3](../../../README.md#13-environment-variables--the-cluster-env-file).
+`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` file — see [README §1.3](../../kops-setup.md#13-environment-variables--the-cluster-env-file).
 
 It infers the GCP project from `config/kops/<cluster-name>/cluster.yaml` (or `$PROJECT_ID` / `--project`) and fills in canonical paths.
 
