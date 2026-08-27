@@ -1098,6 +1098,82 @@ setup-kops-creator project="":
     echo "  just cluster-env --env <env> --cluster <cluster-name>"
     echo "  just gcp-cluster configure-gcloud --name kops-cluster-creator"
 
+# Bootstrap the full identity chain in one call: create sa-manager, activate it
+# as a named gcloud config, then enable/disable APIs and create the
+# least-privilege kops-cluster-creator. No shell re-entry needed — gcloud
+# configs persist in ~/.config/gcloud and none of these steps read
+# GOOGLE_APPLICATION_CREDENTIALS. The final rotation (rotate-to-creator) still
+# needs one shell boundary afterward.
+# Usage: just gcp-cluster bootstrap-identities [--project <project-id>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[group('cluster-management')]
+[no-cd]
+bootstrap-identities project="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project." >&2
+        exit 1
+    fi
+
+    root="{{ invocation_directory() }}"
+    sa_manager_key="${root}/credentials/${project_id}/sa-manager.json"
+
+    echo "=== 1/3: creating sa-manager ==="
+    just gcp-sa setup-sa-manager --project-id "${project_id}" --key-file "${sa_manager_key}"
+
+    echo
+    echo "=== 2/3: activating sa-manager as a named gcloud config ==="
+    just gcp-cluster configure-gcloud --name sa-manager --project "${project_id}" --key-file "${sa_manager_key}"
+
+    echo
+    echo "=== 3/3: enabling APIs, disabling unused, creating kops-cluster-creator ==="
+    just gcp-cluster setup-kops-creator --project "${project_id}"
+
+    echo
+    echo "Identity chain ready. Rotate to the least-privilege SA, then re-enter the shell:"
+    echo "  just gcp-cluster rotate-to-creator"
+    echo "  exit"
+    echo "  just cluster-env --env <env> --cluster <cluster-name>"
+
+# Rotate the env file + gcloud identity to the least-privilege kops-cluster-creator
+# in one call. cluster-cred edits the env file; configure-gcloud activates the
+# named config from the key directly (no GOOGLE_APPLICATION_CREDENTIALS needed).
+# One shell boundary is still required AFTER this — re-enter cluster-env so
+# Section 3 tools (kops/kubectl) pick up the new GOOGLE_APPLICATION_CREDENTIALS.
+# Usage: just gcp-cluster rotate-to-creator [--project <project-id>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[group('cluster-management')]
+[no-cd]
+rotate-to-creator project="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project." >&2
+        exit 1
+    fi
+
+    root="{{ invocation_directory() }}"
+    creator_key="${root}/credentials/${project_id}/kops-cluster-creator.json"
+
+    echo "=== 1/2: rotating env file to kops-cluster-creator ==="
+    just cluster-cred --key "${creator_key}"
+
+    echo
+    echo "=== 2/2: activating kops-cluster-creator as a named gcloud config ==="
+    just gcp-cluster configure-gcloud --name kops-cluster-creator --project "${project_id}" --key-file "${creator_key}"
+
+    echo
+    echo "Rotated. Re-enter the shell so Section 3 tools pick up the new credential:"
+    echo "  exit"
+    echo "  just cluster-env --env <env> --cluster <cluster-name>"
+
 # Push Git-canonical manifests to state storage, preview, apply, and confirm
 # zero drift. The repeatable Day-2 loop — folds replace-manifests + plan-cluster
 # + update-cluster + drift-manifests. Pass --force yes only for the very first

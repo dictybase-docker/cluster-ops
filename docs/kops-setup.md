@@ -29,7 +29,7 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 
 ## Quick Reference
 
-For experienced users. Each composite recipe folds several lower-level ones — see [§8](#8-related-documents) for what each one does internally. Comments mark the four points that genuinely need a human: a shell login/logout, or a review decision.
+For experienced users. Each composite recipe folds several lower-level ones — see [§8](#8-related-documents) for what each one does internally. Comments mark the points that genuinely need a human: a shell login/logout, or a review decision.
 
 ```bash
 # 1. Verify tools, then create and enter the cluster shell
@@ -43,23 +43,14 @@ just cluster-env --env <env> --cluster <cluster-name>
 just prepare-tools
 just gcp-cluster generate-ssh-key
 
-# 3. Get sa-manager, then rotate credential + gcloud identity
-just gcp-sa setup-sa-manager
-just cluster-cred --key credentials/${PROJECT_ID}/sa-manager.json
-# >>> shell boundary: re-enter so the new credential takes effect
+# 3. Bootstrap both identities (sa-manager + kops-cluster-creator), then rotate
+just gcp-cluster bootstrap-identities
+just gcp-cluster rotate-to-creator
+# >>> shell boundary: re-enter so Section 3 tools pick up the new credential
 exit
 just cluster-env --env <env> --cluster <cluster-name>
-just gcp-cluster configure-gcloud
 
-# 4. Enable APIs, create the least-privilege SA, rotate again
-just gcp-cluster setup-kops-creator
-just cluster-cred --key credentials/${PROJECT_ID}/kops-cluster-creator.json
-# >>> shell boundary: re-enter so the narrower credential takes effect
-exit
-just cluster-env --env <env> --cluster <cluster-name>
-just gcp-cluster configure-gcloud --name kops-cluster-creator
-
-# 5. Find your API-access IP, then bootstrap the local Git bundle (zero cloud calls)
+# 4. Find your API-access IP, then bootstrap the local Git bundle (zero cloud calls)
 just gcp-cluster show-public-ip
 just gcp-cluster bootstrap-bundle --api-access-cidr "<ip>/32"
 
@@ -68,10 +59,10 @@ $EDITOR config/kops/${CLUSTER_NAME}/cluster.yaml
 $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
 git add config/kops/${CLUSTER_NAME}/ && git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 
-# 6. Create the state bucket, push manifests, upload SSH secret, apply, validate
+# 5. Create the state bucket, push manifests, upload SSH secret, apply, validate
 just gcp-cluster create-cluster
 
-# 7. Explore
+# 6. Explore
 just gcp-cluster export-kubeconfig
 just gcp-cluster k9s
 ```
@@ -118,30 +109,22 @@ Stay inside the `cluster-env` sub-shell for the rest of this guide. Need a diffe
 
 ## 2. Service Accounts & Authentication
 
-Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two shell logins are unavoidable — each new credential must be re-sourced.
+Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two composite recipes do the whole chain; one shell re-entry is still required at the end so Section 3 tools pick up the new credential.
 → [Service accounts](reference/kops/service-accounts.md)
 
 ```bash
-# Obtain sa-manager (project owners only; otherwise ask the owner for the JSON key)
-just gcp-sa setup-sa-manager
+# Bootstrap both identities: sa-manager + gcloud config + kops-cluster-creator
+just gcp-cluster bootstrap-identities
 
-# Rotate credential + gcloud identity to sa-manager
-just cluster-cred --key credentials/${PROJECT_ID}/sa-manager.json
+# Rotate credential + gcloud identity to the least-privilege kops-cluster-creator
+just gcp-cluster rotate-to-creator
+
+# >>> shell boundary: re-enter so Section 3 tools pick up the new credential
 exit
 just cluster-env --env <env> --cluster <cluster-name>
-just gcp-cluster configure-gcloud
-
-# Enable required APIs, disable unused ones, create kops-cluster-creator
-just gcp-cluster setup-kops-creator
-
-# Rotate credential + gcloud identity to kops-cluster-creator
-just cluster-cred --key credentials/${PROJECT_ID}/kops-cluster-creator.json
-exit
-just cluster-env --env <env> --cluster <cluster-name>
-just gcp-cluster configure-gcloud --name kops-cluster-creator
 ```
 
-`setup-kops-creator` folds Phase 1a (enable APIs) + Phase 1b (disable unused APIs) + Phase 2 (create the SA) into one call. `cluster-cred` defaults `--env`/`--cluster` from the active shell, so only `--key` needs typing. `configure-gcloud --name kops-cluster-creator` uses a *separate* named configuration, so `sa-manager` stays available for the rare task that needs it.
+`bootstrap-identities` folds `setup-sa-manager` + `configure-gcloud --name sa-manager` + `setup-kops-creator` (Phase 1a enable APIs + Phase 1b disable unused APIs + Phase 2 create the SA) into one call. `rotate-to-creator` folds `cluster-cred` + `configure-gcloud --name kops-cluster-creator` into one call. Neither needs a shell re-entry in the middle — gcloud configs persist in `~/.config/gcloud`, and none of these steps read `GOOGLE_APPLICATION_CREDENTIALS`. The single `exit`/re-enter at the end is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`. `configure-gcloud --name kops-cluster-creator` uses a *separate* named configuration, so `sa-manager` stays available for the rare task that needs it.
 
 ---
 
