@@ -1,0 +1,23 @@
+# Production configuration template for backup_secrets
+# This stack creates namespaces `prod` and `operators` (arangodb-operator's Helm
+# release does not create its own namespace) plus Secret `dictycr`, consumed by
+# arangodb-backup and arangodb-restore. Apply this stack FIRST, before
+# arangodb-operator / arangodb-cluster / create-arangodb-databases.
+#
+# Configure required secrets before deployment via:
+#   just gcp-pulumi set-secret --folder backup_secrets --key properties.secret.resticPass --value "<restic repository password>"
+#   just gcp-pulumi set-secret --folder backup_secrets --key properties.secret.gcsProject --value "<gcp-project-id>"
+#   just gcp-pulumi set-secret --folder backup_secrets --key properties.secret.serviceAccount.keyname --value "gcsCredentials"
+#   just gcp-pulumi set-secret --folder backup_secrets --key properties.secret.serviceAccount.filepath --value "credentials/<project-id>/backup-gcs-sa.json"
+#
+# properties.secret.serviceAccount.filepath must point to a real GCS service
+# account JSON key (Storage Object Admin on the backup bucket) that exists on
+# disk where `pulumi up` runs — its contents are read and stored as the
+# `dictycr` secret's `gcsCredentials` key, matching arangodb-backup's
+# bucketSecret.key and this repo's set convention.
+config:
+  backup_secrets:properties:
+    namespace: prod
+    extraNamespace: operators
+    secret:
+      name: dictycr

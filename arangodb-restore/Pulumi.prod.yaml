@@ -1,0 +1,39 @@
+# Production configuration template for arangodb-restore.
+#
+# This is a DESTRUCTIVE, one-off action, not a persistent service — do not
+# `pulumi up` this stack against a namespace/server you don't intend to
+# overwrite right now. Run it only against a clone cluster or scratch
+# namespace, never the live production coordinator, unless you are doing a
+# real disaster-recovery restore in place after data loss (not a drill).
+#
+# Every run needs fresh, explicit values for the three fields below —
+# there are no defaults for these on purpose:
+#
+#   just gcp-pulumi set-config --folder arangodb-restore --key properties.restoreId --value "<short-dns-safe-id, e.g. drill-2026-06-01>"
+#   just gcp-pulumi set-config --folder arangodb-restore --key properties.snapshot --value "latest"   # or a specific restic snapshot ID
+#   just gcp-pulumi set-config --folder arangodb-restore --key properties.confirmTarget --value "<namespace>/<server>/<restoreId>"
+#
+# confirmTarget must exactly equal "<namespace>/<server>/<restoreId>" — this
+# is a deliberate safety gate against restoring into the wrong target from a
+# stale or copy-pasted config.
+config:
+  arangodb-restore:properties:
+    namespace: prod
+    server: arangodb
+    port: 8529
+    bucket: restic-arangodb-backup-prod
+    storage:
+      class: dictycr-balanced
+      size: 150Gi
+    arangodbSecret:
+      name: arangodb-pass
+      key: password
+    resticSecret:
+      name: dictycr
+      key: resticPass
+    bucketSecret:
+      name: dictycr
+      key: gcsCredentials
+    projectSecret:
+      name: dictycr
+      key: gcsProject
