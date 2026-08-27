@@ -187,10 +187,10 @@ To seed it from an existing stack's config instead of starting empty:
 just gcp-pulumi new-stack-from --folder <project-folder> --from-stack <base-stack>
 ```
 
-Set plain config keys directly against `$PULUMI_STACK` if you started empty:
+Set plain config keys with `set-config`:
 
 ```bash
-pulumi -C <project-folder> -s "${PULUMI_STACK}" config set --path "<key>" "<value>"
+just gcp-pulumi set-config --folder <project-folder> --key "<key>" --value "<value>"
 ```
 
 For **secret** values, use `set-secret` instead of the raw `pulumi ... --secret` invocation:
@@ -218,6 +218,7 @@ All of these accept `--stack <name>`; if omitted they use `$PULUMI_STACK`, falli
 |--------|--------------|-----------------------|
 | `just gcp-pulumi pulumi-gcs-setup` | Create/version GCS state bucket + `pulumi login` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` |
 | `just gcp-pulumi ensure-stack` | `stack select`, or `stack init` if it does not exist yet | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_STACK` (required) |
+| `just gcp-pulumi set-config` | `config set --path <key> <value>` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
 | `just gcp-pulumi set-secret` | `config set --path --secret <key> <value>` | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
 | `just gcp-pulumi new-stack` | `stack init` with KMS secrets provider | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL`, `PULUMI_STACK` |
 | `just gcp-pulumi new-stack-from` | Init + copy config from another stack | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL`, `PULUMI_STACK` |
