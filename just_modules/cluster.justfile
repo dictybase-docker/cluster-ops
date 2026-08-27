@@ -890,3 +890,106 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     echo "Running rolling-update for ${kn}..."
     kops rolling-update cluster "${kn}" --state="${st}" "${cmd_args[@]}"
 
+
+# ── operator convenience recipes ──────────────────────────────────────────────
+
+# Print this machine's public IPv4 and the /32 CIDR to pass to --api-access-cidr.
+# Rejects a non-IPv4 or private answer instead of emitting a CIDR that would
+# silently lock you out of the API server.
+# Usage: just gcp-cluster show-public-ip
+[group('cluster-management')]
+[no-cd]
+show-public-ip:
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    ip=$(curl -sS -4 --max-time 10 https://api.ipify.org 2>/dev/null)
+
+    if [[ -z "$ip" ]]; then
+        echo "Error: could not reach https://api.ipify.org to determine the public IP." >&2
+        echo "Check network access, or find the address another way and pass it manually." >&2
+        exit 1
+    fi
+    if [[ ! "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+        echo "Error: unexpected response, not an IPv4 address: $ip" >&2
+        exit 1
+    fi
+    # A private answer means egress is NATed somewhere unexpected; a firewall rule
+    # built from it would not match the address GCP actually sees.
+    case "$ip" in
+        10.*|192.168.*|127.*|169.254.*)
+            echo "Error: got a private address ($ip) — not usable as an API access CIDR." >&2
+            exit 1 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            echo "Error: got a private address ($ip) — not usable as an API access CIDR." >&2
+            exit 1 ;;
+    esac
+
+    echo "Public IPv4 : $ip"
+    echo "API CIDR    : ${ip}/32"
+    echo
+    echo "Use it with:"
+    echo "    just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr \"${ip}/32\""
+
+# Create and activate a named gcloud configuration bound to a service-account key.
+# Replaces the five-command 'gcloud config configurations' sequence.
+# Usage: just gcp-cluster configure-gcloud [--name <cfg>] [--project <id>] [--key-file <path>] [--zone <zone>]
+[arg("name", long="name", short="n", help="gcloud configuration name (default sa-manager)")]
+[arg("project", long="project", short="p", help="GCP project ID (defaults to PROJECT_ID)")]
+[arg("key_file", long="key-file", short="k", help="SA JSON key (defaults to GOOGLE_APPLICATION_CREDENTIALS)")]
+[arg("zone", long="zone", short="z", help="Default compute zone (default us-central1-c)")]
+[group('cluster-management')]
+[no-cd]
+configure-gcloud name="sa-manager" project="" key_file="" zone="us-central1-c":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    CFG="{{ name }}"
+    ZONE="{{ zone }}"
+
+    PROJECT="{{ project }}"
+    [[ -z "$PROJECT" ]] && PROJECT="${PROJECT_ID:-}"
+    if [[ -z "$PROJECT" ]]; then
+        echo "Error: no project — pass --project or enter the cluster shell so PROJECT_ID is set." >&2
+        exit 1
+    fi
+
+    KEY="{{ key_file }}"
+    [[ -z "$KEY" ]] && KEY="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+    if [[ -z "$KEY" ]]; then
+        echo "Error: no key file — pass --key-file or set GOOGLE_APPLICATION_CREDENTIALS." >&2
+        exit 1
+    fi
+    if [[ ! -f "$KEY" ]]; then
+        echo "Error: key file not found: $KEY" >&2
+        exit 1
+    fi
+
+    # Derive the SA email from the key itself rather than assuming <name>@<project>,
+    # so a differently named key still activates the identity it actually contains.
+    SA_EMAIL=$(jq -r '.client_email // empty' "$KEY")
+    if [[ -z "$SA_EMAIL" ]]; then
+        echo "Error: $KEY has no client_email — is it a service-account JSON key?" >&2
+        exit 1
+    fi
+
+    echo "Configuration : $CFG"
+    echo "Project       : $PROJECT"
+    echo "Zone          : $ZONE"
+    echo "Identity      : $SA_EMAIL"
+    echo
+
+    if gcloud config configurations describe "$CFG" >/dev/null 2>&1; then
+        echo "Configuration '$CFG' already exists — reusing it."
+    else
+        gcloud config configurations create "$CFG"
+    fi
+
+    gcloud config configurations activate "$CFG"
+    gcloud auth activate-service-account "$SA_EMAIL" --key-file="$KEY"
+    gcloud config set project "$PROJECT"
+    gcloud config set compute/zone "$ZONE"
+
+    echo
+    echo "Active gcloud configuration:"
+    gcloud config configurations list --filter="name=$CFG" 2>/dev/null || true

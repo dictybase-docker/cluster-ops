@@ -105,7 +105,7 @@ install-tools:
     file="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
     if [[ ! -f "${file}" ]]; then
         echo "Error: tool versions file '${file}' does not exist."
-        echo "Create it first — see Section 1.4 of docs/kops-setup-draft.md."
+        echo "Create it first — see Section 1 of docs/kops-setup.md."
         exit 1
     fi
     echo "Installing plugins from ${file}..."
@@ -485,3 +485,109 @@ pulumi-init-and-deploy stack from-stack project_id="" keyring_name key_name buck
     echo "Creating Initial Resources"
     just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/initial-resources.txt"
     just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/database-and-storage-resources.txt"
+
+# ── verification & setup helpers ───────────────────────────────────────────────
+
+# Verify every tool the cluster bootstrap depends on: core system tools plus the
+# asdf-pinned binaries. Prints one line per tool with its version.
+# Usage: just check-tools [--skip-asdf yes]
+[arg("skip_asdf", long="skip-asdf", help="Set to 'yes' to check only core system tools")]
+[group('setup-tools')]
+check-tools skip_asdf="no":
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    failures=0
+
+    ok()   { printf '\033[32mPASS\033[0m  %-10s %s\n' "$1" "$2"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %-10s %s\n' "$1" "$2"; failures=$((failures + 1)); }
+
+    version_of() {
+        case "$1" in
+            go)       go version 2>/dev/null | awk '{print $3}' ;;
+            just)     just --version 2>/dev/null | awk '{print $2}' ;;
+            gcloud)   gcloud version 2>/dev/null | awk '/^Google Cloud SDK/ {print $NF; exit}' ;;
+            jq)       jq --version 2>/dev/null ;;
+            envsubst) envsubst --version 2>/dev/null | head -n1 | awk '{print $NF}' ;;
+            kubectl)  kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion' 2>/dev/null ;;
+            kops)     kops version 2>/dev/null | awk '{print $NF; exit}' ;;
+            pulumi)   pulumi version 2>/dev/null | head -n1 ;;
+            velero)   velero version --client-only 2>/dev/null | awk '/Version/ {print $2; exit}' ;;
+            helm)     helm version --short 2>/dev/null ;;
+            k9s)      k9s version -s 2>/dev/null | awk '/Version/ {print $2; exit}' ;;
+            *)        "$1" --version 2>/dev/null | head -n1 ;;
+        esac
+    }
+
+    check() {
+        local bin="$1" v=""
+        if ! command -v "$bin" >/dev/null 2>&1; then
+            bad "$bin" "not found on PATH"
+            return
+        fi
+        v=$(version_of "$bin")
+        [[ -z "$v" || "$v" == "null" ]] && v="(version unknown)"
+        ok "$bin" "$v"
+    }
+
+    echo "Core system tools (install via your package manager):"
+    for t in go just gcloud jq envsubst; do check "$t"; done
+
+    if [[ "{{ skip_asdf }}" != "yes" ]]; then
+        echo
+        pinfile="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
+        echo "asdf-managed tools (pinned in ${pinfile}):"
+        for t in kubectl kops pulumi velero helm k9s; do check "$t"; done
+    fi
+
+    echo
+    if [[ "$failures" -eq 0 ]]; then
+        printf '\033[32mAll required tools present.\033[0m\n'
+    else
+        printf '\033[31m%d tool(s) missing.\033[0m Core tools: package manager. Pinned tools: just install-tools\n' "$failures"
+        exit 1
+    fi
+
+# Create a per-cluster asdf pin file by copying the repo default.
+# Refuses to overwrite an existing pin file.
+# Usage: just pin-tool-versions --env <env> --cluster <cluster-name>
+[arg("env", long="env", short="e", help="Environment name (env file suffix)")]
+[arg("cluster", long="cluster", short="c", help="Short cluster name (env file suffix)")]
+[group('setup-tools')]
+pin-tool-versions env cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    src=".tool-versions"
+    dest=".tool-versions.{{ env }}.{{ cluster }}"
+    envfile=".env.{{ env }}.{{ cluster }}"
+
+    if [[ ! -f "$src" ]]; then
+        echo "Error: $src not found at repo root." >&2
+        exit 1
+    fi
+    if [[ -e "$dest" ]]; then
+        echo "Error: $dest already exists — refusing to overwrite." >&2
+        echo "Edit it directly, or delete it first if you want a fresh copy from $src." >&2
+        exit 1
+    fi
+
+    cp "$src" "$dest"
+    echo "Created $dest from $src."
+    echo
+
+    line="ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=$dest"
+    if [[ -f "$envfile" ]] && grep -q '^ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=' "$envfile"; then
+        echo "$envfile already pins a tool-versions file:"
+        grep '^ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=' "$envfile" | sed 's/^/    /'
+        echo "Update it to: $line"
+    else
+        echo "Add this line to $envfile:"
+        echo "    $line"
+    fi
+    echo
+    echo "Then re-enter the shell and install:"
+    echo "    exit"
+    echo "    just cluster-env --env {{ env }} --cluster {{ cluster }}"
+    echo "    just install-tools"

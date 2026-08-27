@@ -4,7 +4,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| No `stateful-db` nodes | IG missing or wrong cluster | [Pool requirements](pool-requirements.md) + [README §3.2](../../../README.md#step-32--customize-yaml-in-git) |
+| No `stateful-db` nodes | IG missing or wrong cluster | [Pool requirements](pool-requirements.md) + [README §3.2](../../kops-setup.md#step-32--customize-yaml-in-git) |
 | Pod Pending, taint | CR missing toleration | `arangodb-cluster/Pulumi.prod.yaml` vs node taint |
 | Pod Pending, `arm64` | Lab Single | Wrong stack. Do not edit `Pulumi.dev.yaml` |
 | Only one Arango pod | Applied `arangodb-single` | Use `arangodb-cluster` with `$PULUMI_STACK`, not lab stacks |
