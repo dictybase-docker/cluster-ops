@@ -364,3 +364,103 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
 
     echo "Deploying arangodb-single..."
     just local-pulumi create-resource --folder arangodb-single --stack {{ stack }} --pass-entry {{ pass_entry }}
+
+# Configure the arangodb-restore stack in one non-interactive command.
+# Resolves every value the restore Job needs, then runs ensure-stack plus one
+# pulumi config set-all against the arangodb-restore project.
+#   --namespace   required; no safe default exists for a restore target.
+#   --server      omitted: discovered from Services labelled arango_deployment=arangodb
+#                 in that namespace (member/-int/-ea Services filtered out);
+#                 falls back to "arangodb" with a warning if nothing is found.
+#   --restore-id  omitted: "drill-<UTC YYYYMMDD-HHMMSS>" (DNS-1123 safe, unique per run).
+#   --snapshot    "latest" or a specific restic snapshot id.
+# confirmTarget is always computed as "<namespace>/<server>/<restoreId>" — the
+# safety gate in arangodb-restore is unchanged, only the retyping is gone.
+# Usage: just arangodb configure-restore --namespace <ns> [--server <svc>] [--restore-id <id>] [--snapshot <snap>] [--stack <name>]
+[arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
+[arg("server", long="server", short="s", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: drill-<UTC timestamp>)")]
+[arg("snapshot", long="snapshot", short="p", help="restic snapshot id or 'latest'")]
+[arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('arangodb')]
+[no-cd]
+configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-restore"
+    NAMESPACE="{{ namespace }}"
+    SERVER="{{ server }}"
+    RESTORE_ID="{{ restore_id }}"
+    SNAPSHOT="{{ snapshot }}"
+    STACK="{{ stack }}"
+
+    # Job name is "arangodb-restore-<restoreId>" and must stay a <=63 char
+    # DNS-1123 subdomain — same limit arangodb-restore/types.go enforces.
+    MAX_RESTORE_ID_LEN=46
+
+    if [[ -z "$NAMESPACE" ]]; then
+        echo "Error: --namespace is required; there is no safe default restore target." >&2
+        exit 1
+    fi
+
+    if [[ -z "$SNAPSHOT" ]]; then
+        echo "Error: --snapshot cannot be empty; use 'latest' or a restic snapshot id." >&2
+        exit 1
+    fi
+
+    if [[ -z "$SERVER" ]]; then
+        echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
+        SERVER=$(kubectl get svc -n "$NAMESPACE" -l arango_deployment=arangodb \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+            | grep -v -E -- '-(int|ea)$' \
+            | grep -v -E -- '-(agnt|crdn|prmr|sngl)-' \
+            | head -n1 || true)
+        if [[ -z "$SERVER" ]]; then
+            SERVER="arangodb"
+            echo "Warning: no coordinator Service found (or kubectl unreachable) — falling back to '$SERVER'. Override with --server." >&2
+        else
+            echo "Discovered coordinator Service: $SERVER"
+        fi
+    fi
+
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="drill-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+
+    if [[ ! "$RESTORE_ID" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+        echo "Error: restore id '$RESTORE_ID' must be a DNS-1123 label: lowercase alphanumeric and hyphens, not starting or ending with a hyphen." >&2
+        exit 1
+    fi
+
+    if (( ${#RESTORE_ID} > MAX_RESTORE_ID_LEN )); then
+        echo "Error: restore id '$RESTORE_ID' is ${#RESTORE_ID} chars, must be at most ${MAX_RESTORE_ID_LEN} so the Job name stays under the 63-char limit." >&2
+        exit 1
+    fi
+
+    CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
+
+    echo
+    echo "arangodb-restore configuration"
+    echo "  namespace     : ${NAMESPACE}"
+    echo "  server        : ${SERVER}"
+    echo "  restoreId     : ${RESTORE_ID}"
+    echo "  snapshot      : ${SNAPSHOT}"
+    echo "  confirmTarget : ${CONFIRM_TARGET}"
+    echo "  job name      : arangodb-restore-${RESTORE_ID}"
+    echo
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    STACK="${STACK:-${PULUMI_STACK:-dev}}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE" \
+        --plaintext "arangodb-restore:properties.server=$SERVER" \
+        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID" \
+        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT" \
+        --plaintext "arangodb-restore:properties.confirmTarget=$CONFIRM_TARGET"
+
+    echo
+    echo "Config written. Next:"
+    echo "  just gcp-pulumi preview --folder arangodb-restore"
+    echo "  just gcp-pulumi create-resource --folder arangodb-restore"
