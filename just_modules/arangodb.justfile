@@ -933,6 +933,38 @@ create-databases app_user app_password namespace="prod" stack="" retries="60" in
     echo
     kubectl get secret -n "$NS" "$SECRET_NAME"
 
+# Reset the ArangoDB root password to the value in the destination cluster's
+# 'arangodb-pass' secret. Required after a cross-project bootstrap restores
+# the source's _users collection, which brings the source's root password.
+# Usage: just arangodb reset-root-password [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Target namespace (default: prod)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Probe attempts (default 60)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+reset-root-password namespace="prod" stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="reset-root-password"
+    NS="{{ namespace }}"
+    JOB="arangodb-reset-root-password"
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    echo "Root password reset log:"
+    kubectl logs -n "$NS" "job/$JOB" --tail=20 || \
+        echo "Job already removed by TTL — check for successful login."
+
 # Create namespaces prod + operators and the shared `dictycr` backup Secret.
 # One command for: ensure-stack, all four secret values, preview, apply, verify.
 # Apply this FIRST — the operator's Helm release does not create its namespace.
@@ -991,6 +1023,138 @@ configure-backup-secrets restic_password gcs_project gcs_key_file key_name="gcsC
     echo "Keys in $SECRET_NAME:"
     kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -r '.data | keys[] | "  " + .'
 
+# Create Secret `dictycr-source`: the READ-ONLY identity for the cross-project
+# first load (docs/arangodb-deploy.md §4). Creates no namespaces — `prod` must
+# already exist from configure-backup-secrets.
+# Usage: just arangodb configure-source-secrets --restic-password <pw> --gcs-project <source-id> --gcs-key-file <path> [--key-name <k>] [--secret-name <n>] [--namespace <ns>] [--stack <name>]
+[arg("restic_password", long="restic-password", short="p", help="SOURCE restic repository password (required; may differ from the dictycr one)")]
+[arg("gcs_project", long="gcs-project", short="g", help="SOURCE GCP project id that owns the source bucket (required; NOT this cluster's project)")]
+[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to the SOURCE service account JSON key with objectViewer on the source bucket (required)")]
+[arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
+[arg("secret_name", long="secret-name", short="e", help="Name of the source Secret")]
+[arg("namespace", long="namespace", short="n", help="Namespace the Secret is created in (must already exist)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[no-cd]
+configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsCredentials" secret_name="dictycr-source" namespace="prod" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="source_backup_secrets"
+    NS="{{ namespace }}"
+    RESTIC_PASSWORD="{{ restic_password }}"
+    GCS_PROJECT="{{ gcs_project }}"
+    KEY_FILE="{{ gcs_key_file }}"
+    KEY_NAME="{{ key_name }}"
+    SECRET_NAME="{{ secret_name }}"
+
+    if [[ -z "$RESTIC_PASSWORD" || -z "$GCS_PROJECT" || -z "$KEY_FILE" ]]; then
+        echo "Error: --restic-password, --gcs-project and --gcs-key-file are all required." >&2
+        exit 1
+    fi
+    if [[ ! -f "$KEY_FILE" ]]; then
+        echo "Error: source service account key '$KEY_FILE' does not exist on this machine." >&2
+        exit 1
+    fi
+    # Absolute path: source_backup_secrets/main.go reads this file with
+    # os.ReadFile at `pulumi up` time, and `pulumi -C` changes the working
+    # directory, so a relative path would resolve against the project dir.
+    KEY_FILE=$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")
+
+    # This project creates no namespaces on purpose — backup_secrets owns them.
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: namespace '$NS' does not exist." >&2
+        echo "Run 'just arangodb configure-backup-secrets ...' first — it creates prod/operators and Secret dictycr." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "$FOLDER:properties.namespace=$NS" \
+        --plaintext "$FOLDER:properties.secret.name=$SECRET_NAME" \
+        --secret "$FOLDER:properties.secret.resticPass=$RESTIC_PASSWORD" \
+        --secret "$FOLDER:properties.secret.gcsProject=$GCS_PROJECT" \
+        --secret "$FOLDER:properties.secret.serviceAccount.keyname=$KEY_NAME" \
+        --secret "$FOLDER:properties.secret.serviceAccount.filepath=$KEY_FILE"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo
+    kubectl get secret "$SECRET_NAME" -n "$NS"
+    echo "Keys in $SECRET_NAME:"
+    kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -r '.data | keys[] | "  " + .'
+    echo
+    echo "Reminder: $SECRET_NAME is READ-ONLY bootstrap identity. Never point deploy-backup at it."
+
+# Create a read-only service account in the SOURCE GCP project and grant it
+# objectViewer on the source restic bucket. Only usable if you hold IAM admin
+# on that project — otherwise ask its owner to run these three gcloud calls.
+# Usage: just arangodb grant-source-bucket-reader --source-project <id> --bucket <name> [--sa-name <n>] [--key-file <path>]
+[arg("source_project", long="source-project", short="p", help="SOURCE GCP project id (required; never defaulted to the current project)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<source-project>/<sa-name>.json)")]
+[group('arangodb')]
+[no-cd]
+grant-source-bucket-reader source_project bucket sa_name="arangodb-restic-reader" key_file="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    SOURCE_PROJECT="{{ source_project }}"
+    SOURCE_BUCKET="{{ bucket }}"
+    SA_NAME="{{ sa_name }}"
+    KEY_FILE="{{ key_file }}"
+
+    if [[ -z "$SOURCE_PROJECT" || -z "$SOURCE_BUCKET" ]]; then
+        echo "Error: --source-project and --bucket are both required." >&2
+        exit 1
+    fi
+
+    SA_EMAIL="${SA_NAME}@${SOURCE_PROJECT}.iam.gserviceaccount.com"
+    KEY_FILE="${KEY_FILE:-credentials/${SOURCE_PROJECT}/${SA_NAME}.json}"
+
+    echo "Source project : ${SOURCE_PROJECT}"
+    echo "Source bucket  : gs://${SOURCE_BUCKET}"
+    echo "Service account: ${SA_EMAIL}"
+    echo "Key file       : ${KEY_FILE}"
+    echo
+
+    # Idempotent: "already exists" is the expected result on a re-run.
+    gcloud iam service-accounts create "$SA_NAME" \
+        --project "$SOURCE_PROJECT" \
+        --display-name "ArangoDB restic cross-project reader" \
+        || echo "Service account already exists — continuing."
+
+    # Least privilege: BUCKET-level objectViewer (list+get). Never grant
+    # project-wide storage.admin, and never grant write on the source project.
+    # Additive binding, so re-running is idempotent.
+    gcloud storage buckets add-iam-policy-binding "gs://${SOURCE_BUCKET}" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectViewer \
+        --project "$SOURCE_PROJECT"
+
+    # Key creation is NOT idempotent — every run mints a new key and old ones
+    # keep working until deleted. Reuse an existing key file when present.
+    if [[ -f "$KEY_FILE" ]]; then
+        echo
+        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
+        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
+        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $SOURCE_PROJECT"
+    else
+        mkdir -p "$(dirname "$KEY_FILE")"
+        gcloud iam service-accounts keys create "$KEY_FILE" \
+            --iam-account "$SA_EMAIL" \
+            --project "$SOURCE_PROJECT"
+        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
+    fi
+
+    echo
+    echo "Next: just arangodb configure-source-secrets --restic-password '<source pw>' --gcs-project '$SOURCE_PROJECT' --gcs-key-file '$KEY_FILE'"
+
 # Deploy the backup bucket, CronJob and immediate Job, then wait for that Job.
 # One command for: ensure-stack, preview, apply, Job wait, log tail, CronJob check.
 # Usage: just arangodb deploy-backup [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
@@ -1008,10 +1172,27 @@ deploy-backup namespace="prod" stack="" retries="90" interval="10":
     NS="{{ namespace }}"
     JOB="arangodb-backup-job"
     CRONJOB="arangodb-backup-cronjob"
+    SOURCE_SECRET="dictycr-source"
 
     STACK=$(just arangodb _require-stack --stack "{{ stack }}")
 
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+
+    # Hard guard, not just documentation: `dictycr-source` is the read-only
+    # identity for the FOREIGN source project. Backing up through it would
+    # attempt writes into someone else's bucket with a credential that has no
+    # write permission, and would point this cluster's backups at the wrong
+    # repository. Ongoing backups must always use `dictycr`.
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    for key in resticSecret bucketSecret projectSecret; do
+        configured=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path "properties.${key}.name" 2>/dev/null || true)
+        if [[ "$configured" == "$SOURCE_SECRET" ]]; then
+            echo "Error: properties.${key}.name is '$SOURCE_SECRET' on $FOLDER stack '$STACK'." >&2
+            echo "That Secret is the read-only cross-project BOOTSTRAP identity and must never drive backups." >&2
+            echo "Fix: set it back to 'dictycr' (re-run configure-backup-secrets with the NEW project key if needed)." >&2
+            exit 1
+        fi
+    done
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
@@ -1141,6 +1322,215 @@ apply-restore stack="" retries="180" interval="10":
     echo "Job and scratch PVC self-delete 1 hour after finishing (ttlSecondsAfterFinished: 3600)."
     echo "Destroy the stack when done inspecting: just gcp-pulumi remove-resource --folder $FOLDER --stack $STACK"
 
+# Point the arangodb-restore stack at the SOURCE project's restic repository
+# for a cross-project first load (docs/arangodb-deploy.md §4). Separate from
+# configure-restore on purpose: that one is the DR-drill path and tolerates
+# `latest`, this one demands an explicit pinned snapshot id.
+# Usage: just arangodb configure-bootstrap --namespace <ns> --bucket <source-bucket> --snapshot <id> [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>]
+[arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Explicit restic snapshot id (required; 'latest' is rejected)")]
+[arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: bootstrap-<UTC timestamp>)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('arangodb')]
+[no-cd]
+configure-bootstrap namespace bucket snapshot server="" restore_id="" secret="dictycr-source" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-restore"
+    NAMESPACE="{{ namespace }}"
+    BUCKET="{{ bucket }}"
+    SNAPSHOT="{{ snapshot }}"
+    SERVER="{{ server }}"
+    RESTORE_ID="{{ restore_id }}"
+    SECRET="{{ secret }}"
+
+    # Same 63-char Job-name budget arangodb-restore/types.go enforces.
+    MAX_RESTORE_ID_LEN=46
+
+    if [[ -z "$NAMESPACE" ]]; then
+        echo "Error: --namespace is required; there is no safe default restore target." >&2
+        exit 1
+    fi
+    if [[ -z "$BUCKET" ]]; then
+        echo "Error: --bucket is required; pass the SOURCE project's restic bucket." >&2
+        exit 1
+    fi
+
+    # A first load must be reproducible and auditable: 'latest' would silently
+    # change meaning between the snapshot you listed and the one you restore,
+    # and it is what defines this cluster's RPO. Pin it.
+    if [[ -z "$SNAPSHOT" ]]; then
+        echo "Error: --snapshot is required and must be an explicit restic snapshot id." >&2
+        echo "List them first: just arangodb list-source-snapshots --namespace $NAMESPACE --bucket $BUCKET" >&2
+        exit 1
+    fi
+    if [[ "$SNAPSHOT" == "latest" ]]; then
+        echo "Error: --snapshot latest is rejected for bootstrap; pass an explicit restic snapshot id." >&2
+        echo "The pinned id is the recorded RPO for this first load." >&2
+        exit 1
+    fi
+    if [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{8,64}$ ]]; then
+        echo "Error: snapshot '$SNAPSHOT' is not a restic snapshot id (expected 8-64 lowercase hex chars)." >&2
+        exit 1
+    fi
+
+    if [[ -z "$SERVER" ]]; then
+        echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
+        SERVER=$(kubectl get svc -n "$NAMESPACE" -l arango_deployment=arangodb \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+            | grep -v -E -- '-(int|ea)$' \
+            | grep -v -E -- '-(agnt|crdn|prmr|sngl)-' \
+            | head -n1 || true)
+        if [[ -z "$SERVER" ]]; then
+            SERVER="arangodb"
+            echo "Warning: no coordinator Service found (or kubectl unreachable) — falling back to '$SERVER'. Override with --server." >&2
+        else
+            echo "Discovered coordinator Service: $SERVER"
+        fi
+    fi
+
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="bootstrap-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+    if [[ ! "$RESTORE_ID" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+        echo "Error: restore id '$RESTORE_ID' must be a DNS-1123 label: lowercase alphanumeric and hyphens, not starting or ending with a hyphen." >&2
+        exit 1
+    fi
+    if (( ${#RESTORE_ID} > MAX_RESTORE_ID_LEN )); then
+        echo "Error: restore id '$RESTORE_ID' is ${#RESTORE_ID} chars, must be at most ${MAX_RESTORE_ID_LEN} so the Job name stays under the 63-char limit." >&2
+        exit 1
+    fi
+
+    CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
+
+    echo
+    echo "arangodb-restore BOOTSTRAP configuration (cross-project first load)"
+    echo "  namespace     : ${NAMESPACE}"
+    echo "  server        : ${SERVER}"
+    echo "  restoreId     : ${RESTORE_ID}"
+    echo "  source bucket : ${BUCKET}"
+    echo "  snapshot      : ${SNAPSHOT}"
+    echo "  source secret : ${SECRET}"
+    echo "  noLock        : true (read-only SA cannot write a restic lock)"
+    echo "  confirmTarget : ${CONFIRM_TARGET}"
+    echo "  job name      : arangodb-restore-${RESTORE_ID}"
+    echo
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    # Overlay on the DR template: target identity, the SOURCE bucket, the three
+    # SOURCE secret NAMES (keys keep their dictycr-compatible names), noLock.
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE" \
+        --plaintext "arangodb-restore:properties.server=$SERVER" \
+        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID" \
+        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT" \
+        --plaintext "arangodb-restore:properties.confirmTarget=$CONFIRM_TARGET" \
+        --plaintext "arangodb-restore:properties.bucket=$BUCKET" \
+        --plaintext "arangodb-restore:properties.resticSecret.name=$SECRET" \
+        --plaintext "arangodb-restore:properties.resticSecret.key=resticPass" \
+        --plaintext "arangodb-restore:properties.bucketSecret.name=$SECRET" \
+        --plaintext "arangodb-restore:properties.bucketSecret.key=gcsCredentials" \
+        --plaintext "arangodb-restore:properties.projectSecret.name=$SECRET" \
+        --plaintext "arangodb-restore:properties.projectSecret.key=gcsProject" \
+        --plaintext "arangodb-restore:properties.noLock=true"
+
+    echo
+    echo "Bootstrap config written. Run 'just arangodb reset-restore-config' when done"
+    echo "(bootstrap-from-snapshot does that for you, even on failure)."
+
+# Put the arangodb-restore stack back on the DR defaults after a bootstrap:
+# this cluster's own bucket + `dictycr`, locking re-enabled, target cleared.
+# Without this a later DR drill would silently read the FOREIGN source bucket.
+# Usage: just arangodb reset-restore-config [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[no-cd]
+reset-restore-config stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-restore"
+    PROD_BUCKET="restic-arangodb-backup-prod"
+    PROD_SECRET="dictycr"
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "arangodb-restore:properties.bucket=$PROD_BUCKET" \
+        --plaintext "arangodb-restore:properties.resticSecret.name=$PROD_SECRET" \
+        --plaintext "arangodb-restore:properties.bucketSecret.name=$PROD_SECRET" \
+        --plaintext "arangodb-restore:properties.projectSecret.name=$PROD_SECRET" \
+        --plaintext "arangodb-restore:properties.noLock=false"
+
+    # Clearing these forces a fresh configure-restore / configure-bootstrap
+    # next time instead of reusing a stale target identity.
+    for key in snapshot restoreId confirmTarget; do
+        pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
+    done
+
+    echo
+    echo "arangodb-restore reset to DR defaults:"
+    echo "  bucket  : $PROD_BUCKET"
+    echo "  secrets : $PROD_SECRET (restic/bucket/project)"
+    echo "  noLock  : false"
+    echo "  snapshot/restoreId/confirmTarget cleared"
+
+# One command for the cross-project first load: configure-bootstrap, then the
+# existing apply-restore, then reset-restore-config via trap (so the stack is
+# never left pointing at the foreign bucket, even if the restore fails).
+# Usage: just arangodb bootstrap-from-snapshot --namespace <ns> --bucket <source-bucket> --snapshot <id> [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Explicit restic snapshot id (required; 'latest' is rejected)")]
+[arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: bootstrap-<UTC timestamp>)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 180)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+bootstrap-from-snapshot namespace bucket snapshot server="" restore_id="" secret="dictycr-source" stack="" retries="180" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    # Reset on EVERY exit path. A failed bootstrap that left the stack pointing
+    # at the foreign source bucket is exactly how a later DR drill would read
+    # the wrong repository, so the reset must not depend on success.
+    trap 'just arangodb reset-restore-config --stack "$STACK" || true' EXIT
+
+    just arangodb configure-bootstrap \
+        --namespace "{{ namespace }}" \
+        --bucket "{{ bucket }}" \
+        --snapshot "{{ snapshot }}" \
+        --server "{{ server }}" \
+        --restore-id "{{ restore_id }}" \
+        --secret "{{ secret }}" \
+        --stack "$STACK"
+
+    just arangodb apply-restore \
+        --stack "$STACK" \
+        --retries "{{ retries }}" \
+        --interval "{{ interval }}"
+
+    echo
+    echo "Bootstrap restore finished. Next steps:"
+    echo "  1. Spot-check a restored database has documents."
+    echo "  2. just arangodb reset-root-password (returns root to destination's arangodb-pass)"
+    echo "  3. just arangodb create-databases --app-user '<user>' --app-password '<password>'"
+    echo "     (creates app user if missing, requires working root first)."
+    echo "  4. Continue with just arangodb deploy-backup (uses dictycr, never dictycr-source)."
+
 # List restic snapshots from inside the cluster, using the same `dictycr`
 # secret wiring the restore Job uses. No local restic, no kops state store.
 # Usage: just arangodb list-snapshots-in-cluster --namespace <ns> [--bucket <b>] [--secret <name>] [--image <ref>]
@@ -1173,6 +1563,36 @@ list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret=
 
     kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
         --image "$IMAGE" --overrides="$OVERRIDES"
+
+# List snapshots in the SOURCE project's restic repository. Thin wrapper over
+# list-snapshots-in-cluster that makes --bucket mandatory and defaults the
+# secret to `dictycr-source`, so a forgotten flag cannot silently list this
+# cluster's own repository and hand you a snapshot id from the wrong repo.
+# Usage: just arangodb list-source-snapshots --namespace <ns> --bucket <source-bucket> [--secret <name>] [--image <ref>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the dictycr-source secret (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS restic bucket (required; never defaulted)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("image", long="image", short="m", help="restic image reference")]
+[group('arangodb')]
+[no-cd]
+list-source-snapshots namespace bucket secret="dictycr-source" image="restic/restic:0.17.0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ -z "{{ bucket }}" ]]; then
+        echo "Error: --bucket is required; pass the SOURCE project's restic bucket explicitly." >&2
+        exit 1
+    fi
+
+    echo "Listing snapshots in gs://{{ bucket }} using secret '{{ secret }}' (source repository)."
+    echo "Pin one id from this list — 'latest' is rejected by configure-bootstrap."
+    echo
+
+    just arangodb list-snapshots-in-cluster \
+        --namespace "{{ namespace }}" \
+        --bucket "{{ bucket }}" \
+        --secret "{{ secret }}" \
+        --image "{{ image }}"
 
 # Verify stateful-db pool prerequisites before ArangoDB installation.
 # Checks node count, architecture, taint, and zones. Exits non-zero if any check fails.

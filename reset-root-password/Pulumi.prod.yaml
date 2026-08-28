@@ -1,0 +1,15 @@
+# Production configuration template for reset-root-password
+config:
+  reset-root-password:properties:
+    namespace: prod
+    server: arangodb
+    port: 8529
+    arangodbCredentials:
+      name: arangodb-pass
+      passKey: password
+    jwtSecret:
+      name: arangodb-jwt
+      tokenKey: token
+    image:
+      name: arangodb/arangodb
+      tag: 3.12.10.1

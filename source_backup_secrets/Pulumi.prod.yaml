@@ -1,0 +1,33 @@
+# Production configuration template for source_backup_secrets.
+#
+# This stack creates ONLY Secret `dictycr-source` in namespace `prod`. It does
+# NOT create namespaces — run `just arangodb configure-backup-secrets` first
+# (backup_secrets owns `prod` and `operators`).
+#
+# `dictycr-source` is the READ-ONLY identity for the cross-project first load
+# described in docs/arangodb-deploy.md §4. Its three keys have the SAME names
+# as `dictycr` (the restore Job reads those exact names) but point at the
+# SOURCE project:
+#
+#   resticPass     -> the SOURCE restic repository password
+#                     (may differ from the new cluster's restic password)
+#   gcsProject     -> the SOURCE GCP project id
+#                     (NOT the project this cluster runs in)
+#   gcsCredentials -> SOURCE service account JSON with
+#                     roles/storage.objectViewer on the source bucket only
+#
+# Configure it non-interactively with:
+#
+#   just arangodb configure-source-secrets \
+#     --restic-password '<source restic password>' \
+#     --gcs-project '<source-project-id>' \
+#     --gcs-key-file credentials/<source-project-id>/arangodb-restic-reader.json
+#
+# NEVER point the backup CronJob or `just arangodb deploy-backup` at this
+# Secret — it would write into the foreign project's bucket. `deploy-backup`
+# aborts if it sees this Secret name.
+config:
+  source_backup_secrets:properties:
+    namespace: prod
+    secret:
+      name: dictycr-source

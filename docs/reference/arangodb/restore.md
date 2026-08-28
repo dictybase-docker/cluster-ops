@@ -8,6 +8,10 @@ One in-cluster Job: init container `restic restore` → main container `arangore
 
 Run drills against a **clone** cluster or scratch namespace. Same Job is real disaster-recovery path when restoring after data loss.
 
+### Also used by the cross-project first load
+
+[Deploy guide §4](../../arangodb-deploy.md#4-import-data) reuses this exact Job to first-load a cluster from a snapshot in another GCP project's bucket. Same program, same `confirmTarget` gate, four config overrides: `bucket` = the source bucket, the three secret **names** = `dictycr-source` (keys keep their `dictycr`-compatible names), `noLock` = `true`, and a **required** explicit snapshot id — `latest` is rejected by `configure-bootstrap`, though it stays allowed here for drills. `restoreId` is `bootstrap-<UTC>` rather than `drill-<UTC>`. `just arangodb reset-restore-config` returns the stack to the drill defaults below, and `bootstrap-from-snapshot` calls it from a `trap` so a drill can never inherit the foreign bucket.
+
 ## Prerequisites
 
 Target namespace needs:

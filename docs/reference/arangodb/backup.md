@@ -50,6 +50,12 @@ just arangodb configure-backup-secrets \
 3. `preview` → `create-resource`
 4. Prints both namespaces, Secret `dictycr`, and data keys
 
+### `dictycr` is this project's identity only
+
+`dictycr` must always hold **this** cluster's GCP project id and a service account with write access to `restic-arangodb-backup-prod`. Never load a foreign project's service account JSON into it.
+
+The cross-project first load in [deploy guide §4](../../arangodb-deploy.md#4-import-data) uses a **separate** Secret, `dictycr-source` (created by `source_backup_secrets`, read-only, source project). It exists for the bootstrap restore and nothing else. `just arangodb deploy-backup` aborts if any of `resticSecret`/`bucketSecret`/`projectSecret` is set to `dictycr-source`, because backing up through the read-only foreign identity would target the wrong repository.
+
 ### Flags
 
 | Flag | Required | Default | Notes |

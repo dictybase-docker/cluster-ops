@@ -8,8 +8,12 @@ import (
 )
 
 const (
-	testSecretName = "dictycr"
-	wantDNSErr     = "DNS-1123 label"
+	testSecretName     = "dictycr"
+	testSourceIdentity = "dictycr-source"
+	testSourceBucket   = "source-restic-bucket"
+	testBootstrapID    = "bootstrap-20260827-120000"
+	testBootstrapSnap  = "a1b2c3"
+	wantDNSErr         = "DNS-1123 label"
 )
 
 func newSampleRestoreConfig() *RestoreConfig {
@@ -26,6 +30,32 @@ func newSampleRestoreConfig() *RestoreConfig {
 		ResticSecret:   SecretKeyPair{Name: testSecretName, Key: "resticPass"},
 		BucketSecret:   SecretKeyPair{Name: testSecretName, Key: "gcsCredentials"},
 		ProjectSecret:  SecretKeyPair{Name: testSecretName, Key: "gcsProject"},
+	}
+	cfg.applyDefaults()
+	return cfg
+}
+
+// newSampleBootstrapConfig is the cross-project first-load shape from
+// docs/arangodb-deploy.md §4: the SOURCE project's bucket, the read-only
+// `dictycr-source` identity, a pinned restic snapshot (never "latest"), a
+// bootstrap-* restoreId, and --no-lock because the source SA cannot write a
+// restic lock file.
+func newSampleBootstrapConfig() *RestoreConfig {
+	cfg := &RestoreConfig{
+		Namespace:     "prod",
+		Bucket:        testSourceBucket,
+		Snapshot:      testBootstrapSnap,
+		RestoreID:     testBootstrapID,
+		ConfirmTarget: "prod/arangodb/" + testBootstrapID,
+		NoLock:        true,
+		Storage: StorageConfig{
+			Class: "dictycr-balanced",
+			Size:  "150Gi",
+		},
+		ArangodbSecret: SecretKeyPair{Name: "arangodb-pass", Key: "password"},
+		ResticSecret:   SecretKeyPair{Name: testSourceIdentity, Key: "resticPass"},
+		BucketSecret:   SecretKeyPair{Name: testSourceIdentity, Key: "gcsCredentials"},
+		ProjectSecret:  SecretKeyPair{Name: testSourceIdentity, Key: "gcsProject"},
 	}
 	cfg.applyDefaults()
 	return cfg
@@ -214,6 +244,49 @@ func TestBuildResticRestoreArgs_ExplicitSnapshot(t *testing.T) {
 
 	require.Len(t, args, 6)
 	assert.Equal(t, "a1b2c3d4", args[3])
+}
+
+func TestApplyDefaults_NoLockDefaultsFalse(t *testing.T) {
+	cfg := &RestoreConfig{}
+	cfg.applyDefaults()
+
+	assert.False(t, cfg.NoLock, "noLock must default to false so DR drills keep locking")
+}
+
+func TestBootstrapConfig_Validate(t *testing.T) {
+	cfg := newSampleBootstrapConfig()
+
+	require.NoError(t, cfg.Validate())
+	assert.Equal(t, "prod/arangodb/"+testBootstrapID, cfg.targetIdentity())
+	assert.Equal(t, "arangodb-restore-"+testBootstrapID, cfg.jobName())
+	assert.LessOrEqual(t, len(cfg.jobName()), 63)
+}
+
+func TestBootstrapConfig_ConfirmTargetMismatchStillFails(t *testing.T) {
+	cfg := newSampleBootstrapConfig()
+	cfg.ConfirmTarget = "prod/arangodb/some-other-run"
+
+	assert.ErrorContains(t, cfg.Validate(), "confirmTarget must exactly equal")
+}
+
+func TestBuildResticRestoreArgs_Bootstrap_NoLock(t *testing.T) {
+	cfg := newSampleBootstrapConfig()
+	args := buildResticRestoreArgs(cfg)
+
+	assert.Equal(t, []string{
+		"--no-lock",
+		"-r", "gs:source-restic-bucket:/",
+		"restore", testBootstrapSnap,
+		"--target", "/restore",
+	}, args)
+}
+
+func TestBuildResticRestoreArgs_DefaultOmitsNoLock(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	args := buildResticRestoreArgs(cfg)
+
+	assert.NotContains(t, args, "--no-lock")
+	assert.Equal(t, "-r", args[0])
 }
 
 func TestScratchInputDirectory(t *testing.T) {

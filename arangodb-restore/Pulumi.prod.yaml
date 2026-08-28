@@ -23,6 +23,24 @@
 # confirmTarget must exactly equal "<namespace>/<server>/<restoreId>" — this
 # is a deliberate safety gate against restoring into the wrong target from a
 # stale or copy-pasted config.
+#
+# THIS FILE IS THE DR-DRILL TEMPLATE: bucket restic-arangodb-backup-prod,
+# secrets `dictycr`, restic locking enabled (no noLock key). The cross-project
+# first-load path (docs/arangodb-deploy.md §4) reuses this same stack but
+# OVERRIDES four things via `just arangodb configure-bootstrap`:
+#
+#   properties.bucket                -> the SOURCE project's restic bucket
+#   properties.resticSecret.name     -> dictycr-source
+#   properties.bucketSecret.name     -> dictycr-source
+#   properties.projectSecret.name    -> dictycr-source
+#   properties.noLock                -> true   (read-only SA cannot write a
+#                                               restic lock file; see §2.4 of
+#                                               the bootstrap plan)
+#
+# Those overrides live in stack config, not in this file. `just arangodb
+# reset-restore-config` MUST run afterwards (bootstrap-from-snapshot calls it
+# from a trap) to put bucket/secrets/noLock back to the values above, so a
+# later DR drill cannot silently read the foreign source bucket.
 config:
   arangodb-restore:properties:
     namespace: prod

@@ -28,12 +28,20 @@ func scratchInputDirectory() string {
 // buildResticRestoreArgs is passed to the restic/restic image's entrypoint
 // (which forwards args to the restic binary directly — no Command override
 // needed for this container).
+//
+// When cfg.NoLock is set, --no-lock is prepended so it reaches restic as a
+// global option ahead of the "restore" subcommand, which is where restic
+// expects repository-level flags.
 func buildResticRestoreArgs(cfg *RestoreConfig) []string {
-	return []string{
+	args := []string{}
+	if cfg.NoLock {
+		args = append(args, "--no-lock")
+	}
+	return append(args,
 		"-r", resticRepository(cfg),
 		"restore", cfg.Snapshot,
 		"--target", scratchMountPath,
-	}
+	)
 }
 
 // buildArangorestoreArgs is passed to an explicit "arangorestore" Command
