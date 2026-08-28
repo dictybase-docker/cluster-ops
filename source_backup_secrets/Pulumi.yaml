@@ -1,0 +1,7 @@
+name: source_backup_secrets
+runtime: go
+description: A Pulumi program to create the read-only cross-project source Secret used to first-load ArangoDB from a foreign restic repository
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

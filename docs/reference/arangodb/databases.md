@@ -2,6 +2,10 @@
 
 Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
+> **Not a required step in the normal flow.** The first load in [deploy guide §4](../../arangodb-deploy.md#4-import-data) creates the databases itself (`arangorestore --create-database true --all-databases`) along with the source's collections and users, so nothing needs to pre-create them.
+>
+> This recipe is here for when something is missing anyway — a database the dump did not contain, an application user or Secret `backend` you need to (re)create after `--include-system-collections` restored the source's `_users`, or the loader path in §4.7, where the databases must exist before the loaders write into them. It is safe to run against databases that already exist.
+
 ## What It Does
 
 `create-arangodb-databases/Pulumi.prod.yaml` creates:

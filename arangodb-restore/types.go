@@ -57,11 +57,18 @@ type ImageConfig struct {
 // config cannot silently restore into the wrong cluster or overwrite a
 // previous restore attempt's Job.
 type RestoreConfig struct {
-	Namespace      string        `json:"namespace"`
-	Server         string        `json:"server,omitempty"`
-	Port           int           `json:"port,omitempty"`
-	Bucket         string        `json:"bucket"`
-	Snapshot       string        `json:"snapshot,omitempty"`
+	Namespace string `json:"namespace"`
+	Server    string `json:"server,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	Bucket    string `json:"bucket"`
+	Snapshot  string `json:"snapshot,omitempty"`
+	// NoLock passes restic's --no-lock to the restore. restic normally takes
+	// an exclusive lock, which writes a lock file into the repository; a
+	// read-only identity (roles/storage.objectViewer on a foreign project's
+	// bucket, as used by the cross-project bootstrap) cannot write it and the
+	// restore fails with HTTP 403. Left false for DR drills, which use a
+	// full-write identity and should keep locking.
+	NoLock         bool          `json:"noLock,omitempty"`
 	RestoreID      string        `json:"restoreId"`
 	ConfirmTarget  string        `json:"confirmTarget"`
 	Storage        StorageConfig `json:"storage"`

@@ -1,0 +1,7 @@
+name: reset-root-password
+runtime: go
+description: A Pulumi program to deploy a Kubernetes Job that resets the ArangoDB root password using the operator JWT secret
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

@@ -2,6 +2,10 @@
 
 Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
+> **Production first load is not a loader.** It is the cross-project restic bootstrap in [deploy guide §4](../../arangodb-deploy.md#4-import-data), which restores a pinned snapshot from another GCP project's bucket through the existing restore Job. This page documents the loader Jobs, which remain the fallback for data that is not available as a restic snapshot — and the exception case where one database was absent from the dump.
+>
+> Do not run loaders after a successful bootstrap: they would overwrite restored graphs.
+
 ## Prerequisites
 
 - Cluster Ready
