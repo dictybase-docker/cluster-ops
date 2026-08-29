@@ -137,4 +137,20 @@ To run the two halves separately — for instance to review the config before ap
    ```
 
 3. **Do not run the loaders** after a successful bootstrap — they would overwrite restored graphs. The one exception is a database that was genuinely absent from the dump.
-4. **Remove the local source SA JSON** if you no longer need it.
+4. **Remove the local source SA JSON** if you no longer need it. After bootstrap, ongoing backups use `dictycr` and this cluster's own bucket; `deploy-backup` aborts if it finds `dictycr-source` configured, so the bootstrap identity cannot be shared back in.
+
+## Fix Authentication
+
+The restore runs with `--include-system-collections`, so it brings the source's `_users` along with the data. Two consequences:
+
+**`root` now carries the source's password.** Reset it to this cluster's `arangodb-pass` Secret:
+
+```bash
+just arangodb reset-root-password
+```
+
+**The source's application user came along too.** If it is missing, or its password is not what your services expect, (re)create it — and Secret `backend` — with the recipe in [databases.md](databases.md#when-to-run-this):
+
+```bash
+just arangodb create-databases --app-user '<user>' --app-password '<password>'
+```
