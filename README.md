@@ -66,6 +66,7 @@ Pulumi projects live in their own top-level directories ([`storage_class/`](stor
 - **Git owns cluster identity** after bootstrap. If the env file and `cluster.yaml` disagree, Git wins.
 - **Secrets never land in Git.** Per-cluster env files, SA keys, and kubeconfigs are gitignored; Pulumi secrets are KMS-encrypted in state.
 - **Recipes fail loudly.** Production recipes require an explicit stack or cluster name rather than falling back to a default.
+- **Documentation follows [`docs/STYLE.md`](docs/STYLE.md)** — lean guides linked to `docs/reference/` detail docs.
 
 ## Discovering Recipes
 

@@ -21,7 +21,7 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 - [4. Day-2 Operations (Git-First Workflow)](#4-day-2-operations-git-first-workflow)
 - [5. Exploring the Cluster](#5-exploring-the-cluster)
 - [6. Disposable Cluster Lifecycle](#6-disposable-cluster-lifecycle)
-  - [6.5 Declarative Re-Creation](#65-declarative-re-creation)
+  - [6.1 Declarative Re-Creation](#61-declarative-re-creation)
 - [7. Next Steps](#7-next-steps)
 - [8. Related Documents](#8-related-documents)
 
@@ -36,9 +36,11 @@ For experienced users. Each composite recipe folds several lower-level ones — 
 just check-tools --skip-asdf yes
 just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>
 just cluster-env --env <env> --cluster <cluster-name>
+```
 
-# --- everything below runs inside that shell; CLUSTER_NAME/PROJECT_ID are set ---
+**Everything below runs inside that shell** — `CLUSTER_NAME`/`PROJECT_ID` are set:
 
+```bash
 # 2. Install pinned tools and verify, generate the node SSH keypair
 just prepare-tools
 just gcp-cluster generate-ssh-key
@@ -71,17 +73,6 @@ Then continue with [`pulumi-setup.md`](pulumi-setup.md).
 
 ---
 
-<a id="11-the-gcp-project"></a>
-<a id="12-core-system-tools"></a>
-<a id="13-environment-variables--the-cluster-env-file"></a>
-<a id="131-create-and-activate"></a>
-<a id="132-variables-overview"></a>
-<a id="133-after-bootstrap--git-takes-identity"></a>
-<a id="14-asdf-managed-tools"></a>
-<a id="141-tool-version-files"></a>
-<a id="15-per-project-file-isolation"></a>
-<a id="16-ssh-keypair"></a>
-
 ## 1. Prerequisites & Execution Context
 
 You need a GCP project with billing enabled and the core system tools installed. One GCP project hosts exactly one cluster.
@@ -103,10 +94,6 @@ Stay inside the `cluster-env` sub-shell for the rest of this guide. Need a diffe
 
 ---
 
-<a id="phase-1a"></a>
-<a id="phase-1b"></a>
-<a id="phase-2"></a>
-
 ## 2. Service Accounts & Authentication
 
 Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two composite recipes do the whole chain; one shell re-entry is still required at the end so Section 3 tools pick up the new credential.
@@ -124,17 +111,7 @@ exit
 just cluster-env --env <env> --cluster <cluster-name>
 ```
 
-`bootstrap-identities` folds `setup-sa-manager` + `configure-gcloud --name sa-manager` + `setup-kops-creator` (Phase 1a enable APIs + Phase 1b disable unused APIs + Phase 2 create the SA) into one call. `rotate-to-creator` folds `cluster-cred` + `configure-gcloud --name kops-cluster-creator` into one call. Neither needs a shell re-entry in the middle — gcloud configs persist in `~/.config/gcloud`, and none of these steps read `GOOGLE_APPLICATION_CREDENTIALS`. The single `exit`/re-enter at the end is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`. `configure-gcloud --name kops-cluster-creator` uses a *separate* named configuration, so `sa-manager` stays available for the rare task that needs it.
-
 ---
-
-<a id="step-31--bootstrap-local-manifest-bundle"></a>
-<a id="step-32--customize-yaml-in-git"></a>
-<a id="step-33--create-state-bucket"></a>
-<a id="step-34--push-manifest-bundle-to-state-store"></a>
-<a id="step-35--upload-ssh-secret"></a>
-<a id="step-36--preview--apply-version-aware"></a>
-<a id="step-37--validate-ha-topology--hardening"></a>
 
 ## 3. Cluster Bootstrap (Git-Native Flow)
 
@@ -156,14 +133,7 @@ git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 just gcp-cluster create-cluster
 ```
 
-`create-cluster` folds create-state-bucket (idempotent) → replace-manifests (with the one-time `--force` a first push needs) → upload-ssh-secret → plan-cluster → update-cluster → drift-manifests → validate-cluster → validate-kops-ha → validate-hardening, in that order. It is the **same recipe** used for [post-teardown recreation](#65-declarative-re-creation) — both start from "no live cluster, SSH secret not yet uploaded," so the steps are identical.
-
-`show-public-ip` prints a ready-to-paste `<ip>/32` and refuses a private address that would lock you out — deliberately not auto-applied, since choosing between your current IP, a VPN range, or `0.0.0.0/0` is an operator decision. Generated defaults — Kubernetes 1.28.8, Cilium, pd-ssd etcd, CSI driver, hardening addons, and the `stateless-web` / `stateful-db` / `batch-spot` pools — are listed in [bootstrap detail](reference/kops/bootstrap.md#generated-defaults).
-
 ---
-
-<a id="41-drift-detection-ci"></a>
-<a id="42-when-to-run-a-rolling-update"></a>
 
 ## 4. Day-2 Operations (Git-First Workflow)
 
@@ -176,8 +146,6 @@ git commit -am "${CLUSTER_NAME}: scale stateless-web pool to 8"
 
 just gcp-cluster apply-cluster
 ```
-
-`apply-cluster` folds replace-manifests → plan-cluster → update-cluster → drift-manifests. It does **not** touch the SSH secret — `kops create secret` is not safely repeatable against a live cluster, unlike `create-cluster` which only ever runs against a cluster that doesn't have one yet.
 
 Changing `machineType`, disk size, `image`, or `kubernetesVersion` also needs a rolling update; pool scaling and CIDR changes do not ([change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix)):
 
@@ -201,12 +169,6 @@ just gcp-cluster k9s
 
 ---
 
-<a id="61-mindset--durable-blueprint"></a>
-<a id="62-what-survives-teardown"></a>
-<a id="63-teardown--destroy-the-cluster"></a>
-<a id="64-optional-delete-the-state-bucket"></a>
-<a id="67-caveats"></a>
-
 ## 6. Disposable Cluster Lifecycle
 
 VMs are transient; the blueprint in Git plus local credentials are durable. Teardown destroys compute only — the state bucket, SSH keypair, SA keys, and env file all survive.
@@ -220,7 +182,7 @@ just gcp-cluster delete-cluster --confirm yes
 just gcp-cluster delete-state-bucket --confirm yes
 ```
 
-### 6.5 Declarative Re-Creation
+### 6.1 Declarative Re-Creation
 
 Rebuild from the Git bundle with the same `create-cluster` recipe used at [initial bootstrap](#3-cluster-bootstrap-git-native-flow) — the preconditions are identical (no live cluster, SSH secret absent). Only step 0 differs: you must re-enter the operator shell first.
 → [Recreation detail](reference/kops/recreation.md)

@@ -68,14 +68,12 @@ just gcp-pulumi check-backend
 
 ## 1. Prerequisites
 
-Cluster must be up and validated through [README Step 3.7](kops-setup.md#step-37--validate-ha-topology--hardening), with the PD CSI driver enabled — without it PVCs stay Pending.
+Cluster must be up and validated through [README §3](kops-setup.md#3-cluster-bootstrap-git-native-flow), with the PD CSI driver enabled — without it PVCs stay Pending.
 → [Prerequisites detail](reference/pulumi/prerequisites.md)
 
 ```bash
 just gcp-pulumi check-tools
 ```
-
-Prints PASS/FAIL and the version for `pulumi`, `gcloud`, `kubectl`, and `jq`.
 
 ---
 
@@ -155,9 +153,7 @@ just gcp-pulumi check-storageclass --classes dictycr-balanced,dictycr-ssd
 
 `Pulumi.prod.yaml` declares **both** `dictycr-balanced` and `dictycr-ssd`, so name both when verifying a production cluster — the bare `check-storageclass` default only requires `dictycr-balanced` and would pass while `dictycr-ssd` is missing.
 
-Expect provisioner `pd.csi.storage.gke.io`. Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks).
-
-Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#-6-database-storage--retrieval).
+Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#-6-database-storage--retrieval).
 
 ---
 
@@ -193,7 +189,7 @@ Tearing down only the StorageClass is destructive if PVCs still reference it —
 
 | Document | Use it for |
 |----------|------------|
-| [`kops-setup.md`](kops-setup.md) | Cluster bootstrap, [env files](kops-setup.md#13-environment-variables--the-cluster-env-file), [day-2](kops-setup.md#4-day-2-operations-git-first-workflow), [teardown](kops-setup.md#6-disposable-cluster-lifecycle) |
+| [`kops-setup.md`](kops-setup.md) | Cluster bootstrap, [env files](kops-setup.md#1-prerequisites--execution-context), [day-2](kops-setup.md#4-day-2-operations-git-first-workflow), [teardown](kops-setup.md#6-disposable-cluster-lifecycle) |
 | [`kops-gcp-architecture.md`](kops-gcp-architecture.md) | HA vs cost, [stateful-db pool](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity), [database storage](kops-gcp-architecture.md#-6-database-storage--retrieval) |
 | [`arangodb-deploy.md`](arangodb-deploy.md) | Production ArangoDB Cluster after StorageClass |
 | [`plans/arangodb-production.md`](plans/arangodb-production.md) | Why Cluster mode, frozen lab stacks, remaining gaps |

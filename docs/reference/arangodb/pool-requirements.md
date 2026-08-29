@@ -18,7 +18,7 @@ Anti-affinity is **preferred** (hostname 100, zone 50), not required. No PDBs.
 
 ## Kubernetes Pool Requirements
 
-The `stateful-db` pool should already exist if `config/kops/<prod-cluster>/instancegroups.yaml` matches [README Step 3.2](../../kops-setup.md#step-32--customize-yaml-in-git) **plus** the production taint.
+The `stateful-db` pool should already exist if `config/kops/<prod-cluster>/instancegroups.yaml` matches [README §3](../../kops-setup.md#3-cluster-bootstrap-git-native-flow) **plus** the production taint.
 
 | Field | Expected Value |
 |-------|----------------|
