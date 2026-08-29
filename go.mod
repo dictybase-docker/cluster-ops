@@ -184,7 +184,7 @@ require (
 	github.com/IBM/fp-go/v2 v2.3.111
 	github.com/pulumi/pulumi-command/sdk v1.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.36.3
+	k8s.io/api v0.36.4
 	k8s.io/apimachinery v0.36.4
 	k8s.io/client-go v0.36.3
 )
