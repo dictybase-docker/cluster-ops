@@ -36,8 +36,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapp
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.57.0/go.mod h1:YqwkQPrWSC7+byyc1VlKbWLBF5JsW5IoL6xUkemYSXk=
 github.com/HdrHistogram/hdrhistogram-go v1.1.2 h1:5IcZpTvzydCQeHzK4Ef/D5rrSqwxob0t8PQPMybUNFM=
 github.com/HdrHistogram/hdrhistogram-go v1.1.2/go.mod h1:yDgFjdqOqDEKOvasDdhWNXYg9BVp4O+o5f6V/ehm6Oo=
-github.com/IBM/fp-go/v2 v2.3.82 h1:KTiVNrUJhM/LxETcadC6VbTQAgkT3+eFjuOCeGAnkB0=
-github.com/IBM/fp-go/v2 v2.3.82/go.mod h1:0Q2D4IhQJgOUj4xkDN7D0gDwt3p+e1e0v0zXYuyMvfM=
+github.com/IBM/fp-go/v2 v2.3.111 h1:JoE0mieoTMQifCoT8S9N4PBvjcnAWA1fu+h061dGtxc=
+github.com/IBM/fp-go/v2 v2.3.111/go.mod h1:46uEuyJFAq1wrOz4gec/8LGVFdsvxjCeDdAXJF0jpFg=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67IQOfM=
