@@ -12,7 +12,8 @@
 #
 # properties.secret.serviceAccount.filepath must point to a real GCS service
 # account JSON key (Storage Object Admin on the backup bucket) that exists on
-# disk where `pulumi up` runs — its contents are read and stored as the
+# disk where `pulumi up` runs. Create it with `just arangodb setup-backup-sa` —
+# it mints credentials/<project-id>/backup-gcs-sa.json with the right IAM grant. — its contents are read and stored as the
 # `dictycr` secret's `gcsCredentials` key, matching arangodb-backup's
 # bucketSecret.key and this repo's set convention.
 config:

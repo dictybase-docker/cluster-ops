@@ -32,6 +32,16 @@ Creates none — reads existing secrets:
 | `GOOGLE_APPLICATION_CREDENTIALS` | `dictycr` | `gcsCredentials` | `backup_secrets` |
 | `GOOGLE_PROJECT_ID` | `dictycr` | `gcsProject` | `backup_secrets` |
 
+## Renew the Backup SA Key
+
+`configure-backup-secrets` sets the SA up every run, so this standalone recipe only exists to mint a **new** key after you deleted the file on disk or pruned old keys:
+
+```bash
+just arangodb setup-backup-sa
+```
+
+Flags: `--bucket` (default `restic-arangodb-backup-prod`), `--project` (default `$PROJECT_ID`), `--sa-name` (default `backup-gcs-sa`), `--key-file` (default `credentials/<project>/<sa-name>.json`).
+
 ## Configure Backup Secrets
 
 `backup_secrets/main.go` creates namespaces `prod` and `operators`, plus Secret `dictycr` from a **local file** on the machine running `pulumi up`.
@@ -44,6 +54,7 @@ Inside a `just cluster-env` shell both GCS arguments default: `--gcs-project` to
 
 ### Behavior
 
+0. Runs the same SA-setup body as [`setup-backup-sa`](#renew-the-backup-sa-key) when the default key layout is in play: creates service account `backup-gcs-sa`, grants `roles/storage.objectAdmin` pinned to the backup bucket by an IAM condition `resource.name.startsWith("projects/_/buckets/restic-arangodb-backup-prod")` (a bucket-level binding cannot exist yet — the bucket only appears when `deploy-backup` runs in §5), and writes the key to `credentials/$PROJECT_ID/backup-gcs-sa.json` with `chmod 600`. All idempotent; key creation is skipped while the file exists. Skipped entirely with `--no-setup-sa`, or automatically when `--gcs-key-file` points at your own key.
 1. Runs `ensure-stack`
 2. `pulumi config set-all --path --secret` for `resticPass`, `gcsProject`, `serviceAccount.keyname`, `serviceAccount.filepath`
 3. `preview` → `create-resource`
@@ -60,6 +71,7 @@ The cross-project first load in [deploy guide §4](../../arangodb-deploy.md#4-im
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
 | `--restic-password` | Yes | — | Restic repository password |
+| `--setup-sa` / `--no-setup-sa` | No | `--setup-sa` | Create/refresh SA + key first; auto-skipped when `--gcs-key-file` is custom |
 | `--gcs-project` | No | `$PROJECT_ID` | From the cluster env file; recipe fails if both are empty |
 | `--gcs-key-file` | No | `credentials/$PROJECT_ID/backup-gcs-sa.json` | Must exist on this machine, stored as absolute path |
 | `--key-name` | No | `gcsCredentials` | Must stay `gcsCredentials` — both backup and restore look up this key |

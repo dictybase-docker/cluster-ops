@@ -2,9 +2,11 @@
 
 Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
-> **Not a required step in the normal flow.** The first load in [deploy guide §4](../../arangodb-deploy.md#4-import-data) creates the databases itself (`arangorestore --create-database true --all-databases`) along with the source's collections and users, so nothing needs to pre-create them.
->
-> This recipe is here for when something is missing anyway — a database the dump did not contain, an application user or Secret `backend` you need to (re)create after `--include-system-collections` restored the source's `_users`, or the loader path in [deploy guide §4.3](../../arangodb-deploy.md#43-alternative-loaders), where the databases must exist before the loaders write into them. It is safe to run against databases that already exist.
+## When to Run This
+
+**Not a required step in the normal flow.** The first load in [deploy guide §4](../../arangodb-deploy.md#4-import-data) creates the databases itself (`arangorestore --create-database true --all-databases`) along with the source's collections and users, so nothing needs to pre-create them.
+
+This recipe is for when something is missing anyway — a database the dump did not contain, an application user or Secret `backend` you need to (re)create after `--include-system-collections` restored the source's `_users`, or the loader path in [deploy guide §4.3](../../arangodb-deploy.md#43-alternative-loaders), where the databases must exist before the loaders write into them. Safe to run against databases that already exist.
 
 ## What It Does
 

@@ -965,11 +965,100 @@ reset-root-password namespace="prod" stack="" retries="60" interval="10":
     kubectl logs -n "$NS" "job/$JOB" --tail=20 || \
         echo "Job already removed by TTL — check for successful login."
 
+# Create the backup writer service account in THIS cluster's GCP project and
+# mint credentials/<project-id>/backup-gcs-sa.json — the key file
+# configure-backup-secrets reads at pulumi up time. Grants
+# roles/storage.objectAdmin pinned to the backup bucket by an IAM condition,
+# so it works BEFORE deploy-backup creates the bucket. Run once per project;
+# safe to re-run (key creation is skipped when the file already exists).
+# Usage: just arangodb setup-backup-sa [--bucket <name>] [--project <id>] [--sa-name <n>] [--key-file <path>]
+[arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<project>/<sa-name>.json)")]
+[group('arangodb')]
+[no-cd]
+setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup-gcs-sa" key_file="":
+    just arangodb _setup-backup-sa \
+        --bucket "{{ bucket }}" \
+        --project "{{ project }}" \
+        --sa-name "{{ sa_name }}" \
+        --key-file "{{ key_file }}"
+
+# Shared body of setup-backup-sa, called by configure-backup-secrets too. Not
+# meant to be invoked directly — use either of those two instead.
+[private]
+[arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<project>/<sa-name>.json)")]
+[no-cd]
+_setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup-gcs-sa" key_file="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    BUCKET="{{ bucket }}"
+    PROJECT="{{ project }}"
+    [ -z "${PROJECT}" ] && PROJECT="${PROJECT_ID:-}"
+    SA_NAME="{{ sa_name }}"
+    KEY_FILE="{{ key_file }}"
+
+    if [[ -z "$PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --project." >&2
+        exit 1
+    fi
+
+    SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
+    KEY_FILE="${KEY_FILE:-credentials/${PROJECT}/${SA_NAME}.json}"
+
+    echo "Project        : ${PROJECT}"
+    echo "Backup bucket  : gs://${BUCKET}"
+    echo "Service account: ${SA_EMAIL}"
+    echo "Key file       : ${KEY_FILE}"
+    echo
+
+    # Idempotent: "already exists" is the expected result on a re-run.
+    gcloud iam service-accounts create "$SA_NAME" \
+        --project "$PROJECT" \
+        --display-name "ArangoDB backup GCS writer" \
+        || echo "Service account already exists — continuing."
+
+    # Least privilege, ordering-safe: a project-level binding with an IAM
+    # condition pinning it to the backup bucket. A plain bucket-level binding
+    # (like grant-source-bucket-reader uses) is impossible here —
+    # deploy-backup creates the bucket AFTER this key must already exist.
+    # Additive and idempotent on re-run.
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectAdmin \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=arangodb-backup-bucket-writer,description=Object admin limited to the ArangoDB restic backup bucket"
+
+    # Key creation is NOT idempotent — every run mints a new key and old ones
+    # keep working until deleted. Reuse an existing key file when present.
+    if [[ -f "$KEY_FILE" ]]; then
+        echo
+        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
+        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
+        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT"
+    else
+        mkdir -p "$(dirname "$KEY_FILE")"
+        gcloud iam service-accounts keys create "$KEY_FILE" \
+            --iam-account "$SA_EMAIL" \
+            --project "$PROJECT"
+        chmod 600 "$KEY_FILE"
+        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
+    fi
+
+    echo
+    echo "Next: just arangodb configure-backup-secrets --restic-password '<restic-pass>'"
+
 # Create namespaces prod + operators and the shared `dictycr` backup Secret.
-# One command for: ensure-stack, all four secret values, preview, apply, verify.
-# Apply this FIRST — the operator's Helm release does not create its namespace.
-# Usage: just arangodb configure-backup-secrets --restic-password <pw> [--gcs-project <id>] [--gcs-key-file <path>] [--key-name <k>] [--namespace <ns>] [--stack <name>]
+# One command for: ensure SA + key, ensure-stack, all four secret values,
+# preview, apply, verify. Apply this FIRST — the operator's Helm release does
+# not create its namespace.
+# Usage: just arangodb configure-backup-secrets --restic-password <pw> [--no-setup-sa] [--gcs-project <id>] [--gcs-key-file <path>] [--key-name <k>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="restic repository password (required)")]
+[arg("setup_sa", long="setup-sa", help="Create/refresh the backup-gcs-sa service account + key first (disable with --no-setup-sa when pointing at your own key)")]
 [arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (defaults to PROJECT_ID from the cluster env)")]
 [arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (defaults to credentials/<project-id>/backup-gcs-sa.json; read at pulumi up time)")]
 [arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
@@ -977,13 +1066,14 @@ reset-root-password namespace="prod" stack="" retries="60" interval="10":
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('arangodb')]
 [no-cd]
-configure-backup-secrets restic_password gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="prod" stack="":
+configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="prod" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     FOLDER="backup_secrets"
     NS="{{ namespace }}"
     RESTIC_PASSWORD="{{ restic_password }}"
+    SETUP_SA="{{ setup_sa }}"
     GCS_PROJECT="{{ gcs_project }}"
     KEY_FILE="{{ gcs_key_file }}"
     KEY_NAME="{{ key_name }}"
@@ -1005,6 +1095,17 @@ configure-backup-secrets restic_password gcs_project="" gcs_key_file="" key_name
         echo "Error: --gcs-key-file is required." >&2
         exit 1
     fi
+
+    # The default key layout is produced by the SA setup helper. Pointing at a
+    # custom key (--gcs-key-file) skips it; force it back on with --setup-sa
+    # or opt a default-layout run out with --no-setup-sa.
+    DEFAULT_KEY_FILE="credentials/${GCS_PROJECT}/backup-gcs-sa.json"
+    if [[ "$SETUP_SA" == "true" && "$KEY_FILE" == "$DEFAULT_KEY_FILE" ]]; then
+        just arangodb _setup-backup-sa --project "$GCS_PROJECT"
+    elif [[ "$SETUP_SA" == "true" ]]; then
+        echo "Custom --gcs-key-file given — skipping SA setup; verifying the key file exists."
+    fi
+
     if [[ ! -f "$KEY_FILE" ]]; then
         echo "Error: service account key '$KEY_FILE' does not exist on this machine." >&2
         exit 1

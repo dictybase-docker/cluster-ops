@@ -35,9 +35,9 @@ For experienced users. Full details in sections below.
 # Enter cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
-# 1. Configure backup secrets (creates namespaces + Secret dictycr)
-#    Project and key file default from the cluster env: $PROJECT_ID and
-#    credentials/$PROJECT_ID/backup-gcs-sa.json
+# 1. Configure backup secrets (creates the backup SA + key, namespaces,
+#    and Secret dictycr). Project/key default from the cluster env:
+#    $PROJECT_ID and credentials/$PROJECT_ID/backup-gcs-sa.json
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 
 # 2. Deploy operator
@@ -67,7 +67,7 @@ just arangodb verify
 Optional steps:
 ```bash
 # Create databases / application user by hand. Not part of the normal flow —
-# the import creates the databases. Available if you ever need it (see §9).
+# the import creates the databases. Optional recipe: see databases.md.
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 # Loaders, if there is no restic snapshot to import from
@@ -101,20 +101,11 @@ Prints PASS/FAIL for: node count, architecture (amd64), taint, Ready status. Sho
 
 ## 2. Prerequisites
 
-Before installing ArangoDB, apply `backup_secrets` — creates namespaces `prod`/`operators` and Secret `dictycr`. The operator needs the `operators` namespace to exist.
+Creates the backup service account + key, namespaces `prod`/`operators`, and Secret `dictycr`. The operator needs the `operators` namespace to exist.
 → [Backup details](reference/arangodb/backup.md)
 
 ```bash
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
-```
-
-Only the restic password has to be typed. `--gcs-project` defaults to `$PROJECT_ID` (exported by `cluster-env` from the env file) and `--gcs-key-file` defaults to `credentials/$PROJECT_ID/backup-gcs-sa.json`. That key must be a service account with write access to the backup bucket, and it must exist on **this** machine — `backup_secrets/main.go` reads it locally at `pulumi up` time. Override either flag if your layout differs:
-
-```bash
-just arangodb configure-backup-secrets \
-  --restic-password '<restic-pass>' \
-  --gcs-project '<other-project-id>' \
-  --gcs-key-file /path/to/sa.json
 ```
 
 Also required: CSI + StorageClasses from [`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass).
@@ -154,24 +145,24 @@ Sections 1–3 give you a running, **empty** cluster — no application database
 Production first load is a cross-project restic bootstrap: the in-cluster restore Job (restic → arangorestore) reads a snapshot straight out of a GCS bucket owned by a **different GCP project**.
 → [Bootstrap details](reference/arangodb/bootstrap.md)
 
+Run inside the SOURCE cluster's environment:
+
 ```bash
-# 1. Temporarily switch to the source cluster's environment to grant access
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
+```
 
-# 2. Switch back to this cluster's environment
+---
+
+**Back in THIS cluster's environment** — everything below runs here:
+
+```bash
 just cluster-env --env prod --cluster <prod-cluster>
-
-# 3. Create the read-only identity
 just arangodb configure-source-secrets \
   --restic-password '<SOURCE-restic-password>' \
   --gcs-project '<SOURCE-project-id>' \
   --gcs-key-file credentials/<source-project-id>/arangodb-restic-reader.json
-
-# 4. List and pin a snapshot
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
-
-# 5. Restore the snapshot
 just arangodb bootstrap-from-snapshot \
   --namespace prod \
   --bucket <source-bucket> \
@@ -180,19 +171,15 @@ just arangodb bootstrap-from-snapshot \
 
 ### 4.2 Fix Authentication
 
-The restore includes `_users` (`--include-system-collections`), so `root` now carries the source's password. Reset it to this cluster's `arangodb-pass`:
+Reset root to this cluster's `arangodb-pass`, and (re)create the app user or Secret `backend` only if the restore left them wrong.
+→ [Bootstrap details](reference/arangodb/bootstrap.md#fix-authentication)
 
 ```bash
 just arangodb reset-root-password
-```
 
-The restore also brought the source's application user. If it is missing or its password is not what your services expect, (re)create it with the [§9](#9-optional-databases-by-hand) recipe:
-
-```bash
+# Only if the app user or its password is wrong — see databases.md
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 ```
-
-Then delete the local source SA JSON and continue to [§5 Backup & Restore](#5-backup--restore). Ongoing backups use `dictycr` and this cluster's own bucket; `deploy-backup` aborts if it finds `dictycr-source` configured.
 
 ### 4.3 Alternative: Loaders
 
@@ -266,16 +253,12 @@ Common issues:
 
 ## 9. Optional: Databases by Hand
 
-**Not part of the normal flow — skip it on a first install.** [§4 Import Data](#4-import-data) creates the databases, their collections, and their users from the dump (`arangorestore --create-database true --all-databases`).
-
-Run it only when something is missing afterwards: a database the dump did not contain, or an application user / Secret `backend` you need to (re)create after `--include-system-collections` restored the source's `_users`.
+**Not part of the normal flow — skip on a first install.** Run only when a database, the application user, or Secret `backend` is missing after the import.
+→ [Databases details](reference/arangodb/databases.md)
 
 ```bash
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 ```
-
-Creates the application user, Secret `backend`, and the 7 logical databases (`annotation`, `order`, `stock`, `content`, `cgm_ddb`, `chado`, `annofeature`) with `rw` grants. Both flags are required — `Pulumi.prod.yaml` ships no `user`/`pass`, so omitting them writes an empty `backend` Secret. Safe to re-run against databases that already exist.
-→ [Databases details](reference/arangodb/databases.md)
 
 ---
 
@@ -290,6 +273,7 @@ Creates the application user, Secret `backend`, and the 7 logical databases (`an
 - [Backup details](reference/arangodb/backup.md)
 - [Restore details](reference/arangodb/restore.md)
 - [Teardown details](reference/arangodb/teardown.md)
+- [Databases details](reference/arangodb/databases.md)
 - [Troubleshooting](reference/arangodb/troubleshooting.md)
 
 **Other documentation:**
