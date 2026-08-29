@@ -37,11 +37,10 @@ Creates none — reads existing secrets:
 `backup_secrets/main.go` creates namespaces `prod` and `operators`, plus Secret `dictycr` from a **local file** on the machine running `pulumi up`.
 
 ```bash
-just arangodb configure-backup-secrets \
-  --restic-password '<restic repository password>' \
-  --gcs-project '<gcp-project-id>' \
-  --gcs-key-file credentials/<project-id>/backup-gcs-sa.json
+just arangodb configure-backup-secrets --restic-password '<restic repository password>'
 ```
+
+Inside a `just cluster-env` shell both GCS arguments default: `--gcs-project` to `$PROJECT_ID` and `--gcs-key-file` to `credentials/$PROJECT_ID/backup-gcs-sa.json`. Pass them explicitly only to point at a different project or key path.
 
 ### Behavior
 
@@ -61,8 +60,8 @@ The cross-project first load in [deploy guide §4](../../arangodb-deploy.md#4-im
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
 | `--restic-password` | Yes | — | Restic repository password |
-| `--gcs-project` | Yes | — | GCP project ID |
-| `--gcs-key-file` | Yes | — | Must exist on this machine, stored as absolute path |
+| `--gcs-project` | No | `$PROJECT_ID` | From the cluster env file; recipe fails if both are empty |
+| `--gcs-key-file` | No | `credentials/$PROJECT_ID/backup-gcs-sa.json` | Must exist on this machine, stored as absolute path |
 | `--key-name` | No | `gcsCredentials` | Must stay `gcsCredentials` — both backup and restore look up this key |
 
 Rotating any value: same command again — overwrites config, re-applies Secret.
