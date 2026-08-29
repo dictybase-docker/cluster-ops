@@ -968,16 +968,16 @@ reset-root-password namespace="prod" stack="" retries="60" interval="10":
 # Create namespaces prod + operators and the shared `dictycr` backup Secret.
 # One command for: ensure-stack, all four secret values, preview, apply, verify.
 # Apply this FIRST — the operator's Helm release does not create its namespace.
-# Usage: just arangodb configure-backup-secrets --restic-password <pw> --gcs-project <id> --gcs-key-file <path> [--key-name <k>] [--namespace <ns>] [--stack <name>]
+# Usage: just arangodb configure-backup-secrets --restic-password <pw> [--gcs-project <id>] [--gcs-key-file <path>] [--key-name <k>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="restic repository password (required)")]
-[arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (required)")]
-[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (required; read at pulumi up time)")]
+[arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (defaults to PROJECT_ID from the cluster env)")]
+[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (defaults to credentials/<project-id>/backup-gcs-sa.json; read at pulumi up time)")]
 [arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
 [arg("namespace", long="namespace", short="n", help="Namespace the Secret is created in")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('arangodb')]
 [no-cd]
-configure-backup-secrets restic_password gcs_project gcs_key_file key_name="gcsCredentials" namespace="prod" stack="":
+configure-backup-secrets restic_password gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="prod" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -988,8 +988,21 @@ configure-backup-secrets restic_password gcs_project gcs_key_file key_name="gcsC
     KEY_FILE="{{ gcs_key_file }}"
     KEY_NAME="{{ key_name }}"
 
-    if [[ -z "$RESTIC_PASSWORD" || -z "$GCS_PROJECT" || -z "$KEY_FILE" ]]; then
-        echo "Error: --restic-password, --gcs-project and --gcs-key-file are all required." >&2
+    # Both GCS arguments default off the active cluster env: `just cluster-env`
+    # sources .env.<env>.<cluster>, which exports PROJECT_ID.
+    [[ -z "$GCS_PROJECT" ]] && GCS_PROJECT="${PROJECT_ID:-}"
+    [[ -z "$KEY_FILE" && -n "$GCS_PROJECT" ]] && KEY_FILE="credentials/${GCS_PROJECT}/backup-gcs-sa.json"
+
+    if [[ -z "$RESTIC_PASSWORD" ]]; then
+        echo "Error: --restic-password is required." >&2
+        exit 1
+    fi
+    if [[ -z "$GCS_PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --gcs-project." >&2
+        exit 1
+    fi
+    if [[ -z "$KEY_FILE" ]]; then
+        echo "Error: --gcs-key-file is required." >&2
         exit 1
     fi
     if [[ ! -f "$KEY_FILE" ]]; then
@@ -1093,24 +1106,25 @@ configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsC
 # Create a read-only service account in the SOURCE GCP project and grant it
 # objectViewer on the source restic bucket. Only usable if you hold IAM admin
 # on that project — otherwise ask its owner to run these three gcloud calls.
-# Usage: just arangodb grant-source-bucket-reader --source-project <id> --bucket <name> [--sa-name <n>] [--key-file <path>]
-[arg("source_project", long="source-project", short="p", help="SOURCE GCP project id (required; never defaulted to the current project)")]
+# Usage: just arangodb grant-source-bucket-reader --bucket <name> [--source-project <id>] [--sa-name <n>] [--key-file <path>]
 [arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("source_project", long="source-project", short="p", help="SOURCE GCP project id (defaults to PROJECT_ID env var)")]
 [arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
 [arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<source-project>/<sa-name>.json)")]
 [group('arangodb')]
 [no-cd]
-grant-source-bucket-reader source_project bucket sa_name="arangodb-restic-reader" key_file="":
+grant-source-bucket-reader bucket source_project="" sa_name="arangodb-restic-reader" key_file="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    SOURCE_PROJECT="{{ source_project }}"
     SOURCE_BUCKET="{{ bucket }}"
+    SOURCE_PROJECT="{{ source_project }}"
+    [ -z "${SOURCE_PROJECT}" ] && SOURCE_PROJECT="${PROJECT_ID:-}"
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
 
     if [[ -z "$SOURCE_PROJECT" || -z "$SOURCE_BUCKET" ]]; then
-        echo "Error: --source-project and --bucket are both required." >&2
+        echo "Error: --source-project (or PROJECT_ID) and --bucket are required." >&2
         exit 1
     fi
 
