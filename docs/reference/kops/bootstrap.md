@@ -93,6 +93,12 @@ No rolling update is needed — this is a firewall rule change only ([change tri
 
 > Production database workloads need an extra taint on `stateful-db` — see [`arangodb-deploy.md`](../../arangodb-deploy.md) and [pool requirements](../arangodb/pool-requirements.md).
 
+## `create-cluster` — The Full Chain
+
+`create-cluster` folds, in this order: create-state-bucket (idempotent) → replace-manifests (with the one-time `--force` a first push needs) → upload-ssh-secret → plan-cluster → update-cluster → drift-manifests → validate-cluster → validate-kops-ha → validate-hardening.
+
+It is the **same recipe** used for [post-teardown recreation](recreation.md) — both start from "no live cluster, SSH secret not yet uploaded," so the steps are identical. Unlike `apply-cluster` it uploads the SSH secret, which is only safe because a cluster that doesn't exist yet cannot already have one.
+
 ## Version-Aware Preview & Apply
 
 `plan-cluster` and `update-cluster` dispatch on the pinned kOps binary:

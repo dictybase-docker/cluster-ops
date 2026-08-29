@@ -11,6 +11,18 @@ Two identities, used in sequence:
 
 Work inside the env shell ([cluster env](cluster-env.md)) so `${PROJECT_ID}` is set.
 
+## Composite Recipes
+
+Two recipes fold the whole identity chain. Neither needs a shell re-entry in the middle — gcloud configurations persist in `~/.config/gcloud`, and none of these steps read `GOOGLE_APPLICATION_CREDENTIALS`.
+
+### `bootstrap-identities`
+
+Folds `setup-sa-manager` + `configure-gcloud --name sa-manager` + `setup-kops-creator` (Phase 1a enable APIs + Phase 1b disable unused APIs + Phase 2 create the SA) into one call.
+
+### `rotate-to-creator`
+
+Folds `cluster-cred` + `configure-gcloud --name kops-cluster-creator` into one call. `configure-gcloud --name kops-cluster-creator` uses a **separate** named configuration, so `sa-manager` stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`.
+
 ## Obtain sa-manager
 
 **If you are the project owner**, create the SA and download its key:
