@@ -21,6 +21,7 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Stand up a cluster from scratch | [`docs/kops-setup.md`](docs/kops-setup.md) |
 | Wire up Pulumi and apply StorageClass | [`docs/pulumi-setup.md`](docs/pulumi-setup.md) |
 | Deploy production ArangoDB | [`docs/arangodb-deploy.md`](docs/arangodb-deploy.md) |
+| Deploy production PostgreSQL 16 (CloudNativePG) | [`docs/postgres-deploy.md`](docs/postgres-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |
 
 Run them in that order for a greenfield project. Each guide opens with a Quick Reference block if you have done it before.
