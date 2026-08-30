@@ -1,0 +1,19 @@
+# Production configuration for the CloudNativePG operator ( Helm chart
+# cloudnative-pg into the `operators` namespace ).
+# No secrets required. The stack is initialized on first deploy by
+# `just postgres deploy-operator` (gcp-pulumi ensure-stack), which adds the
+# cluster-env KMS secretsprovider + encryptedkey to this file.
+#
+# Operator 1.30.x is the oldest line supporting Kubernetes 1.36 (officially
+# supported: 1.34/1.35/1.36) and covers PostgreSQL 14-18.
+# Chart name is bare `cloudnative-pg` — the repository URL comes from
+# `chart.repository`, so a `cnpg/` prefix would resolve to a bad URL.
+config:
+  pg-operator:properties:
+    chart:
+      name: cloudnative-pg
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.29.0
+    image:
+      tag: 1.30.0
+    namespace: operators

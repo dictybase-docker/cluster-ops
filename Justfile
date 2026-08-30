@@ -12,6 +12,7 @@ mod local-pulumi 'just_modules/local-pulumi.justfile'
 mod gcp-cluster 'just_modules/cluster.justfile'
 mod k3d 'just_modules/k3d.justfile'
 mod arangodb 'just_modules/arangodb.justfile'
+mod postgres 'just_modules/postgres.justfile'
 mod docker 'just_modules/docker.justfile'
 
 # Variables

@@ -1,0 +1,57 @@
+# Production configuration template for cloudnative-pg-cluster.
+# One PostgreSQL 16 cluster (CloudNativePG) on the stateful-db pool.
+#
+# Project-derived values are set by recipes, not hardcoded here:
+#   just postgres configure-backup                  # sets backup.bucket and
+#                                                   # backupSecret.filepath
+#   just postgres deploy-cluster --app-password ..  # sets the encrypted
+#                                                   # bootstrap.userSecret.password
+#
+# The operand image is the immutable official-catalog tag for PostgreSQL 16
+# (major stays 16; bump the tag from
+# https://github.com/cloudnative-pg/postgres-containers/blob/main/Debian/ClusterImageCatalog-bookworm.yaml).
+config:
+  cloudnative-pg-cluster:properties:
+    backupSecret:
+      name: postgres-backup-credentials
+      key: gcsCredentials
+      # filepath: set by `just postgres configure-backup`
+      # (credentials/<project-id>/postgres-backup-sa.json; its content is
+      # stored in this Secret, the path itself is not sensitive)
+    clusters:
+      - cluster:
+          name: logto
+          namespace: prod
+          instances: 1
+          image:
+            name: ghcr.io/cloudnative-pg/postgresql
+            tag: 16.15-202608240846-system-bookworm
+          placement:
+            pool: database
+            topologyKey: topology.kubernetes.io/zone
+            podAntiAffinityType: preferred
+          pgconfig:
+            maxConnections: 200
+            sharedBuffers: 512MB
+          storage:
+            class: dictycr-balanced
+            size: 100Gi
+          superuser: true
+          bootstrap:
+            database: logto
+            owner: logto
+            userSecret:
+              name: logto-app
+              # password: set by `just postgres deploy-cluster --app-password`
+          backup:
+            # bucket: set by `just postgres configure-backup`
+            # (cloudnative-pg-backup-<project-id>)
+            bucketLocation: US
+            bucketPath: logto
+            name: logto
+            retention: 60d
+            schedule: 0 0 0 * * *
+            target: primary
+          walBackup:
+            compression: gzip
+            maxParallel: 3

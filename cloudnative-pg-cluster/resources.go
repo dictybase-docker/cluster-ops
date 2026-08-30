@@ -10,6 +10,42 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+// CreateSourceSecret stores the source cluster's GCS reader key as a
+// Secret in the cluster namespace, consumed by the externalClusters
+// entry. The key file is read at pulumi up time, same as
+// CreateBackupSecret.
+func (prop *Properties) CreateSourceSecret(
+	ctx *pulumi.Context,
+	cluster Cluster,
+) (*corev1.Secret, error) {
+	if prop.SourceSecret == nil {
+		return nil, fmt.Errorf(
+			"bootstrap.recovery is set but properties.sourceSecret is missing — " +
+				"run `just postgres configure-source` first",
+		)
+	}
+	fileContent, err := os.ReadFile(prop.SourceSecret.Filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read source key file: %w", err)
+	}
+	secret, err := corev1.NewSecret(
+		ctx,
+		prop.SourceSecret.Name,
+		&corev1.SecretArgs{
+			Metadata: &metav1.ObjectMetaArgs{
+				Name:      pulumi.String(prop.SourceSecret.Name),
+				Namespace: pulumi.String(cluster.Namespace),
+			},
+			StringData: pulumi.StringMap{
+				prop.SourceSecret.Key: pulumi.String(string(fileContent)),
+			},
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create source secret: %w", err)
+	}
+	return secret, nil
+}
+
 func (prop *Properties) CreateUserSecret(
 	ctx *pulumi.Context,
 	cluster Cluster,

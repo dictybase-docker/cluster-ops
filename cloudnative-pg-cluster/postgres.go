@@ -16,13 +16,18 @@ func (prop *Properties) CreatePostgresCluster(
 	cluster Cluster,
 	secret *corev1.Secret,
 	basicAuthSecret *corev1.Secret,
+	sourceSecret *corev1.Secret,
 	bucket *storage.Bucket,
 ) (*cnpgv1.Cluster, error) {
 	clusterArgs := prop.buildClusterArgs(cluster)
+	depends := []pulumi.Resource{secret, basicAuthSecret, bucket}
+	if sourceSecret != nil {
+		depends = append(depends, sourceSecret)
+	}
 	pgCluster, err := cnpgv1.NewCluster(
 		ctx, cluster.Name,
 		clusterArgs,
-		pulumi.DependsOn([]pulumi.Resource{secret, basicAuthSecret, bucket}),
+		pulumi.DependsOn(depends),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
@@ -96,6 +101,8 @@ func (prop *Properties) buildClusterSpec(
 		Storage:               prop.buildStorageArgs(cluster),
 		Postgresql:            prop.buildPostgresqlArgs(cluster),
 		Bootstrap:             prop.buildBootstrapArgs(cluster),
+		ExternalClusters:      prop.buildExternalClustersArgs(cluster),
+		Affinity:              prop.buildAffinityArgs(cluster),
 		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
 		Backup:                prop.buildBackupArgs(cluster),
 		Managed: &cnpgv1.ClusterSpecManagedArgs{
@@ -106,6 +113,12 @@ func (prop *Properties) buildClusterSpec(
 					Login:      pulumi.Bool(true),
 					Createdb:   pulumi.Bool(true),
 					Createrole: pulumi.Bool(true),
+					// Password tracks the bootstrap user Secret, so the
+					// operator reconciles the role password with the
+					// Secret instead of leaving initdb's copy behind.
+					PasswordSecret: &cnpgv1.ClusterSpecManagedRolesPasswordSecretArgs{
+						Name: pulumi.String(cluster.Bootstrap.UserSecret.Name),
+					},
 				},
 			},
 		},
@@ -151,12 +164,70 @@ func (prop *Properties) buildBackupArgs(
 func (prop *Properties) buildBootstrapArgs(
 	cluster Cluster,
 ) *cnpgv1.ClusterSpecBootstrapArgs {
+	if cluster.Bootstrap.Recovery != nil {
+		return prop.buildRecoveryBootstrapArgs(cluster)
+	}
 	return &cnpgv1.ClusterSpecBootstrapArgs{
 		Initdb: &cnpgv1.ClusterSpecBootstrapInitdbArgs{
 			Database: pulumi.String(cluster.Bootstrap.Database),
 			Owner:    pulumi.String(cluster.Bootstrap.Owner),
 			Secret: &cnpgv1.ClusterSpecBootstrapInitdbSecretArgs{
 				Name: pulumi.String(cluster.Bootstrap.UserSecret.Name),
+			},
+		},
+	}
+}
+
+// buildRecoveryBootstrapArgs bootstraps from the external cluster's
+// barman backup instead of initdb. The database/owner are the ones the
+// source cluster had — bootstrap.database/owner are ignored on this path
+// (the Secret is still created and reconciles the recovered role
+// password via managed.roles).
+func (prop *Properties) buildRecoveryBootstrapArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecBootstrapArgs {
+	recovery := cluster.Bootstrap.Recovery
+	args := &cnpgv1.ClusterSpecBootstrapRecoveryArgs{
+		Source: pulumi.String(recovery.SourceCluster),
+	}
+	if recovery.TargetTime != "" {
+		args.RecoveryTarget = &cnpgv1.ClusterSpecBootstrapRecoveryRecoveryTargetArgs{
+			TargetTime: pulumi.String(recovery.TargetTime),
+		}
+	}
+	return &cnpgv1.ClusterSpecBootstrapArgs{Recovery: args}
+}
+
+// buildExternalClustersArgs declares the source cluster's barman object
+// store so bootstrap.recovery (and future PITR) can read it. Returns nil
+// when no recovery source is configured.
+func (prop *Properties) buildExternalClustersArgs(
+	cluster Cluster,
+) cnpgv1.ClusterSpecExternalClustersArrayInput {
+	recovery := cluster.Bootstrap.Recovery
+	if recovery == nil || prop.SourceSecret == nil {
+		// CreateSourceSecret already fails with a clearer message when
+		// recovery is set but properties.sourceSecret is missing.
+		return nil
+	}
+	appCreds := &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsApplicationCredentialsArgs{
+		Name: pulumi.String(prop.SourceSecret.Name),
+		Key:  pulumi.String(prop.SourceSecret.Key),
+	}
+	return cnpgv1.ClusterSpecExternalClustersArray{
+		&cnpgv1.ClusterSpecExternalClustersArgs{
+			Name: pulumi.String(recovery.SourceCluster),
+			BarmanObjectStore: &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreArgs{
+				DestinationPath: pulumi.String(
+					fmt.Sprintf(
+						"gs://%s/%s",
+						recovery.Bucket,
+						recovery.BucketPath,
+					),
+				),
+				GoogleCredentials: &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsArgs{
+					ApplicationCredentials: appCreds,
+				},
 			},
 		},
 	}
@@ -221,6 +292,39 @@ func (prop *Properties) buildPostgresqlArgs(
 			),
 		},
 	}
+}
+
+// buildAffinityArgs pins instance pods to the configured node pool and
+// tolerates its taint. Returns nil when no pool is configured so existing
+// stacks without a placement block keep scheduling anywhere.
+func (prop *Properties) buildAffinityArgs(
+	cluster Cluster,
+) *cnpgv1.ClusterSpecAffinityArgs {
+	if cluster.Placement.Pool == "" {
+		return nil
+	}
+	args := &cnpgv1.ClusterSpecAffinityArgs{
+		NodeSelector: pulumi.StringMap{
+			"pool": pulumi.String(cluster.Placement.Pool),
+		},
+		Tolerations: cnpgv1.ClusterSpecAffinityTolerationsArray{
+			&cnpgv1.ClusterSpecAffinityTolerationsArgs{
+				Key:      pulumi.String("dedicated"),
+				Operator: pulumi.String("Equal"),
+				Value:    pulumi.String(cluster.Placement.Pool),
+				Effect:   pulumi.String("NoSchedule"),
+			},
+		},
+	}
+	if cluster.Placement.TopologyKey != "" {
+		args.TopologyKey = pulumi.String(cluster.Placement.TopologyKey)
+	}
+	if cluster.Placement.PodAntiAffinityType != "" {
+		args.PodAntiAffinityType = pulumi.String(
+			cluster.Placement.PodAntiAffinityType,
+		)
+	}
+	return args
 }
 
 func (prop *Properties) buildStorageArgs(
