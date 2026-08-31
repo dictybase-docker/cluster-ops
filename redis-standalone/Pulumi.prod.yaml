@@ -1,0 +1,23 @@
+# Production configuration for standalone Redis 8 on the stateful-db pool.
+# The password is set by `just redis deploy --password ..` — never stored here.
+#
+# Image is the official Redis Open Source 8 (all former Redis Stack modules —
+# Search, JSON, TimeSeries, probabilistic — are merged into core since 8.0;
+# redis-stack-server is EOL since Dec 2025).
+config:
+  redis-standalone:properties:
+    image:
+      name: redis
+      tag: 8.4.6
+    name: redis
+    namespace: prod
+    storage:
+      class: dictycr-balanced
+      size: 50Gi
+    aof: true
+    auth:
+      secretName: redis-auth
+      key: password
+      # password: set by `just redis deploy --password`
+    placement:
+      pool: database
