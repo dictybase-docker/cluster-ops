@@ -22,6 +22,8 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Wire up Pulumi and apply StorageClass | [`docs/pulumi-setup.md`](docs/pulumi-setup.md) |
 | Deploy production ArangoDB | [`docs/arangodb-deploy.md`](docs/arangodb-deploy.md) |
 | Deploy production PostgreSQL 16 (CloudNativePG) | [`docs/postgres-deploy.md`](docs/postgres-deploy.md) |
+| Deploy production MinIO (standalone S3) | [`docs/minio-deploy.md`](docs/minio-deploy.md) |
+| Deploy production Redis 8 (standalone) | [`docs/redis-deploy.md`](docs/redis-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |
 
 Run them in that order for a greenfield project. Each guide opens with a Quick Reference block if you have done it before.
