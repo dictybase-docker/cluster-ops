@@ -1,0 +1,35 @@
+# Production configuration for MinIO (standalone, Bitnami chart 17) on the
+# stateful-db pool. No secrets are stored here — the root credentials are set
+# by `just minio deploy --root-user .. --root-password ..`.
+#
+# Chart 17.0.x notes:
+#   - image lives under `bitnamilegacy/minio` (Bitnami Secure Images moved
+#     the free catalog to `latest`-only; the legacy repo keeps dated tags).
+#   - `disableWebUI` was removed; the Console is a separate deployment
+#     gated on `console.enabled` (= `webui` here). Prod disables it.
+#   - the API ingress keys moved from `apiIngress.*` to `ingress.*` in the
+#     chart; this program still renders the Ingress itself, so prod leaves
+#     the chart's ingress off.
+config:
+  minio:properties:
+    chart:
+      name: minio
+      repository: https://charts.bitnami.com/bitnami
+      version: 17.0.23
+    image:
+      repository: bitnamilegacy/minio
+      tag: 2025.7.23-debian-12-r3
+    namespace: prod
+    secret:
+      name: minio-root
+      userKey: rootUser
+      passKey: rootPassword
+      # userName / password: set by `just minio deploy`
+    storage:
+      class: dictycr-balanced
+      size: 150Gi
+    placement:
+      pool: database
+    webui: false
+    apiIngress:
+      enabled: false

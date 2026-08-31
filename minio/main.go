@@ -18,7 +18,15 @@ type ChartConfig struct {
 }
 
 type ImageConfig struct {
-	Tag string
+	Repository string
+	Tag        string
+}
+
+// Placement pins the pod to a labeled, tainted node pool. Zero value
+// (empty Pool) disables placement — the pod schedules anywhere, which
+// keeps the lab stacks unchanged.
+type Placement struct {
+	Pool string `pulumi:"pool"`
 }
 
 type SecretConfig struct {
@@ -59,6 +67,7 @@ type MinioConfig struct {
 	Namespace  string
 	Secret     SecretConfig
 	Storage    StorageConfig
+	Placement  Placement
 	WebUI      bool `json:"webui"`
 	APIIngress APIIngressConfig
 }
@@ -104,9 +113,15 @@ func (mno *Minio) createSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
 }
 
 func (mno *Minio) getHelmValues() pulumi.Map {
-	return pulumi.Map{
+	// Lab stacks predate the repository field — keep the legacy
+	// default when it is not configured.
+	repository := mno.Config.Image.Repository
+	if repository == "" {
+		repository = "bitnamilegacy/minio"
+	}
+	values := pulumi.Map{
 		"image": pulumi.Map{
-			"repository": pulumi.String("bitnamilegacy/minio"),
+			"repository": pulumi.String(repository),
 			"tag":        pulumi.String(mno.Config.Image.Tag),
 		},
 		"auth": pulumi.Map{
@@ -118,11 +133,26 @@ func (mno *Minio) getHelmValues() pulumi.Map {
 			"storageClass": pulumi.String(mno.Config.Storage.Class),
 			"size":         pulumi.String(mno.Config.Storage.Size),
 		},
-		"disableWebUI": pulumi.Bool(!mno.Config.WebUI),
 		"console": pulumi.Map{
 			"enabled": pulumi.Bool(mno.Config.WebUI),
 		},
 	}
+	// Chart 17 removed disableWebUI — the Console is a separate
+	// deployment gated on console.enabled above.
+	if mno.Config.Placement.Pool != "" {
+		values["nodeSelector"] = pulumi.Map{
+			"pool": pulumi.String(mno.Config.Placement.Pool),
+		}
+		values["tolerations"] = pulumi.Array{
+			pulumi.Map{
+				"key":      pulumi.String("dedicated"),
+				"operator": pulumi.String("Equal"),
+				"value":    pulumi.String(mno.Config.Placement.Pool),
+				"effect":   pulumi.String("NoSchedule"),
+			},
+		}
+	}
+	return values
 }
 
 func (mno *Minio) installHelmChart(
