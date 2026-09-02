@@ -16,7 +16,7 @@ jobs:
       - name: run linter
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.11.4
+          version: v2.12.2
       - name: unit test
         run: go test -covermode=atomic -coverprofile=profile.cov -v ./...
       - name: upload coverage to codecov
