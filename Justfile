@@ -24,7 +24,7 @@ container_module := "github.com/dictybase-docker/dagger-of-dcr/container-image@m
 bin_path := `mktemp -d`
 action_bin := bin_path + "/actions"
 dagger_bin := bin_path + "/dagger"
-base_gha_download_url := "https://github.com/dictybase-docker/github-actions/releases/download/v2.10.0/action_2.10.0_"
+base_gha_download_url := "https://github.com/dictybase-docker/github-actions/releases/download/v2.10.2/action_2.10.0_"
 gha_download_url := if os() == "macos" { base_gha_download_url + "darwin_arm64" } else { base_gha_download_url + "linux_amd64" }
 file_suffix := ".tar.gz"
 dagger_file := if os() == "macos" { "darwin_arm64" + file_suffix } else { "linux_amd64" + file_suffix }
