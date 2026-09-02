@@ -22,7 +22,7 @@ jobs:
         env:
           JUST_UNSTABLE: 1
         run: |
-          just build-publish-backup-image ${{ github.ref_name }} \
-            ${{ secrets.DOCKERHUB_USER }} \
-            ${{ secrets.DOCKER_PASS }} \
+          just build-publish-backup-image --ref ${{ github.ref_name }} \
+            --user ${{ secrets.DOCKERHUB_USER }} \
+            --pass ${{ secrets.DOCKER_PASS }}
 

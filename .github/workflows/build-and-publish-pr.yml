@@ -24,6 +24,6 @@ jobs:
         env:
           JUST_UNSTABLE: 1
         run: |
-          just build-publish-backup-image ${{ github.event.pull_request.head.sha }} \
-            ${{ secrets.DOCKERHUB_USER }} \
-            ${{ secrets.DOCKER_PASS }}
+          just build-publish-backup-image --ref ${{ github.event.pull_request.head.sha }} \
+            --user ${{ secrets.DOCKERHUB_USER }} \
+            --pass ${{ secrets.DOCKER_PASS }}
