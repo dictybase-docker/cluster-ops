@@ -626,6 +626,51 @@ delete-state-bucket cluster="" bucket_name="" confirm="no":
     echo ""
     echo "State bucket deleted: ${bucket_uri}"
 
+# Remove the project-scoped gcloud configurations created by bootstrap-identities
+# and rotate-to-creator. Local-only cleanup — never touches GCP or the state
+# bucket. Skips the active configuration (gcloud refuses deleting it); activate
+# another config first. Dry-run by default.
+# Usage: just gcp-cluster cleanup-gcloud-config [--project <id>] [--confirm yes]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("confirm", long="confirm", short="y", pattern="yes|no", help="Delete now instead of dry-run preview")]
+[group('cluster-management')]
+[no-cd]
+cleanup-gcloud-config project="" confirm="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project." >&2
+        exit 1
+    fi
+
+    names=("${project_id}-sa-manager" "${project_id}-kops-cluster-creator")
+    active=$(gcloud config configurations list --filter="IS_ACTIVE=true" --format="value(name)" 2>/dev/null || true)
+
+    for cfg in "${names[@]}"; do
+        if ! gcloud config configurations describe "$cfg" >/dev/null 2>&1; then
+            echo "absent:       $cfg"
+            continue
+        fi
+        if [ "$cfg" = "$active" ]; then
+            echo "skip:         $cfg (active — activate another configuration first)" >&2
+            continue
+        fi
+        if [ "{{ confirm }}" = "yes" ]; then
+            gcloud config configurations delete "$cfg" --quiet
+            echo "deleted:      $cfg"
+        else
+            echo "would delete: $cfg"
+        fi
+    done
+
+    if [ "{{ confirm }}" != "yes" ]; then
+        echo
+        echo "Dry-run. Re-run with --confirm yes to delete."
+    fi
+
 # Bootstrap a canonical Git manifest bundle locally from starter templates.
 # Pure offline operation — zero cloud/state store mutation.
 # Usage: just gcp-cluster bootstrap-bundle --cluster <name> --project <id> --api-access-cidr <cidr> [--kops-name <name>] [--state <uri>]
@@ -988,17 +1033,16 @@ show-public-ip:
 # Create and activate a named gcloud configuration bound to a service-account key.
 # Replaces the five-command 'gcloud config configurations' sequence.
 # Usage: just gcp-cluster configure-gcloud [--name <cfg>] [--project <id>] [--key-file <path>] [--zone <zone>]
-[arg("name", long="name", short="n", help="gcloud configuration name (default sa-manager)")]
+[arg("name", long="name", short="n", help="gcloud configuration name (default <project-id>-sa-manager)")]
 [arg("project", long="project", short="p", help="GCP project ID (defaults to PROJECT_ID)")]
 [arg("key_file", long="key-file", short="k", help="SA JSON key (defaults to GOOGLE_APPLICATION_CREDENTIALS)")]
 [arg("zone", long="zone", short="z", help="Default compute zone (default us-central1-c)")]
 [group('cluster-management')]
 [no-cd]
-configure-gcloud name="sa-manager" project="" key_file="" zone="us-central1-c":
+configure-gcloud name="" project="" key_file="" zone="us-central1-c":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    CFG="{{ name }}"
     ZONE="{{ zone }}"
 
     PROJECT="{{ project }}"
@@ -1006,6 +1050,14 @@ configure-gcloud name="sa-manager" project="" key_file="" zone="us-central1-c":
     if [[ -z "$PROJECT" ]]; then
         echo "Error: no project — pass --project or enter the cluster shell so PROJECT_ID is set." >&2
         exit 1
+    fi
+
+    CFG="{{ name }}"
+    if [[ -z "$CFG" ]]; then
+        # gcloud config names are machine-global — one shared active_config pointer
+        # in ~/.config/gcloud. Suffix with the project id so parallel clusters in
+        # separate shells don't overwrite each other's active configuration.
+        CFG="${PROJECT}-sa-manager"
     fi
 
     KEY="{{ key_file }}"
@@ -1096,7 +1148,7 @@ setup-kops-creator project="":
     echo "  just cluster-cred --key credentials/${project_id}/kops-cluster-creator.json"
     echo "  exit"
     echo "  just cluster-env --env <env> --cluster <cluster-name>"
-    echo "  just gcp-cluster configure-gcloud --name kops-cluster-creator"
+    echo "  just gcp-cluster configure-gcloud --name ${project_id}-kops-cluster-creator"
 
 # Bootstrap the full identity chain in one call: create sa-manager, activate it
 # as a named gcloud config, then enable/disable APIs and create the
@@ -1127,7 +1179,7 @@ bootstrap-identities project="":
 
     echo
     echo "=== 2/3: activating sa-manager as a named gcloud config ==="
-    just gcp-cluster configure-gcloud --name sa-manager --project "${project_id}" --key-file "${sa_manager_key}"
+    just gcp-cluster configure-gcloud --name "${project_id}-sa-manager" --project "${project_id}" --key-file "${sa_manager_key}"
 
     echo
     echo "=== 3/3: enabling APIs, disabling unused, creating kops-cluster-creator ==="
@@ -1167,7 +1219,7 @@ rotate-to-creator project="":
 
     echo
     echo "=== 2/2: activating kops-cluster-creator as a named gcloud config ==="
-    just gcp-cluster configure-gcloud --name kops-cluster-creator --project "${project_id}" --key-file "${creator_key}"
+    just gcp-cluster configure-gcloud --name "${project_id}-kops-cluster-creator" --project "${project_id}" --key-file "${creator_key}"
 
     echo
     echo "Rotated. Re-enter the shell so Section 3 tools pick up the new credential:"
