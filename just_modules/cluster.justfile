@@ -654,7 +654,7 @@ cleanup-gcloud-config project="" confirm="no":
             echo "absent:       $cfg"
             continue
         fi
-        if [ "$cfg" = "$active" ]; then
+        if [ "$cfg" = "$active" ] || [ "$cfg" = "${CLOUDSDK_ACTIVE_CONFIG_NAME:-}" ]; then
             echo "skip:         $cfg (active — activate another configuration first)" >&2
             continue
         fi
@@ -1088,16 +1088,16 @@ configure-gcloud name="" project="" key_file="" zone="us-central1-c":
     if gcloud config configurations describe "$CFG" >/dev/null 2>&1; then
         echo "Configuration '$CFG' already exists — reusing it."
     else
-        gcloud config configurations create "$CFG"
+        gcloud config configurations create "$CFG" --no-activate
     fi
 
-    gcloud config configurations activate "$CFG"
     gcloud auth activate-service-account "$SA_EMAIL" --key-file="$KEY"
-    gcloud config set project "$PROJECT"
-    gcloud config set compute/zone "$ZONE"
+    gcloud --configuration="$CFG" config set account "$SA_EMAIL"
+    gcloud --configuration="$CFG" config set project "$PROJECT"
+    gcloud --configuration="$CFG" config set compute/zone "$ZONE"
 
     echo
-    echo "Active gcloud configuration:"
+    echo "Configured gcloud configuration:"
     gcloud config configurations list --filter="name=$CFG" 2>/dev/null || true
 
 # ── higher-order lifecycle recipes ────────────────────────────────────────────
@@ -1336,6 +1336,218 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
 # so the steps and their idempotency requirements are identical. See
 # docs/reference/kops/recreation.md.
 #
+# Validate all prerequisites before running create-cluster:
+# environment variables, toolchain versions, credentials, SSH keypair,
+# gcloud identity isolation, Git manifest bundle, and state bucket status.
+# Usage: just gcp-cluster preflight-create [--cluster <name>] [--project <id>] [--kops-name <name>] [--state <uri>] [--bucket-name <name>] [--ssh-key <path>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var or gs://kops-state-<cluster>)")]
+[arg("bucket_name", long="bucket-name", short="b", help="State bucket name (defaults to kops-state-<cluster>)")]
+[arg("ssh_key", long="ssh-key", short="k", help="SSH public key path (defaults to SSH_KEY env var or credentials/<project>/k8sVM.pub)")]
+[group('cluster-management')]
+[no-cd]
+preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_key="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    p="{{ project }}"
+    [ -z "${p}" ] && p="${PROJECT_ID:-}"
+
+    failures=0
+    ok()   { printf '\033[32mPASS\033[0m  %-24s %s\n' "$1" "$2"; }
+    bad()  { printf '\033[31mFAIL\033[0m  %-24s %s\n' "$1" "$2"; failures=$((failures + 1)); }
+
+    echo "=== Pre-flight Cluster Creation Check ==="
+
+    # 1. Core Shell Environment
+    if [ -z "${c}" ]; then
+        bad "CLUSTER_NAME" "unset — enter cluster shell first: just cluster-env --env <env> --cluster <name>"
+    else
+        ok "CLUSTER_NAME" "${c}"
+    fi
+
+    if [ -z "${p}" ]; then
+        bad "PROJECT_ID" "unset — enter cluster shell first: just cluster-env --env <env> --cluster <name>"
+    else
+        ok "PROJECT_ID" "${p}"
+    fi
+
+    if [ -z "${c}" ] || [ -z "${p}" ]; then
+        echo
+        printf '\033[31mPre-flight check failed with %d error(s).\033[0m Enter cluster shell first: just cluster-env --env <env> --cluster <name>\n' "$failures"
+        exit 1
+    fi
+
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
+    [ -z "${kn}" ] && kn="${c}-k8s.local"
+
+    bn="{{ bucket_name }}"
+    [ -z "${bn}" ] && bn="${BUCKET_NAME:-}"
+    [ -z "${bn}" ] && bn="kops-state-${c}"
+    bn="${bn#gs://}"
+    bn="${bn%/}"
+    bucket_uri="gs://${bn}"
+
+    st="{{ state }}"
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
+    [ -z "${st}" ] && st="gs://${bn}"
+    st="${st%/}"
+
+    ssh_pub="{{ ssh_key }}"
+    [ -z "${ssh_pub}" ] && ssh_pub="${SSH_KEY:-}"
+    [ -z "${ssh_pub}" ] && ssh_pub="{{ invocation_directory() }}/credentials/${p}/k8sVM.pub"
+
+    # 2. Toolchain & Pinned Versions
+    echo
+    if ! just check-tools; then
+        bad "toolchain binaries" "one or more tools missing on PATH — run 'just prepare-tools'"
+    else
+        ok "toolchain binaries" "all required tools present on PATH"
+    fi
+
+    pinfile="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
+    if [ -f "${pinfile}" ]; then
+        pin_mismatch=0
+        while read -r tool pinned_ver; do
+            [[ -z "$tool" || "$tool" =~ ^# ]] && continue
+            cur_line=$(asdf current "$tool" 2>/dev/null || true)
+            cur_ver=$(echo "$cur_line" | awk 'NR>1 {print $2}')
+            installed=$(echo "$cur_line" | awk 'NR>1 {print $NF}')
+            if [ "$installed" != "true" ] || [ "$cur_ver" != "$pinned_ver" ]; then
+                bad "tool pin ${tool}" "installed '${cur_ver}' != pinned '${pinned_ver}' in ${pinfile} — run 'just prepare-tools'"
+                pin_mismatch=$((pin_mismatch + 1))
+            fi
+        done < "${pinfile}"
+        if [ "$pin_mismatch" -eq 0 ]; then
+            ok "toolchain pins" "all tools match pinned versions in ${pinfile}"
+        fi
+    fi
+    echo
+
+    # 3. Google Application Credentials
+    expected_sa="kops-cluster-creator@${p}.iam.gserviceaccount.com"
+    cred="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+    if [ -z "${cred}" ]; then
+        bad "credentials" "GOOGLE_APPLICATION_CREDENTIALS unset"
+    elif [ ! -f "${cred}" ]; then
+        bad "credentials" "key file not found: ${cred}"
+    else
+        cred_project=$(jq -r '.project_id // empty' "${cred}" 2>/dev/null || true)
+        cred_email=$(jq -r '.client_email // empty' "${cred}" 2>/dev/null || true)
+        if [ "${cred_project}" != "${p}" ]; then
+            bad "credentials" "key project (${cred_project}) != PROJECT_ID (${p})"
+        elif [ "${cred_email}" != "${expected_sa}" ]; then
+            bad "credentials" "SA is '${cred_email}', expected '${expected_sa}' — rotate first with 'just gcp-cluster rotate-to-creator'"
+        else
+            ok "credentials" "${cred_email}"
+        fi
+    fi
+
+    # 4. GCloud configuration & shell isolation
+    expected_cfg="${p}-kops-cluster-creator"
+    actual_cfg="${CLOUDSDK_ACTIVE_CONFIG_NAME:-}"
+    if [ -z "${actual_cfg}" ]; then
+        bad "shell isolation" "CLOUDSDK_ACTIVE_CONFIG_NAME unset — enter cluster shell first: just cluster-env --env <env> --cluster <name>"
+    elif [ "${actual_cfg}" != "${expected_cfg}" ]; then
+        bad "gcloud config" "CLOUDSDK_ACTIVE_CONFIG_NAME is '${actual_cfg}', expected '${expected_cfg}'"
+    else
+        cfg_account=$(gcloud config get-value account 2>/dev/null || true)
+        cfg_project=$(gcloud config get-value project 2>/dev/null || true)
+        if [ "${cfg_project}" != "${p}" ]; then
+            bad "gcloud project" "gcloud project is '${cfg_project}', expected '${p}'"
+        elif [ "${cfg_account}" != "${expected_sa}" ]; then
+            bad "gcloud account" "gcloud account is '${cfg_account}', expected '${expected_sa}'"
+        else
+            ok "gcloud config" "${actual_cfg} (${cfg_account})"
+        fi
+    fi
+
+    # 5. SSH key isolation
+    if [ ! -f "${ssh_pub}" ]; then
+        bad "SSH public key" "not found: ${ssh_pub}"
+    else
+        ssh_dir_canon="$(cd "$(dirname "${ssh_pub}")" 2>/dev/null && pwd)"
+        expected_ssh_canon="$(cd "{{ invocation_directory() }}/credentials/${p}" 2>/dev/null && pwd)"
+        if [ "${ssh_dir_canon}" != "${expected_ssh_canon}" ]; then
+            bad "SSH key isolation" "parent directory (${ssh_dir_canon}) != expected (credentials/${p})"
+        else
+            priv_key="${ssh_pub%.pub}"
+            if [ ! -f "${priv_key}" ]; then
+                bad "SSH private key" "matching private key not found: ${priv_key}"
+            else
+                ok "SSH keypair" "${ssh_pub}"
+            fi
+        fi
+    fi
+
+    # 6. Git manifest bundle
+    root="{{ invocation_directory() }}"
+    bundle_dir="${root}/config/kops/${c}"
+    cluster_yaml="${bundle_dir}/cluster.yaml"
+    igs_yaml="${bundle_dir}/instancegroups.yaml"
+
+    if [ ! -f "${cluster_yaml}" ]; then
+        bad "manifests" "missing ${cluster_yaml} — run 'just gcp-cluster bootstrap-bundle' first"
+    elif [ ! -f "${igs_yaml}" ]; then
+        bad "manifests" "missing ${igs_yaml} — run 'just gcp-cluster bootstrap-bundle' first"
+    else
+        manifest_project=$(grep -E '^[[:space:]]*project:[[:space:]]*' "${cluster_yaml}" | head -n 1 | awk '{print $2}' | tr -d '"'\''')
+        manifest_name=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${cluster_yaml}" | head -n 1 | awk '{print $2}' | tr -d '"'\''')
+        manifest_config_base=$(grep -E '^[[:space:]]*configBase:[[:space:]]*' "${cluster_yaml}" | head -n 1 | awk '{print $2}' | tr -d '"'\''')
+
+        if [ "${manifest_project}" != "${p}" ]; then
+            bad "manifest project" "cluster.yaml project (${manifest_project}) != PROJECT_ID (${p})"
+        elif [ "${manifest_name}" != "${kn}" ]; then
+            bad "manifest name" "cluster.yaml metadata.name (${manifest_name}) != ${kn}"
+        elif [ -n "${st}" ] && [ "${manifest_config_base}" != "${st}/${kn}" ] && [ "${manifest_config_base}" != "${st}" ]; then
+            bad "manifest state" "cluster.yaml configBase (${manifest_config_base}) != ${st}/${kn}"
+        elif grep -qE '\$\{[A-Za-z0-9_]+\}' "${cluster_yaml}" "${igs_yaml}"; then
+            bad "manifest template" "unresolved \${VAR} placeholders found in bundle"
+        else
+            ok "manifest bundle" "config/kops/${c}/ (${manifest_name})"
+        fi
+
+        if ! git -C "${root}" diff --quiet "${bundle_dir}"; then
+            bad "git status" "uncommitted modifications in config/kops/${c}/ — review and commit first"
+        elif ! git -C "${root}" diff --cached --quiet "${bundle_dir}"; then
+            bad "git status" "staged uncommitted changes in config/kops/${c}/ — commit first"
+        elif [ -n "$(git -C "${root}" status --porcelain "${bundle_dir}" 2>/dev/null)" ]; then
+            bad "git status" "untracked files in config/kops/${c}/ — commit or clean first"
+        else
+            ok "git status" "manifests committed and clean in Git"
+        fi
+    fi
+
+    # 7. State bucket & cluster status
+    bucket_out=$(gcloud storage ls "${bucket_uri}" 2>&1 || true)
+    if gcloud storage ls "${bucket_uri}" &>/dev/null; then
+        cluster_out=$(gcloud storage ls "${bucket_uri}/${kn}/" 2>&1 || true)
+        if gcloud storage ls "${bucket_uri}/${kn}/" &>/dev/null; then
+            bad "state store" "cluster '${kn}' already exists in ${bucket_uri} — use 'just gcp-cluster apply-cluster' for updates"
+        elif echo "${cluster_out}" | grep -qiE "404|not found"; then
+            ok "state store" "bucket exists (${bucket_uri}), no active cluster (clean for creation)"
+        else
+            bad "state store" "error checking cluster in ${bucket_uri}: ${cluster_out}"
+        fi
+    elif echo "${bucket_out}" | grep -qiE "404|not found"; then
+        ok "state store" "bucket does not exist yet (${bucket_uri} will be created by create-cluster)"
+    else
+        bad "state store" "error querying bucket ${bucket_uri}: ${bucket_out}"
+    fi
+
+    echo
+    if [ "$failures" -gt 0 ]; then
+        printf '\033[31mPre-flight check failed with %d error(s).\033[0m Resolve issues before running create-cluster.\n' "$failures"
+        exit 1
+    else
+        printf '\033[32mAll pre-flight checks passed.\033[0m Ready for create-cluster.\n'
+    fi
+
 # Precondition: config/kops/<cluster>/*.yaml already exists, reviewed, and
 # committed (bootstrap-bundle, or already in Git if recreating).
 # Usage: just gcp-cluster create-cluster [--cluster <name>] [--project <id>] [--kops-name <name>] [--state <uri>] [--bucket-name <name>] [--ssh-key <path>] [--waittime <min>]
@@ -1357,6 +1569,17 @@ create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_ke
     [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
     [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
 
+    preflight_args=()
+    [ -n "{{ cluster }}" ] && preflight_args+=(--cluster "{{ cluster }}")
+    [ -n "{{ project }}" ] && preflight_args+=(--project "{{ project }}")
+    [ -n "{{ kops_name }}" ] && preflight_args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && preflight_args+=(--state "{{ state }}")
+    [ -n "{{ bucket_name }}" ] && preflight_args+=(--bucket-name "{{ bucket_name }}")
+    [ -n "{{ ssh_key }}" ] && preflight_args+=(--ssh-key "{{ ssh_key }}")
+
+    echo "=== 0/5: pre-flight check ==="
+    just gcp-cluster preflight-create "${preflight_args[@]+"${preflight_args[@]}"}"
+
     bucket_args=()
     [ -n "{{ project }}" ] && bucket_args+=(--project "{{ project }}")
     [ -n "{{ bucket_name }}" ] && bucket_args+=(--bucket-name "{{ bucket_name }}")
@@ -1364,6 +1587,7 @@ create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_ke
     ssh_args=("${args[@]+"${args[@]}"}")
     [ -n "{{ ssh_key }}" ] && ssh_args+=(--ssh-key "{{ ssh_key }}")
 
+    echo
     echo "=== 1/5: state bucket ==="
     just gcp-cluster create-state-bucket "${bucket_args[@]+"${bucket_args[@]}"}"
 
