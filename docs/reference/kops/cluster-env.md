@@ -37,13 +37,14 @@ The sub-shell reads the file once at start. After you edit the file — or after
 
 ### Session-Only Convenience Exports
 
-Beyond sourcing the file, `cluster-env` also exports three variables for the life of that shell — **never written to the `.env.<env>.<cluster>` file itself**:
+Beyond sourcing the file, `cluster-env` also exports four variables for the life of that shell — **never written to the `.env.<env>.<cluster>` file itself**:
 
 | Variable | Value | Why |
 |----------|-------|-----|
 | `CLUSTER_NAME` | The `--cluster` you passed to `cluster-env` | Every `gcp-cluster` recipe already reads `CLUSTER_NAME` as a fallback for `--cluster` — this is what lets you stop retyping it |
 | `CLUSTER_ENV` | The `--env` you passed | Lets `cluster-cred` default `--env` on re-entry |
 | `CLUSTER_ENV_FILE` | Full path to the sourced file | Diagnostic only; not read by other recipes |
+| `CLOUDSDK_ACTIVE_CONFIG_NAME` | `<project>-<sa>` derived from `GOOGLE_APPLICATION_CREDENTIALS` | Pins gcloud configuration selection to the active shell, isolating parallel terminals from global `active_config` switches |
 
 This does not weaken "Git owns identity after bootstrap" ([below](#git-owned-after-bootstrap)) — nothing is persisted. `CLUSTER_NAME` is re-derived from the flag you type every time you enter the shell, exactly like today, just no longer requiring you to also pass `--cluster` to every subsequent command in the same session.
 

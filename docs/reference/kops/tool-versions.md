@@ -14,6 +14,7 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 | `velero` | Backup and restore | [velero.io](https://velero.io/docs/) |
 | `helm` | Kubernetes package manager | [helm.sh](https://helm.sh/docs/) |
 | `k9s` | Terminal cluster UI | [k9scli.io](https://k9scli.io/) |
+| `mc` | MinIO client (S3 management & backups) | [min.io](https://min.io/docs/minio/linux/reference/minio-mc.html) |
 
 Install everything pinned in the active manifest, then verify — one recipe folds both:
 

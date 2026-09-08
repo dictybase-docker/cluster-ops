@@ -61,7 +61,8 @@ $EDITOR config/kops/${CLUSTER_NAME}/cluster.yaml
 $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
 git add config/kops/${CLUSTER_NAME}/ && git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 
-# 5. Create the state bucket, push manifests, upload SSH secret, apply, validate
+# 5. Verify pre-flight checks, then create cluster
+just gcp-cluster preflight-create
 just gcp-cluster create-cluster
 
 # 6. Explore
@@ -129,7 +130,10 @@ $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
 git add config/kops/${CLUSTER_NAME}/
 git commit -m "${CLUSTER_NAME}: initial cluster manifest bundle"
 
-# Steps 3.3–3.7 — bucket, push manifests, SSH secret, apply, validate
+# Step 3.3 — verify pre-flight checks before touching the cloud
+just gcp-cluster preflight-create
+
+# Steps 3.4–3.8 — bucket, push manifests, SSH secret, apply, validate
 just gcp-cluster create-cluster
 ```
 

@@ -68,7 +68,7 @@ just gcp-cluster configure-gcloud
 
 Creates (or reuses) the `${PROJECT_ID}-sa-manager` configuration, activates it, authenticates the service account, and sets project and zone.
 
-**Why project-scoped.** A gcloud configuration name is machine-global — `~/.config/gcloud` holds every config plus a single shared `active_config` pointer. Two clusters in separate shells that both name their config `sa-manager` would fight over that one pointer; the last `activate` wins and the other shell's direct `gcloud` commands silently switch identity. Suffixing with the project id (globally unique) keeps each cluster's active config independent of every other terminal.
+**Why project-scoped & terminal-isolated.** A gcloud configuration name is machine-global — `~/.config/gcloud` holds every config plus a single shared `active_config` pointer. Project-scoped names (`<project>-sa-manager`, `<project>-kops-cluster-creator`) prevent configs from overwriting each other. In addition, `just cluster-env` exports `CLOUDSDK_ACTIVE_CONFIG_NAME` to pin configuration selection to that sub-shell, preventing parallel terminals from switching each other's active identity.
 
 | Flag | Default |
 |------|---------|
@@ -113,11 +113,12 @@ just cluster-env --env <env> --cluster <cluster-name>
 just gcp-cluster configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator
 ```
 
-Using a **separate** configuration name keeps the `sa-manager` configuration intact for the occasional task that genuinely needs the broader identity (creating another SA, changing IAM). Switch between them with:
+Inside `just cluster-env`, `CLOUDSDK_ACTIVE_CONFIG_NAME` pins configuration selection to the active shell automatically. Outside that subshell (or to switch in a cold shell), set:
 
 ```bash
+export CLOUDSDK_ACTIVE_CONFIG_NAME=${PROJECT_ID}-kops-cluster-creator
+# or globally:
 gcloud config configurations activate ${PROJECT_ID}-kops-cluster-creator
-gcloud config configurations activate ${PROJECT_ID}-sa-manager
 ```
 
 Confirm which identity is active:

@@ -94,6 +94,26 @@ No rolling update is needed — this is a firewall rule change only ([change tri
 
 > Production database workloads need an extra taint on `stateful-db` — see [`arangodb-deploy.md`](../../arangodb-deploy.md) and [pool requirements](../arangodb/pool-requirements.md).
 
+## Pre-flight Verification (`preflight-create`)
+
+Before cloud mutations begin, verify that the environment, credentials, tool versions, SSH keypair, Git manifests, and state store are consistent:
+
+```bash
+just gcp-cluster preflight-create
+```
+
+`create-cluster` invokes this check automatically as its first step (`=== 0/5 ===`) and aborts immediately if any check fails.
+
+| Check | Requirement |
+|-------|-------------|
+| Shell environment | `CLUSTER_NAME` and `PROJECT_ID` exported |
+| Toolchain | All tools in active pinfile present (`just check-tools`) |
+| Credentials | `GOOGLE_APPLICATION_CREDENTIALS` matches `PROJECT_ID` and `kops-cluster-creator` SA |
+| GCloud config | Effective configuration is `<project>-kops-cluster-creator` |
+| SSH keypair | Public key under `credentials/<project>/` and matching private key exists |
+| Git manifests | `cluster.yaml` and `instancegroups.yaml` exist, valid, clean in Git (no uncommitted diff) |
+| State store | Bucket absent (greenfield) or bucket present with no cluster state (recreation) |
+
 ## `create-cluster` — The Full Chain
 
 `create-cluster` folds, in this order: create-state-bucket (idempotent) → replace-manifests (with the one-time `--force` a first push needs) → upload-ssh-secret → plan-cluster → update-cluster → drift-manifests → validate-cluster → validate-kops-ha → validate-hardening.
