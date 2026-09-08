@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
 cleanup() {
-    rm -rf "${test_env_dir}" config/kops/dcr-test-1 config/kops/env-cluster
+    rm -rf "${test_env_dir}" config/kops/dcr-test-1 config/kops/env-cluster config/kops/ignored-cluster
 }
 test_env_dir=$(mktemp -d)
 trap cleanup EXIT
@@ -120,7 +120,7 @@ echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
     grep -E "delete.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ delete-cluster dry-run executed"
 )
 
-rm -rf config/kops/dcr-test-1 config/kops/env-cluster
+rm -rf config/kops/dcr-test-1 config/kops/env-cluster config/kops/ignored-cluster
 echo "  ✓ cleaned up test directories"
 
 echo "All bootstrap bundle contract tests PASSED!"
