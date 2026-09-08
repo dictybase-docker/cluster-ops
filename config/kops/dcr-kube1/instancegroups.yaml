@@ -83,7 +83,7 @@ spec:
   role: Node
   machineType: e2-standard-4
   minSize: 0
-  maxSize: 3
+  maxSize: 0
   rootVolumeSize: 100
   subnets:
   - us-central1
@@ -127,7 +127,7 @@ spec:
   role: Node
   machineType: e2-standard-4
   minSize: 0
-  maxSize: 2
+  maxSize: 0
   rootVolumeSize: 100
   subnets:
   - us-central1
