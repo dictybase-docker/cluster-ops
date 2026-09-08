@@ -17,11 +17,11 @@ Two recipes fold the whole identity chain. Neither needs a shell re-entry in the
 
 ### `bootstrap-identities`
 
-Folds `setup-sa-manager` + `configure-gcloud --name sa-manager` + `setup-kops-creator` (Phase 1a enable APIs + Phase 1b disable unused APIs + Phase 2 create the SA) into one call.
+Folds `setup-sa-manager` + `configure-gcloud --name ${PROJECT_ID}-sa-manager` + `setup-kops-creator` (Phase 1a enable APIs + Phase 1b disable unused APIs + Phase 2 create the SA) into one call.
 
 ### `rotate-to-creator`
 
-Folds `cluster-cred` + `configure-gcloud --name kops-cluster-creator` into one call. `configure-gcloud --name kops-cluster-creator` uses a **separate** named configuration, so `sa-manager` stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`.
+Folds `cluster-cred` + `configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator` into one call. `configure-gcloud` uses a **separate** named configuration, so your `sa-manager` config stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ## Obtain sa-manager
 
@@ -66,11 +66,13 @@ Changing one does **not** change the other.
 just gcp-cluster configure-gcloud
 ```
 
-Creates (or reuses) the `sa-manager` configuration, activates it, authenticates the service account, and sets project and zone.
+Creates (or reuses) the `${PROJECT_ID}-sa-manager` configuration, activates it, authenticates the service account, and sets project and zone.
+
+**Why project-scoped.** A gcloud configuration name is machine-global — `~/.config/gcloud` holds every config plus a single shared `active_config` pointer. Two clusters in separate shells that both name their config `sa-manager` would fight over that one pointer; the last `activate` wins and the other shell's direct `gcloud` commands silently switch identity. Suffixing with the project id (globally unique) keeps each cluster's active config independent of every other terminal.
 
 | Flag | Default |
 |------|---------|
-| `--name` | `sa-manager` |
+| `--name` | `${PROJECT_ID}-sa-manager` |
 | `--project` | `$PROJECT_ID` |
 | `--key-file` | `$GOOGLE_APPLICATION_CREDENTIALS` |
 | `--zone` | `us-central1-c` |
@@ -108,14 +110,14 @@ exit
 just cluster-env --env <env> --cluster <cluster-name>
 
 # 2. gcloud identity — used by direct gcloud commands
-just gcp-cluster configure-gcloud --name kops-cluster-creator
+just gcp-cluster configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator
 ```
 
 Using a **separate** configuration name keeps the `sa-manager` configuration intact for the occasional task that genuinely needs the broader identity (creating another SA, changing IAM). Switch between them with:
 
 ```bash
-gcloud config configurations activate kops-cluster-creator
-gcloud config configurations activate sa-manager
+gcloud config configurations activate ${PROJECT_ID}-kops-cluster-creator
+gcloud config configurations activate ${PROJECT_ID}-sa-manager
 ```
 
 Confirm which identity is active:
@@ -123,6 +125,8 @@ Confirm which identity is active:
 ```bash
 gcloud config configurations list
 ```
+
+When decommissioning a project or abandoning its cluster, clean up both local configurations with `just gcp-cluster cleanup-gcloud-config` (→ [Teardown](teardown.md#optional-delete-local-gcloud-configurations)).
 
 From here the narrower key is used for cluster provisioning.
 

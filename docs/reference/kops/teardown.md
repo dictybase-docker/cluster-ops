@@ -16,6 +16,7 @@ The blueprint — the canonical manifest bundle at `config/kops/<cluster>/*.yaml
 | GCS state bucket (`gs://kops-state-<cluster>`) | ✅ Yes | `kops delete` does not delete the bucket |
 | SSH keypair (`credentials/<project>/k8sVM*`) | ✅ Yes | Local files reused across cycles |
 | Service account keys (`credentials/<project>/*.json`) | ✅ Yes | GCP service accounts and JSON keys persist |
+| Named gcloud configs (`~/.config/gcloud/configurations/config_<project>-*`) | ✅ Yes | Machine-local; clean with [`cleanup-gcloud-config`](#optional-delete-local-gcloud-configurations) |
 | Per-cluster env file (`.env.<env>.<cluster>`) | ✅ Yes | Gitignored local credentials/paths; recreate with `just create-cluster-env` if missing |
 | **GCE compute instances** (control-plane + workers) | ❌ Destroyed | Transient VMs |
 | **Boot disks & etcd volumes** | ❌ Destroyed | Deleted with the instances |
@@ -47,6 +48,20 @@ just gcp-cluster delete-state-bucket --confirm yes
 Bucket name defaults to `kops-state-<cluster-name>` derived from `CLUSTER_NAME` (same convention `create-state-bucket` uses). Override with `--bucket-name <bucket|gs://bucket>` or the `BUCKET_NAME` env var.
 
 > Deleting the bucket discards every manifest version kops stored. The Git bundle still lets you rebuild, but the state history is gone permanently.
+
+## Optional: Delete Local gcloud Configurations
+
+Each project leaves two machine-local gcloud configs (`<project>-sa-manager`, `<project>-kops-cluster-creator`). They survive teardown by design — the SA keys do too — so they only become junk if you abandon the project entirely. Recoverable anytime with `configure-gcloud`.
+
+```bash
+# Dry-run preview (marks active config "skip", deletes nothing):
+just gcp-cluster cleanup-gcloud-config
+
+# Delete both non-active project-scoped configs:
+just gcp-cluster cleanup-gcloud-config --confirm yes
+```
+
+The active configuration is never deleted — `gcloud` refuses to delete the active config. Activate another one (`gcloud config configurations activate <name>`) if a target is active.
 
 ## Caveats
 

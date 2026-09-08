@@ -180,6 +180,9 @@ just gcp-cluster delete-cluster --confirm yes
 
 # Optional: also delete the state bucket and every object version
 just gcp-cluster delete-state-bucket --confirm yes
+
+# Optional: clean up machine-local gcloud configurations
+just gcp-cluster cleanup-gcloud-config --confirm yes
 ```
 
 ### 6.1 Declarative Re-Creation
