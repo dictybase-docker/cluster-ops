@@ -24,6 +24,7 @@ just gcp-cluster bootstrap-bundle \
 - Renders `config/kops/<cluster-name>/cluster.yaml` and `instancegroups.yaml` from `config/kops/_starter/`.
 - Pre-configures repository defaults: CSI driver, pd-ssd etcd volumes, cluster autoscaler, cert-manager, node-local DNS, and 3 worker pools (`stateless-web`, `stateful-db`, `batch-spot`).
 - **Pure local operation** — zero cloud API calls, zero state-store mutations.
+- **Not idempotent** — a one-way scaffolding generator, guarded against re-execution by refusing to run if `config/kops/<cluster-name>/` already exists; modify existing manifests directly in Git instead.
 
 ## Choosing `--api-access-cidr`
 

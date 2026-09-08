@@ -115,7 +115,7 @@ just cluster-env --env <env> --cluster <cluster-name>
 
 ## 3. Cluster Bootstrap (Git-Native Flow)
 
-`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**. Review and commit before `create-cluster` touches the cloud.
+`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**. **The command is not idempotent** — a built-in guard prevents re-running over existing bundles, so any post-generation edits belong directly in YAML. Review and commit before `create-cluster` touches the cloud.
 → [Bootstrap detail](reference/kops/bootstrap.md)
 
 ```bash
