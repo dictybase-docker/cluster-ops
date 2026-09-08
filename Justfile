@@ -375,6 +375,17 @@ cluster-env env cluster:
     export CLUSTER_ENV="{{ env }}"
     export CLUSTER_ENV_FILE="${env_file}"
 
+    # Pin gcloud configuration selection to this sub-shell using CLOUDSDK_ACTIVE_CONFIG_NAME.
+    # Prevents cross-terminal identity switching when other terminals activate configurations.
+    sa_email=""
+    if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+        sa_email=$(jq -r '.client_email // empty' "${GOOGLE_APPLICATION_CREDENTIALS}" 2>/dev/null || true)
+    fi
+    sa_user="${sa_email%@*}"
+    if [ -n "${sa_user}" ] && [ -n "${PROJECT_ID:-}" ]; then
+        export CLOUDSDK_ACTIVE_CONFIG_NAME="${PROJECT_ID}-${sa_user}"
+    fi
+
     echo "=== Cluster Environment: {{ env }}/{{ cluster }} ==="
     echo "Source: ${env_file}"
     echo ""
@@ -393,6 +404,7 @@ cluster-env env cluster:
         "PULUMI_STACK"
         "SA_MANAGER_KEY"
         "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME"
+        "CLOUDSDK_ACTIVE_CONFIG_NAME"
     )
 
     set_list=()
@@ -567,6 +579,7 @@ check-tools skip_asdf="no":
             velero)   velero version --client-only 2>/dev/null | awk '/Version/ {print $2; exit}' ;;
             helm)     helm version --short 2>/dev/null ;;
             k9s)      k9s version -s 2>/dev/null | awk '/Version/ {print $2; exit}' ;;
+            mc)       mc --version 2>/dev/null | head -n1 | awk '{print $3}' ;;
             *)        "$1" --version 2>/dev/null | head -n1 ;;
         esac
     }
@@ -589,7 +602,7 @@ check-tools skip_asdf="no":
         echo
         pinfile="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
         echo "asdf-managed tools (pinned in ${pinfile}):"
-        for t in kubectl kops pulumi velero helm k9s; do check "$t"; done
+        for t in kubectl kops pulumi velero helm k9s mc; do check "$t"; done
     fi
 
     echo
