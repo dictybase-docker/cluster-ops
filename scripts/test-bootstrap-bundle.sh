@@ -108,10 +108,10 @@ echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
 
     echo "ssh-rsa AAAAtest" > "${test_env_dir}/test.pub"
     just gcp-cluster upload-ssh-secret --cluster dcr-test-1 --ssh-key "${test_env_dir}/test.pub"
-    grep -E "create secret sshpublickey dcr-test-1-k8s\.local.*-i ${test_env_dir}/test\.pub" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ upload-ssh-secret executed"
+    grep -E "create secret sshpublickey.*--name=dcr-test-1-k8s\.local.*-i ${test_env_dir}/test\.pub" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ upload-ssh-secret executed"
 
     just gcp-cluster rolling-update --cluster dcr-test-1 --instance-group stateless-web --yes yes
-    grep -E "rolling-update cluster dcr-test-1-k8s\.local.*--instance-group=stateless-web.*--yes" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ rolling-update executed"
+    grep -E "rolling-update cluster.*--name=dcr-test-1-k8s\.local.*--instance-group=stateless-web.*--yes" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ rolling-update executed"
 
     just gcp-cluster delete-cluster --cluster dcr-test-1 --project proj-test-1
     grep -E "delete.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ delete-cluster dry-run executed"

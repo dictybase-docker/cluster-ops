@@ -951,7 +951,7 @@ upload-ssh-secret cluster="" kops_name="" state="" ssh_key="":
         exit 1
     fi
 
-    kops create secret sshpublickey "${kn}" --state="${st}" -i "${key}"
+    kops create secret sshpublickey --name="${kn}" --state="${st}" -i "${key}"
     echo "SSH public key uploaded to state store for ${kn}."
 
 # Perform rolling update on cluster nodes (dry-run by default, pass --yes to execute).
@@ -987,7 +987,7 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     [ "{{ yes }}" = "yes" ] && cmd_args+=("--yes")
 
     echo "Running rolling-update for ${kn}..."
-    kops rolling-update cluster "${kn}" --state="${st}" "${cmd_args[@]+"${cmd_args[@]}"}"
+    kops rolling-update cluster --name="${kn}" --state="${st}" "${cmd_args[@]+"${cmd_args[@]}"}"
 
 
 # ── operator convenience recipes ──────────────────────────────────────────────
