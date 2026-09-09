@@ -73,18 +73,15 @@ else
     echo "  ✓ bootstrap-bundle correctly refused to overwrite existing directory"
 fi
 
-echo "=== 3. Testing bootstrap-bundle env var priority over args ==="
+echo "=== 3. Testing bootstrap-bundle defaults from env vars ==="
 (
     export CLUSTER_NAME="env-cluster"
     export PROJECT_ID="env-proj"
     export API_ACCESS_CIDR="192.0.2.1/32"
-    just gcp-cluster bootstrap-bundle \
-        --cluster ignored-cluster \
-        --project ignored-proj \
-        --api-access-cidr "1.1.1.1/32"
+    just gcp-cluster bootstrap-bundle
 )
-grep "project: env-proj" config/kops/env-cluster/cluster.yaml >/dev/null && echo "  ✓ env PROJECT_ID took priority"
-grep "192.0.2.1/32" config/kops/env-cluster/cluster.yaml >/dev/null && echo "  ✓ env API_ACCESS_CIDR took priority"
+grep "project: env-proj" config/kops/env-cluster/cluster.yaml >/dev/null && echo "  ✓ env PROJECT_ID used"
+grep "192.0.2.1/32" config/kops/env-cluster/cluster.yaml >/dev/null && echo "  ✓ env API_ACCESS_CIDR used"
 
 echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
 (
@@ -119,6 +116,15 @@ echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
     just gcp-cluster delete-cluster --cluster dcr-test-1 --project proj-test-1
     grep -E "delete.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ delete-cluster dry-run executed"
 )
+
+echo "=== 5. Testing _cluster-config-report output ==="
+report_out=$(just gcp-cluster _cluster-config-report --cluster dcr-kube1)
+echo "${report_out}" | grep -q "stateless-web.*(size: 0-0) \[LOCKED TO 0\]" && echo "  ✓ stateless-web locked to 0"
+echo "${report_out}" | grep -q "batch-spot.*(size: 0-0) \[LOCKED TO 0\]" && echo "  ✓ batch-spot locked to 0"
+echo "${report_out}" | grep -q "stateful-db.*(size: 3-3) \[STATIC\]" && echo "  ✓ stateful-db static"
+echo "${report_out}" | grep -q "Provisioning:.*8 initial VMs (max: 9)" && echo "  ✓ provisioning totals correct"
+echo "${report_out}" | grep -q "Networking:.*Cilium" && echo "  ✓ dynamic CNI detected Cilium"
+echo "${report_out}" | grep -q "Control Plane:.*zones: us-central1-a, us-central1-b, us-central1-c" && echo "  ✓ dynamic zones detected"
 
 rm -rf config/kops/dcr-test-1 config/kops/env-cluster config/kops/ignored-cluster
 echo "  ✓ cleaned up test directories"

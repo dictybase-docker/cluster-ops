@@ -1336,6 +1336,146 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
 # so the steps and their idempotency requirements are identical. See
 # docs/reference/kops/recreation.md.
 #
+# Print a concise summary of the Git-canonical cluster manifests.
+# Standalone offline inspection — zero credentials or GCP calls needed.
+# Usage: just gcp-cluster _cluster-config-report [--cluster <name>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[group('cluster-management')]
+[no-cd]
+_cluster-config-report cluster="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    if [ -z "${c}" ]; then
+        echo "ERROR: cluster name required. Pass --cluster or set CLUSTER_NAME." >&2
+        exit 1
+    fi
+
+    root="{{ invocation_directory() }}"
+    bundle_dir="${root}/config/kops/${c}"
+    cluster_yaml="${bundle_dir}/cluster.yaml"
+    igs_yaml="${bundle_dir}/instancegroups.yaml"
+
+    if [ ! -f "${cluster_yaml}" ] || [ ! -f "${igs_yaml}" ]; then
+        echo "ERROR: manifests not found in ${bundle_dir}" >&2
+        exit 1
+    fi
+
+    p=$(grep -E '^[[:space:]]*project:[[:space:]]*' "${cluster_yaml}" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"'\''')
+    kn=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${cluster_yaml}" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"'\''')
+    k8s_ver=$(grep -E '^[[:space:]]*kubernetesVersion:' "${cluster_yaml}" 2>/dev/null | awk '{print $2}' || true)
+
+    api_cidrs=$(awk '/^[[:space:]]*kubernetesApiAccess:/ { in_api=1; next } in_api && /^[[:space:]]*-/ { print $NF; next } in_api { in_api=0 }' "${cluster_yaml}" | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+    [ -z "${api_cidrs}" ] && api_cidrs="(none)"
+
+    subnet_cidr=$(grep -E 'cidr:' "${cluster_yaml}" 2>/dev/null | head -n1 | awk '{print $NF}' || true)
+    pod_cidr=$(grep -E '^[[:space:]]*nonMasqueradeCIDR:' "${cluster_yaml}" 2>/dev/null | awk '{print $2}' || true)
+    cfg_base=$(grep -E '^[[:space:]]*configBase:' "${cluster_yaml}" 2>/dev/null | awk '{print $2}' || true)
+
+    cni="Unknown"
+    if grep -qE '^[[:space:]]*cilium:' "${cluster_yaml}"; then
+        cni="Cilium"
+    elif grep -qE '^[[:space:]]*calico:' "${cluster_yaml}"; then
+        cni="Calico"
+    elif grep -qE '^[[:space:]]*flannel:' "${cluster_yaml}"; then
+        cni="Flannel"
+    elif grep -qE '^[[:space:]]*kubenet:' "${cluster_yaml}"; then
+        cni="Kubenet"
+    fi
+
+    echo "=== Cluster Configuration Summary ==="
+    printf "  %-18s %s\n" "Cluster DNS:" "${kn}"
+    printf "  %-18s %s\n" "GCP Project:" "${p}"
+    printf "  %-18s %s\n" "Kubernetes:" "${k8s_ver}"
+    printf "  %-18s %s\n" "API Access CIDR:" "${api_cidrs}"
+    printf "  %-18s %s (Pod CIDR: %s)\n" "Networking:" "${cni}" "${pod_cidr}"
+    [ -n "${subnet_cidr}" ] && printf "  %-18s %s\n" "VPC Subnet:" "${subnet_cidr}"
+    printf "  %-18s %s\n" "State Store:" "${cfg_base}"
+
+    awk '
+    function flush() {
+        if (name != "") {
+            if (role == "Master") {
+                cp_count++;
+                cp_machine=machine;
+                if (zone != "") {
+                    if (!(zone in cp_zones_map)) {
+                        cp_zones_map[zone] = 1;
+                        cp_zones[cp_zone_count++] = zone;
+                    }
+                }
+                initial_vms += min;
+                max_vms += max;
+            } else {
+                workers[worker_count, "name"] = name;
+                workers[worker_count, "machine"] = machine;
+                workers[worker_count, "min"] = min;
+                workers[worker_count, "max"] = max;
+                worker_count++;
+                initial_vms += min;
+                max_vms += max;
+            }
+        }
+        name=""; role=""; machine=""; min=0; max=0; zone=""; in_meta=0; in_spec=0; in_zones=0;
+    }
+    BEGIN {
+        FS=": *";
+        cp_count=0;
+        cp_machine="";
+        cp_zone_count=0;
+        worker_count=0;
+        initial_vms=0;
+        max_vms=0;
+    }
+    /^metadata:/ { in_meta=1; in_spec=0; next }
+    /^spec:/ { in_spec=1; in_meta=0; next }
+    /^---/ { flush(); next }
+    in_meta && /^[[:space:]]+name:/ { name=$2 }
+    in_spec && /^[[:space:]]+role:/ { role=$2 }
+    in_spec && /^[[:space:]]+machineType:/ { machine=$2 }
+    in_spec && /^[[:space:]]+minSize:/ { min=$2 + 0 }
+    in_spec && /^[[:space:]]+maxSize:/ { max=$2 + 0 }
+    in_spec && /^[[:space:]]+zones:/ { in_zones=1; next }
+    in_spec && in_zones && /^[[:space:]]+-[[:space:]]+/ {
+        z=$0;
+        sub(/^[[:space:]]*-?[[:space:]]*/, "", z);
+        if (zone == "") zone=z;
+        next
+    }
+    in_spec && /^[[:space:]]+[a-zA-Z]/ { in_zones=0 }
+    END {
+        flush();
+        zones_str="";
+        for (j=0; j < cp_zone_count; j++) {
+            zones_str = (j == 0) ? cp_zones[j] : zones_str ", " cp_zones[j];
+        }
+        if (zones_str != "") {
+            printf "  %-18s %d instances (%s, zones: %s)\n", "Control Plane:", cp_count, cp_machine, zones_str;
+        } else {
+            printf "  %-18s %d instances (%s)\n", "Control Plane:", cp_count, cp_machine;
+        }
+        printf "  Worker Pools (%d):\n", worker_count;
+        for (i = 0; i < worker_count; i++) {
+            w_name = workers[i, "name"];
+            w_mach = workers[i, "machine"];
+            w_min = workers[i, "min"];
+            w_max = workers[i, "max"];
+            status = "";
+            if (w_max == 0) {
+                status = " [LOCKED TO 0]";
+            } else if (w_min == w_max) {
+                status = " [STATIC]";
+            } else {
+                status = " [AUTOSCALING]";
+            }
+            printf "    - %-14s %-18s (size: %d-%d)%s\n", w_name, w_mach, w_min, w_max, status;
+        }
+        printf "  %-18s %d initial VMs (max: %d)\n", "Provisioning:", initial_vms, max_vms;
+    }
+    ' "${igs_yaml}"
+
 # Validate all prerequisites before running create-cluster:
 # environment variables, toolchain versions, credentials, SSH keypair,
 # gcloud identity isolation, Git manifest bundle, and state bucket status.
@@ -1544,9 +1684,12 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
     if [ "$failures" -gt 0 ]; then
         printf '\033[31mPre-flight check failed with %d error(s).\033[0m Resolve issues before running create-cluster.\n' "$failures"
         exit 1
-    else
-        printf '\033[32mAll pre-flight checks passed.\033[0m Ready for create-cluster.\n'
     fi
+
+    just gcp-cluster _cluster-config-report --cluster "${c}"
+
+    echo
+    printf '\033[32mAll pre-flight checks passed.\033[0m Ready for create-cluster.\n'
 
 # Precondition: config/kops/<cluster>/*.yaml already exists, reviewed, and
 # committed (bootstrap-bundle, or already in Git if recreating).
