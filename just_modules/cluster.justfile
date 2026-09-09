@@ -1652,6 +1652,22 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
             ok "manifest bundle" "config/kops/${c}/ (${manifest_name})"
         fi
 
+        # Validate instance group images exist in GCP and are not family references
+        while read -r img; do
+            [ -z "$img" ] && continue
+            img_proj="${img%%/*}"
+            img_name="${img#*/}"
+            if ! gcloud compute images describe "$img_name" --project "$img_proj" &>/dev/null; then
+                if resolved_family=$(gcloud compute images describe-from-family "$img_name" --project "$img_proj" --format="value(name)" 2>/dev/null); then
+                    bad "image family" "'${img}' is an image family — pin exact image '${img_proj}/${resolved_family}'"
+                else
+                    bad "image not found" "image '${img}' not found in GCP project '${img_proj}'"
+                fi
+            else
+                ok "node image" "${img}"
+            fi
+        done < <(grep -E '^[[:space:]]*image:[[:space:]]*' "${igs_yaml}" | awk '{print $2}' | sort -u)
+
         if ! git -C "${root}" diff --quiet "${bundle_dir}"; then
             bad "git status" "uncommitted modifications in config/kops/${c}/ — review and commit first"
         elif ! git -C "${root}" diff --cached --quiet "${bundle_dir}"; then
