@@ -111,8 +111,10 @@ just gcp-cluster preflight-create
 | Credentials | `GOOGLE_APPLICATION_CREDENTIALS` matches `PROJECT_ID` and `kops-cluster-creator` SA |
 | GCloud config | Effective configuration is `<project>-kops-cluster-creator` |
 | SSH keypair | Public key under `credentials/<project>/` and matching private key exists |
-| Git manifests | `cluster.yaml` and `instancegroups.yaml` exist, valid, clean in Git (no uncommitted diff) |
+| Git manifests | `cluster.yaml` and `instancegroups.yaml` exist, internally consistent, placeholder-free, and clean in Git |
 | State store | Bucket absent (greenfield) or bucket present with no cluster state (recreation) |
+
+On success, `preflight-create` prints a concise summary of the Git-canonical cluster shape (DNS, Kubernetes version, API CIDR, networking, control plane topology, worker pools, and initial/max VM counts) before approving execution.
 
 ## `create-cluster` — The Full Chain
 
