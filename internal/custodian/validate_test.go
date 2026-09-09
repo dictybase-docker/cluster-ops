@@ -76,9 +76,34 @@ func TestValidatePodsRunning(t *testing.T) {
 		{
 			name: "pod pending",
 			pods: []corev1.Pod{
-				{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}, Status: corev1.PodStatus{Phase: corev1.PodPending}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pending-pod"}, Status: corev1.PodStatus{Phase: corev1.PodPending}},
 			},
 			wantStatus: statusFail,
+		},
+		{
+			name: "pod failed",
+			pods: []corev1.Pod{
+				{ObjectMeta: metav1.ObjectMeta{Name: "failed-pod"}, Status: corev1.PodStatus{Phase: corev1.PodFailed}},
+			},
+			wantStatus: statusFail,
+		},
+		{
+			name: "multiple pods running",
+			pods: []corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cm-1"},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cm-cainjector-1"},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cm-webhook-1"},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+			wantStatus: statusPass,
 		},
 	}
 

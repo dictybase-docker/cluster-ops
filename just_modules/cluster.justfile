@@ -233,8 +233,16 @@ validate-hardening:
 
     fail=0
 
+    pods_running() {
+        local namespace="$1" selector="$2" pods
+        pods=$(kubectl get pods -n "$namespace" -l "$selector" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.phase}{"\n"}{end}' \
+            2>/dev/null || true)
+        [ -n "$pods" ] && ! grep -qv '=Running$' <<<"$pods"
+    }
+
     echo "--- Cluster Autoscaler ---"
-    if kubectl get pods -n kube-system -l app=cluster-autoscaler 2>/dev/null | grep -q Running; then
+    if pods_running "kube-system" "app=cluster-autoscaler"; then
         echo "  ✓ Running"
     else
         echo "  ✗ Not found or not Running"
@@ -265,7 +273,7 @@ validate-hardening:
     fi
 
     echo "--- cert-manager ---"
-    if kubectl get pods -n cert-manager 2>/dev/null | grep -q Running; then
+    if pods_running "kube-system" "app.kubernetes.io/instance=cert-manager" || pods_running "cert-manager" "app.kubernetes.io/instance=cert-manager"; then
         echo "  ✓ Running"
     else
         echo "  ✗ Not found or not Running"
@@ -273,7 +281,7 @@ validate-hardening:
     fi
 
     echo "--- Node-local DNS cache ---"
-    if kubectl get pods -n kube-system -l k8s-app=node-local-dns 2>/dev/null | grep -q Running; then
+    if pods_running "kube-system" "k8s-app=node-local-dns"; then
         echo "  ✓ Running"
     else
         echo "  ✗ Not found or not Running"

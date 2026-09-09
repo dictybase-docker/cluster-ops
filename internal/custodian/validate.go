@@ -105,15 +105,32 @@ func checkMetricsServer(ctx context.Context, cs *kubernetes.Clientset) HACheck {
 
 // ── cert-manager ──
 
-func checkCertManager(ctx context.Context, cs *kubernetes.Clientset) HACheck {
-	ns := "cert-manager"
+func checkCertManagerNamespace(ctx context.Context, cs *kubernetes.Clientset) HACheck {
 	return F.Pipe1(
-		listPods(ctx, cs, ns, ""),
+		listPods(ctx, cs, "cert-manager", ""),
 		E.Fold(
-			func(err error) HACheck {
-				return HACheck{"cert-manager", statusFail, "namespace cert-manager not found"}
+			func(_ error) HACheck {
+				return HACheck{"cert-manager", statusFail, "no cert-manager pods found"}
 			},
 			func(pods []corev1.Pod) HACheck {
+				return validatePodsRunning("cert-manager", pods)
+			},
+		),
+	)
+}
+
+func checkCertManager(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+	// kOps deploys cert-manager into kube-system; standalone Helm installs into cert-manager.
+	return F.Pipe1(
+		listPods(ctx, cs, "kube-system", "app.kubernetes.io/instance=cert-manager"),
+		E.Fold(
+			func(_ error) HACheck {
+				return checkCertManagerNamespace(ctx, cs)
+			},
+			func(pods []corev1.Pod) HACheck {
+				if len(pods) == 0 {
+					return checkCertManagerNamespace(ctx, cs)
+				}
 				return validatePodsRunning("cert-manager", pods)
 			},
 		),
