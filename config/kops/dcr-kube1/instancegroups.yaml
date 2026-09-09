@@ -5,7 +5,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: control-plane-us-central1-a
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: e2-standard-2
   maxSize: 1
   minSize: 1
@@ -23,7 +23,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: control-plane-us-central1-b
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: e2-standard-2
   maxSize: 1
   minSize: 1
@@ -41,7 +41,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: control-plane-us-central1-c
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: e2-standard-2
   maxSize: 1
   minSize: 1
@@ -59,7 +59,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: nodes
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: e2-standard-2
   maxSize: 3
   minSize: 2
@@ -79,7 +79,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: stateless-web
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: e2-standard-4
   minSize: 0
@@ -101,7 +101,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: stateful-db
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: e2-custom-4-12288
   minSize: 3
@@ -123,7 +123,7 @@ metadata:
     kops.k8s.io/cluster: dcr-kube1-k8s.local
   name: batch-spot
 spec:
-  image: ubuntu-os-cloud/ubuntu-2404-lts-amd64
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: e2-standard-4
   minSize: 0
