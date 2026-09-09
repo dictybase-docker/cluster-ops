@@ -872,7 +872,7 @@ replace-manifests cluster="" kops_name="" state="" force="no":
 [arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
 [arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
 [no-cd]
-drift-manifests cluster="" kops_name="" state="":
+drift-manifests cluster="" kops_name="" state="": build
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -906,9 +906,16 @@ drift-manifests cluster="" kops_name="" state="":
     kops get cluster --name="${kn}" --state="${st}" -o yaml > "${tmp_dir}/live-cluster.yaml"
     kops get instancegroups --name="${kn}" --state="${st}" -o yaml > "${tmp_dir}/live-igs.yaml"
 
+    root="{{ invocation_directory() }}"
+    "${root}/bin/cluster-ops" kops normalize --file "${cluster_yaml}" --output "${tmp_dir}/norm-git-cluster.yaml"
+    "${root}/bin/cluster-ops" kops normalize --file "${tmp_dir}/live-cluster.yaml" --output "${tmp_dir}/norm-live-cluster.yaml"
+
+    "${root}/bin/cluster-ops" kops normalize --file "${igs_yaml}" --output "${tmp_dir}/norm-git-igs.yaml"
+    "${root}/bin/cluster-ops" kops normalize --file "${tmp_dir}/live-igs.yaml" --output "${tmp_dir}/norm-live-igs.yaml"
+
     rc=0
     echo "--- Checking cluster.yaml drift ---"
-    if ! diff -u "${cluster_yaml}" "${tmp_dir}/live-cluster.yaml"; then
+    if ! diff -u "${tmp_dir}/norm-git-cluster.yaml" "${tmp_dir}/norm-live-cluster.yaml"; then
         echo "DRIFT detected in cluster.yaml"
         rc=1
     else
@@ -916,7 +923,7 @@ drift-manifests cluster="" kops_name="" state="":
     fi
 
     echo "--- Checking instancegroups.yaml drift ---"
-    if ! diff -u "${igs_yaml}" "${tmp_dir}/live-igs.yaml"; then
+    if ! diff -u "${tmp_dir}/norm-git-igs.yaml" "${tmp_dir}/norm-live-igs.yaml"; then
         echo "DRIFT detected in instancegroups.yaml"
         rc=1
     else

@@ -56,6 +56,15 @@ func kopsCommand() *cli.Command {
 				Action: kops.PlanCluster,
 			},
 			{
+				Name:  "normalize",
+				Usage: "Normalize cluster manifests for semantic comparison",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Required: true},
+					&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Required: true},
+				},
+				Action: normalizeManifestAction,
+			},
+			{
 				Name:  "delete",
 				Usage: "Teardown a cluster (dry-run by default, --yes to execute)",
 				Flags: kopsDeleteFlags(),
@@ -65,6 +74,10 @@ func kopsCommand() *cli.Command {
 			},
 		},
 	}
+}
+
+func normalizeManifestAction(cltx *cli.Context) error {
+	return kops.NormalizeYAMLFile(cltx.String("file"), cltx.String("output"))
 }
 
 func kopsDeleteFlags() []cli.Flag {
