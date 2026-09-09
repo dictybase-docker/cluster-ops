@@ -196,6 +196,9 @@ func assertBatchSpotLabels(t *testing.T, spec map[string]any) {
 	if taints, ok := spec["taints"].([]any); ok && len(taints) > 0 {
 		t.Errorf("expected batch-spot to have zero taints (GCE incompatible), got %v", taints)
 	}
+	if spec["gcpProvisioningModel"] != "SPOT" {
+		t.Errorf("expected batch-spot gcpProvisioningModel [SPOT], got %v", spec["gcpProvisioningModel"])
+	}
 	nodeLabels, ok := spec["nodeLabels"].(map[string]any)
 	if !ok || nodeLabels["pool"] != "batch" {
 		t.Errorf("expected batch-spot nodeLabels [pool: batch], got %v", nodeLabels)

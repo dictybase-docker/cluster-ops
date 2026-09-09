@@ -11,10 +11,7 @@ spec:
   certManager:
     enabled: true
   channel: stable
-  cloudConfig:
-    gce:
-      pdCSIDriver:
-        enabled: true
+  cloudConfig: {}
   cloudProvider: gce
   clusterAutoscaler:
     enabled: true
@@ -80,5 +77,3 @@ spec:
   topology:
     dns:
       type: None
-    masters: private
-    nodes: private

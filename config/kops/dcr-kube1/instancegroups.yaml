@@ -137,5 +137,4 @@ spec:
   - us-central1-c
   nodeLabels:
     pool: batch
-  gce:
-    preemptible: true
+  gcpProvisioningModel: SPOT
