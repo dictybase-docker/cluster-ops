@@ -1668,6 +1668,12 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
             fi
         done < <(grep -E '^[[:space:]]*image:[[:space:]]*' "${igs_yaml}" | awk '{print $2}' | sort -u)
 
+        # On GCE, kOps converts instance group taints to autoscaler tags with slashes
+        # (k8s.io/cluster-autoscaler/node-template/taint/...), which GCE rejects as invalid label keys.
+        if grep -qE '^[[:space:]]*taints:' "${igs_yaml}"; then
+            bad "GCE taints" "spec.taints found in ${igs_yaml} — GCE rejects autoscaler taint labels containing slashes; use nodeLabels instead"
+        fi
+
         if ! git -C "${root}" diff --quiet "${bundle_dir}"; then
             bad "git status" "uncommitted modifications in config/kops/${c}/ — review and commit first"
         elif ! git -C "${root}" diff --cached --quiet "${bundle_dir}"; then
