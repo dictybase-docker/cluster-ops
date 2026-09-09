@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -20,8 +21,6 @@ func init() {
 }
 
 type CreateBucketParams struct {
-	Ctx         context.Context
-	Client      *storage.Client
 	ProjectID   string
 	BucketName  string
 	RegionName  string
@@ -108,11 +107,11 @@ func bucketExists(
 	bucket *storage.BucketHandle,
 ) (bool, error) {
 	_, err := bucket.Attrs(ctx)
-	if err == storage.ErrBucketNotExist {
+	if errors.Is(err, storage.ErrBucketNotExist) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("error checking bucket: %v", err)
+		return false, fmt.Errorf("error checking bucket: %w", err)
 	}
 	return true, nil
 }
@@ -123,7 +122,7 @@ func setupNewBucket(
 	bucket *storage.BucketHandle,
 	harden bool,
 ) error {
-	if err := createBucket(params); err != nil {
+	if err := createBucket(ctx, bucket, params); err != nil {
 		return err
 	}
 
@@ -147,10 +146,13 @@ func setupNewBucket(
 	return nil
 }
 
-func createBucket(params CreateBucketParams) error {
+func createBucket(
+	ctx context.Context,
+	bucket *storage.BucketHandle,
+	params CreateBucketParams,
+) error {
 	logger.Info("Creating bucket", slog.String("bucket", params.BucketName))
-	bucket := params.Client.Bucket(params.BucketName)
-	if err := bucket.Create(params.Ctx, params.ProjectID, &storage.BucketAttrs{
+	if err := bucket.Create(ctx, params.ProjectID, &storage.BucketAttrs{
 		Location: params.RegionName,
 	}); err != nil {
 		return fmt.Errorf("failed to create bucket: %w", err)

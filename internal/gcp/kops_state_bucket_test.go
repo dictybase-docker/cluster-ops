@@ -1,9 +1,13 @@
 package gcp
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"cloud.google.com/go/storage"
 )
 
 func TestValidateEnvironmentRequiresCredentials(t *testing.T) {
@@ -44,5 +48,15 @@ func TestValidateEnvironmentIgnoresGitOwnedIdentity(t *testing.T) {
 
 	if err := validateEnvironment(); err != nil {
 		t.Fatalf("validateEnvironment() = %v, want nil when only credentials are set", err)
+	}
+}
+
+func TestBucketNotExistWrappedErrorRecognition(t *testing.T) {
+	wrappedErr := fmt.Errorf("googleapi: Error 404: not found: %w", storage.ErrBucketNotExist)
+	if !errors.Is(wrappedErr, storage.ErrBucketNotExist) {
+		t.Fatal("expected errors.Is to match wrapped storage.ErrBucketNotExist")
+	}
+	if wrappedErr == storage.ErrBucketNotExist {
+		t.Fatal("direct equality should fail on wrapped error")
 	}
 }
