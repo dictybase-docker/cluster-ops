@@ -75,7 +75,8 @@ No rolling update is needed — this is a firewall rule change only ([change tri
 
 | Field | Default |
 |-------|---------|
-| `spec.kubernetesVersion` | `1.28.8` |
+| `spec.kubernetesVersion` | `1.35.8` |
+| `spec.kubelet.anonymousAuth` | `false` |
 | `spec.kubernetesApiAccess` | `["<your-ip>/32"]` |
 | `spec.networking.cilium` | enabled |
 | `spec.etcdClusters[*].volumeType` | `pd-ssd` |
@@ -91,6 +92,8 @@ No rolling update is needed — this is a firewall rule change only ([change tri
 | `stateless-web` | Web/API | `e2-standard-4` | min 3 / max 6 | 100GB |
 | `stateful-db` | Databases | `n2-standard-4` | min 3 / max 3 | 100GB |
 | `batch-spot` | Spot compute | `e2-standard-4` | min 0 / max 4 | preemptible |
+
+Default node OS image across all starter instance groups is pinned to `ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906` (Ubuntu 24.04 LTS).
 
 > Production database workloads need an extra taint on `stateful-db` — see [`arangodb-deploy.md`](../../arangodb-deploy.md) and [pool requirements](../arangodb/pool-requirements.md).
 

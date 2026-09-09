@@ -5,7 +5,7 @@ metadata:
     kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
   name: control-plane-us-central1-c
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: n1-custom-4-8192
   maxSize: 1
   minSize: 1
@@ -23,7 +23,7 @@ metadata:
     kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
   name: nodes-us-central1-c
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   machineType: n1-custom-2-4096
   maxSize: 4
   minSize: 4
@@ -41,7 +41,7 @@ metadata:
     kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
   name: stateless-web
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: e2-standard-4
   minSize: 3
@@ -63,7 +63,7 @@ metadata:
     kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
   name: stateful-db
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: n2-standard-4
   minSize: 3
@@ -85,7 +85,7 @@ metadata:
     kops.k8s.io/cluster: ${KOPS_CLUSTER_NAME}
   name: batch-spot
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240829
+  image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906
   role: Node
   machineType: e2-standard-4
   minSize: 0

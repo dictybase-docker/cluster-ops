@@ -62,6 +62,9 @@ echo "=== 1. Testing bootstrap-bundle with pure CLI args (env unset) ==="
 )
 [ -s "config/kops/dcr-test-1/cluster.yaml" ] && echo "  ✓ cluster.yaml created"
 [ -s "config/kops/dcr-test-1/instancegroups.yaml" ] && echo "  ✓ instancegroups.yaml created"
+grep "kubernetesVersion: 1.35.8" config/kops/dcr-test-1/cluster.yaml >/dev/null && echo "  ✓ default kubernetesVersion is 1.35.8"
+grep "image: ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906" config/kops/dcr-test-1/instancegroups.yaml >/dev/null && echo "  ✓ default image is Ubuntu 24.04 noble"
+! grep "ubuntu-2204" config/kops/dcr-test-1/instancegroups.yaml >/dev/null && echo "  ✓ no legacy ubuntu-2204 image"
 ! grep -E '\$\{[A-Za-z0-9_]+\}' config/kops/dcr-test-1/*.yaml && echo "  ✓ zero unresolved placeholders"
 [ "$(wc -l < "${MOCK_KOPS_LOG}")" -eq 0 ] && echo "  ✓ zero kops calls made during bootstrap"
 
