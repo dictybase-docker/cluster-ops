@@ -1668,7 +1668,12 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
     if gcloud storage ls "${bucket_uri}" &>/dev/null; then
         cluster_out=$(gcloud storage ls "${bucket_uri}/${kn}/" 2>&1 || true)
         if gcloud storage ls "${bucket_uri}/${kn}/" &>/dev/null; then
-            bad "state store" "cluster '${kn}' already exists in ${bucket_uri} — use 'just gcp-cluster apply-cluster' for updates"
+            running_vms=$(gcloud compute instances list --filter="name ~ ${c}" --format="value(name)" 2>/dev/null || true)
+            if [ -n "${running_vms}" ]; then
+                bad "state store" "cluster '${kn}' already has running VMs in GCP — use 'just gcp-cluster apply-cluster' for updates, or 'delete-cluster' first"
+            else
+                ok "state store" "bucket exists (${bucket_uri}), manifests in state, compute not yet provisioned (clean to create/resume)"
+            fi
         elif echo "${cluster_out}" | grep -qiE "404|not found"; then
             ok "state store" "bucket exists (${bucket_uri}), no active cluster (clean for creation)"
         else
