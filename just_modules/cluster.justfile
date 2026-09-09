@@ -1320,6 +1320,21 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
     echo "=== 1/3: cluster health ==="
     just gcp-cluster validate-cluster "${args[@]+"${args[@]}"}" --waittime "{{ waittime }}"
 
+    # Ensure isolated per-cluster kubeconfig exists before running phases 2 & 3
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kubeconfig_file="${KUBECONFIG:-}"
+    if [ -z "${kubeconfig_file}" ] && [ -n "${c}" ]; then
+        kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+        export KUBECONFIG="${kubeconfig_file}"
+    fi
+
+    if [ -n "${kubeconfig_file}" ] && [ ! -s "${kubeconfig_file}" ]; then
+        echo
+        echo "Kubeconfig missing at ${kubeconfig_file}; exporting from state store..."
+        just gcp-cluster export-kubeconfig "${args[@]+"${args[@]}"}"
+    fi
+
     echo
     echo "=== 2/3: HA topology ==="
     just gcp-cluster validate-kops-ha "${args[@]+"${args[@]}"}"
