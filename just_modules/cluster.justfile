@@ -135,6 +135,12 @@ update-cluster cluster="" kops_name="" state="": build
         echo "ERROR: cluster name (or kops name) and state store must be set or passed via --cluster / --state."
         exit 1
     fi
+
+    if [ -z "${DOCKER_CONFIG:-}" ] || [ ! -d "${DOCKER_CONFIG:-}" ]; then
+        tmp_docker=$(mktemp -d)
+        trap 'rm -rf "${tmp_docker}"' EXIT
+        export DOCKER_CONFIG="${tmp_docker}"
+    fi
     ./bin/cluster-ops kops update
 
 # Preview pending cluster changes without applying them (version-aware dry-run).
@@ -162,6 +168,12 @@ plan-cluster cluster="" kops_name="" state="": build
     if [ -z "${KOPS_CLUSTER_NAME:-}" ] || [ -z "${KOPS_STATE_STORE:-}" ]; then
         echo "ERROR: cluster name (or kops name) and state store must be set or passed via --cluster / --state."
         exit 1
+    fi
+
+    if [ -z "${DOCKER_CONFIG:-}" ] || [ ! -d "${DOCKER_CONFIG:-}" ]; then
+        tmp_docker=$(mktemp -d)
+        trap 'rm -rf "${tmp_docker}"' EXIT
+        export DOCKER_CONFIG="${tmp_docker}"
     fi
     ./bin/cluster-ops kops plan
 
