@@ -41,6 +41,8 @@ spec:
       enabled: true
   kubeProxy:
     enabled: false
+  kubelet:
+    anonymousAuth: false
   kubernetesApiAccess:
   - ${API_ACCESS_CIDR}
   kubernetesVersion: 1.28.8

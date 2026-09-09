@@ -57,6 +57,8 @@ spec:
       enabled: true
   kubeProxy:
     enabled: false
+  kubelet:
+    anonymousAuth: false
   kubernetesApiAccess:
   - 73.58.107.39/32
   kubernetesVersion: 1.35.8
