@@ -28,7 +28,7 @@ const (
 	batchSpot    = "batch-spot"
 	e2Std4       = "e2-standard-4"
 	n2Std4       = "n2-standard-4"
-	defaultImage = "ubuntu-os-cloud/ubuntu-2204-jammy-v20240829"
+	defaultImage = "ubuntu-os-cloud/ubuntu-2404-noble-amd64-v20260906"
 )
 
 func TestStarterTemplates_ValidSchemaAndDefaults(t *testing.T) {
@@ -70,7 +70,7 @@ func assertClusterDefaults(t *testing.T, rendered string) {
 		t.Fatalf("cluster spec missing or invalid type")
 	}
 
-	if spec["kubernetesVersion"] != "1.28.8" || spec["cloudProvider"] != "gce" {
+	if spec["kubernetesVersion"] != "1.35.8" || spec["cloudProvider"] != "gce" {
 		t.Errorf("cluster core spec mismatch: %v", spec)
 	}
 
@@ -188,14 +188,17 @@ func assertInstanceGroupDefaults(t *testing.T, rendered string) {
 		}
 	}
 
-	assertBatchSpotTaint(t, igNames[batchSpot])
+	assertBatchSpotLabels(t, igNames[batchSpot])
 }
 
-func assertBatchSpotTaint(t *testing.T, spec map[string]any) {
+func assertBatchSpotLabels(t *testing.T, spec map[string]any) {
 	t.Helper()
-	taints, ok := spec["taints"].([]any)
-	if !ok || len(taints) != 1 || taints[0] != "spot=true:NoSchedule" {
-		t.Errorf("expected batch-spot taint [spot=true:NoSchedule], got %v", taints)
+	if taints, ok := spec["taints"].([]any); ok && len(taints) > 0 {
+		t.Errorf("expected batch-spot to have zero taints (GCE incompatible), got %v", taints)
+	}
+	nodeLabels, ok := spec["nodeLabels"].(map[string]any)
+	if !ok || nodeLabels["pool"] != "batch" {
+		t.Errorf("expected batch-spot nodeLabels [pool: batch], got %v", nodeLabels)
 	}
 }
 
