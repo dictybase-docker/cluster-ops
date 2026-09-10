@@ -202,7 +202,7 @@ build-publish-backup-image ref user pass: setup
 [arg("pulumi_gcp_credentials", long="pulumi-gcp-credentials", help="Pulumi GCP SA JSON path (defaults to credentials/<project-id>/pulumi-manager.json — never inherited from the shell)")]
 [arg("pulumi_secret_provider", long="pulumi-secret-provider", help="Pulumi secrets provider URI (derived from project id, cluster name, cluster.yaml region — never inherited from the shell)")]
 [arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to gs://pulumi-state-<project-id> — never inherited from the shell)")]
-[arg("pulumi_stack", long="pulumi-stack", help="Pulumi stack name for every project on this cluster (defaults to the cluster name — never inherited from the shell)")]
+[arg("pulumi_stack", long="pulumi-stack", help="Pulumi stack name for every project on this cluster (defaults to the cluster name — one unique stack per cluster)")]
 [arg("force", long="force", pattern="yes|no", help="Overwrite an existing env file")]
 [group('cluster-ops')]
 create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" pulumi_stack="" force="no":
@@ -309,6 +309,10 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         pulumi_backend="gs://pulumi-state-${project_id}"
     fi
 
+    # One unique stack per cluster, named after the cluster — mirroring the env
+    # file (.env.<env>.<cluster> → Pulumi.<cluster>.yaml). The shipped
+    # Pulumi.<env>.yaml files are templates, not stacks: a new cluster gets its
+    # own files via `just gcp-pulumi fork-stack --to-stack <cluster>`.
     pulumi_stack="{{ pulumi_stack }}"
     if [ -z "${pulumi_stack}" ]; then
         pulumi_stack="${cluster_name}"

@@ -6,10 +6,16 @@ Run from repo root with a cluster shell active. Every recipe defaults `--stack` 
 
 ## Create or Select
 
-`ensure-stack` selects the stack named by `$PULUMI_STACK` if it exists, or initializes it if not. Use it instead of a raw `pulumi stack select || pulumi stack init`:
+`ensure-stack` selects the stack named by `$PULUMI_STACK` (the cluster name) if it exists, or initializes it **from its `Pulumi.<stack>.yaml` file** if not. Use it instead of a raw `pulumi stack select || pulumi stack init`:
 
 ```bash
 just gcp-pulumi ensure-stack --folder <project-folder>
+```
+
+It refuses to initialize a stack that has no local `Pulumi.<stack>.yaml` — that would create an empty stack and fail at preview with `missing required configuration variable`. For a new cluster, create the file first:
+
+```bash
+just gcp-pulumi fork-stack --to-stack <cluster-name>
 ```
 
 ## Seed From an Existing Stack

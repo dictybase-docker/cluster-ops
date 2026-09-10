@@ -4,33 +4,57 @@ Back to: [Pulumi Setup Guide](../../pulumi-setup.md)
 
 ## The Rule
 
-One project (`arangodb-cluster`, `storage_class`, ...) can hold many stacks — one per cluster it is deployed to.
+**One unique stack per cluster, named after the cluster** — mirroring the env file: `.env.<env>.<cluster>` carries `PULUMI_STACK=<cluster>`, so `dcr-kube1` gets the stack `dcr-kube1` in every project.
 
-**Do not reuse the same stack name across different clusters** for anything beyond throwaway lab work. A stack name should identify *which cluster* it targets, so `pulumi stack ls` and `pulumi -s <name> ...` stay unambiguous when several clusters run side by side.
+`prod`, `dev`, `experiments`, and `local` are **template** names, not stack names. They are the shipped `Pulumi.<name>.yaml` files a new cluster forks its config from.
 
-## Naming by Profile
+Never share a stack name between clusters: stack state lives inside the project's state bucket, so two clusters in one GCP project would collide, and `pulumi stack ls` stops being unambiguous.
 
-| Profile | Stack name | Why |
-|---------|-----------|-----|
-| Simple lab | `dev` | Matches shipped `Pulumi.dev.yaml`; one shared throwaway cluster, so a name collision is harmless |
-| Shared lab | `experiments` | Same reasoning — one shared cluster |
-| Any real cluster (staging, prod-us, prod-eu, ...) | The cluster's own name, e.g. `dcr-kube1` | Unique per cluster, never collides even when two clusters are both "production" |
+## New Cluster
+
+Fork the base templates into per-cluster files, review the deltas, then point the env file at them:
+
+```bash
+# 1. Per-cluster config files (one per project that ships the base)
+just gcp-pulumi fork-stack --to-stack <cluster-name>
+
+# 2. Record the deltas for this cluster, if any
+$EDITOR storage_class/Pulumi.<cluster-name>.yaml
+git commit -am "feat(pulumi): <cluster-name> stack config"
+
+# 3. Env file — PULUMI_STACK defaults to the cluster name, shown here explicitly
+just create-cluster-env --env <env> --cluster <cluster-name> \
+    --pulumi-stack <cluster-name> --force yes
+```
+
+`ensure-stack` then initializes each stack **from its own `Pulumi.<cluster-name>.yaml`**, so a new cluster starts from the base config with this cluster's deltas applied.
+
+If a project has no base template left, fork from the closest existing cluster instead — `storage_class`'s `Pulumi.prod.yaml` was removed once `Pulumi.dcr-kube1.yaml` became the production config:
+
+```bash
+just gcp-pulumi fork-stack --to-stack <cluster-name> --from-stack dcr-kube1 --folder storage_class
+```
 
 ## How Recipes Resolve It
 
-[`create-cluster-env`](cluster-env.md) writes `PULUMI_STACK=<cluster-name>` into the env file.
+[`create-cluster-env`](cluster-env.md) writes `PULUMI_STACK=<cluster-name>` into the env file. Every `just gcp-pulumi` recipe defaults `--stack` to `$PULUMI_STACK`, so day-to-day commands never spell out a stack name:
 
-Every `just gcp-pulumi` recipe defaults `--stack` to `$PULUMI_STACK` when the flag is omitted, so day-to-day commands never spell out a stack name.
+```bash
+just cluster-env --env prod --cluster dcr-kube1   # exports PULUMI_STACK=dcr-kube1
+just gcp-pulumi apply-storageclass                # operates on stack dcr-kube1
+```
 
-Override the default only when you deliberately want a different name — for example sharing one stack across a small pool of near-identical clusters:
+Override only for deliberately sharing one stack across near-identical clusters:
 
 ```bash
 just create-cluster-env --env <env> --cluster <cluster-name> \
   --pulumi-stack <custom-name> --force yes
 ```
 
+## Guard
+
+`ensure-stack` refuses to initialize a stack with no `Pulumi.<stack>.yaml` template — that would create an empty stack and fail at preview with `missing required configuration variable`. It points at `fork-stack` (or `new-stack-from`, when the base stack already exists in the backend) instead.
+
 ## Per-Stack Files
 
-Each project directory holds `Pulumi.yaml` plus one `Pulumi.<stack>.yaml` per stack.
-
-Secret values inside those files are encrypted with the KMS provider — `PULUMI_SECRET_PROVIDER` plus the `pulumi-manager` key ([backend bootstrap](backend-bootstrap.md)).
+Each project directory holds `Pulumi.yaml`, the shipped `Pulumi.<env>.yaml` templates, and one `Pulumi.<cluster>.yaml` per cluster it is deployed to. Secret values inside those files are encrypted with the KMS provider — `PULUMI_SECRET_PROVIDER` plus the `pulumi-manager` key ([backend bootstrap](backend-bootstrap.md)).

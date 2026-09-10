@@ -47,15 +47,10 @@ just cluster-env --env <env> --cluster <cluster-name>
 # 5. Bootstrap the backend (once per GCP project)
 just gcp-pulumi bootstrap-backend
 
-# 6. Apply StorageClass
-just gcp-pulumi ensure-stack --folder storage_class
-just gcp-pulumi preview --folder storage_class
-just gcp-pulumi create-resource --folder storage_class
+# 6. Apply and verify StorageClass
+just gcp-pulumi apply-storageclass
 
-# 7. Verify StorageClass (prod ships both classes; lab ships balanced only)
-just gcp-pulumi check-storageclass --classes dictycr-balanced,dictycr-ssd
-
-# 8. Continue with arangodb-deploy.md
+# 7. Continue with arangodb-deploy.md
 ```
 
 Switching to another cluster later:
@@ -127,7 +122,7 @@ just gcp-pulumi check-backend
 
 ## 5. Stacks and Configuration
 
-One stack per cluster per project; `create-cluster-env` already set `PULUMI_STACK` to the cluster name, so `--stack` is rarely needed.
+One stack per cluster per project, named after the cluster; `create-cluster-env` already set `PULUMI_STACK` to it, so `--stack` is rarely needed.
 → [Stack names](reference/pulumi/stack-names.md) · [Stack config](reference/pulumi/stack-config.md) · [Full recipe reference](reference/pulumi/recipes.md)
 
 ```bash
@@ -144,17 +139,14 @@ just gcp-pulumi create-resource --folder <project-folder>
 
 ## 6. First Apply — StorageClass
 
-Deploy once per cluster, before any database stack — ArangoDB, CNPG, Redis, and MinIO all request these classes.
+Deploy once per cluster, before any database stack — ArangoDB, CNPG, Redis, and MinIO all request these classes. The recipe applies the stack, then verifies exactly the classes `Pulumi.<stack>.yaml` declares.
 → [StorageClass detail](reference/pulumi/storage-class.md)
 
 ```bash
-just gcp-pulumi ensure-stack --folder storage_class
-just gcp-pulumi preview --folder storage_class
-just gcp-pulumi create-resource --folder storage_class
-just gcp-pulumi check-storageclass --classes dictycr-balanced,dictycr-ssd
+just gcp-pulumi apply-storageclass
 ```
 
-`Pulumi.prod.yaml` declares **both** `dictycr-balanced` and `dictycr-ssd`, so name both when verifying a production cluster — the bare `check-storageclass` default only requires `dictycr-balanced` and would pass while `dictycr-ssd` is missing.
+No per-environment flags: prod (two classes) and lab/local (one class, `rancher.io/local-path`) both derive their expectations from the stack file, so a missing `dictycr-ssd` on prod fails instead of passing silently.
 
 Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#-6-database-storage--retrieval).
 

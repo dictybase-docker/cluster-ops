@@ -34,6 +34,7 @@ Same baseline as the kOps guide — see [README §1.2](../../kops-setup.md#1-pre
 | `pulumi` | asdf | Yes |
 | `gcloud` | asdf | Yes |
 | `jq` | system | Yes |
+| `yq` | system | Yes — derives StorageClass expectations in `apply-storageclass` |
 | `direnv` | system | Optional |
 
 Install a pinned version into the active tool-versions file:

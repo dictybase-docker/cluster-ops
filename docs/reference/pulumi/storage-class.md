@@ -13,13 +13,15 @@ Deploy once per cluster.
 
 ## Deploy — Real Cluster
 
-Uses `$PULUMI_STACK`, so no `--stack` flag is needed:
+Applies the stack, then verifies the classes and provisioner declared in `Pulumi.<stack>.yaml` — no flags:
 
 ```bash
-just gcp-pulumi ensure-stack --folder storage_class
-just gcp-pulumi preview --folder storage_class
-just gcp-pulumi create-resource --folder storage_class
+just gcp-pulumi apply-storageclass
 ```
+
+`$PULUMI_STACK` is the cluster's own name, matching its `Pulumi.<cluster>.yaml` ([stack names](stack-names.md)).
+
+The recipe folds `ensure-stack` + `preview` + `create-resource` + verification, and retries the verification while the classes are not yet visible on the cluster. Pass `--stack <name>` to target a stack other than `$PULUMI_STACK`.
 
 ## Deploy — Lab Stacks
 
@@ -27,23 +29,28 @@ Lab clusters use the literal stack names `dev` or `experiments` ([stack names](s
 
 ```bash
 just gcp-pulumi new-stack-from --folder storage_class --stack dev --from-stack experiments
-just gcp-pulumi preview --folder storage_class --stack dev
-just gcp-pulumi create-resource --folder storage_class --stack dev
+just gcp-pulumi apply-storageclass --stack dev
 ```
 
 ## What Each Stack Declares
 
-The classes and provisioner differ per stack, so the verification command differs too:
+`apply-storageclass` reads these values from `storage_class/Pulumi.<stack>.yaml`, so verification expectations always match the stack being applied. Each cluster has its own stack ([stack names](stack-names.md)):
 
-| Stack | Classes declared | Provisioner |
-|-------|------------------|-------------|
-| `prod` | `dictycr-balanced`, `dictycr-ssd` | `pd.csi.storage.gke.io` |
-| `dev`, `experiments` | `dictycr-balanced` | `pd.csi.storage.gke.io` |
-| `local` | `dictycr-balanced` | `rancher.io/local-path` |
+| Cluster stack | Classes declared | Provisioner |
+|---------------|------------------|-------------|
+| `dcr-kube1` (production) | `dictycr-balanced`, `dictycr-ssd` | `pd.csi.storage.gke.io` |
+| lab clusters (forked from `Pulumi.dev.yaml` / `Pulumi.experiments.yaml`) | `dictycr-balanced` | `pd.csi.storage.gke.io` |
+| local k3d (forked from `Pulumi.local.yaml`) | `dictycr-balanced` | `rancher.io/local-path` |
+
+`Pulumi.prod.yaml` no longer exists for this project — the production config lives in `Pulumi.dcr-kube1.yaml`. A **new** production cluster forks from it:
+
+```bash
+just gcp-pulumi fork-stack --to-stack <new-cluster> --from-stack dcr-kube1 --folder storage_class
+```
 
 ## Verify
 
-`check-storageclass` confirms each named class exists and reports its provisioner. It defaults to requiring only `dictycr-balanced` with provisioner `pd.csi.storage.gke.io`.
+`apply-storageclass` runs this check for you. Use `check-storageclass` standalone for day-2 drift checks — it defaults to requiring only `dictycr-balanced` with provisioner `pd.csi.storage.gke.io`.
 
 Production — name both classes, otherwise a missing `dictycr-ssd` passes silently:
 

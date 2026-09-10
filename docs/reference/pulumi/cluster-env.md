@@ -24,7 +24,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 | `PULUMI_GCP_CREDENTIALS` | `credentials/<project-id>/pulumi-manager.json` |
 | `PULUMI_SECRET_PROVIDER` | `gcpkms://projects/<project-id>/locations/<region>/keyRings/<cluster-name>/cryptoKeys/<cluster-name>` (region from `cluster.yaml`, default `us-central1`) |
 | `PULUMI_BACKEND_URL` | `gs://pulumi-state-<project-id>` |
-| `PULUMI_STACK` | `<cluster-name>` — the stack every project on this cluster uses ([stack names](stack-names.md)) |
+| `PULUMI_STACK` | `<cluster-name>` — the one unique stack this cluster uses in every project ([stack names](stack-names.md)) |
 
 ## Overrides
 

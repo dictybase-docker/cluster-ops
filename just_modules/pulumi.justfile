@@ -189,9 +189,15 @@ ensure-stack folder stack="":
     fi
     if pulumi -C {{ folder }} stack select "${stack_name}" &>/dev/null; then
         echo "Selected existing stack '${stack_name}' in {{ folder }}."
-    else
-        echo "Stack '${stack_name}' not found in {{ folder }}. Initializing..."
+    elif [ -f "{{ folder }}/Pulumi.${stack_name}.yaml" ]; then
+        echo "Stack '${stack_name}' not found in {{ folder }}. Initializing from Pulumi.${stack_name}.yaml..."
         pulumi -C {{ folder }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
+    else
+        echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml template to initialize it from." >&2
+        echo "       Initializing would create an empty stack and fail at preview with 'missing required configuration variable'." >&2
+        echo "       Use an env-named stack (prod/dev/experiments/local), or seed this one first:" >&2
+        echo "         just gcp-pulumi new-stack-from --folder {{ folder }} --stack ${stack_name} --from-stack <base-stack>" >&2
+        exit 1
     fi
 
 # Set an encrypted config value on a stack (config set --path --secret).
@@ -301,7 +307,7 @@ cleanup-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} stack rm -s "${stack_name}" --preserve-config --force
+    pulumi -C {{ folder }} stack rm -s "${stack_name}" --preserve-config --force --yes
 
 # Create resources for multiple projects listed in a file.
 # Usage: just gcp-pulumi create-multiple-resources --stack <name> --from-stack <name> --resources-file <path>
@@ -378,6 +384,7 @@ check-tools:
             gcloud)  version=$(gcloud version 2>/dev/null | awk '/^Google Cloud SDK/ {print $NF; exit}') ;;
             kubectl) version=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion' 2>/dev/null) ;;
             jq)      version=$(jq --version 2>/dev/null) ;;
+            yq)      version=$(yq --version 2>/dev/null) ;;
             *)       version=$("$bin" --version 2>/dev/null | head -n1) ;;
         esac
         [[ -z "$version" || "$version" == "null" ]] && version="version unknown"
@@ -388,6 +395,7 @@ check-tools:
     check_tool gcloud  "gcloud"
     check_tool kubectl "kubectl"
     check_tool jq      "jq"
+    check_tool yq      "yq"
 
     echo
     if [[ "$failures" -eq 0 ]]; then
@@ -508,6 +516,121 @@ check-backend:
 
 # Verify the StorageClasses this repo's database stacks depend on.
 # Prints the provisioner for each class and exits non-zero if one is missing or wrong.
+# Create per-cluster stack config files from a base template, so every cluster gets
+# unique stacks named after itself. Copies Pulumi.<from-stack>.yaml to
+# Pulumi.<to-stack>.yaml in every project shipping the base (or just --folder).
+# Never overwrites an existing target. Review the diff and commit, then create the
+# cluster env file with --pulumi-stack <to-stack>.
+# Usage: just gcp-pulumi fork-stack --to-stack <name> [--from-stack <name>] [--folder <dir>]
+[arg("from-stack", long="from-stack", short="F", help="Base template stack name (defaults to prod)")]
+[arg("to-stack", long="to-stack", short="t", help="New per-cluster stack name, normally the cluster name")]
+[arg("folder", long="folder", short="f", help="Limit to one project folder")]
+[group('pulumi-management')]
+[no-cd]
+fork-stack to-stack="" from-stack="prod" folder="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    root="{{ justfile_directory() }}"
+    to="{{ to-stack }}"
+    if [ -z "${to}" ]; then
+        echo "ERROR: --to-stack is required (normally the cluster name)." >&2
+        exit 1
+    fi
+    from="{{ from-stack }}"
+    only="{{ folder }}"
+
+    created=0
+    skipped=0
+    for dir in "$root"/*/; do
+        d="${dir%/}"
+        [ -f "${d}/Pulumi.yaml" ] || continue
+        if [ -n "${only}" ] && [ "$(basename "$d")" != "${only}" ]; then
+            continue
+        fi
+        src="${d}/Pulumi.${from}.yaml"
+        dst="${d}/Pulumi.${to}.yaml"
+        [ -f "${src}" ] || continue
+        if [ -f "${dst}" ]; then
+            echo "exists, skipped: ${dst#${root}/}"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        cp "${src}" "${dst}"
+        echo "created: ${dst#${root}/}"
+        created=$((created + 1))
+    done
+
+    if [ "$created" -eq 0 ] && [ "$skipped" -eq 0 ]; then
+        echo "ERROR: no project ships Pulumi.${from}.yaml — nothing forked." >&2
+        exit 1
+    fi
+
+    echo
+    echo "Forked ${created}, skipped ${skipped}. Review the diff and commit the deltas, then:"
+    echo "  just create-cluster-env --env <env> --cluster ${to} --pulumi-stack ${to} --force yes"
+
+# Apply the StorageClass stack, then verify the classes it declares. Expected
+# class names and provisioner are derived from storage_class/Pulumi.<stack>.yaml,
+# so prod (two classes) and lab/local (one class, different provisioner) verify
+# correctly without flags. Verification retries while the classes are not yet
+# visible on the cluster.
+# Usage: just gcp-pulumi apply-storageclass [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('pulumi-management')]
+[no-cd]
+apply-storageclass stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="storage_class"
+    STACK="{{ stack }}"
+    if [ -z "${STACK}" ]; then
+        STACK="${PULUMI_STACK:-}"
+    fi
+    if [ -z "${STACK}" ]; then
+        echo "ERROR: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "ERROR: yq not found on PATH — install it (see docs/reference/pulumi/prerequisites.md)." >&2
+        exit 1
+    fi
+
+    echo "==> Applying ${FOLDER} on stack '${STACK}'"
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    cfg_file="${FOLDER}/Pulumi.${STACK}.yaml"
+    if [ ! -f "$cfg_file" ]; then
+        echo "ERROR: stack config not found: ${cfg_file}" >&2
+        exit 1
+    fi
+    classes=$(yq -r '[.config."storage-class:properties" | if has("classes") then .classes[] else . end] | .[].name' "$cfg_file" | paste -sd, -)
+    provisioner=$(yq -r '[.config."storage-class:properties" | if has("classes") then .classes[] else . end] | .[0].provisioner' "$cfg_file")
+    if [ -z "$classes" ] || [ "$classes" = "null" ] || [ -z "$provisioner" ] || [ "$provisioner" = "null" ]; then
+        echo "ERROR: could not derive classes/provisioner from ${cfg_file}" >&2
+        exit 1
+    fi
+
+    echo "==> Verifying ${classes} (provisioner ${provisioner})"
+    attempt=0
+    until just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner" >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 12 ]; then
+            echo "StorageClass still not visible after ${attempt} attempts:" >&2
+            just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner"
+            exit 1
+        fi
+        echo "    not visible yet (attempt ${attempt}/12) — waiting 5s"
+        sleep 5
+    done
+    just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner"
+    echo "StorageClass ready."
+
+# Verify StorageClasses exist with the expected provisioner and report the
+# cluster default.
 # Usage: just gcp-pulumi check-storageclass [--classes <comma-separated>] [--provisioner <name>]
 [arg("classes", long="classes", short="c", help="Comma-separated StorageClass names to require")]
 [arg("provisioner", long="provisioner", short="p", help="Expected provisioner")]
