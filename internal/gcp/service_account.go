@@ -4,13 +4,22 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"slices"
+	"strings"
+	"time"
 
+	E "github.com/IBM/fp-go/v2/either"
+	F "github.com/IBM/fp-go/v2/function"
+	IOE "github.com/IBM/fp-go/v2/ioeither"
+	R "github.com/IBM/fp-go/v2/retry"
 	"github.com/urfave/cli/v2"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	"google.golang.org/api/googleapi"
 	iam "google.golang.org/api/iam/v1"
 )
 
@@ -31,13 +40,13 @@ func CreateServiceAccount(cliContext *cli.Context) error {
 	// Create IAM Service
 	ctx := context.Background()
 	svc, err := iam.NewService(ctx)
-	client := &IAMClient{
-		service:   svc,
-		projectId: projectName,
-	}
 	if err != nil {
 		slog.Error("Error creating service account", "error", err)
 		return err
+	}
+	client := &IAMClient{
+		service:   svc,
+		projectId: projectName,
 	}
 	// Check if Service Account exists.
 	sa := client.getServiceAccount(projectName, saName)
@@ -156,47 +165,74 @@ func readRolesFromFile(filePath string) ([]string, error) {
 	return roles, nil
 }
 
+const (
+	// iamPropagationRetries bounds how long the role-binding step waits for
+	// a freshly created service account to become visible to the resource
+	// manager API — IAM changes propagate asynchronously.
+	iamPropagationRetries = 5
+	// iamPropagationBaseDelay is the first exponential backoff step between
+	// binding attempts.
+	iamPropagationBaseDelay = 2 * time.Second
+)
+
+// iamPropagationPolicy retries the binding with exponential backoff while
+// LimitRetries caps the attempt count.
+var iamPropagationPolicy = R.Monoid.Concat(
+	R.LimitRetries(iamPropagationRetries),
+	R.ExponentialBackoff(iamPropagationBaseDelay),
+)
+
 func (c *IAMClient) addRolesToServiceAccount(
 	saName string,
 	roles []string,
 ) error {
-	// Create Resource Manager service for project-level IAM operations
 	ctx := context.Background()
 	resourceManagerService, err := cloudresourcemanager.NewService(ctx)
 	if err != nil {
 		return fmt.Errorf("cloudresourcemanager.NewService: %w", err)
 	}
-	// Get IAM Policy for the project
-	policy, err := c.getProjectIAMPolicy(resourceManagerService)
-	if err != nil {
-		return err
+	action := bindRolesAction{
+		client: c,
+		rm:     resourceManagerService,
+		saName: saName,
+		roles:  roles,
 	}
-
-	// Create the service account member string
-	member := fmt.Sprintf(
-		"serviceAccount:%s@%s.iam.gserviceaccount.com",
-		saName,
-		c.projectId,
-	)
-
-	// Update policy with new role bindings
-	policy = c.updatePolicyBindings(policy, roles, member)
-
-	// Set the updated IAM policy
-	err = c.setProjectIAMPolicy(resourceManagerService, policy)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	result := IOE.Retrying(iamPropagationPolicy, action.Run, retryOnSAMissing)()
+	return E.ToError(result)
 }
 
-// getProjectIAMPolicy retrieves the current IAM policy for the project
-func (c *IAMClient) getProjectIAMPolicy(
-	rmService *cloudresourcemanager.Service,
-) (*cloudresourcemanager.Policy, error) {
-	policy, err := rmService.Projects.GetIamPolicy(c.projectId,
-		&cloudresourcemanager.GetIamPolicyRequest{}).Do()
+// bindRolesAction is a re-runnable description of one role-binding attempt:
+// fetch the project IAM policy, add the member to the listed roles, set the
+// policy back. Re-fetching on every attempt keeps the ETag fresh.
+type bindRolesAction struct {
+	client *IAMClient
+	rm     *cloudresourcemanager.Service
+	saName string
+	roles  []string
+}
+
+// Run executes one binding attempt; IOE.Retrying re-invokes it on
+// propagation delay.
+func (a bindRolesAction) Run(status R.RetryStatus) IOE.IOEither[error, *cloudresourcemanager.Policy] {
+	if status.IterNumber > 0 {
+		slog.Info(
+			"service account not visible to IAM yet, retrying role binding",
+			"attempt", status.IterNumber,
+		)
+	}
+	return F.Pipe2(
+		IOE.TryCatchError(a.fetchPolicy),
+		IOE.Map[error](a.bindRoles),
+		IOE.Chain(a.setPolicy),
+	)
+}
+
+// fetchPolicy reads the current project IAM policy.
+func (a bindRolesAction) fetchPolicy() (*cloudresourcemanager.Policy, error) {
+	policy, err := a.rm.Projects.GetIamPolicy(
+		a.client.projectId,
+		&cloudresourcemanager.GetIamPolicyRequest{},
+	).Do()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"resourceManagerService.Projects.GetIamPolicy: %w",
@@ -205,6 +241,46 @@ func (c *IAMClient) getProjectIAMPolicy(
 	}
 	return policy, nil
 }
+
+// bindRoles adds the service-account member to every listed role binding.
+func (a bindRolesAction) bindRoles(
+	policy *cloudresourcemanager.Policy,
+) *cloudresourcemanager.Policy {
+	member := fmt.Sprintf(
+		"serviceAccount:%s@%s.iam.gserviceaccount.com",
+		a.saName,
+		a.client.projectId,
+	)
+	return a.client.updatePolicyBindings(policy, a.roles, member)
+}
+
+// setPolicy writes the updated policy back to the project.
+func (a bindRolesAction) setPolicy(
+	policy *cloudresourcemanager.Policy,
+) IOE.IOEither[error, *cloudresourcemanager.Policy] {
+	return IOE.TryCatchError(func() (*cloudresourcemanager.Policy, error) {
+		return a.rm.Projects.SetIamPolicy(
+			a.client.projectId,
+			&cloudresourcemanager.SetIamPolicyRequest{Policy: policy},
+		).Do()
+	})
+}
+
+// isSAMissing reports whether the resource manager API rejected the
+// binding because the service account is not visible yet — a propagation
+// delay 400 that only affects freshly created service accounts. Any other
+// failure must not be retried.
+func isSAMissing(err error) bool {
+	var gErr *googleapi.Error
+	return errors.As(err, &gErr) &&
+		gErr.Code == http.StatusBadRequest &&
+		strings.Contains(gErr.Message, "Service account") &&
+		strings.Contains(gErr.Message, "does not exist")
+}
+
+// retryOnSAMissing retries a binding attempt only on propagation delay;
+// any other failure surfaces immediately.
+var retryOnSAMissing = E.Fold(isSAMissing, F.Constant1[*cloudresourcemanager.Policy](false))
 
 // updatePolicyBindings adds the service account member to the specified roles
 func (c *IAMClient) updatePolicyBindings(
@@ -246,27 +322,6 @@ func (c *IAMClient) memberExistsInBinding(
 	member string,
 ) bool {
 	return slices.Contains(binding.Members, member)
-}
-
-// setProjectIAMPolicy applies the updated policy to the project
-func (c *IAMClient) setProjectIAMPolicy(
-	rmService *cloudresourcemanager.Service,
-	policy *cloudresourcemanager.Policy,
-) error {
-	setIamPolicyRequest := &cloudresourcemanager.SetIamPolicyRequest{
-		Policy: policy,
-	}
-
-	_, err := rmService.Projects.SetIamPolicy(c.projectId, setIamPolicyRequest).
-		Do()
-	if err != nil {
-		slog.Error("Error setting IAM policy", "error", err)
-		return fmt.Errorf(
-			"resourceManagerService.Projects.SetIamPolicy: %w",
-			err,
-		)
-	}
-	return nil
 }
 
 func (c *IAMClient) createServiceAccountKey(sa, outputPath string) error {
