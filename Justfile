@@ -199,10 +199,10 @@ build-publish-backup-image ref user pass: setup
 [arg("credentials", long="credentials", help="Path to the GCP service-account JSON (defaults to GOOGLE_APPLICATION_CREDENTIALS)")]
 [arg("ssh_key", long="ssh-key", help="SSH public key path (defaults to SSH_KEY)")]
 [arg("kubeconfig", long="kubeconfig", help="Kubeconfig path (defaults to KUBECONFIG or clusters/<cluster>/kubeconfig)")]
-[arg("pulumi_gcp_credentials", long="pulumi-gcp-credentials", help="Pulumi GCP SA JSON path (defaults to PULUMI_GCP_CREDENTIALS)")]
-[arg("pulumi_secret_provider", long="pulumi-secret-provider", help="Pulumi secrets provider URI (defaults to PULUMI_SECRET_PROVIDER)")]
-[arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to PULUMI_BACKEND_URL)")]
-[arg("pulumi_stack", long="pulumi-stack", help="Pulumi stack name for every project on this cluster (defaults to the cluster name)")]
+[arg("pulumi_gcp_credentials", long="pulumi-gcp-credentials", help="Pulumi GCP SA JSON path (defaults to credentials/<project-id>/pulumi-manager.json — never inherited from the shell)")]
+[arg("pulumi_secret_provider", long="pulumi-secret-provider", help="Pulumi secrets provider URI (derived from project id, cluster name, cluster.yaml region — never inherited from the shell)")]
+[arg("pulumi_backend_url", long="pulumi-backend-url", help="Pulumi state backend URI (defaults to gs://pulumi-state-<project-id> — never inherited from the shell)")]
+[arg("pulumi_stack", long="pulumi-stack", help="Pulumi stack name for every project on this cluster (defaults to the cluster name — never inherited from the shell)")]
 [arg("force", long="force", pattern="yes|no", help="Overwrite an existing env file")]
 [group('cluster-ops')]
 create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeconfig="" pulumi_gcp_credentials="" pulumi_secret_provider="" pulumi_backend_url="" pulumi_stack="" force="no":
@@ -286,26 +286,30 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         fi
     fi
 
+    # PULUMI_* values are always derived from this cluster's own project —
+    # never inherited from the ambient shell. Inheriting lets one project's
+    # values (e.g. a dcr-experiments credential path) bleed into another
+    # project's env file, where bootstrap-backend would mint a pulumi-manager
+    # key into the foreign key file and clobber it.
     pulumi_creds="{{ pulumi_gcp_credentials }}"
-    [ -z "${pulumi_creds}" ] && pulumi_creds="${PULUMI_GCP_CREDENTIALS:-}"
     if [ -z "${pulumi_creds}" ]; then
         pulumi_creds="{{ justfile_directory() }}/credentials/${project_id}/pulumi-manager.json"
     fi
 
+    region="$(grep -E '^[[:space:]]*region:' "{{ justfile_directory() }}/config/kops/${cluster_name}/cluster.yaml" 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
+    [ -z "${region}" ] && region="us-central1"
+
     pulumi_kms="{{ pulumi_secret_provider }}"
-    [ -z "${pulumi_kms}" ] && pulumi_kms="${PULUMI_SECRET_PROVIDER:-}"
     if [ -z "${pulumi_kms}" ]; then
-        pulumi_kms="gcpkms://projects/${project_id}/locations/us-central1/keyRings/${cluster_name}/cryptoKeys/${cluster_name}"
+        pulumi_kms="gcpkms://projects/${project_id}/locations/${region}/keyRings/${cluster_name}/cryptoKeys/${cluster_name}"
     fi
 
     pulumi_backend="{{ pulumi_backend_url }}"
-    [ -z "${pulumi_backend}" ] && pulumi_backend="${PULUMI_BACKEND_URL:-}"
     if [ -z "${pulumi_backend}" ]; then
         pulumi_backend="gs://pulumi-state-${project_id}"
     fi
 
     pulumi_stack="{{ pulumi_stack }}"
-    [ -z "${pulumi_stack}" ] && pulumi_stack="${PULUMI_STACK:-}"
     if [ -z "${pulumi_stack}" ]; then
         pulumi_stack="${cluster_name}"
     fi

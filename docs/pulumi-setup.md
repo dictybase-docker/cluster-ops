@@ -2,7 +2,7 @@
 
 Wires Pulumi to a healthy kOps cluster and applies the first data-plane resource (StorageClass).
 
-Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Stops after StorageClass — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
+Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). You arrive on the least-privilege `kops-cluster-creator` identity — §3 rotates to `sa-manager` because the backend bootstrap needs admin roles the creator lacks. Stops after StorageClass — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
 
 **Status**:
 - **Pulumi backend recipes** (`just gcp-pulumi`, KMS, `pulumi-manager`): aligned with this repo as of 2026-08-24.
@@ -38,18 +38,24 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 # 3. Enter the cluster shell — stay here for everything below
 just cluster-env --env <env> --cluster <cluster-name>
 
-# 4. Bootstrap the backend (once per GCP project)
+# 4. Rotate to the admin identity (you are on kops-cluster-creator after kops setup;
+#    the bootstrap needs SA-key-admin and KMS roles the creator lacks), then re-enter
+just gcp-cluster rotate-to-manager
+exit
+just cluster-env --env <env> --cluster <cluster-name>
+
+# 5. Bootstrap the backend (once per GCP project)
 just gcp-pulumi bootstrap-backend
 
-# 5. Apply StorageClass
+# 6. Apply StorageClass
 just gcp-pulumi ensure-stack --folder storage_class
 just gcp-pulumi preview --folder storage_class
 just gcp-pulumi create-resource --folder storage_class
 
-# 6. Verify StorageClass (prod ships both classes; lab ships balanced only)
+# 7. Verify StorageClass (prod ships both classes; lab ships balanced only)
 just gcp-pulumi check-storageclass --classes dictycr-balanced,dictycr-ssd
 
-# 7. Continue with arangodb-deploy.md
+# 8. Continue with arangodb-deploy.md
 ```
 
 Switching to another cluster later:
@@ -88,10 +94,15 @@ Stay in the sub-shell that `cluster-env` opens for the rest of this guide. Crede
 
 ## 3. Backend Bootstrap
 
-Once per GCP project, from the activated cluster shell. One recipe creates the manager identity, the KMS key that encrypts Pulumi secrets, and the versioned state bucket, then verifies the wiring.
+Run **as `sa-manager`** — you are on `kops-cluster-creator` after kops setup, and the bootstrap needs roles the creator lacks. The recipe preflights and names any missing roles.
 → [Backend bootstrap detail](reference/pulumi/backend-bootstrap.md)
 
 ```bash
+# Only if still on the cluster-creator identity:
+just gcp-cluster rotate-to-manager
+exit
+just cluster-env --env <env> --cluster <cluster-name>
+
 just gcp-pulumi bootstrap-backend
 ```
 

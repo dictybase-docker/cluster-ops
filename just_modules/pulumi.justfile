@@ -1,5 +1,7 @@
-# Bootstrap the complete Pulumi backend: manager SA key, KMS keyring/key, GCS state
-# bucket + login, then verify. Run once per GCP project, from an activated cluster shell.
+# Bootstrap the complete Pulumi backend: preflight (identity roles + PULUMI_* project
+# match), manager SA key (skipped when the existing key authenticates), key-propagation
+# wait, KMS keyring/key as sa-manager, GCS state bucket + login, then verify.
+# Run once per GCP project, from an activated cluster shell.
 # Usage: just gcp-pulumi bootstrap-backend
 [group('pulumi-management')]
 [no-cd]
@@ -7,16 +9,99 @@ bootstrap-backend:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "==> [1/4] pulumi-manager service account and key"
-    just gcp-sa create-sa --sa-name pulumi-manager
+    echo "==> Preflight: identity must hold the bootstrap admin roles"
+    cred="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+    if [ -z "${cred}" ] || [ ! -f "${cred}" ]; then
+        echo "ERROR: GOOGLE_APPLICATION_CREDENTIALS unset or missing — enter the cluster shell with 'just cluster-env'." >&2
+        exit 1
+    fi
+    email=$(jq -r '.client_email // empty' "${cred}")
+    project_id="${PROJECT_ID:-$(jq -r '.project_id // empty' "${cred}")}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or enter the cluster shell." >&2
+        exit 1
+    fi
+    policy=$(gcloud projects get-iam-policy "${project_id}" --format=json 2>/dev/null || true)
+    if [ -z "${policy}" ]; then
+        echo "ERROR: cannot read the IAM policy of ${project_id} as ${email}." >&2
+        echo "Rotate to the admin identity and retry: just gcp-cluster rotate-to-manager" >&2
+        exit 1
+    fi
+    active_account=$(gcloud config get-value account 2>/dev/null || true)
+    if [ -z "${active_account}" ] || [ "${active_account}" != "${email}" ]; then
+        echo "ERROR: gcloud active account is '${active_account}', but the credential file is '${email}' — the shell and gcloud identity drifted. Re-enter the shell:" >&2
+        echo "  exit && just cluster-env --env <env> --cluster <cluster-name>" >&2
+        exit 1
+    fi
+    member="serviceAccount:${email}"
+    missing=""
+    for role in roles/iam.serviceAccountAdmin roles/iam.serviceAccountKeyAdmin roles/resourcemanager.projectIamAdmin roles/cloudkms.admin roles/storage.admin; do
+        if ! jq -e --arg m "${member}" --arg r "${role}" \
+            '.bindings[]? | select(.role == $r) | .members[]? | select(. == $m)' <<<"${policy}" >/dev/null 2>&1; then
+            missing="${missing}  ${role}\n"
+        fi
+    done
+    if [ -n "${missing}" ]; then
+        echo "ERROR: active identity ${email} lacks roles required by the bootstrap:" >&2
+        printf '%b' "${missing}" >&2
+        echo "Rotate to the admin identity and retry:" >&2
+        echo "  just gcp-cluster rotate-to-manager" >&2
+        echo "  exit && just cluster-env --env <env> --cluster <cluster-name>" >&2
+        exit 1
+    fi
+    echo "    identity ${email} holds all required admin roles"
 
-    echo "==> [2/4] KMS keyring and crypto key"
-    just gcp-kms create-keyring-and-key
+    # --- Preflight 2: PULUMI_* values must belong to this project ---
+    if [ -n "${PULUMI_GCP_CREDENTIALS:-}" ] && [ -f "${PULUMI_GCP_CREDENTIALS}" ]; then
+        pulumi_cred_project=$(jq -r '.project_id // empty' "${PULUMI_GCP_CREDENTIALS}" 2>/dev/null || true)
+        if [ -n "${pulumi_cred_project}" ] && [ "${pulumi_cred_project}" != "${project_id}" ]; then
+            echo "ERROR: PULUMI_GCP_CREDENTIALS (${PULUMI_GCP_CREDENTIALS}) belongs to project '${pulumi_cred_project}', not '${project_id}' — regenerate the env file:" >&2
+            echo "  just create-cluster-env --env <env> --cluster <cluster-name> --force yes" >&2
+            exit 1
+        fi
+    fi
+    if [ -n "${PULUMI_SECRET_PROVIDER:-}" ] && ! [[ "${PULUMI_SECRET_PROVIDER}" =~ ^gcpkms://projects/${project_id}/locations/ ]]; then
+        echo "ERROR: PULUMI_SECRET_PROVIDER points at another project: ${PULUMI_SECRET_PROVIDER}" >&2
+        echo "  Regenerate the env file: just create-cluster-env --env <env> --cluster <cluster-name> --force yes" >&2
+        exit 1
+    fi
 
-    echo "==> [3/4] GCS state bucket and pulumi login"
+    echo "==> [1/5] pulumi-manager service account and key"
+    expected_pulumi_sa="pulumi-manager@${project_id}.iam.gserviceaccount.com"
+    minted="no"
+    if [ -n "${PULUMI_GCP_CREDENTIALS:-}" ] && [ -f "${PULUMI_GCP_CREDENTIALS}" ] \
+        && [ "$(jq -r '.client_email // empty' "${PULUMI_GCP_CREDENTIALS}" 2>/dev/null)" = "${expected_pulumi_sa}" ] \
+        && GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}" \
+            gcloud auth application-default print-access-token >/dev/null 2>&1; then
+        echo "    existing key at ${PULUMI_GCP_CREDENTIALS} authenticates — skipping mint"
+    else
+        just gcp-sa create-sa --sa-name pulumi-manager
+        minted="yes"
+    fi
+
+    if [ "${minted}" = "yes" ]; then
+        echo "==> [2/5] Waiting for the fresh key to authenticate"
+        attempt=0
+        until GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}" \
+            gcloud auth application-default print-access-token >/dev/null 2>&1; do
+            attempt=$((attempt + 1))
+            if [ "${attempt}" -ge 12 ]; then
+                echo "ERROR: freshly minted key never authenticated — check the SA: ${PULUMI_GCP_CREDENTIALS}" >&2
+                exit 1
+            fi
+            echo "    key not visible yet (attempt ${attempt}/12) — waiting 10s"
+            sleep 10
+        done
+        echo "    key authenticates"
+    fi
+
+    echo "==> [3/5] KMS keyring and crypto key (as sa-manager)"
+    just gcp-kms create-keyring-and-key --credentials-file "${GOOGLE_APPLICATION_CREDENTIALS}"
+
+    echo "==> [4/5] GCS state bucket and pulumi login"
     just gcp-pulumi pulumi-gcs-setup
 
-    echo "==> [4/4] Verify backend wiring"
+    echo "==> [5/5] Verify backend wiring"
     just gcp-pulumi check-backend
 
 # Set up Pulumi with a GCS backend.
@@ -67,7 +152,8 @@ pulumi-gcs-setup sa_json_path="" gcs_bucket="" lifecycle_config="" location="us-
         gcloud storage buckets create "gs://${bucket}" --project="$project_id" --location="{{ location }}"
         gcloud storage buckets update "gs://${bucket}" --project="$project_id" --versioning
     else
-        echo "Bucket already exists."
+        echo "Bucket already exists — ensuring object versioning is enabled."
+        gcloud storage buckets update "gs://${bucket}" --project="$project_id" --versioning
     fi
 
     if [ -n "{{ lifecycle_config }}" ]; then

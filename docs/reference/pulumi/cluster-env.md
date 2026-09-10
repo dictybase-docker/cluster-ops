@@ -22,7 +22,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 | `GOOGLE_APPLICATION_CREDENTIALS` | `credentials/<project-id>/kops-cluster-creator.json` |
 | `KUBECONFIG` | `clusters/<cluster-name>/kubeconfig` |
 | `PULUMI_GCP_CREDENTIALS` | `credentials/<project-id>/pulumi-manager.json` |
-| `PULUMI_SECRET_PROVIDER` | `gcpkms://projects/<project-id>/locations/us-central1/keyRings/<cluster-name>/cryptoKeys/<cluster-name>` |
+| `PULUMI_SECRET_PROVIDER` | `gcpkms://projects/<project-id>/locations/<region>/keyRings/<cluster-name>/cryptoKeys/<cluster-name>` (region from `cluster.yaml`, default `us-central1`) |
 | `PULUMI_BACKEND_URL` | `gs://pulumi-state-<project-id>` |
 | `PULUMI_STACK` | `<cluster-name>` — the stack every project on this cluster uses ([stack names](stack-names.md)) |
 
