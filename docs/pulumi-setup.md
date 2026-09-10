@@ -39,22 +39,17 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 just cluster-env --env <env> --cluster <cluster-name>
 
 # 4. Bootstrap the backend (once per GCP project)
-just gcp-sa create-sa --sa-name pulumi-manager
-just gcp-kms create-keyring-and-key
-just gcp-pulumi pulumi-gcs-setup
+just gcp-pulumi bootstrap-backend
 
-# 5. Verify backend wiring
-just gcp-pulumi check-backend
-
-# 6. Apply StorageClass
+# 5. Apply StorageClass
 just gcp-pulumi ensure-stack --folder storage_class
 just gcp-pulumi preview --folder storage_class
 just gcp-pulumi create-resource --folder storage_class
 
-# 7. Verify StorageClass (prod ships both classes; lab ships balanced only)
+# 6. Verify StorageClass (prod ships both classes; lab ships balanced only)
 just gcp-pulumi check-storageclass --classes dictycr-balanced,dictycr-ssd
 
-# 8. Continue with arangodb-deploy.md
+# 7. Continue with arangodb-deploy.md
 ```
 
 Switching to another cluster later:
@@ -93,17 +88,14 @@ Stay in the sub-shell that `cluster-env` opens for the rest of this guide. Crede
 
 ## 3. Backend Bootstrap
 
-Once per GCP project, from the activated cluster shell. Creates the manager identity, the KMS key that encrypts Pulumi secrets, and the versioned state bucket.
+Once per GCP project, from the activated cluster shell. One recipe creates the manager identity, the KMS key that encrypts Pulumi secrets, and the versioned state bucket, then verifies the wiring.
 → [Backend bootstrap detail](reference/pulumi/backend-bootstrap.md)
 
 ```bash
-just gcp-sa create-sa --sa-name pulumi-manager
-just gcp-kms create-keyring-and-key
-just gcp-pulumi pulumi-gcs-setup
-just gcp-pulumi check-backend
+just gcp-pulumi bootstrap-backend
 ```
 
-`check-backend` confirms the `PULUMI_*` variables, the bucket and its versioning, the KMS key, and that the active `pulumi login` points where this shell expects.
+`bootstrap-backend` folds four recipes — `create-sa`, `create-keyring-and-key`, `pulumi-gcs-setup`, `check-backend` — into one sequential run ([stages](reference/pulumi/backend-bootstrap.md#stages)).
 
 ---
 

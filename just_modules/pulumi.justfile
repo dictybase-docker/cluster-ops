@@ -1,3 +1,24 @@
+# Bootstrap the complete Pulumi backend: manager SA key, KMS keyring/key, GCS state
+# bucket + login, then verify. Run once per GCP project, from an activated cluster shell.
+# Usage: just gcp-pulumi bootstrap-backend
+[group('pulumi-management')]
+[no-cd]
+bootstrap-backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "==> [1/4] pulumi-manager service account and key"
+    just gcp-sa create-sa --sa-name pulumi-manager
+
+    echo "==> [2/4] KMS keyring and crypto key"
+    just gcp-kms create-keyring-and-key
+
+    echo "==> [3/4] GCS state bucket and pulumi login"
+    just gcp-pulumi pulumi-gcs-setup
+
+    echo "==> [4/4] Verify backend wiring"
+    just gcp-pulumi check-backend
+
 # Set up Pulumi with a GCS backend.
 # This target sets up a Google Cloud Storage (GCS) bucket for Pulumi state management.
 # Usage: just gcp-pulumi pulumi-gcs-setup [--sa-json-path <path>] [--gcs-bucket <bucket>] [--lifecycle-config <path>] [--location <zone>]
