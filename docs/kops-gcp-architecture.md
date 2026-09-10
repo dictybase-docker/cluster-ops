@@ -5,7 +5,7 @@ This proposal outlines a production-grade, highly available, and right-sized Kub
 
 ---
 
-## 📊 1. Sizing Analysis & Workload Profiling
+## 1. Sizing Analysis & Workload Profiling
 
 Your planning baseline is derived from the following annual traffic and utilization aggregates:
 *   **Total Users:** 48,592 per year
@@ -34,7 +34,7 @@ To move this architecture from a starting baseline to a finalized, optimized pro
 
 ---
 
-## ⚙️ 2. Version & Lifecycle Roadmap (2026 Support Status)
+## 2. Version & Lifecycle Roadmap (2026 Support Status)
 
 Your current planning baseline relies on **kubectl version 1.28.8** and **kOps version v1.29.2**.
 
@@ -63,7 +63,7 @@ If you are upgrading an existing production deployment rather than starting fres
 
 ---
 
-## 🖥️ 3. Control Plane Sizing & Storage
+## 3. Control Plane Sizing & Storage
 
 For a production-grade GCP deployment, a highly available, multi-zonal control plane is required to maintain cluster control and `etcd` consensus.
 
@@ -96,7 +96,7 @@ For a production-grade GCP deployment, a highly available, multi-zonal control p
 
 ---
 
-## 👥 4. Worker Node Capacity, Disk Sizing & Elasticity
+## 4. Worker Node Capacity, Disk Sizing & Elasticity
 
 To support DictyCR's dual-nature workload—serving general web/API traffic and processing database-heavy, memory-intensive analytical operations—we recommend a specialized node-pool layout.
 
@@ -133,7 +133,7 @@ To support DictyCR's dual-nature workload—serving general web/API traffic and 
 
 ---
 
-## 📈 5. Cluster & Pod Scaling Mechanisms
+## 5. Cluster & Pod Scaling Mechanisms
 
 To handle unexpected traffic spikes without manual intervention, you must enable three distinct tiers of autoscaling:
 
@@ -163,7 +163,7 @@ To handle unexpected traffic spikes without manual intervention, you must enable
 
 ---
 
-## 💾 6. Database Storage & Retrieval
+## 6. Database Storage & Retrieval
 
 Since DictyCR is a database-backed biological platform, data persistence, integrity, and retrieval speed are your highest priorities.
 
@@ -184,7 +184,7 @@ If you must host the database inside the kOps cluster, configure your storage as
 
 ---
 
-## 🔒 7. GCP kOps-Specific Quirks, Networking & Security
+## 7. GCP kOps-Specific Quirks, Networking & Security
 
 Deploying a kOps cluster on GCP has unique architecture details and gotchas that differ significantly from GKE or AWS kOps.
 
@@ -222,7 +222,7 @@ Administrative and node workload identities must be separated, and permissions d
 
 ---
 
-## ⚖️ 8. High-Availability vs. Cost-Optimized Comparison
+## ⚖ 8. High-Availability vs. Cost-Optimized Comparison
 
 Production cloud costs depend heavily on regional variables, exact database configurations, NAT gateway egress volume, Persistent Disk capacity, and network egress traffic. You must model your actual workloads using the official [GCP Pricing Calculator](https://cloud.google.com/products/calculator) instead of relying on speculative estimates. Both of the designs below utilize private nodes, Cloud NAT, and restricted API access to ensure security:
 
@@ -236,7 +236,7 @@ Production cloud costs depend heavily on regional variables, exact database conf
 
 ---
 
-## 🛠️ 9. Illustrative kOps Deployment Specification
+## 9. Illustrative kOps Deployment Specification
 
 Deploying a highly available kOps cluster on GCP involves generating a cluster template and then editing it to match your architecture.
 

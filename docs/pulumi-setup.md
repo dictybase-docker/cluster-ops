@@ -153,7 +153,7 @@ just gcp-pulumi apply-storageclass
 
 No per-environment flags: prod (two classes) and lab/local (one class, `rancher.io/local-path`) both derive their expectations from the stack file, so a missing `dictycr-ssd` on prod fails instead of passing silently.
 
-Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#-6-database-storage--retrieval).
+Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#6-database-storage--retrieval).
 
 ---
 
@@ -190,6 +190,6 @@ Tearing down only the StorageClass is destructive if PVCs still reference it —
 | Document | Use it for |
 |----------|------------|
 | [`kops-setup.md`](kops-setup.md) | Cluster bootstrap, [env files](kops-setup.md#1-prerequisites--execution-context), [day-2](kops-setup.md#4-day-2-operations-git-first-workflow), [teardown](kops-setup.md#6-disposable-cluster-lifecycle) |
-| [`kops-gcp-architecture.md`](kops-gcp-architecture.md) | HA vs cost, [stateful-db pool](kops-gcp-architecture.md#-4-worker-node-capacity-disk-sizing--elasticity), [database storage](kops-gcp-architecture.md#-6-database-storage--retrieval) |
+| [`kops-gcp-architecture.md`](kops-gcp-architecture.md) | HA vs cost, [stateful-db pool](kops-gcp-architecture.md#4-worker-node-capacity-disk-sizing--elasticity), [database storage](kops-gcp-architecture.md#6-database-storage--retrieval) |
 | [`arangodb-deploy.md`](arangodb-deploy.md) | Production ArangoDB Cluster after StorageClass |
 | [`plans/arangodb-production.md`](plans/arangodb-production.md) | Why Cluster mode, frozen lab stacks, remaining gaps |

@@ -8,7 +8,7 @@ ArangoDB, CNPG, Redis, and MinIO all request the `dictycr-balanced` and `dictycr
 
 Deploy once per cluster.
 
-- Sizing and class choice: [`kops-gcp-architecture.md` §6](../../kops-gcp-architecture.md#-6-database-storage--retrieval)
+- Sizing and class choice: [`kops-gcp-architecture.md` §6](../../kops-gcp-architecture.md#6-database-storage--retrieval)
 - Consumed by production ArangoDB: [`arangodb-deploy.md` §3](../../arangodb-deploy.md#3-install-arangodb)
 
 ## Deploy — Real Cluster
