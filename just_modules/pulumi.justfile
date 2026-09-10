@@ -8,101 +8,7 @@
 bootstrap-backend:
     #!/usr/bin/env bash
     set -euo pipefail
-
-    echo "==> Preflight: identity must hold the bootstrap admin roles"
-    cred="${GOOGLE_APPLICATION_CREDENTIALS:-}"
-    if [ -z "${cred}" ] || [ ! -f "${cred}" ]; then
-        echo "ERROR: GOOGLE_APPLICATION_CREDENTIALS unset or missing — enter the cluster shell with 'just cluster-env'." >&2
-        exit 1
-    fi
-    email=$(jq -r '.client_email // empty' "${cred}")
-    project_id="${PROJECT_ID:-$(jq -r '.project_id // empty' "${cred}")}"
-    if [ -z "${project_id}" ]; then
-        echo "ERROR: no project id — set PROJECT_ID or enter the cluster shell." >&2
-        exit 1
-    fi
-    policy=$(gcloud projects get-iam-policy "${project_id}" --format=json 2>/dev/null || true)
-    if [ -z "${policy}" ]; then
-        echo "ERROR: cannot read the IAM policy of ${project_id} as ${email}." >&2
-        echo "Rotate to the admin identity and retry: just gcp-cluster rotate-to-manager" >&2
-        exit 1
-    fi
-    active_account=$(gcloud config get-value account 2>/dev/null || true)
-    if [ -z "${active_account}" ] || [ "${active_account}" != "${email}" ]; then
-        echo "ERROR: gcloud active account is '${active_account}', but the credential file is '${email}' — the shell and gcloud identity drifted. Re-enter the shell:" >&2
-        echo "  exit && just cluster-env --env <env> --cluster <cluster-name>" >&2
-        exit 1
-    fi
-    member="serviceAccount:${email}"
-    missing=""
-    for role in roles/iam.serviceAccountAdmin roles/iam.serviceAccountKeyAdmin roles/resourcemanager.projectIamAdmin roles/cloudkms.admin roles/storage.admin; do
-        if ! jq -e --arg m "${member}" --arg r "${role}" \
-            '.bindings[]? | select(.role == $r) | .members[]? | select(. == $m)' <<<"${policy}" >/dev/null 2>&1; then
-            missing="${missing}  ${role}\n"
-        fi
-    done
-    if [ -n "${missing}" ]; then
-        echo "ERROR: active identity ${email} lacks roles required by the bootstrap:" >&2
-        printf '%b' "${missing}" >&2
-        echo "Rotate to the admin identity and retry:" >&2
-        echo "  just gcp-cluster rotate-to-manager" >&2
-        echo "  exit && just cluster-env --env <env> --cluster <cluster-name>" >&2
-        exit 1
-    fi
-    echo "    identity ${email} holds all required admin roles"
-
-    # --- Preflight 2: PULUMI_* values must belong to this project ---
-    if [ -n "${PULUMI_GCP_CREDENTIALS:-}" ] && [ -f "${PULUMI_GCP_CREDENTIALS}" ]; then
-        pulumi_cred_project=$(jq -r '.project_id // empty' "${PULUMI_GCP_CREDENTIALS}" 2>/dev/null || true)
-        if [ -n "${pulumi_cred_project}" ] && [ "${pulumi_cred_project}" != "${project_id}" ]; then
-            echo "ERROR: PULUMI_GCP_CREDENTIALS (${PULUMI_GCP_CREDENTIALS}) belongs to project '${pulumi_cred_project}', not '${project_id}' — regenerate the env file:" >&2
-            echo "  just create-cluster-env --env <env> --cluster <cluster-name> --force yes" >&2
-            exit 1
-        fi
-    fi
-    if [ -n "${PULUMI_SECRET_PROVIDER:-}" ] && ! [[ "${PULUMI_SECRET_PROVIDER}" =~ ^gcpkms://projects/${project_id}/locations/ ]]; then
-        echo "ERROR: PULUMI_SECRET_PROVIDER points at another project: ${PULUMI_SECRET_PROVIDER}" >&2
-        echo "  Regenerate the env file: just create-cluster-env --env <env> --cluster <cluster-name> --force yes" >&2
-        exit 1
-    fi
-
-    echo "==> [1/5] pulumi-manager service account and key"
-    expected_pulumi_sa="pulumi-manager@${project_id}.iam.gserviceaccount.com"
-    minted="no"
-    if [ -n "${PULUMI_GCP_CREDENTIALS:-}" ] && [ -f "${PULUMI_GCP_CREDENTIALS}" ] \
-        && [ "$(jq -r '.client_email // empty' "${PULUMI_GCP_CREDENTIALS}" 2>/dev/null)" = "${expected_pulumi_sa}" ] \
-        && GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}" \
-            gcloud auth application-default print-access-token >/dev/null 2>&1; then
-        echo "    existing key at ${PULUMI_GCP_CREDENTIALS} authenticates — skipping mint"
-    else
-        just gcp-sa create-sa --sa-name pulumi-manager
-        minted="yes"
-    fi
-
-    if [ "${minted}" = "yes" ]; then
-        echo "==> [2/5] Waiting for the fresh key to authenticate"
-        attempt=0
-        until GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}" \
-            gcloud auth application-default print-access-token >/dev/null 2>&1; do
-            attempt=$((attempt + 1))
-            if [ "${attempt}" -ge 12 ]; then
-                echo "ERROR: freshly minted key never authenticated — check the SA: ${PULUMI_GCP_CREDENTIALS}" >&2
-                exit 1
-            fi
-            echo "    key not visible yet (attempt ${attempt}/12) — waiting 10s"
-            sleep 10
-        done
-        echo "    key authenticates"
-    fi
-
-    echo "==> [3/5] KMS keyring and crypto key (as sa-manager)"
-    just gcp-kms create-keyring-and-key --credentials-file "${GOOGLE_APPLICATION_CREDENTIALS}"
-
-    echo "==> [4/5] GCS state bucket and pulumi login"
-    just gcp-pulumi pulumi-gcs-setup
-
-    echo "==> [5/5] Verify backend wiring"
-    just gcp-pulumi check-backend
+    "{{ justfile_directory() }}/scripts/pulumi/bootstrap-backend.sh"
 
 # Set up Pulumi with a GCS backend.
 # This target sets up a Google Cloud Storage (GCS) bucket for Pulumi state management.
@@ -365,46 +271,7 @@ create-multiple-resources stack from-stack resources_file:
 check-tools:
     #!/usr/bin/env bash
     set -uo pipefail
-
-    failures=0
-
-    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
-    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
-
-    echo "Checking Pulumi workflow toolchain..."
-    echo
-
-    check_tool() {
-        local bin="$1" label="$2" version=""
-        if ! command -v "$bin" >/dev/null 2>&1; then
-            bad "$label not found on PATH"
-            return
-        fi
-        case "$bin" in
-            pulumi)  version=$(pulumi version 2>/dev/null | head -n1) ;;
-            gcloud)  version=$(gcloud version 2>/dev/null | awk '/^Google Cloud SDK/ {print $NF; exit}') ;;
-            kubectl) version=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion' 2>/dev/null) ;;
-            jq)      version=$(jq --version 2>/dev/null) ;;
-            yq)      version=$(yq --version 2>/dev/null) ;;
-            *)       version=$("$bin" --version 2>/dev/null | head -n1) ;;
-        esac
-        [[ -z "$version" || "$version" == "null" ]] && version="version unknown"
-        ok "$label $version"
-    }
-
-    check_tool pulumi  "pulumi"
-    check_tool gcloud  "gcloud"
-    check_tool kubectl "kubectl"
-    check_tool jq      "jq"
-    check_tool yq      "yq"
-
-    echo
-    if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll required tools present.\033[0m\n'
-    else
-        printf '\033[31m%d tool(s) missing.\033[0m Install with: just install-tool --name <tool> --version <version>\n' "$failures"
-        exit 1
-    fi
+    "{{ justfile_directory() }}/scripts/pulumi/check-tools.sh"
 
 # Verify the Pulumi backend wiring for the active cluster shell.
 # Checks PULUMI_* variables, the GCS state bucket, the KMS key and the active login.
@@ -414,106 +281,7 @@ check-tools:
 check-backend:
     #!/usr/bin/env bash
     set -uo pipefail
-
-    failures=0
-
-    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
-    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
-    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
-
-    echo "Checking Pulumi backend wiring..."
-    echo
-
-    # Required environment variables
-    for var in PULUMI_GCP_CREDENTIALS PULUMI_SECRET_PROVIDER PULUMI_BACKEND_URL PULUMI_STACK; do
-        if [[ -n "${!var:-}" ]]; then
-            ok "$var is set"
-        else
-            bad "$var is empty — enter the cluster shell with 'just cluster-env'"
-        fi
-    done
-
-    # Credentials file must exist before anything can authenticate
-    creds="${PULUMI_GCP_CREDENTIALS:-}"
-    if [[ -n "$creds" && -f "$creds" ]]; then
-        ok "manager key present at $creds"
-        export GOOGLE_APPLICATION_CREDENTIALS="$creds"
-        project_id=$(jq -r '.project_id // empty' "$creds" 2>/dev/null)
-        [[ -n "$project_id" ]] && info "project: $project_id"
-    elif [[ -n "$creds" ]]; then
-        bad "manager key missing at $creds — run 'just gcp-sa create-sa --sa-name pulumi-manager'"
-        project_id=""
-    else
-        project_id=""
-    fi
-
-    # State bucket: exists and has versioning enabled
-    bucket="${PULUMI_BACKEND_URL:-}"
-    bucket="${bucket#gs://}"
-    if [[ -n "$bucket" ]]; then
-        if gcloud storage buckets describe "gs://${bucket}" ${project_id:+--project="$project_id"} >/dev/null 2>&1; then
-            ok "state bucket gs://${bucket} exists"
-            versioned=$(gcloud storage buckets describe "gs://${bucket}" \
-                ${project_id:+--project="$project_id"} --format="value(versioning_enabled)" 2>/dev/null)
-            if [[ "$versioned" == "True" || "$versioned" == "true" ]]; then
-                ok "state bucket versioning enabled"
-            else
-                bad "state bucket versioning NOT enabled — re-run 'just gcp-pulumi pulumi-gcs-setup'"
-            fi
-        else
-            bad "state bucket gs://${bucket} not found or unreachable"
-        fi
-    fi
-
-    # KMS key referenced by the secrets provider must be readable.
-    # gcloud needs KEY plus explicit --keyring/--location/--project, so parse the URI
-    # rather than passing the full resource path as a bare positional.
-    provider="${PULUMI_SECRET_PROVIDER:-}"
-    if [[ "$provider" == gcpkms://* ]]; then
-        key_path="${provider#gcpkms://}"
-        key_path="${key_path%%\?*}"
-        if [[ "$key_path" =~ ^projects/([^/]+)/locations/([^/]+)/keyRings/([^/]+)/cryptoKeys/([^/]+)$ ]]; then
-            k_project="${BASH_REMATCH[1]}"
-            k_location="${BASH_REMATCH[2]}"
-            k_ring="${BASH_REMATCH[3]}"
-            k_name="${BASH_REMATCH[4]}"
-            if gcloud kms keys describe "$k_name" \
-                    --keyring="$k_ring" --location="$k_location" --project="$k_project" \
-                    >/dev/null 2>&1; then
-                ok "KMS key $k_name reachable in keyring $k_ring"
-            else
-                bad "KMS key not reachable: $key_path — run 'just gcp-kms create-keyring-and-key'"
-            fi
-        else
-            bad "PULUMI_SECRET_PROVIDER is not a well-formed gcpkms URI: $provider"
-        fi
-    elif [[ -n "$provider" ]]; then
-        info "secrets provider is not gcpkms, skipping KMS check"
-    fi
-
-    # Active pulumi login must match the backend this shell expects.
-    # Prefer --json; fall back to parsing --verbose for older Pulumi builds.
-    if command -v pulumi >/dev/null 2>&1; then
-        current=$(pulumi whoami --json 2>/dev/null | jq -r '.url // .backendURL // empty' 2>/dev/null)
-        if [[ -z "$current" ]]; then
-            current=$(pulumi whoami --verbose 2>/dev/null | awk -F': *' '/[Bb]ackend URL/ {print $2; exit}')
-        fi
-        if [[ -z "$current" ]]; then
-            bad "cannot determine the active Pulumi backend (not logged in?) — run 'just gcp-pulumi pulumi-gcs-setup'"
-        elif [[ -n "$bucket" && "$current" == *"$bucket"* ]]; then
-            ok "active login matches $PULUMI_BACKEND_URL"
-        else
-            bad "active login is '$current', expected ${PULUMI_BACKEND_URL:-unset} — pulumi login is global, re-run pulumi-gcs-setup"
-        fi
-    fi
-
-    echo
-    if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mBackend wiring looks correct.\033[0m\n'
-    else
-        printf '\033[31m%d check(s) failed.\033[0m See docs/reference/pulumi/backend-bootstrap.md\n' "$failures"
-        exit 1
-    fi
+    "{{ justfile_directory() }}/scripts/pulumi/check-backend.sh"
 
 # Verify the StorageClasses this repo's database stacks depend on.
 # Prints the provisioner for each class and exits non-zero if one is missing or wrong.
@@ -648,9 +416,7 @@ check-storageclass classes="dictycr-balanced" provisioner="pd.csi.storage.gke.io
     WANT_PROVISIONER="{{ provisioner }}"
     failures=0
 
-    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
-    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
-    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
+    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
 
     echo "Checking StorageClasses (expected provisioner: ${WANT_PROVISIONER})..."
     echo

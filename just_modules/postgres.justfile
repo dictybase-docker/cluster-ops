@@ -102,9 +102,7 @@ check-pool pool="database" node_count="3":
     WANT_NODES="{{ node_count }}"
     failures=0
 
-    ok()   { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
-    bad()  { printf '\033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
-    info() { printf '\033[34mINFO\033[0m  %s\n' "$1"; }
+    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
 
     echo "Checking stateful-db pool prerequisites..."
     echo
@@ -446,9 +444,8 @@ verify cluster="logto" namespace="prod" operator_namespace="operators" instances
     WANT_NODES="{{ node_count }}"
     failures=0
 
-    ok()   { printf 'PASS  %s\n' "$1"; }
-    bad()  { printf 'FAIL  %s\n' "$1"; failures=$((failures + 1)); }
-    warn() { printf 'WARN  %s\n' "$1"; }
+    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
+    CHECK_COLOR=0
 
     nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
     node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')

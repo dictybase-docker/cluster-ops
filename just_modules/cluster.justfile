@@ -1582,8 +1582,8 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
     [ -z "${p}" ] && p="${PROJECT_ID:-}"
 
     failures=0
-    ok()   { printf '\033[32mPASS\033[0m  %-24s %s\n' "$1" "$2"; }
-    bad()  { printf '\033[31mFAIL\033[0m  %-24s %s\n' "$1" "$2"; failures=$((failures + 1)); }
+    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
+    CHECK_LABEL_WIDTH=24
 
     echo "=== Pre-flight Cluster Creation Check ==="
 

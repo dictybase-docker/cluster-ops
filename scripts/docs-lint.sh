@@ -146,6 +146,7 @@ PYEOF
 }
 
 echo "docs-lint: mechanical checks per docs/STYLE.md"
+source "$(dirname "$0")/lib/check-helpers.sh"
 count=0
 while IFS= read -r f; do
     count=$((count + 1))
@@ -154,8 +155,8 @@ done < <(cd "$root" && find docs README.md -name '*.md' 2>/dev/null | grep -v '^
 
 echo
 if [ "$failures" -eq 0 ]; then
-    printf '\033[32mAll %d docs pass mechanical checks.\033[0m\n' "$count"
+    printf '%sAll %d docs pass mechanical checks.\n' "$(_check_pfx PASS 32)" "$count"
     exit 0
 fi
-printf '\033[31m%d doc(s) failed.\033[0m\n' "$failures"
+printf '%s%d doc(s) failed.\n' "$(_check_pfx FAIL 31)" "$failures"
 exit 1
