@@ -17,10 +17,9 @@ Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Y
 - [2. Cluster Environment](#2-cluster-environment)
 - [3. Backend Bootstrap](#3-backend-bootstrap)
 - [4. Switching Between Clusters](#4-switching-between-clusters)
-- [5. Stacks and Configuration](#5-stacks-and-configuration)
-- [6. First Apply — StorageClass](#6-first-apply--storageclass)
-- [7. Setup Complete](#7-setup-complete)
-- [8. Related Documents](#8-related-documents)
+- [5. First Apply — StorageClass](#5-first-apply--storageclass)
+- [6. Setup Complete](#6-setup-complete)
+- [7. Related Documents](#7-related-documents)
 
 ---
 
@@ -59,6 +58,8 @@ exit
 just cluster-env --env <env> --cluster <other-cluster>
 just gcp-pulumi check-backend
 ```
+
+Stack names, per-stack configuration, and the full recipe list: [Stack names](reference/pulumi/stack-names.md) · [Stack config](reference/pulumi/stack-config.md) · [Recipe reference](reference/pulumi/recipes.md).
 
 ---
 
@@ -112,8 +113,8 @@ just gcp-pulumi bootstrap-backend
 
 ## 4. Switching Between Clusters
 
-Each env file carries its own kubeconfig, credentials, KMS URI, and backend URL. Leave one sub-shell and enter another — there is no in-place switch.
-→ [Switching detail](reference/pulumi/switching-clusters.md)
+Each env file carries its own kubeconfig, credentials, KMS URI, and backend URL. Leave one sub-shell and enter another — there is no in-place switch. `pulumi login` is machine-wide, so verify the wiring after every switch.
+→ [Switching detail](reference/pulumi/switching-clusters.md) · [Backend verification](reference/pulumi/check-backend.md)
 
 ```bash
 exit
@@ -121,28 +122,9 @@ just cluster-env --env dev --cluster cluster-b
 just gcp-pulumi check-backend
 ```
 
-> `pulumi login` is machine-wide. A cluster shell missing `PULUMI_BACKEND_URL` silently leaves Pulumi on the previous backend, so run `check-backend` after every switch.
-
 ---
 
-## 5. Stacks and Configuration
-
-One stack per cluster per project, named after the cluster; `create-cluster-env` already set `PULUMI_STACK` to it, so `--stack` is rarely needed. Each project deploys only once its `Pulumi.<cluster>.yaml` exists in the project folder — `ensure-stack` refuses to initialize a stack without it.
-→ [Stack names](reference/pulumi/stack-names.md) · [Stack config](reference/pulumi/stack-config.md) · [Full recipe reference](reference/pulumi/recipes.md)
-
-```bash
-just gcp-pulumi ensure-stack --folder <project-folder>
-just gcp-pulumi set-config --folder <project-folder> --key "<key>" --value "<value>"
-just gcp-pulumi set-secret --folder <project-folder> --key "<key>" --value "<secret-value>"
-just gcp-pulumi preview --folder <project-folder>
-just gcp-pulumi create-resource --folder <project-folder>
-```
-
-> Do **not** use `just pulumi-init-and-deploy` here — it deploys many projects in bulk. Run one project at a time.
-
----
-
-## 6. First Apply — StorageClass
+## 5. First Apply — StorageClass
 
 Deploy once per cluster, before any database stack — ArangoDB, CNPG, Redis, and MinIO all request these classes. The recipe applies the stack, then verifies exactly the classes `Pulumi.<stack>.yaml` declares.
 → [StorageClass detail](reference/pulumi/storage-class.md)
@@ -157,7 +139,7 @@ Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/s
 
 ---
 
-## 7. Setup Complete
+## 6. Setup Complete
 
 | Item | Where |
 |------|--------|
@@ -173,12 +155,13 @@ Tearing down only the StorageClass is destructive if PVCs still reference it —
 
 ---
 
-## 8. Related Documents
+## 7. Related Documents
 
 **Reference details for this guide:**
 - [Prerequisites](reference/pulumi/prerequisites.md)
 - [Cluster environment file](reference/pulumi/cluster-env.md)
 - [Backend bootstrap](reference/pulumi/backend-bootstrap.md)
+- [Backend verification](reference/pulumi/check-backend.md)
 - [Switching between clusters](reference/pulumi/switching-clusters.md)
 - [Stack names](reference/pulumi/stack-names.md)
 - [Stack configuration](reference/pulumi/stack-config.md)

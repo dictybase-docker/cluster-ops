@@ -108,7 +108,7 @@ Creates the backup service account + key, namespaces `prod`/`operators`, and Sec
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 ```
 
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
+Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
 
 ---
 

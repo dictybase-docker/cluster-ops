@@ -95,7 +95,7 @@ Creates the `postgres-backup-sa` service account + JSON key, grants it object-ad
 just postgres configure-backup
 ```
 
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass).
+Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass).
 
 ---
 

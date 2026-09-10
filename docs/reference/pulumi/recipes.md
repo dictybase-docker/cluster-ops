@@ -42,7 +42,7 @@ All recipes accept `--stack <name>`. If omitted they use `$PULUMI_STACK`, fallin
 
 Verification recipes are read-only and exit non-zero when a required check fails.
 
-`check-backend` treats "not logged in" as a failure, not a warning — an unset backend means Pulumi is still pointed at whichever backend was used last.
+[`check-backend`](check-backend.md) treats "not logged in" as a failure, not a warning — an unset backend means Pulumi is still pointed at whichever backend was used last.
 
 `check-storageclass` defaults to `--classes dictycr-balanced --provisioner pd.csi.storage.gke.io`. `apply-storageclass` derives both from `Pulumi.<stack>.yaml`, so this default only matters when checking a class set by hand — production declares two classes, so pass both ([StorageClass](storage-class.md#verify)):
 

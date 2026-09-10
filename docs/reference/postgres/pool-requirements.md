@@ -38,5 +38,5 @@ Checks and prints PASS/FAIL for:
 
 Before installing PostgreSQL ([§3](../../postgres-deploy.md#3-install-postgresql)):
 
-1. **CSI + StorageClasses** — [`pulumi-setup.md` §6](../../pulumi-setup.md#6-first-apply--storageclass)
+1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass)
 2. **Namespaces** — `prod` and `operators`, ensured by `just postgres configure-backup`

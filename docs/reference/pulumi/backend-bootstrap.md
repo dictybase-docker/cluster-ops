@@ -16,7 +16,7 @@ The recipe folds five stages into one sequential run; each aborts the run on fai
 2. Key-propagation wait — a freshly minted SA key can take ~1 minute before token exchange works; the recipe loops until the key authenticates
 3. [KMS keyring and crypto key](#2-kms-keyring-and-crypto-key) — runs **as `sa-manager`** (`--credentials-file $GOOGLE_APPLICATION_CREDENTIALS`); `pulumi-manager` holds only `cloudkms.cryptoOperator` and cannot create keyrings
 4. [GCS state bucket and login](#3-gcs-state-bucket-and-login) — `just gcp-pulumi pulumi-gcs-setup`
-5. [Verify](#verify) — `just gcp-pulumi check-backend`
+5. [Verify](check-backend.md) — `just gcp-pulumi check-backend`
 
 The per-stage recipes remain available for re-running a single stage — e.g. after a `check-backend` failure names the exact broken step.
 
@@ -54,10 +54,4 @@ Creates `${PULUMI_BACKEND_URL}` (default `gs://pulumi-state-<project-id>`) with 
 | `--location` | `us-central1` |
 | `--lifecycle-config` | None — optional path to a lifecycle policy file |
 
-The recipe is idempotent: an existing bucket is reused rather than recreated, and object versioning is re-asserted on every run — a pre-existing bucket without versioning is converged instead of failing `check-backend`.
-
-## Verify
-
-Confirms the `PULUMI_*` variables are set, the state bucket exists and is versioned, the KMS key is reachable, and the active `pulumi login` matches `$PULUMI_BACKEND_URL`.
-
-A failure message names the stage to re-run — e.g. `PULUMI_SECRET_PROVIDER` empty means re-enter the cluster shell, not re-run `create-keyring-and-key`.
+The recipe is idempotent: an existing bucket is reused rather than recreated, and object versioning is re-asserted on every run — a pre-existing bucket without versioning is converged instead of failing [check-backend](check-backend.md).
