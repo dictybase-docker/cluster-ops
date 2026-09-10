@@ -1,0 +1,11 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIH01CGTm6v4JjkCXkYMrLj1aSakxmy0FDbVnCSfG/dwSSQDjx5R/ibFH3Kdm0QQ1Ni2oI33fdOjoPAguIgglf5vodNLgm/Kpzr8jCej+DapqhRl6/wIcxsM6gMNqYTBQD0QmGjqQWiis1Ig=
+config:
+  storage-class:properties:
+    classes:
+      - diskType: pd-balanced
+        name: dictycr-balanced
+        provisioner: pd.csi.storage.gke.io
+      - diskType: pd-ssd
+        name: dictycr-ssd
+        provisioner: pd.csi.storage.gke.io
