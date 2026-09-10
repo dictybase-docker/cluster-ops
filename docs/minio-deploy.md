@@ -51,7 +51,12 @@ just minio teardown --namespace prod --delete-pvc yes
 
 ---
 
-**Everything below runs inside the cluster-env sub-shell.** `just cluster-env --env prod --cluster <prod-cluster>` sources `.env.prod.<prod-cluster>` and exports `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID` and `KUBECONFIG` into that shell, so no recipe needs `--stack` — each one falls back to `$PULUMI_STACK`. Outside the sub-shell recipes fail with `Error: no stack name`. Leave it with `exit` or Ctrl-D.
+**Everything below runs inside the cluster-env sub-shell.**
+
+- Enter it with `just cluster-env --env prod --cluster <prod-cluster>`. The sub-shell sources `.env.prod.<prod-cluster>` and exports `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID`, and `KUBECONFIG`.
+- Recipes default `--stack` to `$PULUMI_STACK`, so no recipe below needs the flag.
+- Outside the sub-shell recipes fail with `Error: no stack name`.
+- Leave the sub-shell with `exit` or Ctrl-D.
 
 ## 1. Pool Check
 
