@@ -110,3 +110,16 @@ just gcp-cluster rolling-update --yes yes
 |-----|----------|
 | **kOps ≤ 1.30** (`dev` pin v1.29.2) | `update-cluster` and `rolling-update` are separate commands. Running `rolling-update` after VM template changes is required |
 | **kOps ≥ 1.31** (`prod` pin v1.36.1) | `update-cluster` runs `kops reconcile cluster --yes`, which reconciles cloud resources and rolls nodes sequentially in one pass. Use `rolling-update` only for targeted pool rolls (`--instance-group <name>`) or forced restarts (`--force yes`) |
+
+## Node Pool Labels and Taints (GCE Limitation)
+
+On GCE, kOps does not propagate custom `spec.nodeLabels` to live nodes, and `spec.taints` cannot be set in instance groups (GCE rejects autoscaler label keys containing slashes).
+
+The cluster lifecycle recipes (`create-cluster`, `apply-cluster`, `rolling-update --yes yes`) automatically run `just gcp-cluster sync-node-pools` to label `pool=database` and taint `dedicated=database:NoSchedule`.
+
+If an autonomous GCE MIG repair replaces a node out-of-band, sync manually:
+
+```bash
+just gcp-cluster sync-node-pools
+```
+

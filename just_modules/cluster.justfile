@@ -1016,6 +1016,16 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     echo "Running rolling-update for ${kn}..."
     kops rolling-update cluster --name="${kn}" --state="${st}" "${cmd_args[@]+"${cmd_args[@]}"}"
 
+    if [ "{{ yes }}" = "yes" ]; then
+        echo
+        echo "Rolling update complete; syncing node pool labels and taints..."
+        sync_args=()
+        [ -n "${c}" ] && sync_args+=(--cluster "${c}")
+        [ -n "${kn}" ] && sync_args+=(--kops-name "${kn}")
+        [ -n "${st}" ] && sync_args+=(--state "${st}")
+        just gcp-cluster sync-node-pools "${sync_args[@]+"${sync_args[@]}"}"
+    fi
+
 
 # ── operator convenience recipes ──────────────────────────────────────────────
 
@@ -1326,6 +1336,10 @@ apply-cluster cluster="" kops_name="" state="" force="no":
     just gcp-cluster _plan-update-drift "${args[@]+"${args[@]}"}"
 
     echo
+    echo "=== syncing node pool labels and taints ==="
+    just gcp-cluster sync-node-pools "${args[@]+"${args[@]}"}"
+
+    echo
     echo "Applied cleanly. If machineType, disk, image, or kubernetesVersion changed,"
     echo "also roll the affected instances:"
     echo "  just gcp-cluster rolling-update --yes yes"
@@ -1359,6 +1373,102 @@ _plan-update-drift cluster="" kops_name="" state="":
     echo
     echo "--- confirming zero drift ---"
     just gcp-cluster drift-manifests "${args[@]+"${args[@]}"}"
+
+# Sync node pool labels and taints that kOps on GCE cannot apply directly.
+# Usage: just gcp-cluster sync-node-pools [--cluster <name>] [--kops-name <name>] [--state <uri>] [--expected-nodes <n>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("kops_name", long="kops-name", short="n", help="Full kops DNS name (defaults to KOPS_CLUSTER_NAME env var or <cluster>-k8s.local)")]
+[arg("state", long="state", short="s", help="Kops state storage URI (defaults to KOPS_STATE_STORE env var)")]
+[arg("expected_nodes", long="expected-nodes", short="e", help="Expected stateful-db node count (default 3)")]
+[group('cluster-management')]
+[no-cd]
+sync-node-pools cluster="" kops_name="" state="" expected_nodes="3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn="{{ kops_name }}"
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+
+    kubeconfig_file="${KUBECONFIG:-}"
+    if [ -z "${kubeconfig_file}" ] && [ -n "${c}" ]; then
+        kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+        export KUBECONFIG="${kubeconfig_file}"
+    fi
+
+    if [ -n "${kubeconfig_file}" ] && [ ! -s "${kubeconfig_file}" ]; then
+        echo "Kubeconfig missing at ${kubeconfig_file}; exporting from state store..."
+        just gcp-cluster export-kubeconfig "${args[@]+"${args[@]}"}"
+    fi
+
+    # Guard context: ensure active kubectl context matches target cluster
+    current_ctx=$(kubectl config current-context 2>&1)
+    if [ -n "${kn}" ] && [ "${current_ctx}" != "${kn}" ]; then
+        echo "Error: kubectl current-context '${current_ctx}' does not match expected cluster '${kn}'." >&2
+        exit 1
+    fi
+
+    root="{{ justfile_directory() }}"
+    has_sdb_ig=0
+    if [ -n "${c}" ]; then
+        igs_yaml="${root}/config/kops/${c}/instancegroups.yaml"
+        if [ -f "${igs_yaml}" ] && grep -qE '^[[:space:]]*name:[[:space:]]*stateful-db' "${igs_yaml}"; then
+            has_sdb_ig=1
+        fi
+    fi
+
+    echo "Syncing stateful-db pool labels and taints (${kn})..."
+
+    want="{{ expected_nodes }}"
+    retries=30
+    ready_nodes=""
+
+    for i in $(seq 1 "$retries"); do
+        nodes_json=$(kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o json)
+        node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
+        ready_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.status.conditions[] | select(.type == "Ready" and .status == "True")] | length > 0)] | length')
+
+        if [ "$node_count" -eq "$want" ] && [ "$ready_count" -eq "$want" ]; then
+            ready_nodes=$(printf '%s\n' "$nodes_json" | jq -r '.items[].metadata.name' | tr '\n' ' ')
+            break
+        fi
+
+        if [ "$node_count" -eq 0 ] && [ "$has_sdb_ig" -eq 0 ]; then
+            echo "Notice: 0 stateful-db nodes found; stateful-db IG not declared in cluster config. Skipping."
+            exit 0
+        fi
+
+        echo "Waiting for $want stateful-db node(s) to be Ready: $ready_count/$want ready ($node_count found, try $i/$retries)..."
+        sleep 2
+    done
+
+    if [ -z "$ready_nodes" ]; then
+        echo "Error: timed out waiting for $want Ready stateful-db node(s)." >&2
+        kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o wide || true
+        exit 1
+    fi
+
+    kubectl label nodes -l kops.k8s.io/instancegroup=stateful-db pool=database --overwrite
+    kubectl taint nodes -l kops.k8s.io/instancegroup=stateful-db dedicated=database:NoSchedule --overwrite
+
+    # Self-verify
+    verify_json=$(kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o json)
+    labeled=$(printf '%s\n' "$verify_json" | jq '[.items[] | select(.metadata.labels.pool == "database")] | length')
+    tainted=$(printf '%s\n' "$verify_json" | jq '[.items[] | select([.spec.taints[]? | select(.key == "dedicated" and .value == "database" and .effect == "NoSchedule")] | length > 0)] | length')
+
+    if [ "$labeled" -eq "$want" ] && [ "$tainted" -eq "$want" ]; then
+        echo "  ✓ stateful-db: all $want node(s) synced and verified (pool=database, dedicated=database:NoSchedule)"
+    else
+        echo "Error: verification failed ($labeled/$want labeled, $tainted/$want tainted)." >&2
+        exit 1
+    fi
 
 # Validate cluster health, HA topology, and hardening addons in one pass.
 # Folds validate-cluster + validate-kops-ha + validate-hardening.
@@ -1861,6 +1971,10 @@ create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_ke
     echo
     echo "=== 5/5: validate ==="
     just gcp-cluster verify-cluster "${args[@]+"${args[@]}"}" --waittime "{{ waittime }}"
+
+    echo
+    echo "=== syncing node pool labels and taints ==="
+    just gcp-cluster sync-node-pools "${args[@]+"${args[@]}"}"
 
     echo
     echo "Cluster created and validated."
