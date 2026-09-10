@@ -445,7 +445,7 @@ check-backend:
         if gcloud storage buckets describe "gs://${bucket}" ${project_id:+--project="$project_id"} >/dev/null 2>&1; then
             ok "state bucket gs://${bucket} exists"
             versioned=$(gcloud storage buckets describe "gs://${bucket}" \
-                ${project_id:+--project="$project_id"} --format="value(versioning.enabled)" 2>/dev/null)
+                ${project_id:+--project="$project_id"} --format="value(versioning_enabled)" 2>/dev/null)
             if [[ "$versioned" == "True" || "$versioned" == "true" ]]; then
                 ok "state bucket versioning enabled"
             else
