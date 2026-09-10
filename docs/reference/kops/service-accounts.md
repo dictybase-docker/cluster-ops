@@ -23,6 +23,10 @@ Folds `setup-sa-manager` + `configure-gcloud --name ${PROJECT_ID}-sa-manager` + 
 
 Folds `cluster-cred` + `configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator` into one call. `configure-gcloud` uses a **separate** named configuration, so your `sa-manager` config stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`.
 
+### `rotate-to-manager`
+
+The inverse — folds `cluster-cred` + `configure-gcloud --name ${PROJECT_ID}-sa-manager` back to the broad identity. Use it for admin tasks that need `iam.serviceAccountKeyAdmin`/`cloudkms.admin` rights the creator lacks, e.g. [`bootstrap-backend`](../pulumi/backend-bootstrap.md) preflight or minting another SA. Same single `exit`/re-enter boundary afterwards.
+
 ## Obtain sa-manager
 
 **If you are the project owner**, create the SA and download its key:

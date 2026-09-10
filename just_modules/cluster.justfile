@@ -1218,6 +1218,48 @@ bootstrap-identities project="":
     echo "  exit"
     echo "  just cluster-env --env <env> --cluster <cluster-name>"
 
+# Rotate the env file + gcloud identity back to the broad sa-manager in one
+# call — the inverse of rotate-to-creator, for admin tasks that need SA/KMS
+# admin rights (gcp-pulumi bootstrap-backend, creating other SAs). cluster-cred
+# edits the env file; configure-gcloud activates the named config. One shell
+# boundary is still required AFTER this — re-enter cluster-env so Section 3
+# tools (kops/kubectl) pick up the new GOOGLE_APPLICATION_CREDENTIALS.
+# Usage: just gcp-cluster rotate-to-manager [--project <project-id>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[group('cluster-management')]
+[no-cd]
+rotate-to-manager project="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    project_id="{{ project }}"
+    [ -z "${project_id}" ] && project_id="${PROJECT_ID:-}"
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project." >&2
+        exit 1
+    fi
+
+    root="{{ invocation_directory() }}"
+    manager_key="${root}/credentials/${project_id}/sa-manager.json"
+
+    if [ ! -f "${manager_key}" ]; then
+        echo "ERROR: sa-manager key not found: ${manager_key}" >&2
+        echo "Create the identity chain first: just gcp-cluster bootstrap-identities" >&2
+        exit 1
+    fi
+
+    echo "=== 1/2: rotating env file to sa-manager ==="
+    just cluster-cred --key "${manager_key}"
+
+    echo
+    echo "=== 2/2: activating sa-manager as a named gcloud config ==="
+    just gcp-cluster configure-gcloud --name "${project_id}-sa-manager" --project "${project_id}" --key-file "${manager_key}"
+
+    echo
+    echo "Rotated. Re-enter the shell so Section 3 tools pick up the new credential:"
+    echo "  exit"
+    echo "  just cluster-env --env <env> --cluster <cluster-name>"
+
 # Rotate the env file + gcloud identity to the least-privilege kops-cluster-creator
 # in one call. cluster-cred edits the env file; configure-gcloud activates the
 # named config from the key directly (no GOOGLE_APPLICATION_CREDENTIALS needed).
