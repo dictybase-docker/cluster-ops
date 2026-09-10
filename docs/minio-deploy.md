@@ -2,7 +2,7 @@
 
 Provisioning guide for production **standalone MinIO** (S3 API, Bitnami chart 17) on kOps `stateful-db`.
 
-**Status**: Production procedure. Use `Pulumi.prod.yaml` configs only. Do not edit the lab `dev`/`experiments`/`local` stacks of `minio`.
+**Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `dev`/`experiments`/`local` stacks of `minio`.
 
 ## Table of Contents
 

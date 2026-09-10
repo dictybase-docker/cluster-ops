@@ -4,7 +4,7 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 
 ## What It Does
 
-Installs the `cloudnative-pg` Helm chart (chart **0.29.0**, operator image **1.30.0**, `cloudnative-pg-operator/Pulumi.prod.yaml`) into namespace `operators`.
+Installs the `cloudnative-pg` Helm chart (chart **0.29.0**, operator image **1.30.0**, `cloudnative-pg-operator/Pulumi.dcr-kube1.yaml`) into namespace `operators`.
 
 Version floor: operator **1.30.x** is the oldest line that officially supports Kubernetes **1.36** (supported: 1.34/1.35/1.36; PostgreSQL 14–18). Do not downgrade — the 1.24 line pinned in the lab stacks does not support this cluster's Kubernetes. The operator watches for `Cluster` / `ScheduledBackup` / `Backup` custom resources under `postgresql.cnpg.io/v1` and manages instance pods, PVCs, failover, and the `-rw`/`-ro`/`-r` Services.
 

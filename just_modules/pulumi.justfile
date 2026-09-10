@@ -193,10 +193,11 @@ ensure-stack folder stack="":
         echo "Stack '${stack_name}' not found in {{ folder }}. Initializing from Pulumi.${stack_name}.yaml..."
         pulumi -C {{ folder }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
     else
-        echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml template to initialize it from." >&2
+        echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml to initialize it from." >&2
         echo "       Initializing would create an empty stack and fail at preview with 'missing required configuration variable'." >&2
-        echo "       Use an env-named stack (prod/dev/experiments/local), or seed this one first:" >&2
-        echo "         just gcp-pulumi new-stack-from --folder {{ folder }} --stack ${stack_name} --from-stack <base-stack>" >&2
+        echo "       Create the file first (fork a base config), or copy it from an existing stack:" >&2
+        echo "         just gcp-pulumi fork-stack --to-stack ${stack_name} [--folder {{ folder }}]" >&2
+        echo "         just gcp-pulumi new-stack-from --folder {{ folder }} --stack ${stack_name} --from-stack <existing-stack>" >&2
         exit 1
     fi
 
@@ -516,18 +517,18 @@ check-backend:
 
 # Verify the StorageClasses this repo's database stacks depend on.
 # Prints the provisioner for each class and exits non-zero if one is missing or wrong.
-# Create per-cluster stack config files from a base template, so every cluster gets
-# unique stacks named after itself. Copies Pulumi.<from-stack>.yaml to
-# Pulumi.<to-stack>.yaml in every project shipping the base (or just --folder).
+# Create per-cluster stack config files from an existing stack file, so every
+# cluster gets unique stacks named after itself. Copies Pulumi.<from-stack>.yaml
+# to Pulumi.<to-stack>.yaml in every project shipping the base (or just --folder).
 # Never overwrites an existing target. Review the diff and commit, then create the
 # cluster env file with --pulumi-stack <to-stack>.
-# Usage: just gcp-pulumi fork-stack --to-stack <name> [--from-stack <name>] [--folder <dir>]
-[arg("from-stack", long="from-stack", short="F", help="Base template stack name (defaults to prod)")]
+# Usage: just gcp-pulumi fork-stack --to-stack <name> --from-stack <base> [--folder <dir>]
+[arg("from-stack", long="from-stack", short="F", help="Base stack name — an existing Pulumi.<base>.yaml, normally the closest production cluster")]
 [arg("to-stack", long="to-stack", short="t", help="New per-cluster stack name, normally the cluster name")]
 [arg("folder", long="folder", short="f", help="Limit to one project folder")]
 [group('pulumi-management')]
 [no-cd]
-fork-stack to-stack="" from-stack="prod" folder="":
+fork-stack to-stack="" from-stack="" folder="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -538,6 +539,10 @@ fork-stack to-stack="" from-stack="prod" folder="":
         exit 1
     fi
     from="{{ from-stack }}"
+    if [ -z "${from}" ]; then
+        echo "ERROR: --from-stack is required — the base whose Pulumi.<base>.yaml files are copied (normally the closest production cluster)." >&2
+        exit 1
+    fi
     only="{{ folder }}"
 
     created=0

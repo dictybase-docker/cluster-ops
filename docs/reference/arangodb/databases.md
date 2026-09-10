@@ -10,7 +10,7 @@ This recipe is for when something is missing anyway — a database the dump did 
 
 ## What It Does
 
-`create-arangodb-databases/Pulumi.prod.yaml` creates:
+`create-arangodb-databases/Pulumi.dcr-kube1.yaml` creates:
 - Secret `backend` (keys `user`, `password`)
 - One-shot Job `backend-create-databases` (label `app=arangodb-create-databases`)
 
@@ -45,7 +45,7 @@ just arangodb create-databases --app-user '<app-user>' --app-password '<app-pass
 | `--app-user` | Yes | Application username |
 | `--app-password` | Yes | Application password |
 
-Both required — `Pulumi.prod.yaml` ships `name`/`userkey`/`passkey` but no `user`/`pass`. Applying without them creates Secret `backend` with empty credentials.
+Both required — `Pulumi.dcr-kube1.yaml` ships `name`/`userkey`/`passkey` but no `user`/`pass`. Applying without them creates Secret `backend` with empty credentials.
 
 ## Job Lifecycle
 

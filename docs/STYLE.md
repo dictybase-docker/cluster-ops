@@ -63,7 +63,7 @@ guide, not per section.
 
 Guides open with, in order:
 
-1. **Title + status line** (e.g. "Production procedure. Use Pulumi.prod.yaml…").
+1. **Title + status line** (e.g. "Production procedure. Use Pulumi.<cluster>.yaml…").
 2. **Table of Contents** with anchor links — keep it in sync with headings.
 3. **Quick Reference** — the full flow as one numbered bash block for
    experienced users, plus a separate optional-steps block. Comments in this

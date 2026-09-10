@@ -14,7 +14,7 @@ Stack: `arangodb-cluster`, image `arangodb:3.12.10.1`, amd64, `externalAccess: N
 
 Anti-affinity is **preferred** (hostname 100, zone 50), not required. No PDBs.
 
-> **Lab vs Production**: Lab `arangodb-single` stays Single / 3.11 / arm64 — do not edit it. Use `Pulumi.prod.yaml` only.
+> **Lab vs Production**: Lab `arangodb-single` stays Single / 3.11 / arm64 — do not edit it. Use `Pulumi.dcr-kube1.yaml` only.
 
 ## Kubernetes Pool Requirements
 

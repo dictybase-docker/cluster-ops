@@ -2,7 +2,7 @@
 
 Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 
-**Status**: Production procedure. Use `Pulumi.prod.yaml` configs only. Do not edit lab `arangodb-single` stacks.
+**Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit lab `arangodb-single` stacks.
 
 ## Table of Contents
 
@@ -71,7 +71,7 @@ Optional steps:
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 # Loaders, if there is no restic snapshot to import from
-# (require Pulumi.prod.yaml — doesn't exist yet)
+# (require Pulumi.dcr-kube1.yaml — doesn't exist yet)
 just arangodb deploy-loader --folder arangodb-dataloader
 
 # Restore drill (on clone cluster)
@@ -108,7 +108,7 @@ Creates the backup service account + key, namespaces `prod`/`operators`, and Sec
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 ```
 
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass).
+Also required: CSI + StorageClasses from [`pulumi-setup.md` §6](pulumi-setup.md#6-first-apply--storageclass), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
 
 ---
 
@@ -183,7 +183,7 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 ### 4.3 Alternative: Loaders
 
-Reserved for a future revision. No loader project has a `Pulumi.prod.yaml` in this repo yet, and `deploy-loader` refuses to run without one.
+Reserved for a future revision. No loader project has a `Pulumi.dcr-kube1.yaml` in this repo yet, and `deploy-loader` refuses to run without one.
 → [Import details](reference/arangodb/import.md)
 
 ---

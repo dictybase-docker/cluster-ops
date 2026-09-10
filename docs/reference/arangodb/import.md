@@ -12,7 +12,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 - Databases created
 - Production object storage configured
 
-> **No loader has a `Pulumi.prod.yaml` in this repo** — only `Pulumi.experiments.yaml` / `Pulumi.dev.yaml` / `Pulumi.staging.yaml`. Author the production stack config first; the recipe refuses to run without it.
+> **No loader has a `Pulumi.dcr-kube1.yaml` in this repo** — only `Pulumi.experiments.yaml` / `Pulumi.dev.yaml` / `Pulumi.staging.yaml`. Author the production stack config first; the recipe refuses to run without it.
 
 ## Graph Dumps (arangodb-dataloader)
 
@@ -33,7 +33,7 @@ just arangodb deploy-loader --folder load-content-from-s3
 just arangodb deploy-loader --folder load-uniprot-mapping
 ```
 
-Neither project has `Pulumi.prod.yaml` — only `dev`, `experiments`, and `staging` configs.
+Neither project has `Pulumi.dcr-kube1.yaml` — only `dev`, `experiments`, and `staging` configs.
 
 ## Recipe Behavior
 
@@ -50,7 +50,7 @@ Neither project has `Pulumi.prod.yaml` — only `dev`, `experiments`, and `stagi
 
 ### Current State
 
-Exits with "author it before deploying" error because `arangodb-dataloader/Pulumi.prod.yaml` does not exist.
+Exits with "author it before deploying" error because `arangodb-dataloader/Pulumi.dcr-kube1.yaml` does not exist.
 
 ### Job Monitoring
 

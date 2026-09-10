@@ -2,7 +2,7 @@
 
 Provisioning guide for production **standalone Redis 8** on kOps `stateful-db`.
 
-**Status**: Production procedure. Use `Pulumi.prod.yaml` configs only. Do not edit the lab `dev`/`experiments` stacks of `redis-standalone`.
+**Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `dev`/`experiments` stacks of `redis-standalone`.
 
 ## Table of Contents
 

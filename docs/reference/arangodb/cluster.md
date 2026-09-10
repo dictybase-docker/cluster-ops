@@ -4,7 +4,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 ## What It Does
 
-`arangodb-cluster/Pulumi.prod.yaml` creates:
+`arangodb-cluster/Pulumi.dcr-kube1.yaml` creates:
 - Root-password Secret `arangodb-pass`
 - `ArangoDeployment` Cluster CR matching the [resource shape](pool-requirements.md): 3 agents, 3 dbservers, 3 coordinators
 - Image: `arangodb:3.12.10.1`
@@ -28,7 +28,7 @@ just arangodb deploy-cluster --root-password '<strong-root-password>'
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--root-password` | Yes | Never generated. Stored encrypted in stack config, becomes Secret `arangodb-pass` key `password` |
-| `--namespace` | No | Defaults to `prod`. Must match `properties.namespace` in `Pulumi.prod.yaml`. Only used for pod watching |
+| `--namespace` | No | Defaults to `prod`. Must match `properties.namespace` in `Pulumi.dcr-kube1.yaml`. Only used for pod watching |
 
 ## Wait Budget
 

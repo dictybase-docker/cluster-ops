@@ -4,7 +4,7 @@ Back to: [Redis Deploy Guide](../../redis-deploy.md)
 
 ## What It Does
 
-Applies the `redis-standalone` stack (`Pulumi.prod.yaml`) which creates:
+Applies the `redis-standalone` stack (`Pulumi.dcr-kube1.yaml`) which creates:
 
 1. PVC `redis-data` (50Gi, `dictycr-balanced`)
 2. Secret `redis-auth` — key `password`

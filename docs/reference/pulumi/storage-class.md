@@ -39,10 +39,10 @@ just gcp-pulumi apply-storageclass --stack dev
 | Cluster stack | Classes declared | Provisioner |
 |---------------|------------------|-------------|
 | `dcr-kube1` (production) | `dictycr-balanced`, `dictycr-ssd` | `pd.csi.storage.gke.io` |
-| lab clusters (forked from `Pulumi.dev.yaml` / `Pulumi.experiments.yaml`) | `dictycr-balanced` | `pd.csi.storage.gke.io` |
-| local k3d (forked from `Pulumi.local.yaml`) | `dictycr-balanced` | `rancher.io/local-path` |
+| lab stacks (`dev` / `experiments` — frozen legacy names) | `dictycr-balanced` | `pd.csi.storage.gke.io` |
+| local k3d stack (`local`) | `dictycr-balanced` | `rancher.io/local-path` |
 
-`Pulumi.prod.yaml` no longer exists for this project — the production config lives in `Pulumi.dcr-kube1.yaml`. A **new** production cluster forks from it:
+`Pulumi.prod.yaml` no longer exists — the production config lives in `Pulumi.dcr-kube1.yaml`. A **new** production cluster forks from it:
 
 ```bash
 just gcp-pulumi fork-stack --to-stack <new-cluster> --from-stack dcr-kube1 --folder storage_class

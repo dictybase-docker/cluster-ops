@@ -2,7 +2,7 @@
 
 Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via the CloudNativePG operator.
 
-**Status**: Production procedure. Use `Pulumi.prod.yaml` configs only. Do not edit the lab `dev`/`experiments` stacks of `cloudnative-pg-operator` / `cloudnative-pg-cluster`.
+**Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `dev`/`experiments` stacks of `cloudnative-pg-operator` / `cloudnative-pg-cluster`.
 
 ## Table of Contents
 
@@ -119,7 +119,7 @@ Creates the app-user Secret, backup-credentials Secret, GCS backup bucket, singl
 just postgres deploy-cluster --app-password '<app-password>'
 ```
 
-Single instance by design — **no replicas means no failover**: if the pod or node dies, PostgreSQL is down until Kubernetes reschedules it (PVC reattach, typically minutes). Recovery beyond that is the daily base backup + WAL archive. Bump `instances` in `cloudnative-pg-cluster/Pulumi.prod.yaml` when HA becomes a requirement.
+Single instance by design — **no replicas means no failover**: if the pod or node dies, PostgreSQL is down until Kubernetes reschedules it (PVC reattach, typically minutes). Recovery beyond that is the daily base backup + WAL archive. Bump `instances` in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml` when HA becomes a requirement.
 
 Application address: `postgres://<owner>@logto-rw.prod.svc.cluster.local:5432/<database>` — password from Secret `logto-app`. With one instance, `-rw`/`-ro`/`-r` all resolve to the same pod.
 

@@ -4,7 +4,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 ## What It Does
 
-`arangodb-backup/Pulumi.prod.yaml` creates four resources:
+`arangodb-backup/Pulumi.dcr-kube1.yaml` creates four resources:
 
 | Resource | Detail |
 |----------|--------|

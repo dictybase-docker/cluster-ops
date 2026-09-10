@@ -92,16 +92,21 @@ Stay in the sub-shell that `cluster-env` opens for the rest of this guide. Crede
 Run **as `sa-manager`** — you are on `kops-cluster-creator` after kops setup, and the bootstrap needs roles the creator lacks. The recipe preflights and names any missing roles.
 → [Backend bootstrap detail](reference/pulumi/backend-bootstrap.md)
 
+**Rotate, if the shell is still on `kops-cluster-creator`:**
+
 ```bash
-# Only if still on the cluster-creator identity:
 just gcp-cluster rotate-to-manager
 exit
 just cluster-env --env <env> --cluster <cluster-name>
+```
 
+**Bootstrap the backend:**
+
+```bash
 just gcp-pulumi bootstrap-backend
 ```
 
-`bootstrap-backend` folds four recipes — `create-sa`, `create-keyring-and-key`, `pulumi-gcs-setup`, `check-backend` — into one sequential run ([stages](reference/pulumi/backend-bootstrap.md#stages)).
+`bootstrap-backend` folds `create-sa`, `create-keyring-and-key`, `pulumi-gcs-setup`, `check-backend` into one sequential run ([stages](reference/pulumi/backend-bootstrap.md#stages)).
 
 ---
 
@@ -122,7 +127,7 @@ just gcp-pulumi check-backend
 
 ## 5. Stacks and Configuration
 
-One stack per cluster per project, named after the cluster; `create-cluster-env` already set `PULUMI_STACK` to it, so `--stack` is rarely needed.
+One stack per cluster per project, named after the cluster; `create-cluster-env` already set `PULUMI_STACK` to it, so `--stack` is rarely needed. Each project deploys only once its `Pulumi.<cluster>.yaml` exists in the project folder — `ensure-stack` refuses to initialize a stack without it.
 → [Stack names](reference/pulumi/stack-names.md) · [Stack config](reference/pulumi/stack-config.md) · [Full recipe reference](reference/pulumi/recipes.md)
 
 ```bash

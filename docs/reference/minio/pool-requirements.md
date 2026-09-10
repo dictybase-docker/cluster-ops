@@ -10,9 +10,9 @@ Stack: `minio`, image `bitnamilegacy/minio:2025.7.23-debian-12-r3`, standalone m
 |-----------|-------|------|
 | MinIO server (standalone) | 1 | 150Gi `dictycr-balanced` |
 
-Placement comes from `placement.pool` in `minio/Pulumi.prod.yaml` — the chart values get a `nodeSelector pool=database` plus a `dedicated=database:NoSchedule` toleration. No CPU/memory requests set — chart defaults apply.
+Placement comes from `placement.pool` in `minio/Pulumi.dcr-kube1.yaml` — the chart values get a `nodeSelector pool=database` plus a `dedicated=database:NoSchedule` toleration. No CPU/memory requests set — chart defaults apply.
 
-> **Lab vs Production**: Lab `dev`/`experiments`/`local` stacks use chart 14.7.10 / image 2024.8.3 with no placement — do not edit them. Use `Pulumi.prod.yaml` only.
+> **Lab vs Production**: Lab `dev`/`experiments`/`local` stacks use chart 14.7.10 / image 2024.8.3 with no placement — do not edit them. Use `Pulumi.dcr-kube1.yaml` only.
 
 ## Kubernetes Pool Requirements
 

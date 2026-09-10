@@ -4,7 +4,7 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 
 ## What It Does
 
-Applies the `cloudnative-pg-cluster` stack (`Pulumi.prod.yaml`) and creates, per configured cluster:
+Applies the `cloudnative-pg-cluster` stack (`Pulumi.dcr-kube1.yaml`) and creates, per configured cluster:
 
 1. GCS backup bucket `cloudnative-pg-backup-<project-id>` (versioning on, 58-day soft-delete, 65-day lifecycle delete, **`ForceDestroy: true`**)
 2. Secret `postgres-backup-credentials` — content of the `postgres-backup-sa` JSON key under key `gcsCredentials`
@@ -53,8 +53,8 @@ All on port **5432**, e.g. `postgres://logto@logto-rw.prod.svc.cluster.local:543
 
 ## Single-Instance Trade-off
 
-No streaming replication: a pod/node failure means downtime until Kubernetes reschedules the pod and the PVC reattaches (minutes), and there is no promoted replica to hide it. Data safety is unaffected — the WAL archive + daily base backup still give point-in-time recovery — but recovery from total PVC loss is a full restore, not a failover. Scale up by setting `instances: 3` in `Pulumi.prod.yaml`; the operator adds replicas in place, no re-bootstrap.
+No streaming replication: a pod/node failure means downtime until Kubernetes reschedules the pod and the PVC reattaches (minutes), and there is no promoted replica to hide it. Data safety is unaffected — the WAL archive + daily base backup still give point-in-time recovery — but recovery from total PVC loss is a full restore, not a failover. Scale up by setting `instances: 3` in `Pulumi.dcr-kube1.yaml`; the operator adds replicas in place, no re-bootstrap.
 
 ## PostgreSQL 16
 
-The operand image is pinned to the immutable official-catalog tag `16.15-202608240846-system-bookworm` — major version stays **16**; only the patch-level timestamp moves. Current tags come from the [official bookworm catalog](https://github.com/cloudnative-pg/postgres-containers/blob/main/Debian/ClusterImageCatalog-bookworm.yaml). Operator-major compatibility (1.30.x supports PG 14–18) is what constrains upgrades; bump the tag in `cloudnative-pg-cluster/Pulumi.prod.yaml`.
+The operand image is pinned to the immutable official-catalog tag `16.15-202608240846-system-bookworm` — major version stays **16**; only the patch-level timestamp moves. Current tags come from the [official bookworm catalog](https://github.com/cloudnative-pg/postgres-containers/blob/main/Debian/ClusterImageCatalog-bookworm.yaml). Operator-major compatibility (1.30.x supports PG 14–18) is what constrains upgrades; bump the tag in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`.

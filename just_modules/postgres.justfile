@@ -220,7 +220,7 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" n
 
     # Store the backup wiring on the cluster stack. The bucket name and key
     # path are project-derived, so they are set here, not hardcoded in
-    # Pulumi.prod.yaml.
+    # Pulumi.<cluster>.yaml.
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'properties.clusters[0].cluster.backup.bucket' --value "$BUCKET"

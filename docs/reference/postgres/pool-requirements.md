@@ -10,13 +10,13 @@ Stack: `cloudnative-pg-cluster`, image `ghcr.io/cloudnative-pg/postgresql:16.15-
 |-----------|-------|------|
 | Instance (primary only — no replicas) | 1 | 100Gi `dictycr-balanced` |
 
-Placement comes from `placement` in `cloudnative-pg-cluster/Pulumi.prod.yaml`:
+Placement comes from `placement` in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`:
 
 - `nodeSelector pool=database` plus a `dedicated=database:NoSchedule` toleration
 - pod anti-affinity `preferred` on `topology.kubernetes.io/zone` — inert with a single instance, kept so scaling to 3 instances needs no spec change
 - No CPU/memory requests set — the operator's defaults apply
 
-> **Lab vs Production**: Lab `dev`/`experiments` stacks run 1 instance, PostgreSQL 14, no placement — do not edit them. Use `Pulumi.prod.yaml` only. Production also runs 1 instance (no streaming replication, no failover) — the difference from lab is PostgreSQL 16, pool placement, and GCS backup.
+> **Lab vs Production**: Lab `dev`/`experiments` stacks run 1 instance, PostgreSQL 14, no placement — do not edit them. Use `Pulumi.dcr-kube1.yaml` only. Production also runs 1 instance (no streaming replication, no failover) — the difference from lab is PostgreSQL 16, pool placement, and GCS backup.
 
 ## Kubernetes Pool Requirements
 
