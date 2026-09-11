@@ -460,3 +460,62 @@ check-storageclass classes="dictycr-balanced" provisioner="pd.csi.storage.gke.io
         printf '\033[31m%d check(s) failed.\033[0m PVCs will stay Pending. See docs/reference/pulumi/storage-class.md\n' "$failures"
         exit 1
     fi
+
+# Apply the namespace-bootstrap stack: the shared `operators` and app
+# (`prod` on production, `dev` on lab stacks) namespaces. Run once per cluster
+# during setup, right after apply-storageclass — operator programs
+# (cloudnative-pg-operator, arangodb-operator) probe this stack via
+# StackReference + a live GetNamespace read, and backup_secrets assumes it.
+# The recipe applies the stack, then verifies exactly the namespaces
+# Pulumi.<stack>.yaml declares.
+# Usage: just gcp-pulumi apply-namespaces [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('pulumi-management')]
+[no-cd]
+apply-namespaces stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="namespace-bootstrap"
+    STACK="{{ stack }}"
+    if [ -z "${STACK}" ]; then
+        STACK="${PULUMI_STACK:-}"
+    fi
+    if [ -z "${STACK}" ]; then
+        echo "ERROR: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "ERROR: yq not found on PATH — install it (see docs/reference/pulumi/prerequisites.md)." >&2
+        exit 1
+    fi
+
+    cfg_file="${FOLDER}/Pulumi.${STACK}.yaml"
+    if [ ! -f "$cfg_file" ]; then
+        echo "ERROR: stack config not found: ${cfg_file} — fork one with 'just gcp-pulumi fork-stack'." >&2
+        exit 1
+    fi
+
+    echo "==> Applying ${FOLDER} on stack '${STACK}'"
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
+    failures=0
+    echo "==> Verifying namespaces from ${cfg_file}"
+    for ns in $(yq -r '.config."namespace-bootstrap:properties" | .operatorNamespace + " " + .appNamespace' "$cfg_file"); do
+        if kubectl get namespace "$ns" >/dev/null 2>&1; then
+            ok "namespace ${ns} exists"
+        else
+            bad "namespace ${ns} missing"
+        fi
+    done
+
+    echo
+    if [ "$failures" -eq 0 ]; then
+        printf '\033[32mNamespaces ready.\033[0m\n'
+    else
+        printf '\033[31m%d check(s) failed.\033[0m See docs/reference/pulumi/namespaces.md\n' "$failures"
+        exit 1
+    fi

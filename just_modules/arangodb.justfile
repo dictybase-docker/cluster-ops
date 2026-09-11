@@ -833,6 +833,14 @@ deploy-operator stack="" namespace="operators" retries="60" interval="10":
     NS="{{ namespace }}"
     STACK=$(just arangodb _require-stack --stack "{{ stack }}")
 
+    # The program takes the release namespace from the namespace-bootstrap
+    # stack's operatorsNamespace export — refuse to wait on anything else.
+    BOOT_NS=$(pulumi -C namespace-bootstrap stack output operatorsNamespace --stack "$STACK")
+    if [[ "$NS" != "$BOOT_NS" ]]; then
+        echo "Error: --namespace '$NS' does not match the namespace-bootstrap export '$BOOT_NS' — the operator cannot deploy there." >&2
+        exit 1
+    fi
+
     echo "Deploying $FOLDER (stack '$STACK') into namespace '$NS'..."
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
@@ -1052,21 +1060,23 @@ _setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup
     echo
     echo "Next: just arangodb configure-backup-secrets --restic-password '<restic-pass>'"
 
-# Create namespaces prod + operators and the shared `dictycr` backup Secret.
+# Create the shared `dictycr` backup Secret. Creates no namespaces — the
+# namespace-bootstrap stack owns prod/operators (just gcp-pulumi
+# apply-namespaces, docs/pulumi-setup.md §5).
 # One command for: ensure SA + key, ensure-stack, all four secret values,
-# preview, apply, verify. Apply this FIRST — the operator's Helm release does
-# not create its namespace.
+# preview, apply, verify. Apply this FIRST — restore and backup jobs read the
+# Secret at apply time.
 # Usage: just arangodb configure-backup-secrets --restic-password <pw> [--no-setup-sa] [--gcs-project <id>] [--gcs-key-file <path>] [--key-name <k>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="restic repository password (required)")]
 [arg("setup_sa", long="setup-sa", help="Create/refresh the backup-gcs-sa service account + key first (disable with --no-setup-sa when pointing at your own key)")]
 [arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (defaults to PROJECT_ID from the cluster env)")]
 [arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (defaults to credentials/<project-id>/backup-gcs-sa.json; read at pulumi up time)")]
 [arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
-[arg("namespace", long="namespace", short="n", help="Namespace the Secret is created in")]
+[arg("namespace", long="namespace", short="n", help="Optional guard: must equal the namespace-bootstrap appNamespace export (default: no override)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('arangodb')]
 [no-cd]
-configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="prod" stack="":
+configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1117,6 +1127,16 @@ configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_
 
     STACK=$(just arangodb _require-stack --stack "{{ stack }}")
 
+    # The Secret's namespace is NOT configured here — the backup_secrets
+    # program takes it from the namespace-bootstrap stack's appNamespace
+    # export. An explicit --namespace must match it or the run stops.
+    BOOT_NS=$(pulumi -C namespace-bootstrap stack output appNamespace --stack "$STACK")
+    if [[ -n "$NS" && "$NS" != "$BOOT_NS" ]]; then
+        echo "Error: --namespace '$NS' does not match the namespace-bootstrap export '$BOOT_NS' — the Secret cannot live there." >&2
+        exit 1
+    fi
+    NS="$BOOT_NS"
+
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
@@ -1129,17 +1149,21 @@ configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
     SECRET_NAME=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.secret.name 2>/dev/null || echo "dictycr")
-    EXTRA_NS=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.extraNamespace 2>/dev/null || echo "operators")
 
+    # Namespace comes from the namespace-bootstrap stack; verify it is live.
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: namespace '$NS' does not exist — run 'just gcp-pulumi apply-namespaces' (pulumi setup §5) first." >&2
+        exit 1
+    fi
     echo
-    kubectl get namespace "$NS" "$EXTRA_NS"
+    kubectl get namespace "$NS"
     kubectl get secret "$SECRET_NAME" -n "$NS"
     echo "Keys in $SECRET_NAME:"
     kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -r '.data | keys[] | "  " + .'
 
 # Create Secret `dictycr-source`: the READ-ONLY identity for the cross-project
 # first load (docs/arangodb-deploy.md §4). Creates no namespaces — `prod` must
-# already exist from configure-backup-secrets.
+# already exist from namespace-bootstrap (just gcp-pulumi apply-namespaces).
 # Usage: just arangodb configure-source-secrets --restic-password <pw> --gcs-project <source-id> --gcs-key-file <path> [--key-name <k>] [--secret-name <n>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="SOURCE restic repository password (required; may differ from the dictycr one)")]
 [arg("gcs_project", long="gcs-project", short="g", help="SOURCE GCP project id that owns the source bucket (required; NOT this cluster's project)")]
@@ -1178,7 +1202,7 @@ configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsC
     # This project creates no namespaces on purpose — backup_secrets owns them.
     if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
         echo "Error: namespace '$NS' does not exist." >&2
-        echo "Run 'just arangodb configure-backup-secrets ...' first — it creates prod/operators and Secret dictycr." >&2
+        echo "Run 'just gcp-pulumi apply-namespaces' (pulumi setup §5) to create '$NS', then 'just arangodb configure-backup-secrets ...' for Secret dictycr." >&2
         exit 1
     fi
 

@@ -143,20 +143,20 @@ check-pool pool="database" node_count="3":
         exit 1
     fi
 
-# Create the backup service account + key, grant it the backup bucket, ensure
-# namespaces, and store the backup-secret config on the cluster stack.
+# Create the backup service account + key, grant it the backup bucket, and
+# store the backup-secret config on the cluster stack. Creates no namespaces —
+# the namespace-bootstrap stack owns them (just gcp-pulumi apply-namespaces).
 # One command for: SA create (idempotent), IAM condition, key mint (skips if
-# the file exists), namespace ensure, ensure-stack, config set.
+# the file exists), ensure-stack, config set.
 # Usage: just postgres configure-backup [--bucket <name>] [--project <id>] [--stack <name>]
 [arg("bucket", long="bucket", short="b", help="Backup GCS bucket name (default cloudnative-pg-backup-<project-id>; created later by the cluster stack)")]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID from the cluster env)")]
 [arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
 [arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<project>/<sa-name>.json)")]
-[arg("namespace", long="namespace", short="n", help="Namespace the clusters run in")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('postgres')]
 [no-cd]
-configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" namespace="prod" stack="":
+configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -167,7 +167,6 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" n
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
     KEY_FILE="${KEY_FILE:-credentials/${PROJECT}/${SA_NAME}.json}"
-    NS="{{ namespace }}"
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
 
     SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
@@ -209,12 +208,8 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" n
         echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
     fi
 
-    # Namespaces: idempotent ensure. The backup_secrets stack creates the same
-    # namespaces when ArangoDB is installed — both paths coexist.
-    echo
-    echo "Ensuring namespaces '$NS' and 'operators'..."
-    kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-    kubectl create namespace operators --dry-run=client -o yaml | kubectl apply -f -
+    # Namespaces are owned by the namespace-bootstrap stack — applied once
+    # during cluster setup (just gcp-pulumi apply-namespaces), never here.
 
     # Store the backup wiring on the cluster stack. The bucket name and key
     # path are project-derived, so they are set here, not hardcoded in
@@ -342,6 +337,14 @@ deploy-operator stack="" namespace="operators" retries="60" interval="10":
     FOLDER="cloudnative-pg-operator"
     NS="{{ namespace }}"
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
+
+    # The program takes the release namespace from the namespace-bootstrap
+    # stack's operatorsNamespace export — refuse to wait on anything else.
+    BOOT_NS=$(pulumi -C namespace-bootstrap stack output operatorsNamespace --stack "$STACK")
+    if [[ "$NS" != "$BOOT_NS" ]]; then
+        echo "Error: --namespace '$NS' does not match the namespace-bootstrap export '$BOOT_NS' — the operator cannot deploy there." >&2
+        exit 1
+    fi
 
     echo "Deploying $FOLDER (stack '$STACK') into namespace '$NS'..."
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
