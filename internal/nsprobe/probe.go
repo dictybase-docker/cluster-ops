@@ -28,7 +28,10 @@ import (
 func Probe(ctx *pulumi.Context, key string) (*corev1.Namespace, pulumi.StringInput, error) {
 	ref, err := pulumi.NewStackReference(
 		ctx,
-		fmt.Sprintf("namespace-bootstrap/%s", ctx.Stack()),
+		// Self-managed backends (GCS here) require the literal organization
+		// segment — a two-segment project/stack name fails preview with
+		// "organization name must be 'organization'".
+		fmt.Sprintf("organization/namespace-bootstrap/%s", ctx.Stack()),
 		nil,
 	)
 	if err != nil {

@@ -34,7 +34,7 @@ Both keys are required in every `Pulumi.<stack>.yaml` — an empty value fails p
 
 ## Exports
 
-The stack exports `operatorsNamespace` and `appNamespace`. Operator programs read them through `namespace-bootstrap/<stack>` via `internal/nsprobe` — the Helm release namespace comes from the export itself, so an operator stack cannot drift from the bootstrap, and a missing bootstrap fails the operator's `preview`.
+The stack exports `operatorsNamespace` and `appNamespace`. Operator programs read them via the stack reference `organization/namespace-bootstrap/<stack>` (`internal/nsprobe`; the literal `organization` segment is required by the self-managed GCS backend) — the Helm release namespace comes from the export itself, so an operator stack cannot drift from the bootstrap, and a missing bootstrap fails the operator's `preview`.
 
 A **new** production cluster gets its config via the standard fork:
 

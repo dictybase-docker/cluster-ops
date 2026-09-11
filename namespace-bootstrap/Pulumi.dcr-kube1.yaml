@@ -1,3 +1,5 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WINSZ+ousl/PqlTSWBaHpi3C3Z9KC1BLL3PJUFB+ZkBQSSQDjx5R/josZwBxiDENOdXP3muVIjnjtRpkVtwNSBfNkh1VmLhbbo0Jq7BenjyyDM8iXotAgduHs9Za4K+RSZ47QhleUXfxGYZQ=
 # Production configuration for namespace-bootstrap.
 # No secrets required. The stack is initialized on first deploy by
 # `just gcp-pulumi apply-namespaces` (gcp-pulumi ensure-stack), which adds the
@@ -8,5 +10,5 @@
 # a live GetNamespace read; backup_secrets creates no namespaces.
 config:
   namespace-bootstrap:properties:
-    operatorNamespace: operators
     appNamespace: prod
+    operatorNamespace: operators
