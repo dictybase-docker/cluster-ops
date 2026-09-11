@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -17,7 +18,6 @@ type PgOperatorConfig struct {
 	Image struct {
 		Tag string
 	}
-	Namespace string
 }
 
 type PgOperator struct {
@@ -55,11 +55,18 @@ func NewPgOperator(config PgOperatorConfig) *PgOperator {
 }
 
 func (pg *PgOperator) Install(ctx *pulumi.Context) error {
+	// The namespace comes from the namespace-bootstrap stack's export — probe
+	// it so a missing bootstrap fails at preview, not inside the Helm create.
+	probe, namespace, err := nsprobe.Probe(ctx, "operatorsNamespace")
+	if err != nil {
+		return err
+	}
+
 	// Install the Helm chart
-	_, err := helm.NewRelease(ctx, "cloudnative-pg-operator", &helm.ReleaseArgs{
+	_, err = helm.NewRelease(ctx, "cloudnative-pg-operator", &helm.ReleaseArgs{
 		Chart:     pulumi.String(pg.config.Chart.Name),
 		Version:   pulumi.String(pg.config.Chart.Version),
-		Namespace: pulumi.String(pg.config.Namespace),
+		Namespace: namespace.ToStringPtrOutput(),
 		RepositoryOpts: helm.RepositoryOptsArgs{
 			Repo: pulumi.String(pg.config.Chart.Repository),
 		},
@@ -68,7 +75,7 @@ func (pg *PgOperator) Install(ctx *pulumi.Context) error {
 				"tag": pulumi.String(pg.config.Image.Tag),
 			},
 		},
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{probe}))
 	if err != nil {
 		return fmt.Errorf("failed to install Helm chart: %w", err)
 	}

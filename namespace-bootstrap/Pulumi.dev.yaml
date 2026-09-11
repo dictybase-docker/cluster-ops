@@ -1,0 +1,8 @@
+# Lab configuration for namespace-bootstrap (frozen stack names, see
+# docs/reference/pulumi/stack-names.md).
+# No secrets required. Initialized on first deploy by
+# `just gcp-pulumi apply-namespaces --stack dev`.
+config:
+  namespace-bootstrap:properties:
+    operatorNamespace: operators
+    appNamespace: dev

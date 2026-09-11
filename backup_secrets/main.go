@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -11,9 +12,7 @@ import (
 )
 
 type BackupSecretsConfig struct {
-	Namespace      string
-	ExtraNamespace string
-	Secret         struct {
+	Secret struct {
 		Name           string
 		ResticPass     string
 		GcsProject     string
@@ -47,32 +46,14 @@ func NewBackupSecrets(config *BackupSecretsConfig) *BackupSecrets {
 }
 
 func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
-	// Create main namespace
-	namespace, err := corev1.NewNamespace(
-		ctx,
-		bsr.Config.Namespace,
-		&corev1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(bsr.Config.Namespace),
-			},
-		},
-	)
+	// Namespaces are NOT created here — the namespace-bootstrap stack owns
+	// them (just gcp-pulumi apply-namespaces, docs/pulumi-setup.md §5). Probe
+	// it so a missing bootstrap fails at preview, before any secret work, and
+	// take the app namespace from its appNamespace export — the single
+	// source of truth for where the Secret lives.
+	probe, appNamespace, err := nsprobe.Probe(ctx, "appNamespace")
 	if err != nil {
-		return fmt.Errorf("error creating main namespace: %w", err)
-	}
-
-	// Create extra namespace
-	extraNamespace, err := corev1.NewNamespace(
-		ctx,
-		bsr.Config.ExtraNamespace,
-		&corev1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(bsr.Config.ExtraNamespace),
-			},
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("error creating extra namespace: %w", err)
+		return err
 	}
 
 	// Read the content of the file specified by Filepath
@@ -87,7 +68,7 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 		ctx,
 		bsr.Config.Secret.Name,
 		&corev1.SecretArgs{
-			Metadata: bsr.createMetadata(),
+			Metadata: bsr.createMetadata(appNamespace),
 			StringData: pulumi.StringMap{
 				"resticPass": pulumi.String(
 					bsr.Config.Secret.ResticPass,
@@ -100,22 +81,22 @@ func (bsr *BackupSecrets) Install(ctx *pulumi.Context) error {
 				),
 			},
 		},
-		pulumi.DependsOn([]pulumi.Resource{namespace, extraNamespace}),
+		pulumi.DependsOn([]pulumi.Resource{probe}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating backup secret: %w", err)
 	}
 
 	ctx.Export("secretName", secret.Metadata.Name())
-	ctx.Export("namespaceName", namespace.Metadata.Name())
-	ctx.Export("extraNamespaceName", extraNamespace.Metadata.Name())
 	return nil
 }
 
-func (bsr *BackupSecrets) createMetadata() *metav1.ObjectMetaArgs {
+func (bsr *BackupSecrets) createMetadata(
+	namespace pulumi.StringInput,
+) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
 		Name:      pulumi.String(bsr.Config.Secret.Name),
-		Namespace: pulumi.String(bsr.Config.Namespace),
+		Namespace: namespace.ToStringPtrOutput(),
 	}
 }
 

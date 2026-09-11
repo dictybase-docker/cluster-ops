@@ -1,5 +1,9 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIK50eb/HRJbwUR9KZNfv4cJMyQLlZVsL0uX3uzlB88QSSQDjx5R/oOy7Ia4q4onYdiURYd1NdYt2/8ZGIm50MCOED76A/0qCLn6xZ0JbSMcoB9y9CX9u5qM9srjF7mv9y4K0useYofLiXCg=
 # Production configuration for the CloudNativePG operator ( Helm chart
-# cloudnative-pg into the `operators` namespace ).
+# cloudnative-pg ). The operator namespace is NOT set here — the program
+# takes it from the namespace-bootstrap stack's operatorsNamespace export
+# (internal/nsprobe), so apply 'just gcp-pulumi apply-namespaces' first.
 # No secrets required. The stack is initialized on first deploy by
 # `just postgres deploy-operator` (gcp-pulumi ensure-stack), which adds the
 # cluster-env KMS secretsprovider + encryptedkey to this file.
@@ -16,4 +20,3 @@ config:
       version: 0.29.0
     image:
       tag: 1.30.0
-    namespace: operators

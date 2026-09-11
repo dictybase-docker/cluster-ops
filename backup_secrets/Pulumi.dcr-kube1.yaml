@@ -1,7 +1,8 @@
 # Production configuration template for backup_secrets
-# This stack creates namespaces `prod` and `operators` (arangodb-operator's Helm
-# release does not create its own namespace) plus Secret `dictycr`, consumed by
-# arangodb-backup and arangodb-restore. Apply this stack FIRST, before
+# This stack creates Secret `dictycr` in namespace `prod`, consumed by
+# arangodb-backup and arangodb-restore. It creates NO namespaces — the
+# namespace-bootstrap stack owns `prod` and `operators` (just gcp-pulumi
+# apply-namespaces, docs/pulumi-setup.md §5). Apply this stack BEFORE
 # arangodb-operator / arangodb-cluster / create-arangodb-databases.
 #
 # Configure required secrets before deployment via:
@@ -18,7 +19,5 @@
 # bucketSecret.key and this repo's set convention.
 config:
   backup_secrets:properties:
-    namespace: prod
-    extraNamespace: operators
     secret:
       name: dictycr

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -17,7 +18,6 @@ type ChartConfig struct {
 type ArangoDBConfig struct {
 	Chart                 ChartConfig
 	DeploymentReplication bool
-	Namespace             string
 }
 
 type ArangoDBOperator struct {
@@ -40,11 +40,18 @@ func NewArangoDBOperator(config *ArangoDBConfig) *ArangoDBOperator {
 }
 
 func (aro *ArangoDBOperator) Install(ctx *pulumi.Context) error {
+	// The namespace comes from the namespace-bootstrap stack's export — probe
+	// it so a missing bootstrap fails at preview, not inside the Helm create.
+	probe, namespace, err := nsprobe.Probe(ctx, "operatorsNamespace")
+	if err != nil {
+		return err
+	}
+
 	// Install the Helm chart
-	_, err := helm.NewRelease(ctx, "arangodb-operator", &helm.ReleaseArgs{
+	_, err = helm.NewRelease(ctx, "arangodb-operator", &helm.ReleaseArgs{
 		Chart:     pulumi.String(aro.Config.Chart.Name),
 		Version:   pulumi.String(aro.Config.Chart.Version),
-		Namespace: pulumi.String(aro.Config.Namespace),
+		Namespace: namespace.ToStringPtrOutput(),
 		RepositoryOpts: helm.RepositoryOptsArgs{
 			Repo: pulumi.String(aro.Config.Chart.Repository),
 		},
@@ -61,7 +68,7 @@ func (aro *ArangoDBOperator) Install(ctx *pulumi.Context) error {
 				},
 			},
 		},
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{probe}))
 	if err != nil {
 		return fmt.Errorf("failed to install Helm chart: %w", err)
 	}

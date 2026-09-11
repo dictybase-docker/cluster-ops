@@ -7,4 +7,3 @@ config:
       version: 0.22.0
     image:
       tag: 1.24.0
-    namespace: operators

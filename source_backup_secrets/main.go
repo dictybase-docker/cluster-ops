@@ -4,11 +4,11 @@
 //
 // It is deliberately a separate Pulumi project from backup_secrets:
 //
-//   - backup_secrets owns namespaces `prod`/`operators` and Secret `dictycr`,
-//     the NEW project's own ongoing-backup identity. A second stack of that
-//     same program would fight over those Namespace resources.
-//   - This program creates only a Secret. Namespace `prod` must already exist,
-//     which it does once `just arangodb configure-backup-secrets` has run.
+//   - backup_secrets creates Secret `dictycr`, the NEW project's own
+//     ongoing-backup identity. The namespaces `prod`/`operators` are owned
+//     by the namespace-bootstrap stack — no secret program creates them.
+//   - This program creates only a Secret and probes namespace-bootstrap, so
+//     it fails at preview when the app namespace is missing.
 //
 // The key NAMES are identical to `dictycr` (resticPass / gcsProject /
 // gcsCredentials) because the arangodb-restore Job reads those exact key
@@ -20,14 +20,15 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// SourceBackupSecretsConfig mirrors backup_secrets' config shape minus
-// ExtraNamespace, since this program creates no namespaces.
+// SourceBackupSecretsConfig mirrors backup_secrets' config shape. This
+// program creates no namespaces — namespace-bootstrap owns them.
 type SourceBackupSecretsConfig struct {
 	Namespace string
 	Secret    struct {
@@ -104,6 +105,13 @@ func (sbs *SourceBackupSecrets) Install(ctx *pulumi.Context) error {
 		return fmt.Errorf("invalid source_backup_secrets config: %w", err)
 	}
 
+	// Probe namespace-bootstrap so a missing app namespace fails at preview,
+	// before any secret work.
+	probe, _, err := nsprobe.Probe(ctx, "appNamespace")
+	if err != nil {
+		return err
+	}
+
 	// Read at `pulumi up` time on the machine running the deploy, the same
 	// os.ReadFile pattern backup_secrets uses. The recipe stores an absolute
 	// path because `pulumi -C` changes the working directory.
@@ -127,6 +135,7 @@ func (sbs *SourceBackupSecrets) Install(ctx *pulumi.Context) error {
 				),
 			},
 		},
+		pulumi.DependsOn([]pulumi.Resource{probe}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating source backup secret: %w", err)
