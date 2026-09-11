@@ -22,7 +22,7 @@ just postgres configure-backup
 - Creates service account `postgres-backup-sa` (idempotent)
 - Grants `roles/storage.objectAdmin` with an IAM condition pinning it to `projects/_/buckets/cloudnative-pg-backup-<project-id>` — nothing else in the project
 - Mints `credentials/<project-id>/postgres-backup-sa.json` — **skipped if the file already exists** (key creation is not idempotent; old keys keep working until deleted). Audit with `gcloud iam service-accounts keys list --iam-account postgres-backup-sa@<project>.iam.gserviceaccount.com --project <project>`
-- Ensures namespaces `prod` and `operators` (idempotent `kubectl apply`; coexists with the ArangoDB `backup_secrets` stack)
+- Creates no namespaces — the `namespace-bootstrap` stack owns `prod`/`operators` ([`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces))
 - Sets `properties.clusters[0].cluster.backup.bucket` and `properties.backupSecret.filepath` on the cluster stack
 
 ## Flags
@@ -33,7 +33,6 @@ just postgres configure-backup
 | `--project` | No | `$PROJECT_ID` | From the cluster env |
 | `--sa-name` | No | `postgres-backup-sa` | Created/reused in this project |
 | `--key-file` | No | `credentials/<project>/<sa-name>.json` | Read at `pulumi up` time by the cluster stack |
-| `--namespace` | No | `prod` | Namespace ensured alongside `operators` |
 | `--stack` | No | `$PULUMI_STACK` | No dev fallback |
 
 ## Service Account Pairs — Do Not Mix

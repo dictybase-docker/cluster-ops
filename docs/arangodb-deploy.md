@@ -35,8 +35,8 @@ For experienced users. Full details in sections below.
 # Enter cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
-# 1. Configure backup secrets (creates the backup SA + key, namespaces,
-#    and Secret dictycr). Project/key default from the cluster env:
+# 1. Configure backup secrets (creates the backup SA + key, and Secret
+#    dictycr). Project/key default from the cluster env:
 #    $PROJECT_ID and credentials/$PROJECT_ID/backup-gcs-sa.json
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 
@@ -106,14 +106,14 @@ Prints PASS/FAIL for: node count, architecture (amd64), taint, Ready status. Sho
 
 ## 2. Prerequisites
 
-Creates the backup service account + key, namespaces `prod`/`operators`, and Secret `dictycr`. The operator needs the `operators` namespace to exist.
+Creates the backup service account + key, and Secret `dictycr`. The namespaces (`prod`/`operators`) come from the `namespace-bootstrap` stack, applied during [pulumi setup §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces).
 → [Backup details](reference/arangodb/backup.md)
 
 ```bash
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 ```
 
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
+Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
 
 ---
 

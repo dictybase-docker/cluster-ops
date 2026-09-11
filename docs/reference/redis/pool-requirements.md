@@ -30,5 +30,5 @@ Checks and prints PASS/FAIL for node count (expect 3), taint, Ready status; zone
 
 Before installing Redis ([§2](../../redis-deploy.md#2-install-redis)):
 
-1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass)
+1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)
 2. **Namespace `prod`** — ensured by `just postgres configure-backup` or created by hand (`kubectl create namespace prod`) when PostgreSQL is not installed

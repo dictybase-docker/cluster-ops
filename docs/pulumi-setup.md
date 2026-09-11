@@ -1,14 +1,14 @@
 # Pulumi Setup Guide
 
-Wires Pulumi to a healthy kOps cluster and applies the first data-plane resource (StorageClass).
+Wires Pulumi to a healthy kOps cluster and applies the first data-plane resources (StorageClass, then the shared namespaces).
 
-Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). You arrive on the least-privilege `kops-cluster-creator` identity — §3 rotates to `sa-manager` because the backend bootstrap needs admin roles the creator lacks. Stops after StorageClass — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
+Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). You arrive on the least-privilege `kops-cluster-creator` identity — §3 rotates to `sa-manager` because the backend bootstrap needs admin roles the creator lacks. Stops after the shared namespaces — ArangoDB install, import, and teardown live in [`arangodb-deploy.md`](arangodb-deploy.md).
 
 **Status**:
 - **Pulumi backend recipes** (`just gcp-pulumi`, KMS, `pulumi-manager`): aligned with this repo as of 2026-08-24.
 - **Live `pulumi up` of a new backend**: not re-run in the session that rewrote this file.
 
-**You end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, cluster env file with `PULUMI_*` vars, StorageClass `dictycr-balanced`. Takes ~10–20 minutes once the cluster is Ready.
+**You end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, cluster env file with `PULUMI_*` vars, StorageClass `dictycr-balanced`, shared namespaces `operators` + app namespace via the `namespace-bootstrap` stack. Takes ~10–20 minutes once the cluster is Ready.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Y
 - [2. Cluster Environment](#2-cluster-environment)
 - [3. Backend Bootstrap](#3-backend-bootstrap)
 - [4. Switching Between Clusters](#4-switching-between-clusters)
-- [5. First Apply — StorageClass](#5-first-apply--storageclass)
+- [5. First Apply — StorageClass and Namespaces](#5-first-apply--storageclass-and-namespaces)
 - [6. Setup Complete](#6-setup-complete)
 - [7. Related Documents](#7-related-documents)
 
@@ -46,8 +46,9 @@ just cluster-env --env <env> --cluster <cluster-name>
 # 5. Bootstrap the backend (once per GCP project)
 just gcp-pulumi bootstrap-backend
 
-# 6. Apply and verify StorageClass
+# 6. Apply and verify StorageClass, then the shared namespaces
 just gcp-pulumi apply-storageclass
+just gcp-pulumi apply-namespaces
 
 # 7. Continue with arangodb-deploy.md
 ```
@@ -124,16 +125,23 @@ just gcp-pulumi check-backend
 
 ---
 
-## 5. First Apply — StorageClass
+## 5. First Apply — StorageClass and Namespaces
 
-Deploy once per cluster, before any database stack — ArangoDB, CNPG, Redis, and MinIO all request these classes. The recipe applies the stack, then verifies exactly the classes `Pulumi.<stack>.yaml` declares.
+Deploy once per cluster, before any database stack. StorageClass first — ArangoDB, CNPG, Redis, and MinIO all request these classes, and PVCs referencing a missing class stay Pending indefinitely.
 → [StorageClass detail](reference/pulumi/storage-class.md)
 
 ```bash
 just gcp-pulumi apply-storageclass
 ```
 
-No per-environment flags: prod (two classes) and lab/local (one class, `rancher.io/local-path`) both derive their expectations from the stack file, so a missing `dictycr-ssd` on prod fails instead of passing silently.
+Then the shared namespaces — the `operators` namespace every operator Helm release targets, and the app namespace (`prod` on production clusters). The namespace-bootstrap stack is the only writer of both; operator programs and secret stacks probe it instead of creating namespaces themselves.
+→ [Namespaces detail](reference/pulumi/namespaces.md)
+
+```bash
+just gcp-pulumi apply-namespaces
+```
+
+No per-environment flags: both recipes derive their expectations from `Pulumi.<stack>.yaml`, so prod and lab verify correctly without flags.
 
 Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#6-database-storage--retrieval).
 
@@ -148,6 +156,7 @@ Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/s
 | Pulumi state | `gs://pulumi-state-<project-id>` |
 | Stack name | `$PULUMI_STACK` (defaults to the cluster name) |
 | StorageClass | `dictycr-balanced` (and `dictycr-ssd` for prod) |
+| Shared namespaces | `operators` + `prod` (prod cluster) via the `namespace-bootstrap` stack |
 
 Next: production ArangoDB in [`arangodb-deploy.md`](arangodb-deploy.md).
 
@@ -167,6 +176,7 @@ Tearing down only the StorageClass is destructive if PVCs still reference it —
 - [Stack configuration](reference/pulumi/stack-config.md)
 - [Recipe reference](reference/pulumi/recipes.md)
 - [StorageClass](reference/pulumi/storage-class.md)
+- [Shared namespaces](reference/pulumi/namespaces.md)
 
 **Other documentation:**
 

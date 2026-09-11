@@ -35,10 +35,9 @@ just cluster-env --env prod --cluster <prod-cluster>
 just postgres check-pool
 
 # 2. Backup wiring — creates the postgres-backup-sa service account + key,
-#    ensures namespaces prod/operators, and stores the backup bucket +
-#    key path on the cluster stack. Project/bucket default from the
-#    cluster env: $PROJECT_ID, bucket cloudnative-pg-backup-$PROJECT_ID,
-#    key credentials/$PROJECT_ID/postgres-backup-sa.json
+#    and stores the backup bucket + key path on the cluster stack.
+#    Project/bucket default from the cluster env: $PROJECT_ID, bucket
+#    cloudnative-pg-backup-$PROJECT_ID, key credentials/$PROJECT_ID/postgres-backup-sa.json
 just postgres configure-backup
 
 # 3. Deploy the CloudNativePG operator
@@ -93,14 +92,14 @@ Prints PASS/FAIL for: node count, taint, Ready status. Shows zone spread.
 
 ## 2. Prerequisites
 
-Creates the `postgres-backup-sa` service account + JSON key, grants it object-admin on the backup bucket only, ensures namespaces `prod`/`operators`, and stores the backup wiring on the cluster stack. This is a **different service account** from ArangoDB's `backup-gcs-sa` — its IAM condition is pinned to the CloudNativePG bucket, and the two are not interchangeable.
+Creates the `postgres-backup-sa` service account + JSON key, grants it object-admin on the backup bucket only, and stores the backup wiring on the cluster stack. This is a **different service account** from ArangoDB's `backup-gcs-sa` — its IAM condition is pinned to the CloudNativePG bucket, and the two are not interchangeable.
 → [Backup details](reference/postgres/backup.md)
 
 ```bash
 just postgres configure-backup
 ```
 
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass).
+Also required: CSI + StorageClasses and the shared namespaces from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces).
 
 ---
 

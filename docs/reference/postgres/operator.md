@@ -23,8 +23,8 @@ just postgres deploy-operator
 ## Configuration
 
 - **No secrets required**
-- `--namespace` defaults to `operators`
-- The Helm release does **not** create the namespace — `configure-backup` (or the `backup_secrets` stack, when ArangoDB is installed) must have ensured it
+- `--namespace` defaults to `operators`, and must equal the `namespace-bootstrap` stack's `operatorsNamespace` export — the run stops on a mismatch (the release cannot deploy anywhere else)
+- The program probes the `namespace-bootstrap` stack (`StackReference` + a live `GetNamespace` read via `internal/nsprobe`) — preview fails with a pointer to [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces) when the namespace is missing. Nothing in this stack creates a namespace.
 
 ## Wait Budget
 

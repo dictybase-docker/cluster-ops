@@ -13,6 +13,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 | Quorum loss after drain | No PDB | Drain via operator |
 | Loader Pending after taint | Job has no toleration | Add toleration or use `stateless-web` |
 | App cannot connect | Wrong host or secret | [Cluster details](cluster.md) DNS + Secret `backend` |
+| `deploy-operator` fails `namespaces "operators" not found` | `namespace-bootstrap` stack never applied | `just gcp-pulumi apply-namespaces` ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)) |
 | DB Job 401 | Root password mismatch | Secret `arangodb-pass` vs stack config |
 | Backup permission error | Missing bucket or `dictycr` | [Backup details](backup.md) |
 | Recipe exits with "no stack name" | Not inside `just cluster-env`, so `$PULUMI_STACK` unset | Enter cluster shell, or pass `--stack <name>`. Deliberate: prod recipes never fall back to `dev` |
@@ -31,7 +32,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 | `snapshot not found`, or recipe rejects the id | Typo, or `latest` / non-hex value | `just arangodb list-source-snapshots ...` and pass a full id (8–64 lowercase hex) |
 | `confirmTarget must exactly equal` during bootstrap | Hand-edited stack config | Re-run `just arangodb configure-bootstrap ...` |
 | `create-databases` 401 after bootstrap | Restored `_users` replaced `root`, so Secret `arangodb-pass` no longer matches | Run `just arangodb reset-root-password`, then re-run `create-databases` |
-| `configure-source-secrets` fails: namespace `prod` missing | `source_backup_secrets` creates no namespaces by design | Run `just arangodb configure-backup-secrets ...` first ([§2](../../arangodb-deploy.md#2-prerequisites)) |
+| `configure-source-secrets` fails: namespace `prod` missing | `source_backup_secrets` creates no namespaces by design | Run `just gcp-pulumi apply-namespaces` first ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)); `dictycr` then comes from `configure-backup-secrets` ([§2](../../arangodb-deploy.md#2-prerequisites)) |
 | `deploy-backup` aborts naming `dictycr-source` | Backup stack still points at the read-only bootstrap identity | Set the three secret names back to `dictycr`; never back up through the source identity |
 | A later DR drill reads the **source** bucket | Bootstrap overlay was never reset | `just arangodb reset-restore-config` (`bootstrap-from-snapshot` does this from a `trap`) |
 | Restored graphs disappear or get overwritten | Loader Jobs run after a successful bootstrap | Skip loaders unless a database was genuinely absent from the dump ([import details](import.md)) |

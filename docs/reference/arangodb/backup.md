@@ -44,7 +44,7 @@ Flags: `--bucket` (default `restic-arangodb-backup-prod`), `--project` (default 
 
 ## Configure Backup Secrets
 
-`backup_secrets/main.go` creates namespaces `prod` and `operators`, plus Secret `dictycr` from a **local file** on the machine running `pulumi up`.
+`backup_secrets/main.go` creates Secret `dictycr` from a **local file** on the machine running `pulumi up`, placed in the app namespace taken from the `namespace-bootstrap` stack's `appNamespace` export (`prod` on production, `dev` on lab). It creates no namespaces ([`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)).
 
 ```bash
 just arangodb configure-backup-secrets --restic-password '<restic repository password>'
@@ -58,7 +58,7 @@ Inside a `just cluster-env` shell both GCS arguments default: `--gcs-project` to
 1. Runs `ensure-stack`
 2. `pulumi config set-all --path --secret` for `resticPass`, `gcsProject`, `serviceAccount.keyname`, `serviceAccount.filepath`
 3. `preview` → `create-resource`
-4. Prints both namespaces, Secret `dictycr`, and data keys
+4. Verifies the namespace exists (from `namespace-bootstrap`), prints Secret `dictycr` and its data keys
 
 ### `dictycr` is this project's identity only
 
