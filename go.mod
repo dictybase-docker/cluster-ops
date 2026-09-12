@@ -9,7 +9,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
-	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.34.0
+	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.34.1
 	github.com/pulumi/pulumi/sdk/v3 v3.261.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
@@ -174,7 +174,6 @@ require (
 	google.golang.org/genproto v0.0.0-20260715232425-e75dac1f907d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -192,6 +191,7 @@ require (
 	cloud.google.com/go/serviceusage v1.15.0
 	github.com/IBM/fp-go/v2 v2.3.122
 	github.com/pulumi/pulumi-command/sdk v1.2.1
+	google.golang.org/grpc v1.83.2
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
