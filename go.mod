@@ -189,7 +189,7 @@ require (
 
 require (
 	cloud.google.com/go/serviceusage v1.15.0
-	github.com/IBM/fp-go/v2 v2.3.122
+	github.com/IBM/fp-go/v2 v2.3.132
 	github.com/pulumi/pulumi-command/sdk v1.2.1
 	google.golang.org/grpc v1.83.2
 	gopkg.in/yaml.v3 v3.0.1
