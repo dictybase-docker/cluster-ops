@@ -64,6 +64,7 @@ func TestBuildAffinityArgsPoolOnlyLeavesOperatorDefaults(t *testing.T) {
 
 func recoveryCluster(targetTime string) Cluster {
 	return Cluster{
+		Name: testClusterName,
 		Bootstrap: Bootstrap{
 			Database: testClusterName,
 			Owner:    testClusterName,
@@ -123,21 +124,10 @@ func TestBuildExternalClustersArgsNilWithoutRecovery(t *testing.T) {
 	assert.Nil(t, props.buildExternalClustersArgs(Cluster{}))
 }
 
-func TestBuildExternalClustersArgsNilWithoutSourceSecret(t *testing.T) {
+type externalClustersPluginArgs = cnpgv1.ClusterSpecExternalClustersPluginArgs
+
+func TestBuildExternalClustersArgsEmitsPluginSource(t *testing.T) {
 	props := &Properties{}
-	assert.Nil(t, props.buildExternalClustersArgs(recoveryCluster("")))
-}
-
-type googleCredsArgs = cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsArgs
-type appCredsArgs = cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsApplicationCredentialsArgs
-
-func TestBuildExternalClustersArgsEmitsSourceStore(t *testing.T) {
-	props := &Properties{
-		SourceSecret: &BackupSecret{
-			Name: "postgres-source-credentials",
-			Key:  "gcsCredentials",
-		},
-	}
 	out := props.buildExternalClustersArgs(recoveryCluster(""))
 	require.NotNil(t, out)
 	arr, ok := out.(cnpgv1.ClusterSpecExternalClustersArray)
@@ -146,17 +136,67 @@ func TestBuildExternalClustersArgsEmitsSourceStore(t *testing.T) {
 	ext, ok := arr[0].(*cnpgv1.ClusterSpecExternalClustersArgs)
 	require.True(t, ok)
 	assert.Equal(t, pulumi.String(testClusterName), ext.Name)
-	store, ok := ext.BarmanObjectStore.(*cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreArgs)
+	require.NotNil(t, ext.Plugin)
+	plugin, ok := ext.Plugin.(*externalClustersPluginArgs)
 	require.True(t, ok)
+	assert.Equal(t, pulumi.String(BarmanCloudPluginName), plugin.Name)
+	params, ok := plugin.Parameters.(pulumi.StringMap)
+	require.True(t, ok, "Parameters should be a concrete pulumi.StringMap")
 	assert.Equal(
 		t,
-		pulumi.String("gs://pgbackup-devenv/logto"),
-		store.DestinationPath,
+		pulumi.String("logto-source-logto-store"),
+		params["barmanObjectName"],
 	)
-	creds, ok := store.GoogleCredentials.(*googleCredsArgs)
+	assert.Equal(t, pulumi.String(testClusterName), params["serverName"])
+	assert.Nil(t, ext.BarmanObjectStore)
+}
+
+func TestSourceObjectStoreNameDoesNotCollideWithTarget(t *testing.T) {
+	assert.Equal(t, "logto-store", objectStoreNameFor("logto"))
+	assert.Equal(t, "logto-source-logto-store", sourceObjectStoreNameFor("logto", "logto"))
+	assert.NotEqual(
+		t,
+		objectStoreNameFor("logto"),
+		sourceObjectStoreNameFor("logto", "logto"),
+	)
+}
+
+func TestBuildClusterSpecEmitsPluginWALArchiver(t *testing.T) {
+	props := &Properties{}
+	cluster := Cluster{Name: "logto"}
+	spec := props.buildClusterSpec(cluster, "logto-store")
+	require.NotNil(t, spec)
+	arr, ok := spec.Plugins.(cnpgv1.ClusterSpecPluginsArray)
 	require.True(t, ok)
-	appCreds, ok := creds.ApplicationCredentials.(*appCredsArgs)
+	require.Len(t, arr, 1)
+	plugin, ok := arr[0].(*cnpgv1.ClusterSpecPluginsArgs)
 	require.True(t, ok)
-	assert.Equal(t, pulumi.String("postgres-source-credentials"), appCreds.Name)
-	assert.Equal(t, pulumi.String("gcsCredentials"), appCreds.Key)
+	assert.Equal(t, pulumi.String(BarmanCloudPluginName), plugin.Name)
+	walArchiver, ok := plugin.IsWALArchiver.(pulumi.Bool)
+	require.True(t, ok, "IsWALArchiver should be a concrete pulumi.Bool")
+	assert.True(t, bool(walArchiver))
+	params, ok := plugin.Parameters.(pulumi.StringMap)
+	require.True(t, ok, "Parameters should be a concrete pulumi.StringMap")
+	assert.Equal(t, pulumi.String("logto-store"), params["barmanObjectName"])
+	assert.Nil(t, spec.Backup)
+}
+
+func TestBuildScheduledBackupArgsUsesPluginMethod(t *testing.T) {
+	props := &Properties{}
+	args := props.buildScheduledBackupArgs(Cluster{Name: "logto"})
+	require.NotNil(t, args)
+	require.NotNil(t, args.Spec)
+	spec, ok := args.Spec.(*cnpgv1.ScheduledBackupSpecArgs)
+	require.True(t, ok)
+	assert.Equal(t, pulumi.String("plugin"), spec.Method)
+	require.NotNil(t, spec.PluginConfiguration)
+	plugin, ok := spec.PluginConfiguration.(*cnpgv1.ScheduledBackupSpecPluginConfigurationArgs)
+	require.True(t, ok)
+	assert.Equal(t, pulumi.String(BarmanCloudPluginName), plugin.Name)
+	assert.Equal(t, pulumi.Bool(true), spec.Immediate)
+}
+
+func TestObjectStoreNameForSuffixesStore(t *testing.T) {
+	assert.Equal(t, "logto-store", objectStoreNameFor("logto"))
+	assert.Equal(t, "pgbackup-source-store", objectStoreNameFor("pgbackup-source"))
 }

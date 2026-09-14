@@ -4,25 +4,38 @@ import (
 	"fmt"
 	"strconv"
 
+	barmancloudv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/barmancloud/v1"
 	cnpgv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
-	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/storage"
+	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// BarmanCloudPluginName is the CNPG-I plugin identity for the Barman Cloud
+// plugin deployed by the cnpg-backup-plugin stack.
+const BarmanCloudPluginName = "barman-cloud.cloudnative-pg.io"
 
 func (prop *Properties) CreatePostgresCluster(
 	ctx *pulumi.Context,
 	cluster Cluster,
 	secret *corev1.Secret,
 	basicAuthSecret *corev1.Secret,
-	sourceSecret *corev1.Secret,
-	bucket *storage.Bucket,
+	objectStore *barmancloudv1.ObjectStore,
+	sourceObjectStore *barmancloudv1.ObjectStore,
 ) (*cnpgv1.Cluster, error) {
+	// The plugin must be live before the Cluster CR references it — WAL
+	// archiving via a missing plugin fails silently. The stack reference is
+	// also a graph dependency of the Cluster.
+	pluginRef, err := nsprobe.ProbePlugin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	clusterArgs := prop.buildClusterArgs(cluster)
-	depends := []pulumi.Resource{secret, basicAuthSecret, bucket}
-	if sourceSecret != nil {
-		depends = append(depends, sourceSecret)
+	depends := []pulumi.Resource{secret, basicAuthSecret, objectStore, pluginRef}
+	if sourceObjectStore != nil {
+		depends = append(depends, sourceObjectStore)
 	}
 	pgCluster, err := cnpgv1.NewCluster(
 		ctx, cluster.Name,
@@ -66,6 +79,12 @@ func (prop *Properties) buildScheduledBackupArgs(
 			Target:               pulumi.String(cluster.Backup.Target),
 			BackupOwnerReference: pulumi.String("self"),
 			Immediate:            pulumi.Bool(true),
+			// Plugin-based backups (in-tree barmanObjectStore is deprecated
+			// since CNPG 1.26 and removed in 1.31).
+			Method: pulumi.String("plugin"),
+			PluginConfiguration: &cnpgv1.ScheduledBackupSpecPluginConfigurationArgs{
+				Name: pulumi.String(BarmanCloudPluginName),
+			},
 		},
 	}
 }
@@ -75,7 +94,7 @@ func (prop *Properties) buildClusterArgs(cluster Cluster) *cnpgv1.ClusterArgs {
 		ApiVersion: pulumi.String("postgresql.cnpg.io/v1"),
 		Kind:       pulumi.String("Cluster"),
 		Metadata:   prop.buildMetadata(cluster),
-		Spec:       prop.buildClusterSpec(cluster),
+		Spec:       prop.buildClusterSpec(cluster, objectStoreNameFor(cluster.Name)),
 	}
 }
 
@@ -88,6 +107,7 @@ func (prop *Properties) buildMetadata(cluster Cluster) *metav1.ObjectMetaArgs {
 
 func (prop *Properties) buildClusterSpec(
 	cluster Cluster,
+	objectStoreName string,
 ) *cnpgv1.ClusterSpecArgs {
 	return &cnpgv1.ClusterSpecArgs{
 		Instances: pulumi.Int(cluster.Instances),
@@ -104,7 +124,17 @@ func (prop *Properties) buildClusterSpec(
 		ExternalClusters:      prop.buildExternalClustersArgs(cluster),
 		Affinity:              prop.buildAffinityArgs(cluster),
 		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
-		Backup:                prop.buildBackupArgs(cluster),
+		// Plugin-based WAL archiving and backups (in-tree barmanObjectStore
+		// is deprecated since CNPG 1.26 and removed in 1.31).
+		Plugins: cnpgv1.ClusterSpecPluginsArray{
+			&cnpgv1.ClusterSpecPluginsArgs{
+				Name:          pulumi.String(BarmanCloudPluginName),
+				IsWALArchiver: pulumi.Bool(true),
+				Parameters: pulumi.StringMap{
+					"barmanObjectName": pulumi.String(objectStoreName),
+				},
+			},
+		},
 		Managed: &cnpgv1.ClusterSpecManagedArgs{
 			Roles: cnpgv1.ClusterSpecManagedRolesArray{
 				&cnpgv1.ClusterSpecManagedRolesArgs{
@@ -122,42 +152,6 @@ func (prop *Properties) buildClusterSpec(
 				},
 			},
 		},
-	}
-}
-
-func (prop *Properties) buildWalBackupConfigurationArgs(
-	cluster Cluster,
-) *cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs {
-	return &cnpgv1.ClusterSpecBackupBarmanObjectStoreWalArgs{
-		Compression: pulumi.String(cluster.WalBackup.Compression),
-		MaxParallel: pulumi.Int(cluster.WalBackup.MaxParallel),
-	}
-}
-
-func (prop *Properties) buildBackupArgs(
-	cluster Cluster,
-) *cnpgv1.ClusterSpecBackupArgs {
-	return &cnpgv1.ClusterSpecBackupArgs{
-		BarmanObjectStore: &cnpgv1.ClusterSpecBackupBarmanObjectStoreArgs{
-			DestinationPath: pulumi.String(
-				fmt.Sprintf(
-					"gs://%s/%s",
-					cluster.Backup.Bucket,
-					cluster.Backup.BucketPath,
-				),
-			),
-			GoogleCredentials: &cnpgv1.ClusterSpecBackupBarmanObjectStoreGoogleCredentialsArgs{
-				ApplicationCredentials: &cnpgv1.ClusterSpecBackupBarmanObjectStoreGoogleCredentialsApplicationCredentialsArgs{
-					Name: pulumi.String(prop.BackupSecret.Name),
-					Key:  pulumi.String(prop.BackupSecret.Key),
-				},
-			},
-			Wal: prop.buildWalBackupConfigurationArgs(cluster),
-			Data: &cnpgv1.ClusterSpecBackupBarmanObjectStoreDataArgs{
-				Compression: pulumi.String(cluster.WalBackup.Compression),
-			},
-		},
-		RetentionPolicy: pulumi.String(cluster.Backup.Retention),
 	}
 }
 
@@ -198,35 +192,32 @@ func (prop *Properties) buildRecoveryBootstrapArgs(
 	return &cnpgv1.ClusterSpecBootstrapArgs{Recovery: args}
 }
 
-// buildExternalClustersArgs declares the source cluster's barman object
-// store so bootstrap.recovery (and future PITR) can read it. Returns nil
-// when no recovery source is configured.
+// buildExternalClustersArgs declares the source cluster's Barman Cloud
+// plugin object store so bootstrap.recovery can read it. Returns nil when
+// no recovery source is configured. The plugin configuration references an
+// ObjectStore CR that createObjectStore builds alongside the cluster's own.
 func (prop *Properties) buildExternalClustersArgs(
 	cluster Cluster,
 ) cnpgv1.ClusterSpecExternalClustersArrayInput {
 	recovery := cluster.Bootstrap.Recovery
-	if recovery == nil || prop.SourceSecret == nil {
-		// CreateSourceSecret already fails with a clearer message when
+	if recovery == nil {
+		// CreateSourceSecret still fails with a clearer message when
 		// recovery is set but properties.sourceSecret is missing.
 		return nil
-	}
-	appCreds := &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsApplicationCredentialsArgs{
-		Name: pulumi.String(prop.SourceSecret.Name),
-		Key:  pulumi.String(prop.SourceSecret.Key),
 	}
 	return cnpgv1.ClusterSpecExternalClustersArray{
 		&cnpgv1.ClusterSpecExternalClustersArgs{
 			Name: pulumi.String(recovery.SourceCluster),
-			BarmanObjectStore: &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreArgs{
-				DestinationPath: pulumi.String(
-					fmt.Sprintf(
-						"gs://%s/%s",
-						recovery.Bucket,
-						recovery.BucketPath,
+			Plugin: &cnpgv1.ClusterSpecExternalClustersPluginArgs{
+				Name: pulumi.String(BarmanCloudPluginName),
+				Parameters: pulumi.StringMap{
+					"barmanObjectName": pulumi.String(
+						sourceObjectStoreNameFor(cluster.Name, recovery.SourceCluster),
 					),
-				),
-				GoogleCredentials: &cnpgv1.ClusterSpecExternalClustersBarmanObjectStoreGoogleCredentialsArgs{
-					ApplicationCredentials: appCreds,
+					// The backup folder in the source bucket is named after
+					// the SOURCE cluster — without serverName, barman would
+					// look under the target cluster's folder.
+					"serverName": pulumi.String(recovery.SourceCluster),
 				},
 			},
 		},

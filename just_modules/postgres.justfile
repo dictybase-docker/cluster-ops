@@ -143,11 +143,12 @@ check-pool pool="database" node_count="3":
         exit 1
     fi
 
-# Create the backup service account + key, grant it the backup bucket, and
-# store the backup-secret config on the cluster stack. Creates no namespaces —
-# the namespace-bootstrap stack owns them (just gcp-pulumi apply-namespaces).
+# Create the backup service account + key, grant it the backup bucket, store
+# the backup-secret config on the cluster stack, and deploy the Barman Cloud
+# CNPG-I plugin (composite tail). Creates no namespaces — the
+# namespace-bootstrap stack owns them (just gcp-pulumi apply-namespaces).
 # One command for: SA create (idempotent), IAM condition, key mint (skips if
-# the file exists), ensure-stack, config set.
+# the file exists), ensure-stack, config set, plugin deploy.
 # Usage: just postgres configure-backup [--bucket <name>] [--project <id>] [--stack <name>]
 [arg("bucket", long="bucket", short="b", help="Backup GCS bucket name (default cloudnative-pg-backup-<project-id>; created later by the cluster stack)")]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID from the cluster env)")]
@@ -219,6 +220,11 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
         --key 'properties.clusters[0].cluster.backup.bucket' --value "$BUCKET"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'properties.backupSecret.filepath' --value "$KEY_FILE"
+
+    # Composite mode: also deploy the Barman Cloud CNPG-I plugin — the
+    # cluster stack probes its stack and archives WAL through it, so the
+    # plugin must exist before deploy-cluster. Idempotent.
+    just postgres deploy-backup-plugin --stack "$STACK"
 
     echo
     echo "Next: just postgres deploy-operator"
@@ -359,6 +365,67 @@ deploy-operator stack="" namespace="operators" retries="60" interval="10":
     kubectl get crd clusters.postgresql.cnpg.io
 
     echo "Operator ready in namespace '$NS'."
+
+# Deploy the Barman Cloud CNPG-I backup plugin, then wait for the rollout.
+# Runs standalone, or as the composite tail of configure-backup. Requires
+# namespace-bootstrap (operators ns), cert-manager (pre-configured by the
+# kops bootstrap), and a RUNNING CNPG operator — install order is
+# deploy-operator BEFORE this recipe. The cluster stack probes this stack —
+# apply it BEFORE deploy-cluster.
+# Usage: just postgres deploy-backup-plugin [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('postgres')]
+[no-cd]
+deploy-backup-plugin stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="cnpg-backup-plugin"
+    STACK=$(just postgres _require-stack --stack "{{ stack }}")
+
+    # Guard: the operator namespace must exist (namespace-bootstrap stack).
+    if ! kubectl get namespace operators >/dev/null 2>&1; then
+        echo "Error: namespace 'operators' does not exist — run 'just gcp-pulumi apply-namespaces' (pulumi setup §5) first." >&2
+        exit 1
+    fi
+
+    # The plugin requires a RUNNING CNPG operator (>= 1.26) and cert-manager.
+    # deploy-operator installs the former; the kops bootstrap pre-configures
+    # the latter.
+    if ! kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+        echo "Error: CNPG operator not installed — run 'just postgres deploy-operator' first (the plugin requires a running operator)." >&2
+        exit 1
+    fi
+    if ! kubectl get crd certificaterequests.cert-manager.io >/dev/null 2>&1; then
+        echo "Error: cert-manager not installed — the plugin needs it for CNPG-I TLS certificates. It is pre-configured by the kops bootstrap; check docs/reference/kops/bootstrap.md." >&2
+        exit 1
+    fi
+
+    echo "Deploying $FOLDER (stack '$STACK') into namespace 'operators'..."
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo "Waiting for the plugin deployment to roll out..."
+    for i in $(seq 1 "{{ retries }}"); do
+        if kubectl -n operators rollout status deploy/plugin-barman-cloud --timeout=10s >/dev/null 2>&1; then
+            echo "plugin-barman-cloud rolled out (namespace operators)."
+            break
+        fi
+        echo "Waiting for plugin-barman-cloud (try $i/{{ retries }})..."
+        sleep "{{ interval }}"
+        if [[ "$i" == "{{ retries }}" ]]; then
+            echo "Error: plugin-barman-cloud never rolled out." >&2
+            kubectl -n operators get deploy,pods -l app.kubernetes.io/instance=plugin-barman-cloud 2>&1 || \
+                kubectl -n operators get deploy,pods 2>&1
+            exit 1
+        fi
+    done
+
+    echo "Checking the ObjectStore CRD is registered..."
+    kubectl get crd objectstores.barmancloud.cnpg.io
+
+    echo "Barman Cloud plugin ready."
 
 # Deploy the PostgreSQL 16 Cluster, then wait for every instance pod.
 # One command for: ensure-stack, app-password secret, preview, apply, readiness.
