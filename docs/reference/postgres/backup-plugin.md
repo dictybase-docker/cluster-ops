@@ -25,7 +25,7 @@ just postgres deploy-backup-plugin
 ## Behavior
 
 - Runs `ensure-stack` → `preview` → `create-resource` on `cnpg-backup-plugin`
-- Waits for the `plugin-barman-cloud` deployment to roll out
+- Waits for one ready plugin pod selected by `app.kubernetes.io/name=plugin-barman-cloud`; Pulumi Kubernetes provider autogenerates the Helm release name and may therefore suffix its deployment name
 - Asserts the `objectstores.barmancloud.cnpg.io` CRD exists
 
 Runs standalone, or as the composite tail of [`configure-backup`](backup.md) — one command wires identity, config, and plugin.
