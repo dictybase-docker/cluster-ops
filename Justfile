@@ -187,13 +187,13 @@ build-publish-backup-image ref user pass: setup
 
 # --- Cluster Operations ---
 
-# Create a per-cluster env file for credentials and local paths only.
+# Create a per-cluster env file and asdf tool-version manifest.
 # Does NOT write Git-owned identity (cluster name, state store, project, kubernetesVersion).
 # Those live in config/kops/<cluster>/*.yaml.
 # Usage: just create-cluster-env --env <env> --cluster <cluster> --project <id> [--credentials <sa.json>] [--ssh-key <pub>] [--kubeconfig <path>] [--force yes]
-# Writes PROJECT_ID plus any credential/path args that exist. Credentials may be
-# added later with just cluster-cred. Does not write Git-owned identity
-# (KOPS_CLUSTER_NAME, KOPS_STATE_STORE, BUCKET_NAME, KUBERNETES_VERSION).
+# Writes PROJECT_ID, the asdf manifest selector, plus any credential/path args that exist.
+# Credentials may be added later with just cluster-cred. Does not write Git-owned
+# identity (KOPS_CLUSTER_NAME, KOPS_STATE_STORE, BUCKET_NAME, KUBERNETES_VERSION).
 [arg("env", long="env", short="e", help="Environment name (dev, staging, prod)")]
 [arg("cluster", long="cluster", short="c", help="Short cluster name; used only as the env filename suffix")]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
@@ -236,6 +236,8 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         echo "ERROR: Could not determine GCP project id. Pass --project <id>, set PROJECT_ID, or define 'project:' in config/kops/${cluster_name}/cluster.yaml."
         exit 1
     fi
+
+    tool_versions_file=".tool-versions.${env_name}.${cluster_name}"
 
     cred="{{ credentials }}"
     if [ -z "${cred}" ]; then
@@ -319,6 +321,17 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         pulumi_stack="${cluster_name}"
     fi
 
+    if [[ ! -f "${tool_versions_file}" ]]; then
+        if [[ ! -f ".tool-versions" ]]; then
+            echo "ERROR: .tool-versions not found at the repository root."
+            exit 1
+        fi
+        cp ".tool-versions" "${tool_versions_file}"
+        echo "Created ${tool_versions_file} from .tool-versions"
+    else
+        echo "Using existing ${tool_versions_file}"
+    fi
+
     write_kv() {
         local key="$1" val="$2"
         if [ -z "${val}" ]; then
@@ -337,10 +350,11 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
 
     {
         echo "# Per-cluster operator environment for ${env_name}/${cluster_name}"
-        echo "# PROJECT_ID plus credentials/paths. After bootstrap, cluster identity lives in config/kops/${cluster_name}/."
+        echo "# PROJECT_ID, asdf manifest selector, plus credentials/paths. After bootstrap, cluster identity lives in config/kops/${cluster_name}/."
         echo "# Do not store KOPS_CLUSTER_NAME, KOPS_STATE_STORE, BUCKET_NAME, or KUBERNETES_VERSION here."
         echo "# Gitignored. Do not commit."
         write_kv PROJECT_ID "${project_id}"
+        write_kv ASDF_DEFAULT_TOOL_VERSIONS_FILENAME "${tool_versions_file}"
         write_kv GOOGLE_APPLICATION_CREDENTIALS "${cred}"
         write_kv SSH_KEY "${ssh_key}"
         write_kv KUBECONFIG "${kubeconfig}"
@@ -621,58 +635,3 @@ check-tools skip_asdf="no":
         printf '\033[31m%d tool(s) missing.\033[0m Core tools: package manager. Pinned tools: just install-tools\n' "$failures"
         exit 1
     fi
-
-# Create a per-cluster asdf pin file by copying the repo default.
-# Refuses to overwrite an existing pin file. Inside an active cluster-env
-# shell, --env/--cluster default from CLUSTER_ENV/CLUSTER_NAME.
-# Usage: just pin-tool-versions [--env <env>] [--cluster <cluster-name>]
-[arg("env", long="env", short="e", help="Environment name (defaults to CLUSTER_ENV env var)")]
-[arg("cluster", long="cluster", short="c", help="Short cluster name (defaults to CLUSTER_NAME env var)")]
-[group('setup-tools')]
-pin-tool-versions env="" cluster="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{ justfile_directory() }}"
-
-    env_name="{{ env }}"
-    [ -z "${env_name}" ] && env_name="${CLUSTER_ENV:-}"
-    cluster_name="{{ cluster }}"
-    [ -z "${cluster_name}" ] && cluster_name="${CLUSTER_NAME:-}"
-
-    if [ -z "${env_name}" ] || [ -z "${cluster_name}" ]; then
-        echo "ERROR: --env and --cluster are required outside an active cluster-env shell." >&2
-        exit 1
-    fi
-
-    src=".tool-versions"
-    dest=".tool-versions.${env_name}.${cluster_name}"
-    envfile=".env.${env_name}.${cluster_name}"
-
-    if [[ ! -f "$src" ]]; then
-        echo "Error: $src not found at repo root." >&2
-        exit 1
-    fi
-    if [[ -e "$dest" ]]; then
-        echo "Error: $dest already exists — refusing to overwrite." >&2
-        echo "Edit it directly, or delete it first if you want a fresh copy from $src." >&2
-        exit 1
-    fi
-
-    cp "$src" "$dest"
-    echo "Created $dest from $src."
-    echo
-
-    line="ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=$dest"
-    if [[ -f "$envfile" ]] && grep -q '^ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=' "$envfile"; then
-        echo "$envfile already pins a tool-versions file:"
-        grep '^ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=' "$envfile" | sed 's/^/    /'
-        echo "Update it to: $line"
-    else
-        echo "Add this line to $envfile:"
-        echo "    $line"
-    fi
-    echo
-    echo "Then re-enter the shell and install:"
-    echo "    exit"
-    echo "    just cluster-env --env ${env_name} --cluster ${cluster_name}"
-    echo "    just install-tools"
