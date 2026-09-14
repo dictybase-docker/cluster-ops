@@ -1,0 +1,15 @@
+# Production configuration for the plugin-barman-cloud Helm chart (CNPG-I
+# backup plugin) into the `operators` namespace.
+# No secrets required. The stack is initialized on first deploy by
+# `just postgres deploy-backup-plugin` (gcp-pulumi ensure-stack), which adds
+# the cluster-env KMS secretsprovider + encryptedkey to this file.
+#
+# Prerequisites: namespace-bootstrap (operators ns) + cert-manager
+# (pre-configured by the kops bootstrap). The chart's default image tracks
+# the chart appVersion, so chart version 0.8.0 deploys plugin v0.15.x.
+config:
+  cnpg-backup-plugin:properties:
+    chart:
+      name: plugin-barman-cloud
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.8.0

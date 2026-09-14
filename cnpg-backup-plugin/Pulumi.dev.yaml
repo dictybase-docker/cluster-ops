@@ -1,0 +1,10 @@
+# Lab configuration for the plugin-barman-cloud Helm chart (CNPG-I backup
+# plugin) into the `operators` namespace.
+# No secrets required. Initialized on first deploy by
+# `just postgres deploy-backup-plugin --stack dev`.
+config:
+  cnpg-backup-plugin:properties:
+    chart:
+      name: plugin-barman-cloud
+      repository: https://cloudnative-pg.github.io/charts
+      version: 0.8.0

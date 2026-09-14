@@ -1,0 +1,7 @@
+name: cnpg-backup-plugin
+runtime: go
+description: Deploys the Barman Cloud CNPG-I backup plugin for CloudNativePG
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

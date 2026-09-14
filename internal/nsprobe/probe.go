@@ -73,3 +73,37 @@ func Probe(ctx *pulumi.Context, key string) (*corev1.Namespace, pulumi.StringInp
 	}
 	return ns, name, nil
 }
+
+// Plugin constants — single-writer house invariants.
+const (
+	// PluginStackProject is the Pulumi project that deploys the
+	// plugin-barman-cloud Helm chart.
+	PluginStackProject = "cnpg-backup-plugin"
+	// PluginDeploymentName is the Helm release and Deployment name; the
+	// deploy-backup-plugin recipe verifies it is live after applying.
+	PluginDeploymentName = "plugin-barman-cloud"
+	// PluginNamespace is the operator namespace the plugin lives in.
+	PluginNamespace = "operators"
+)
+
+// ProbePlugin asserts that the cnpg-backup-plugin stack was deployed for
+// this cluster, failing the preview otherwise, and returns the stack
+// reference so callers can add it to DependsOn. A bare-name live deployment
+// read is not used here — namespaced resources cannot be read unambiguously
+// by name alone, and the plugin stack being present is the contract: the
+// deploy-backup-plugin recipe verifies the rollout right after applying.
+func ProbePlugin(ctx *pulumi.Context) (*pulumi.StackReference, error) {
+	ref, err := pulumi.NewStackReference(
+		ctx,
+		fmt.Sprintf("organization/%s/%s", PluginStackProject, ctx.Stack()),
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cannot reference the cnpg-backup-plugin stack: %w — "+
+				"run 'just postgres deploy-backup-plugin' first (docs/reference/postgres/backup-plugin.md)",
+			err,
+		)
+	}
+	return ref, nil
+}
