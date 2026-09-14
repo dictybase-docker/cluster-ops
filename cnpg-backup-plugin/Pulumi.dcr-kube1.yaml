@@ -1,3 +1,5 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIGm0n3qkGTTQGreFd5aZOwVjuliNpUWQfj/cch6QTTsSSQDjx5R/EhdgvCURRxUYjq7oedwyYpF36Xx7MnnptnatlDRlthm9AUgf5yIthbHc5r3B9hWH7rPTpt62E6WYqvXGK0kx/jgeXL8=
 # Production configuration for the plugin-barman-cloud Helm chart (CNPG-I
 # backup plugin) into the `operators` namespace.
 # No secrets required. The stack is initialized on first deploy by
