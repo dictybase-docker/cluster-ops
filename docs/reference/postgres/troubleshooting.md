@@ -5,9 +5,10 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `deploy-operator` fails `namespaces "operators" not found` | `namespace-bootstrap` stack never applied on this cluster | Run `just gcp-pulumi apply-namespaces` ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)) |
+| `deploy-cluster` fails `cannot reference the cnpg-backup-plugin stack` | Barman Cloud plugin stack never applied | Run `just postgres deploy-backup-plugin` (composite tail of `configure-backup`; [plugin details](backup-plugin.md)) |
 | `Error: no stack name` | Recipe run outside the cluster-env sub-shell | Enter `just cluster-env --env prod --cluster <prod-cluster>` first, or pass `--stack <name>` |
 | Instance pods Pending | No node matches `pool=database` + taint toleration, or pool missing | `just postgres check-pool`; see [pool requirements](pool-requirements.md) |
-| `ImagePullBackOff` on instances | Bad operand tag in `Pulumi.dcr-kube1.yaml` | Use a tag from the [official catalog](https://github.com/cloudnative-pg/postgres-containers/blob/main/Debian/ClusterImageCatalog-bookworm.yaml); tag must start with the major version |
+| `ImagePullBackOff` on instances | Bad operand tag in `Pulumi.dcr-kube1.yaml` | Use a `standard`/`minimal` flavor tag published on [GHCR](https://github.com/cloudnative-pg/postgres-containers#image-tags); tag must start with the major version. `system` is deprecated — do not use it |
 | Cluster stuck in `Setting up primary` | Backup Secret `postgres-backup-credentials` missing or key file unreadable at `pulumi up` time | Re-run `just postgres configure-backup`; check `properties.backupSecret.filepath` on the stack |
 | Backups fail with `storage.objects.create` denied | Wrong SA key (ArangoDB `backup-gcs-sa`), or IAM condition pinned to a different bucket name | Use the `postgres-backup-sa` key; re-run `configure-backup` if the bucket name changed — the condition is pinned to the exact bucket |
 | `ScheduledBackup` rejected / never runs | Schedule not in six-field cron format | Use `0 0 0 * * *` (seconds first) — see [backup](backup.md#schedule-format) |

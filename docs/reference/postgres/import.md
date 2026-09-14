@@ -26,8 +26,8 @@ just postgres configure-source \
 
 The next `deploy-cluster` then:
 
-1. Creates Secret `postgres-source-credentials` (content of the reader key, under `gcsCredentials`)
-2. Adds an `externalClusters` entry named after the source cluster, pointing at `gs://<bucket>/<bucketPath>` with those credentials
+1. Creates Secret `postgres-source-credentials` (content of the reader key, under `gcsCredentials`) plus a read-only **ObjectStore** CR for the source bucket, named `<source-cluster>-store`
+2. Adds an `externalClusters` entry named after the source cluster, referencing that ObjectStore via the Barman Cloud plugin config
 3. Sets `bootstrap.recovery.source` to the same name — the first instance replays the source backup instead of running initdb
 
 ## Flags

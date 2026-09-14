@@ -9,8 +9,11 @@ Applies the `cloudnative-pg-cluster` stack (`Pulumi.dcr-kube1.yaml`) and creates
 1. GCS backup bucket `cloudnative-pg-backup-<project-id>` (versioning on, 58-day soft-delete, 65-day lifecycle delete, **`ForceDestroy: true`**)
 2. Secret `postgres-backup-credentials` — content of the `postgres-backup-sa` JSON key under key `gcsCredentials`
 3. Secret `logto-app` (`kubernetes.io/basic-auth`) — username `logto`, password from `--app-password`
-4. `Cluster postgresql.cnpg.io/v1` — 1 instance, PostgreSQL **16**, data PVC on `dictycr-balanced`, pool placement
-5. `ScheduledBackup` — daily base backup to the bucket (see [backup](backup.md))
+4. `ObjectStore` CR (`barmancloud.cnpg.io/v1`, `<cluster>-store`) — plugin backup wiring: destination path, GCS credentials reference, WAL compression/parallelism, `retentionPolicy` (see [backup](backup.md), [plugin](backup-plugin.md))
+5. `Cluster postgresql.cnpg.io/v1` — 1 instance, PostgreSQL **16** (`standard` image, [details](#postgresql-16)), data PVC on `dictycr-balanced`, pool placement; `spec.plugins` marks the Barman Cloud plugin as WAL archiver
+6. `ScheduledBackup` — daily base backup, `method: plugin` (see [backup](backup.md))
+
+The program also probes the Barman Cloud plugin stack (`cnpg-backup-plugin`) — a missing plugin fails `preview` instead of silently breaking WAL archiving.
 
 ## Command
 
@@ -57,4 +60,4 @@ No streaming replication: a pod/node failure means downtime until Kubernetes res
 
 ## PostgreSQL 16
 
-The operand image is pinned to the immutable official-catalog tag `16.15-202608240846-system-bookworm` — major version stays **16**; only the patch-level timestamp moves. Current tags come from the [official bookworm catalog](https://github.com/cloudnative-pg/postgres-containers/blob/main/Debian/ClusterImageCatalog-bookworm.yaml). Operator-major compatibility (1.30.x supports PG 14–18) is what constrains upgrades; bump the tag in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`.
+The operand image is pinned to the immutable official tag `16.15-202609101440-standard-trixie` — **`standard`** flavor on Debian trixie; major version stays **16**, only the patch-level timestamp moves. The `system` flavor is deprecated (it exists only to keep the removed in-tree Barman support alive) — do not go back to it. Tag discovery: list the [official catalog tags](https://github.com/cloudnative-pg/postgres-containers#image-tags) on GHCR, e.g. via `https://ghcr.io/v2/cloudnative-pg/postgresql/tags/list`. Operator-major compatibility (1.30.x supports PG 14–18) is what constrains upgrades; bump the tag in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`.

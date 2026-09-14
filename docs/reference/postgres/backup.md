@@ -4,18 +4,21 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 
 ## What It Does
 
-Two layers, both created by `deploy-cluster` — no separate backup stack:
+Backups run through the **Barman Cloud CNPG-I plugin** — the in-tree `barmanObjectStore` support is deprecated since CNPG 1.26 and removed in 1.31. Two layers, both created by `deploy-cluster`:
 
 1. **WAL archiving** — continuous, to `gs://cloudnative-pg-backup-<project-id>/logto`, gzip, max 3 parallel streams (point-in-time recovery window)
-2. **ScheduledBackup** — daily base backup (`0 0 0 * * *`), targeted at the primary, `immediate: true` so the first backup starts right after creation, `backupOwnerReference: self` so old backups are garbage-collected with the resource
+2. **ScheduledBackup** — daily base backup (`0 0 0 * * *`), `method: plugin`, targeted at the primary, `immediate: true` so the first backup starts right after creation, `backupOwnerReference: self` so old backups are garbage-collected with the resource
 
-Retention inside the cluster spec is `60d`; the bucket additionally enforces a 65-day lifecycle delete.
+The plugin reads an **`ObjectStore` CR** (`barmancloud.cnpg.io/v1`, name `<cluster>-store`) created by the cluster stack; `retentionPolicy: 60d` lives on the ObjectStore, and the bucket additionally enforces a 65-day lifecycle delete.
+→ [Plugin details](backup-plugin.md)
 
 ## Prerequisites Command
 
 ```bash
 just postgres configure-backup
 ```
+
+Composite tail: after the SA/key/config steps it also runs [`deploy-backup-plugin`](backup-plugin.md) so one command wires identity, config, and plugin.
 
 ## Behavior
 
@@ -24,6 +27,7 @@ just postgres configure-backup
 - Mints `credentials/<project-id>/postgres-backup-sa.json` — **skipped if the file already exists** (key creation is not idempotent; old keys keep working until deleted). Audit with `gcloud iam service-accounts keys list --iam-account postgres-backup-sa@<project>.iam.gserviceaccount.com --project <project>`
 - Creates no namespaces — the `namespace-bootstrap` stack owns `prod`/`operators` ([`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces))
 - Sets `properties.clusters[0].cluster.backup.bucket` and `properties.backupSecret.filepath` on the cluster stack
+- Deploys the Barman Cloud plugin (composite tail) — see [backup-plugin](backup-plugin.md)
 
 ## Flags
 

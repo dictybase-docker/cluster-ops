@@ -4,7 +4,7 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 
 ## PostgreSQL Resource Shape
 
-Stack: `cloudnative-pg-cluster`, image `ghcr.io/cloudnative-pg/postgresql:16.15-202608240846-system-bookworm` (multi-arch)
+Stack: `cloudnative-pg-cluster`, image `ghcr.io/cloudnative-pg/postgresql:16.15-202609101440-standard-trixie` (multi-arch)
 
 | Component | Count | Disk |
 |-----------|-------|------|
@@ -36,7 +36,7 @@ Checks and prints PASS/FAIL for:
 
 ## Prerequisites
 
-Before installing PostgreSQL ([§3](../../postgres-deploy.md#3-install-postgresql)):
+Before installing PostgreSQL ([§2](../../postgres-deploy.md#2-install-postgresql)):
 
 1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)
 2. **Namespaces** — `prod` and `operators`, ensured by `just postgres configure-backup`
