@@ -4,7 +4,7 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 
 ## Mindset & Durable Blueprint
 
-The blueprint — the canonical manifest bundle at `config/kops/<cluster>/*.yaml` — is durable in Git. SA keys and the per-cluster env file stay on the operator machine (gitignored). GCE compute instances are transient. Recreation is fully declarative and reproducible.
+The blueprint — the canonical manifest bundle at `config/kops/<cluster>/*.yaml` — is durable in Git. SA keys, the per-cluster env file, and the per-cluster tool manifest stay on the operator machine (gitignored). GCE compute instances are transient. Recreation is fully declarative and reproducible.
 
 > **Note on single-file `instancegroups.yaml` replace:** the manifest schema (`v1alpha2`) is verified cross-version compatible — `kops replace -f` accepts both files on kops v1.29.2 and v1.36.1. Full end-to-end re-creation from Git is still pending a first live-target run.
 
@@ -17,7 +17,8 @@ The blueprint — the canonical manifest bundle at `config/kops/<cluster>/*.yaml
 | SSH keypair (`credentials/<project>/k8sVM*`) | Yes | Local files reused across cycles |
 | Service account keys (`credentials/<project>/*.json`) | Yes | GCP service accounts and JSON keys persist |
 | Named gcloud configs (`~/.config/gcloud/configurations/config_<project>-*`) | Yes | Machine-local; clean with [`cleanup-gcloud-config`](#optional-delete-local-gcloud-configurations) |
-| Per-cluster env file (`.env.<env>.<cluster>`) | Yes | Gitignored local credentials/paths; recreate with `just create-cluster-env` if missing |
+| Per-cluster env file (`.env.<env>.<cluster>`) | Yes | Gitignored credentials, paths, and tool-manifest selector; recreate with `just create-cluster-env` if missing |
+| Per-cluster tool manifest (`.tool-versions.<env>.<cluster>`) | Yes | Gitignored tool pins; `create-cluster-env` preserves it and recreates it from `.tool-versions` only when missing |
 | **GCE compute instances** (control-plane + workers) | No Destroyed | Transient VMs |
 | **Boot disks & etcd volumes** | No Destroyed | Deleted with the instances |
 
@@ -65,7 +66,7 @@ The active configuration is never deleted — `gcloud` refuses to delete the act
 
 ## Caveats
 
-- **kOps version pinning** — pins live in `.tool-versions`. Upgrade kOps through dedicated review PRs ([tool versions](tool-versions.md#upgrading-kops)).
+- **kOps version pinning** — cluster pins live in `.tool-versions.<env>.<cluster>`. Upgrade kOps through dedicated review PRs ([tool versions](tool-versions.md#upgrading-kops)).
 - **GCP quotas** — frequent create/delete cycles can trigger API rate limits.
 
 ## Bringing It Back

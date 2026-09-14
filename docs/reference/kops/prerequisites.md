@@ -40,6 +40,6 @@ Once the env shell is active, install and verify the asdf-pinned tools in one ca
 
 ## Two Stores, One Handoff
 
-Until the first YAML exists, the operator env file `.env.<env>.<cluster>` holds `PROJECT_ID` plus credentials and local paths.
+Until the first YAML exists, the operator env file `.env.<env>.<cluster>` holds `PROJECT_ID`, credentials, local paths, and the active asdf manifest selector.
 
 From [bootstrap](bootstrap.md) onward, cluster identity and shape live **only** in Git under `config/kops/<cluster>/`. Do not copy kops name, state store, bucket name, or Kubernetes version back into the env file — see [cluster env](cluster-env.md#after-bootstrap--git-takes-identity).

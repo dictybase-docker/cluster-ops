@@ -26,41 +26,40 @@ Equivalent to running `just install-tools` then `just check-tools` separately; u
 
 ## Which Manifest Is Used
 
-`just install-tools` reads the asdf manifest named by `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME`:
+`create-cluster-env` creates `.tool-versions.<env>.<cluster>` when that file does not exist, then writes its name to `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` in the matching env file. Existing per-cluster manifests are preserved unchanged.
 
-| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | Manifest used |
-|---------------------------------------|---------------|
-| Unset | `.tool-versions` at the repo root (dev default) |
-| Set | That per-cluster file, e.g. `.tool-versions.<env>.<cluster>` |
+`just prepare-tools` therefore uses the active cluster manifest:
 
-Both files are gitignored.
+| Environment | Manifest used |
+|-------------|---------------|
+| Inside `cluster-env` | `.tool-versions.<env>.<cluster>` |
+| Outside `cluster-env` | `.tool-versions` at the repo root |
 
-> This pin file is **not** `spec.kubernetesVersion`. The cluster's Kubernetes version lives in Git after bootstrap. Use a per-cluster pin file only when that cluster needs a different `kops`/`kubectl` binary than the repo default.
+Both files are gitignored. `--force yes` replaces the env file but never overwrites an existing per-cluster manifest.
 
-## Create a Per-Cluster Pin File
+> This tool manifest is **not** `spec.kubernetesVersion`. The cluster's Kubernetes version lives in Git after bootstrap. The per-cluster manifest pins the command-line tools used for that cluster.
 
-Inside an active `cluster-env` shell, `--env`/`--cluster` default from `CLUSTER_ENV`/`CLUSTER_NAME`:
+## Per-Cluster Manifest Lifecycle
 
-```bash
-just pin-tool-versions
-```
-
-Outside that shell, or to target a different cluster, pass both explicitly:
+Create and activate the cluster environment:
 
 ```bash
-just pin-tool-versions --env <env> --cluster <cluster-name>
-```
-
-Copies `.tool-versions` to `.tool-versions.<env>.<cluster>`, refuses to overwrite an existing pin file, and prints the exact `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=` line to add to your env file.
-
-Then re-enter the shell so the new variable is exported, and install:
-
-```bash
-exit
+just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>
 just cluster-env --env <env> --cluster <cluster-name>
-just install-tools
+```
+
+Then install and verify the versions selected for that cluster:
+
+```bash
+just prepare-tools
+```
+
+To change one tool later, run `just install-tool` inside the active cluster shell. It updates the active per-cluster manifest and installs the requested version:
+
+```bash
+just install-tool --name <tool> --version <version>
 ```
 
 ## Upgrading kOps
 
-Pins live in `.tool-versions`. Upgrade kOps through dedicated review PRs — the binary version changes which commands `plan-cluster` and `update-cluster` run, see [day-2 operations](day2-operations.md#kops-version-behavior).
+Pins live in `.tool-versions.<env>.<cluster>`. Upgrade kOps through dedicated review PRs — the binary version changes which commands `plan-cluster` and `update-cluster` run, see [day-2 operations](day2-operations.md#kops-version-behavior).

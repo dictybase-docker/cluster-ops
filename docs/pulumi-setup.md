@@ -8,7 +8,7 @@ Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Y
 - **Pulumi backend recipes** (`just gcp-pulumi`, KMS, `pulumi-manager`): aligned with this repo as of 2026-08-24.
 - **Live `pulumi up` of a new backend**: not re-run in the session that rewrote this file.
 
-**You end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, cluster env file with `PULUMI_*` vars, StorageClass `dictycr-balanced`, shared namespaces `operators` + app namespace via the `namespace-bootstrap` stack. Takes ~10–20 minutes once the cluster is Ready.
+**You end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, cluster env file with `PULUMI_*` vars and the per-cluster tool-manifest selector, plus the selected `.tool-versions.<env>.<cluster>` manifest, StorageClass `dictycr-balanced`, shared namespaces `operators` + app namespace via the `namespace-bootstrap` stack. Takes ~10–20 minutes once the cluster is Ready.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ For experienced users. Full details in sections below.
 # 1. Verify toolchain
 just gcp-pulumi check-tools
 
-# 2. Generate the cluster env file
+# 2. Generate the cluster env file and select its tool manifest
 just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 
 # 3. Enter the cluster shell — stay here for everything below
@@ -77,7 +77,7 @@ just gcp-pulumi check-tools
 
 ## 2. Cluster Environment
 
-`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` holding every `PULUMI_*` variable, inferred from `config/kops/<cluster-name>/cluster.yaml`.
+`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` holding every `PULUMI_*` variable and the active asdf manifest selector. It also creates `.tool-versions.<env>.<cluster>` from the repo manifest when missing, while preserving an existing per-cluster manifest.
 → [Cluster env detail](reference/pulumi/cluster-env.md)
 
 ```bash
@@ -114,7 +114,7 @@ just gcp-pulumi bootstrap-backend
 
 ## 4. Switching Between Clusters
 
-Each env file carries its own kubeconfig, credentials, KMS URI, and backend URL. Leave one sub-shell and enter another — there is no in-place switch. `pulumi login` is machine-wide, so verify the wiring after every switch.
+Each env file carries its own kubeconfig, credentials, KMS URI, backend URL, and tool-manifest selector. Leave one sub-shell and enter another — there is no in-place switch. `pulumi login` is machine-wide, so verify the wiring after every switch.
 → [Switching detail](reference/pulumi/switching-clusters.md) · [Backend verification](reference/pulumi/check-backend.md)
 
 ```bash

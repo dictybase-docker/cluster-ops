@@ -4,7 +4,7 @@ Back to: [Pulumi Setup Guide](../../pulumi-setup.md)
 
 ## How It Works
 
-Each cluster env file carries its own kubeconfig, credentials, KMS URI, and `PULUMI_BACKEND_URL`. Switching clusters means leaving one sub-shell and entering another — there is no in-place switch.
+Each cluster env file carries its own kubeconfig, credentials, KMS URI, `PULUMI_BACKEND_URL`, and tool-manifest selector. Switching clusters means leaving one sub-shell and entering another — there is no in-place switch; re-entry also selects the other cluster's tool versions.
 
 ```bash
 exit

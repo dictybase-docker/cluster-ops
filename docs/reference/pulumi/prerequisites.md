@@ -37,7 +37,13 @@ Same baseline as the kOps guide — see [README §1.2](../../kops-setup.md#1-pre
 | `yq` | system | Yes — derives StorageClass expectations in `apply-storageclass` |
 | `direnv` | system | Optional |
 
-Install a pinned version into the active tool-versions file:
+`create-cluster-env` creates or preserves the per-cluster tool-versions file and records its selector in the env file. After `cluster-env` activation, install and verify it with:
+
+```bash
+just prepare-tools
+```
+
+To change one version later, update the active per-cluster manifest with:
 
 ```bash
 just install-tool --name <tool> --version <version>

@@ -41,7 +41,7 @@ Run them in that order for a greenfield project. Each guide opens with a Quick R
 # Verify the core system tools (go, just, gcloud, jq, envsubst)
 just check-tools --skip-asdf yes
 
-# Create and enter a per-cluster environment
+# Create the per-cluster environment and tool manifest, then enter the environment
 just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>
 just cluster-env --env <env> --cluster <cluster-name>
 ```
@@ -59,6 +59,7 @@ Then follow [`docs/kops-setup.md`](docs/kops-setup.md).
 | [`docs/reference/`](docs/reference/) | Detailed reference for each guide |
 | `credentials/<project-id>/` | Service-account keys and SSH keypairs (gitignored) |
 | `clusters/<project-id>/` | Exported kubeconfigs (gitignored) |
+| `.tool-versions.<env>.<cluster>` | Per-cluster asdf tool pins (gitignored) |
 | [`gcs-files/`](gcs-files/) | API lists and IAM role definitions |
 
 Pulumi projects live in their own top-level directories ([`storage_class/`](storage_class/), [`arangodb-cluster/`](arangodb-cluster/), [`arangodb-backup/`](arangodb-backup/), …), each with `Pulumi.yaml` plus one `Pulumi.<stack>.yaml` per cluster.
@@ -67,7 +68,7 @@ Pulumi projects live in their own top-level directories ([`storage_class/`](stor
 
 - **One GCP project = one cluster.** Credentials and kubeconfigs are scoped per project ID.
 - **Git owns cluster identity** after bootstrap. If the env file and `cluster.yaml` disagree, Git wins.
-- **Secrets never land in Git.** Per-cluster env files, SA keys, and kubeconfigs are gitignored; Pulumi secrets are KMS-encrypted in state.
+- **Cluster-local setup stays out of Git.** Per-cluster env files, asdf manifests, SA keys, and kubeconfigs are gitignored; Pulumi secrets are KMS-encrypted in state.
 - **Recipes fail loudly.** Production recipes require an explicit stack or cluster name rather than falling back to a default.
 - **Documentation follows [`docs/STYLE.md`](docs/STYLE.md)** — lean guides linked to `docs/reference/` detail docs.
 

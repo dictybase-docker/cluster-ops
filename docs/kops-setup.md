@@ -8,7 +8,7 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 - **Tooling & Infrastructure recipes**: Tested 2026-08-20.
 - **Declarative Git bundle (`_starter`) schema**: Verified cross-version compatible on kops v1.29.2 (dev) and v1.36.1 (prod) — both `cluster.yaml` and `instancegroups.yaml` pass `kops replace` validation on both binaries. Full end-to-end re-creation still pending first live-target run.
 
-> **Two stores, one handoff.** Before [§3](#3-cluster-bootstrap-git-native-flow), the env file `.env.<env>.<cluster>` holds `PROJECT_ID`, credentials, and local paths. From §3 onward, cluster identity and shape live **only** in Git under `config/kops/<cluster>/`.
+> **Two stores, one handoff.** Before [§3](#3-cluster-bootstrap-git-native-flow), the env file `.env.<env>.<cluster>` holds `PROJECT_ID`, credentials, local paths, and the per-cluster tool-manifest selector. From §3 onward, cluster identity and shape live **only** in Git under `config/kops/<cluster>/`.
 >
 > **Once inside `just cluster-env`, stop typing `--cluster` and `--project`.** The shell exports `CLUSTER_NAME` and `PROJECT_ID`; every recipe below reads them automatically. Pass a flag only to override, or when a command runs *before* you've entered the shell.
 
@@ -91,7 +91,7 @@ just gcp-cluster generate-ssh-key
 
 `cluster-env` exports `PROJECT_ID` and `CLUSTER_NAME` (session-only — never written to the gitignored `.env.<env>.<cluster>` file) for the life of that shell. `prepare-tools` folds `install-tools` + `check-tools`. `generate-ssh-key` needs no flags once `PROJECT_ID` is set.
 
-Stay inside the `cluster-env` sub-shell for the rest of this guide. Need a different `kops`/`kubectl` binary for this cluster than the repo default? Use `just pin-tool-versions` ([tool versions](reference/kops/tool-versions.md#create-a-per-cluster-pin-file)).
+Stay inside the `cluster-env` sub-shell for the rest of this guide. `create-cluster-env` creates or preserves the per-cluster asdf manifest, so `prepare-tools` uses this cluster's tool versions automatically.
 
 ---
 
@@ -175,7 +175,7 @@ just gcp-cluster k9s
 
 ## 6. Disposable Cluster Lifecycle
 
-VMs are transient; the blueprint in Git plus local credentials are durable. Teardown destroys compute only — the state bucket, SSH keypair, SA keys, and env file all survive.
+VMs are transient; the blueprint in Git plus local cluster configuration are durable. Teardown destroys compute only — the state bucket, SSH keypair, SA keys, env file, and per-cluster tool manifest all survive.
 → [Teardown](reference/kops/teardown.md) · [What survives](reference/kops/teardown.md#what-survives-teardown)
 
 ```bash

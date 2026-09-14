@@ -6,6 +6,8 @@ Back to: [Pulumi Setup Guide](../../pulumi-setup.md)
 
 `create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` file — see [README §1.3](../../kops-setup.md#1-prerequisites--execution-context).
 
+It also creates `.tool-versions.<env>.<cluster>` from the repo `.tool-versions` manifest when that per-cluster file is missing. Existing per-cluster manifests are preserved unchanged. The env file records the manifest selector so `prepare-tools` installs the correct versions after `cluster-env` activation.
+
 It infers the GCP project from `config/kops/<cluster-name>/cluster.yaml` (or `$PROJECT_ID` / `--project`) and fills in canonical paths.
 
 ## Command
@@ -19,6 +21,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 | Variable | Default |
 |----------|---------|
 | `PROJECT_ID` | `spec.project` in `config/kops/<cluster-name>/cluster.yaml` |
+| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | `.tool-versions.<env>.<cluster>`; created from `.tool-versions` when missing |
 | `GOOGLE_APPLICATION_CREDENTIALS` | `credentials/<project-id>/kops-cluster-creator.json` |
 | `KUBECONFIG` | `clusters/<cluster-name>/kubeconfig` |
 | `PULUMI_GCP_CREDENTIALS` | `credentials/<project-id>/pulumi-manager.json` |
@@ -36,7 +39,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> \
   --force yes
 ```
 
-If `PROJECT_ID` cannot be inferred, the recipe stops and says so rather than guessing.
+If `PROJECT_ID` cannot be inferred, the recipe stops and says so rather than guessing. With `--force yes`, the env file is replaced, but an existing `.tool-versions.<env>.<cluster>` file is never overwritten.
 
 ## Environment Variable Contract
 

@@ -10,13 +10,13 @@ Until Git YAML exists, the operator environment lives in one **per-cluster env f
 - Plain `VAR=value` lines — no `export` prefix.
 - `just cluster-env` auto-exports them via `set -a`.
 
-Use it for what you need **before** [bootstrap](bootstrap.md): `PROJECT_ID`, credential paths, kubeconfig path, SSH public key, optional asdf pin file, later Pulumi paths.
+Use it for what you need **before** [bootstrap](bootstrap.md): `PROJECT_ID`, credential paths, kubeconfig path, SSH public key, the active asdf tool manifest, and later Pulumi paths.
 
 > Do **not** put cluster credentials in `.envrc`. `.envrc` is not the per-cluster credential store.
 
 ## Create and Activate
 
-Create the file as soon as you know the environment name, short cluster name, and GCP project. The `sa-manager` JSON is **not** required yet — that comes in [service accounts](service-accounts.md).
+Create the file as soon as you know the environment name, short cluster name, and GCP project. This also creates `.tool-versions.<env>.<cluster>` from the repo manifest when that per-cluster file does not already exist. The `sa-manager` JSON is **not** required yet — that comes in [service accounts](service-accounts.md).
 
 ```bash
 just create-cluster-env \
@@ -59,7 +59,7 @@ Set these as you go; they never move to Git.
 | `SA_MANAGER_KEY` | [Service accounts](service-accounts.md) | Path to `sa-manager.json` (optional; same file as GAC at first) |
 | `KUBECONFIG` | [File isolation](file-isolation.md) | Exported kubeconfig path |
 | `SSH_KEY` | [File isolation](file-isolation.md#ssh-keypair) | Node SSH **public** key |
-| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Tool versions](tool-versions.md) | Optional per-cluster asdf pin file |
+| `ASDF_DEFAULT_TOOL_VERSIONS_FILENAME` | [Tool versions](tool-versions.md) | Per-cluster asdf manifest selected by `create-cluster-env` |
 | `PULUMI_GCP_CREDENTIALS` | [`pulumi-setup.md`](../../pulumi-setup.md) | Path to `pulumi-manager.json` |
 | `PULUMI_SECRET_PROVIDER` | [`pulumi-setup.md`](../../pulumi-setup.md) | `gcpkms://…` URI |
 | `PULUMI_BACKEND_URL` | [`pulumi-setup.md`](../../pulumi-setup.md) | Pulumi state bucket |
@@ -84,5 +84,5 @@ Day-2 recipes still accept `--cluster` / `--project` / `--state` on the command 
 `just gcp-cluster bootstrap-bundle` is the handoff. It writes `metadata.name`, `spec.project`, and `spec.configBase` into `config/kops/<cluster>/cluster.yaml`. From that point:
 
 - Edit identity and shape in YAML, then commit.
-- Leave the env file as credentials + local paths + `PROJECT_ID` (still useful as a `--project` default).
+- Leave the env file as credentials + local paths + `PROJECT_ID` + the asdf manifest selector (still useful as a `--project` default).
 - If `PROJECT_ID` and `spec.project` ever disagree, **Git wins**. Fix the env file or pass `--project` explicitly.

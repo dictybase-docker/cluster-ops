@@ -12,7 +12,7 @@ The one step that genuinely can't be folded — a shell that just exited (or nev
 just cluster-env --env <env> --cluster <cluster-name>
 ```
 
-Recreate the env file first if it is gone:
+Recreate the env file first if it is gone. `create-cluster-env` also recreates the per-cluster tool manifest when missing and preserves it when it already exists:
 
 ```bash
 just create-cluster-env --env <env> --cluster <cluster-name> \
