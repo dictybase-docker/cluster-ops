@@ -12,20 +12,18 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// Backup is the Schema for the backups API
+// A Backup resource is a request for a PostgreSQL backup by the user.
 type Backup struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput  `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput  `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaOutput `pulumi:"metadata"`
-	// Specification of the desired behavior of the backup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec BackupSpecOutput `pulumi:"spec"`
-	// Most recently observed status of the backup. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status BackupStatusPtrOutput `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion pulumi.StringOutput `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringOutput `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaOutput `pulumi:"metadata"`
+	Spec     BackupSpecOutput        `pulumi:"spec"`
+	Status   BackupStatusPtrOutput   `pulumi:"status"`
 }
 
 // NewBackup registers a new resource with the given unique name, arguments, and options.
@@ -37,9 +35,6 @@ func NewBackup(ctx *pulumi.Context,
 
 	args.ApiVersion = pulumi.StringPtr("postgresql.cnpg.io/v1")
 	args.Kind = pulumi.StringPtr("Backup")
-	if args.Spec != nil {
-		args.Spec = args.Spec.ToBackupSpecPtrOutput().ApplyT(func(v *BackupSpec) *BackupSpec { return v.Defaults() }).(BackupSpecPtrOutput)
-	}
 	opts = utilities.PkgResourceDefaultOpts(opts)
 	var resource Backup
 	err := ctx.RegisterResource("kubernetes:postgresql.cnpg.io/v1:Backup", name, args, &resource, opts...)
@@ -73,30 +68,24 @@ func (BackupState) ElementType() reflect.Type {
 }
 
 type backupArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-	// Specification of the desired behavior of the backup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec *BackupSpec `pulumi:"spec"`
-	// Most recently observed status of the backup. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status *BackupStatus `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion *string `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind *string `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata *metav1.ObjectMeta `pulumi:"metadata"`
+	Spec     *BackupSpec        `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a Backup resource.
 type BackupArgs struct {
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
 	ApiVersion pulumi.StringPtrInput
-	Kind       pulumi.StringPtrInput
-	Metadata   metav1.ObjectMetaPtrInput
-	// Specification of the desired behavior of the backup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec BackupSpecPtrInput
-	// Most recently observed status of the backup. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status BackupStatusPtrInput
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringPtrInput
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaPtrInput
+	Spec     BackupSpecPtrInput
 }
 
 func (BackupArgs) ElementType() reflect.Type {
@@ -122,6 +111,56 @@ func (i *Backup) ToBackupOutputWithContext(ctx context.Context) BackupOutput {
 	return pulumi.ToOutputWithContext(ctx, i).(BackupOutput)
 }
 
+// BackupArrayInput is an input type that accepts BackupArray and BackupArrayOutput values.
+// You can construct a concrete instance of `BackupArrayInput` via:
+//
+//	BackupArray{ BackupArgs{...} }
+type BackupArrayInput interface {
+	pulumi.Input
+
+	ToBackupArrayOutput() BackupArrayOutput
+	ToBackupArrayOutputWithContext(context.Context) BackupArrayOutput
+}
+
+type BackupArray []BackupInput
+
+func (BackupArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Backup)(nil)).Elem()
+}
+
+func (i BackupArray) ToBackupArrayOutput() BackupArrayOutput {
+	return i.ToBackupArrayOutputWithContext(context.Background())
+}
+
+func (i BackupArray) ToBackupArrayOutputWithContext(ctx context.Context) BackupArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(BackupArrayOutput)
+}
+
+// BackupMapInput is an input type that accepts BackupMap and BackupMapOutput values.
+// You can construct a concrete instance of `BackupMapInput` via:
+//
+//	BackupMap{ "key": BackupArgs{...} }
+type BackupMapInput interface {
+	pulumi.Input
+
+	ToBackupMapOutput() BackupMapOutput
+	ToBackupMapOutputWithContext(context.Context) BackupMapOutput
+}
+
+type BackupMap map[string]BackupInput
+
+func (BackupMap) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Backup)(nil)).Elem()
+}
+
+func (i BackupMap) ToBackupMapOutput() BackupMapOutput {
+	return i.ToBackupMapOutputWithContext(context.Background())
+}
+
+func (i BackupMap) ToBackupMapOutputWithContext(ctx context.Context) BackupMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(BackupMapOutput)
+}
+
 type BackupOutput struct{ *pulumi.OutputState }
 
 func (BackupOutput) ElementType() reflect.Type {
@@ -136,32 +175,74 @@ func (o BackupOutput) ToBackupOutputWithContext(ctx context.Context) BackupOutpu
 	return o
 }
 
-func (o BackupOutput) ApiVersion() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Backup) pulumi.StringPtrOutput { return v.ApiVersion }).(pulumi.StringPtrOutput)
+// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+func (o BackupOutput) ApiVersion() pulumi.StringOutput {
+	return o.ApplyT(func(v *Backup) pulumi.StringOutput { return v.ApiVersion }).(pulumi.StringOutput)
 }
 
-func (o BackupOutput) Kind() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Backup) pulumi.StringPtrOutput { return v.Kind }).(pulumi.StringPtrOutput)
+// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+func (o BackupOutput) Kind() pulumi.StringOutput {
+	return o.ApplyT(func(v *Backup) pulumi.StringOutput { return v.Kind }).(pulumi.StringOutput)
 }
 
+// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 func (o BackupOutput) Metadata() metav1.ObjectMetaOutput {
 	return o.ApplyT(func(v *Backup) metav1.ObjectMetaOutput { return v.Metadata }).(metav1.ObjectMetaOutput)
 }
 
-// Specification of the desired behavior of the backup.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o BackupOutput) Spec() BackupSpecOutput {
 	return o.ApplyT(func(v *Backup) BackupSpecOutput { return v.Spec }).(BackupSpecOutput)
 }
 
-// Most recently observed status of the backup. This data may not be up to
-// date. Populated by the system. Read-only.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o BackupOutput) Status() BackupStatusPtrOutput {
 	return o.ApplyT(func(v *Backup) BackupStatusPtrOutput { return v.Status }).(BackupStatusPtrOutput)
 }
 
+type BackupArrayOutput struct{ *pulumi.OutputState }
+
+func (BackupArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Backup)(nil)).Elem()
+}
+
+func (o BackupArrayOutput) ToBackupArrayOutput() BackupArrayOutput {
+	return o
+}
+
+func (o BackupArrayOutput) ToBackupArrayOutputWithContext(ctx context.Context) BackupArrayOutput {
+	return o
+}
+
+func (o BackupArrayOutput) Index(i pulumi.IntInput) BackupOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) *Backup {
+		return vs[0].([]*Backup)[vs[1].(int)]
+	}).(BackupOutput)
+}
+
+type BackupMapOutput struct{ *pulumi.OutputState }
+
+func (BackupMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Backup)(nil)).Elem()
+}
+
+func (o BackupMapOutput) ToBackupMapOutput() BackupMapOutput {
+	return o
+}
+
+func (o BackupMapOutput) ToBackupMapOutputWithContext(ctx context.Context) BackupMapOutput {
+	return o
+}
+
+func (o BackupMapOutput) MapIndex(k pulumi.StringInput) BackupOutput {
+	return pulumi.All(o, k).ApplyT(func(vs []interface{}) *Backup {
+		return vs[0].(map[string]*Backup)[vs[1].(string)]
+	}).(BackupOutput)
+}
+
 func init() {
 	pulumi.RegisterInputType(reflect.TypeOf((*BackupInput)(nil)).Elem(), &Backup{})
+	pulumi.RegisterInputType(reflect.TypeOf((*BackupArrayInput)(nil)).Elem(), BackupArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*BackupMapInput)(nil)).Elem(), BackupMap{})
 	pulumi.RegisterOutputType(BackupOutput{})
+	pulumi.RegisterOutputType(BackupArrayOutput{})
+	pulumi.RegisterOutputType(BackupMapOutput{})
 }

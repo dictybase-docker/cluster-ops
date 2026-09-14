@@ -23,16 +23,70 @@ func (m *module) Construct(ctx *pulumi.Context, name, typ, urn string) (r pulumi
 	switch typ {
 	case "kubernetes:postgresql.cnpg.io/v1:Backup":
 		r = &Backup{}
+	case "kubernetes:postgresql.cnpg.io/v1:BackupList":
+		r = &BackupList{}
+	case "kubernetes:postgresql.cnpg.io/v1:BackupPatch":
+		r = &BackupPatch{}
 	case "kubernetes:postgresql.cnpg.io/v1:Cluster":
 		r = &Cluster{}
 	case "kubernetes:postgresql.cnpg.io/v1:ClusterImageCatalog":
 		r = &ClusterImageCatalog{}
+	case "kubernetes:postgresql.cnpg.io/v1:ClusterImageCatalogList":
+		r = &ClusterImageCatalogList{}
+	case "kubernetes:postgresql.cnpg.io/v1:ClusterImageCatalogPatch":
+		r = &ClusterImageCatalogPatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:ClusterList":
+		r = &ClusterList{}
+	case "kubernetes:postgresql.cnpg.io/v1:ClusterPatch":
+		r = &ClusterPatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:Database":
+		r = &Database{}
+	case "kubernetes:postgresql.cnpg.io/v1:DatabaseList":
+		r = &DatabaseList{}
+	case "kubernetes:postgresql.cnpg.io/v1:DatabasePatch":
+		r = &DatabasePatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:DatabaseRole":
+		r = &DatabaseRole{}
+	case "kubernetes:postgresql.cnpg.io/v1:DatabaseRoleList":
+		r = &DatabaseRoleList{}
+	case "kubernetes:postgresql.cnpg.io/v1:DatabaseRolePatch":
+		r = &DatabaseRolePatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:FailoverQuorum":
+		r = &FailoverQuorum{}
+	case "kubernetes:postgresql.cnpg.io/v1:FailoverQuorumList":
+		r = &FailoverQuorumList{}
+	case "kubernetes:postgresql.cnpg.io/v1:FailoverQuorumPatch":
+		r = &FailoverQuorumPatch{}
 	case "kubernetes:postgresql.cnpg.io/v1:ImageCatalog":
 		r = &ImageCatalog{}
+	case "kubernetes:postgresql.cnpg.io/v1:ImageCatalogList":
+		r = &ImageCatalogList{}
+	case "kubernetes:postgresql.cnpg.io/v1:ImageCatalogPatch":
+		r = &ImageCatalogPatch{}
 	case "kubernetes:postgresql.cnpg.io/v1:Pooler":
 		r = &Pooler{}
+	case "kubernetes:postgresql.cnpg.io/v1:PoolerList":
+		r = &PoolerList{}
+	case "kubernetes:postgresql.cnpg.io/v1:PoolerPatch":
+		r = &PoolerPatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:Publication":
+		r = &Publication{}
+	case "kubernetes:postgresql.cnpg.io/v1:PublicationList":
+		r = &PublicationList{}
+	case "kubernetes:postgresql.cnpg.io/v1:PublicationPatch":
+		r = &PublicationPatch{}
 	case "kubernetes:postgresql.cnpg.io/v1:ScheduledBackup":
 		r = &ScheduledBackup{}
+	case "kubernetes:postgresql.cnpg.io/v1:ScheduledBackupList":
+		r = &ScheduledBackupList{}
+	case "kubernetes:postgresql.cnpg.io/v1:ScheduledBackupPatch":
+		r = &ScheduledBackupPatch{}
+	case "kubernetes:postgresql.cnpg.io/v1:Subscription":
+		r = &Subscription{}
+	case "kubernetes:postgresql.cnpg.io/v1:SubscriptionList":
+		r = &SubscriptionList{}
+	case "kubernetes:postgresql.cnpg.io/v1:SubscriptionPatch":
+		r = &SubscriptionPatch{}
 	default:
 		return nil, fmt.Errorf("unknown resource type: %s", typ)
 	}

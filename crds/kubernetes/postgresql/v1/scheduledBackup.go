@@ -16,16 +16,14 @@ import (
 type ScheduledBackup struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput  `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput  `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaOutput `pulumi:"metadata"`
-	// Specification of the desired behavior of the ScheduledBackup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ScheduledBackupSpecOutput `pulumi:"spec"`
-	// Most recently observed status of the ScheduledBackup. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status ScheduledBackupStatusPtrOutput `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion pulumi.StringOutput `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringOutput `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaOutput        `pulumi:"metadata"`
+	Spec     ScheduledBackupSpecOutput      `pulumi:"spec"`
+	Status   ScheduledBackupStatusPtrOutput `pulumi:"status"`
 }
 
 // NewScheduledBackup registers a new resource with the given unique name, arguments, and options.
@@ -37,9 +35,6 @@ func NewScheduledBackup(ctx *pulumi.Context,
 
 	args.ApiVersion = pulumi.StringPtr("postgresql.cnpg.io/v1")
 	args.Kind = pulumi.StringPtr("ScheduledBackup")
-	if args.Spec != nil {
-		args.Spec = args.Spec.ToScheduledBackupSpecPtrOutput().ApplyT(func(v *ScheduledBackupSpec) *ScheduledBackupSpec { return v.Defaults() }).(ScheduledBackupSpecPtrOutput)
-	}
 	opts = utilities.PkgResourceDefaultOpts(opts)
 	var resource ScheduledBackup
 	err := ctx.RegisterResource("kubernetes:postgresql.cnpg.io/v1:ScheduledBackup", name, args, &resource, opts...)
@@ -73,30 +68,24 @@ func (ScheduledBackupState) ElementType() reflect.Type {
 }
 
 type scheduledBackupArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-	// Specification of the desired behavior of the ScheduledBackup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec *ScheduledBackupSpec `pulumi:"spec"`
-	// Most recently observed status of the ScheduledBackup. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status *ScheduledBackupStatus `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion *string `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind *string `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata *metav1.ObjectMeta   `pulumi:"metadata"`
+	Spec     *ScheduledBackupSpec `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a ScheduledBackup resource.
 type ScheduledBackupArgs struct {
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
 	ApiVersion pulumi.StringPtrInput
-	Kind       pulumi.StringPtrInput
-	Metadata   metav1.ObjectMetaPtrInput
-	// Specification of the desired behavior of the ScheduledBackup.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ScheduledBackupSpecPtrInput
-	// Most recently observed status of the ScheduledBackup. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status ScheduledBackupStatusPtrInput
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringPtrInput
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaPtrInput
+	Spec     ScheduledBackupSpecPtrInput
 }
 
 func (ScheduledBackupArgs) ElementType() reflect.Type {
@@ -122,6 +111,56 @@ func (i *ScheduledBackup) ToScheduledBackupOutputWithContext(ctx context.Context
 	return pulumi.ToOutputWithContext(ctx, i).(ScheduledBackupOutput)
 }
 
+// ScheduledBackupArrayInput is an input type that accepts ScheduledBackupArray and ScheduledBackupArrayOutput values.
+// You can construct a concrete instance of `ScheduledBackupArrayInput` via:
+//
+//	ScheduledBackupArray{ ScheduledBackupArgs{...} }
+type ScheduledBackupArrayInput interface {
+	pulumi.Input
+
+	ToScheduledBackupArrayOutput() ScheduledBackupArrayOutput
+	ToScheduledBackupArrayOutputWithContext(context.Context) ScheduledBackupArrayOutput
+}
+
+type ScheduledBackupArray []ScheduledBackupInput
+
+func (ScheduledBackupArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*ScheduledBackup)(nil)).Elem()
+}
+
+func (i ScheduledBackupArray) ToScheduledBackupArrayOutput() ScheduledBackupArrayOutput {
+	return i.ToScheduledBackupArrayOutputWithContext(context.Background())
+}
+
+func (i ScheduledBackupArray) ToScheduledBackupArrayOutputWithContext(ctx context.Context) ScheduledBackupArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ScheduledBackupArrayOutput)
+}
+
+// ScheduledBackupMapInput is an input type that accepts ScheduledBackupMap and ScheduledBackupMapOutput values.
+// You can construct a concrete instance of `ScheduledBackupMapInput` via:
+//
+//	ScheduledBackupMap{ "key": ScheduledBackupArgs{...} }
+type ScheduledBackupMapInput interface {
+	pulumi.Input
+
+	ToScheduledBackupMapOutput() ScheduledBackupMapOutput
+	ToScheduledBackupMapOutputWithContext(context.Context) ScheduledBackupMapOutput
+}
+
+type ScheduledBackupMap map[string]ScheduledBackupInput
+
+func (ScheduledBackupMap) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*ScheduledBackup)(nil)).Elem()
+}
+
+func (i ScheduledBackupMap) ToScheduledBackupMapOutput() ScheduledBackupMapOutput {
+	return i.ToScheduledBackupMapOutputWithContext(context.Background())
+}
+
+func (i ScheduledBackupMap) ToScheduledBackupMapOutputWithContext(ctx context.Context) ScheduledBackupMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ScheduledBackupMapOutput)
+}
+
 type ScheduledBackupOutput struct{ *pulumi.OutputState }
 
 func (ScheduledBackupOutput) ElementType() reflect.Type {
@@ -136,32 +175,74 @@ func (o ScheduledBackupOutput) ToScheduledBackupOutputWithContext(ctx context.Co
 	return o
 }
 
-func (o ScheduledBackupOutput) ApiVersion() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *ScheduledBackup) pulumi.StringPtrOutput { return v.ApiVersion }).(pulumi.StringPtrOutput)
+// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+func (o ScheduledBackupOutput) ApiVersion() pulumi.StringOutput {
+	return o.ApplyT(func(v *ScheduledBackup) pulumi.StringOutput { return v.ApiVersion }).(pulumi.StringOutput)
 }
 
-func (o ScheduledBackupOutput) Kind() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *ScheduledBackup) pulumi.StringPtrOutput { return v.Kind }).(pulumi.StringPtrOutput)
+// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+func (o ScheduledBackupOutput) Kind() pulumi.StringOutput {
+	return o.ApplyT(func(v *ScheduledBackup) pulumi.StringOutput { return v.Kind }).(pulumi.StringOutput)
 }
 
+// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 func (o ScheduledBackupOutput) Metadata() metav1.ObjectMetaOutput {
 	return o.ApplyT(func(v *ScheduledBackup) metav1.ObjectMetaOutput { return v.Metadata }).(metav1.ObjectMetaOutput)
 }
 
-// Specification of the desired behavior of the ScheduledBackup.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o ScheduledBackupOutput) Spec() ScheduledBackupSpecOutput {
 	return o.ApplyT(func(v *ScheduledBackup) ScheduledBackupSpecOutput { return v.Spec }).(ScheduledBackupSpecOutput)
 }
 
-// Most recently observed status of the ScheduledBackup. This data may not be up
-// to date. Populated by the system. Read-only.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o ScheduledBackupOutput) Status() ScheduledBackupStatusPtrOutput {
 	return o.ApplyT(func(v *ScheduledBackup) ScheduledBackupStatusPtrOutput { return v.Status }).(ScheduledBackupStatusPtrOutput)
 }
 
+type ScheduledBackupArrayOutput struct{ *pulumi.OutputState }
+
+func (ScheduledBackupArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*ScheduledBackup)(nil)).Elem()
+}
+
+func (o ScheduledBackupArrayOutput) ToScheduledBackupArrayOutput() ScheduledBackupArrayOutput {
+	return o
+}
+
+func (o ScheduledBackupArrayOutput) ToScheduledBackupArrayOutputWithContext(ctx context.Context) ScheduledBackupArrayOutput {
+	return o
+}
+
+func (o ScheduledBackupArrayOutput) Index(i pulumi.IntInput) ScheduledBackupOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) *ScheduledBackup {
+		return vs[0].([]*ScheduledBackup)[vs[1].(int)]
+	}).(ScheduledBackupOutput)
+}
+
+type ScheduledBackupMapOutput struct{ *pulumi.OutputState }
+
+func (ScheduledBackupMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*ScheduledBackup)(nil)).Elem()
+}
+
+func (o ScheduledBackupMapOutput) ToScheduledBackupMapOutput() ScheduledBackupMapOutput {
+	return o
+}
+
+func (o ScheduledBackupMapOutput) ToScheduledBackupMapOutputWithContext(ctx context.Context) ScheduledBackupMapOutput {
+	return o
+}
+
+func (o ScheduledBackupMapOutput) MapIndex(k pulumi.StringInput) ScheduledBackupOutput {
+	return pulumi.All(o, k).ApplyT(func(vs []interface{}) *ScheduledBackup {
+		return vs[0].(map[string]*ScheduledBackup)[vs[1].(string)]
+	}).(ScheduledBackupOutput)
+}
+
 func init() {
 	pulumi.RegisterInputType(reflect.TypeOf((*ScheduledBackupInput)(nil)).Elem(), &ScheduledBackup{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ScheduledBackupArrayInput)(nil)).Elem(), ScheduledBackupArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ScheduledBackupMapInput)(nil)).Elem(), ScheduledBackupMap{})
 	pulumi.RegisterOutputType(ScheduledBackupOutput{})
+	pulumi.RegisterOutputType(ScheduledBackupArrayOutput{})
+	pulumi.RegisterOutputType(ScheduledBackupMapOutput{})
 }

@@ -16,16 +16,14 @@ import (
 type Pooler struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput  `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput  `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaOutput `pulumi:"metadata"`
-	// Specification of the desired behavior of the Pooler.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec PoolerSpecOutput `pulumi:"spec"`
-	// Most recently observed status of the Pooler. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status PoolerStatusPtrOutput `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion pulumi.StringOutput `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringOutput `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaOutput `pulumi:"metadata"`
+	Spec     PoolerSpecOutput        `pulumi:"spec"`
+	Status   PoolerStatusPtrOutput   `pulumi:"status"`
 }
 
 // NewPooler registers a new resource with the given unique name, arguments, and options.
@@ -37,9 +35,6 @@ func NewPooler(ctx *pulumi.Context,
 
 	args.ApiVersion = pulumi.StringPtr("postgresql.cnpg.io/v1")
 	args.Kind = pulumi.StringPtr("Pooler")
-	if args.Spec != nil {
-		args.Spec = args.Spec.ToPoolerSpecPtrOutput().ApplyT(func(v *PoolerSpec) *PoolerSpec { return v.Defaults() }).(PoolerSpecPtrOutput)
-	}
 	opts = utilities.PkgResourceDefaultOpts(opts)
 	var resource Pooler
 	err := ctx.RegisterResource("kubernetes:postgresql.cnpg.io/v1:Pooler", name, args, &resource, opts...)
@@ -73,30 +68,24 @@ func (PoolerState) ElementType() reflect.Type {
 }
 
 type poolerArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-	// Specification of the desired behavior of the Pooler.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec *PoolerSpec `pulumi:"spec"`
-	// Most recently observed status of the Pooler. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status *PoolerStatus `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion *string `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind *string `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata *metav1.ObjectMeta `pulumi:"metadata"`
+	Spec     *PoolerSpec        `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a Pooler resource.
 type PoolerArgs struct {
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
 	ApiVersion pulumi.StringPtrInput
-	Kind       pulumi.StringPtrInput
-	Metadata   metav1.ObjectMetaPtrInput
-	// Specification of the desired behavior of the Pooler.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec PoolerSpecPtrInput
-	// Most recently observed status of the Pooler. This data may not be up to
-	// date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status PoolerStatusPtrInput
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringPtrInput
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaPtrInput
+	Spec     PoolerSpecPtrInput
 }
 
 func (PoolerArgs) ElementType() reflect.Type {
@@ -122,6 +111,56 @@ func (i *Pooler) ToPoolerOutputWithContext(ctx context.Context) PoolerOutput {
 	return pulumi.ToOutputWithContext(ctx, i).(PoolerOutput)
 }
 
+// PoolerArrayInput is an input type that accepts PoolerArray and PoolerArrayOutput values.
+// You can construct a concrete instance of `PoolerArrayInput` via:
+//
+//	PoolerArray{ PoolerArgs{...} }
+type PoolerArrayInput interface {
+	pulumi.Input
+
+	ToPoolerArrayOutput() PoolerArrayOutput
+	ToPoolerArrayOutputWithContext(context.Context) PoolerArrayOutput
+}
+
+type PoolerArray []PoolerInput
+
+func (PoolerArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Pooler)(nil)).Elem()
+}
+
+func (i PoolerArray) ToPoolerArrayOutput() PoolerArrayOutput {
+	return i.ToPoolerArrayOutputWithContext(context.Background())
+}
+
+func (i PoolerArray) ToPoolerArrayOutputWithContext(ctx context.Context) PoolerArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(PoolerArrayOutput)
+}
+
+// PoolerMapInput is an input type that accepts PoolerMap and PoolerMapOutput values.
+// You can construct a concrete instance of `PoolerMapInput` via:
+//
+//	PoolerMap{ "key": PoolerArgs{...} }
+type PoolerMapInput interface {
+	pulumi.Input
+
+	ToPoolerMapOutput() PoolerMapOutput
+	ToPoolerMapOutputWithContext(context.Context) PoolerMapOutput
+}
+
+type PoolerMap map[string]PoolerInput
+
+func (PoolerMap) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Pooler)(nil)).Elem()
+}
+
+func (i PoolerMap) ToPoolerMapOutput() PoolerMapOutput {
+	return i.ToPoolerMapOutputWithContext(context.Background())
+}
+
+func (i PoolerMap) ToPoolerMapOutputWithContext(ctx context.Context) PoolerMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(PoolerMapOutput)
+}
+
 type PoolerOutput struct{ *pulumi.OutputState }
 
 func (PoolerOutput) ElementType() reflect.Type {
@@ -136,32 +175,74 @@ func (o PoolerOutput) ToPoolerOutputWithContext(ctx context.Context) PoolerOutpu
 	return o
 }
 
-func (o PoolerOutput) ApiVersion() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Pooler) pulumi.StringPtrOutput { return v.ApiVersion }).(pulumi.StringPtrOutput)
+// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+func (o PoolerOutput) ApiVersion() pulumi.StringOutput {
+	return o.ApplyT(func(v *Pooler) pulumi.StringOutput { return v.ApiVersion }).(pulumi.StringOutput)
 }
 
-func (o PoolerOutput) Kind() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Pooler) pulumi.StringPtrOutput { return v.Kind }).(pulumi.StringPtrOutput)
+// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+func (o PoolerOutput) Kind() pulumi.StringOutput {
+	return o.ApplyT(func(v *Pooler) pulumi.StringOutput { return v.Kind }).(pulumi.StringOutput)
 }
 
+// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 func (o PoolerOutput) Metadata() metav1.ObjectMetaOutput {
 	return o.ApplyT(func(v *Pooler) metav1.ObjectMetaOutput { return v.Metadata }).(metav1.ObjectMetaOutput)
 }
 
-// Specification of the desired behavior of the Pooler.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o PoolerOutput) Spec() PoolerSpecOutput {
 	return o.ApplyT(func(v *Pooler) PoolerSpecOutput { return v.Spec }).(PoolerSpecOutput)
 }
 
-// Most recently observed status of the Pooler. This data may not be up to
-// date. Populated by the system. Read-only.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o PoolerOutput) Status() PoolerStatusPtrOutput {
 	return o.ApplyT(func(v *Pooler) PoolerStatusPtrOutput { return v.Status }).(PoolerStatusPtrOutput)
 }
 
+type PoolerArrayOutput struct{ *pulumi.OutputState }
+
+func (PoolerArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Pooler)(nil)).Elem()
+}
+
+func (o PoolerArrayOutput) ToPoolerArrayOutput() PoolerArrayOutput {
+	return o
+}
+
+func (o PoolerArrayOutput) ToPoolerArrayOutputWithContext(ctx context.Context) PoolerArrayOutput {
+	return o
+}
+
+func (o PoolerArrayOutput) Index(i pulumi.IntInput) PoolerOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) *Pooler {
+		return vs[0].([]*Pooler)[vs[1].(int)]
+	}).(PoolerOutput)
+}
+
+type PoolerMapOutput struct{ *pulumi.OutputState }
+
+func (PoolerMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Pooler)(nil)).Elem()
+}
+
+func (o PoolerMapOutput) ToPoolerMapOutput() PoolerMapOutput {
+	return o
+}
+
+func (o PoolerMapOutput) ToPoolerMapOutputWithContext(ctx context.Context) PoolerMapOutput {
+	return o
+}
+
+func (o PoolerMapOutput) MapIndex(k pulumi.StringInput) PoolerOutput {
+	return pulumi.All(o, k).ApplyT(func(vs []interface{}) *Pooler {
+		return vs[0].(map[string]*Pooler)[vs[1].(string)]
+	}).(PoolerOutput)
+}
+
 func init() {
 	pulumi.RegisterInputType(reflect.TypeOf((*PoolerInput)(nil)).Elem(), &Pooler{})
+	pulumi.RegisterInputType(reflect.TypeOf((*PoolerArrayInput)(nil)).Elem(), PoolerArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*PoolerMapInput)(nil)).Elem(), PoolerMap{})
 	pulumi.RegisterOutputType(PoolerOutput{})
+	pulumi.RegisterOutputType(PoolerArrayOutput{})
+	pulumi.RegisterOutputType(PoolerMapOutput{})
 }

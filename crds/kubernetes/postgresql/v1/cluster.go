@@ -12,20 +12,19 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// Cluster is the Schema for the PostgreSQL API
+// Cluster defines the API schema for a highly available PostgreSQL database cluster
+// managed by CloudNativePG.
 type Cluster struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput  `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput  `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaOutput `pulumi:"metadata"`
-	// Specification of the desired behavior of the cluster.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ClusterSpecOutput `pulumi:"spec"`
-	// Most recently observed status of the cluster. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status ClusterStatusPtrOutput `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion pulumi.StringOutput `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringOutput `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaOutput `pulumi:"metadata"`
+	Spec     ClusterSpecOutput       `pulumi:"spec"`
+	Status   ClusterStatusPtrOutput  `pulumi:"status"`
 }
 
 // NewCluster registers a new resource with the given unique name, arguments, and options.
@@ -37,9 +36,6 @@ func NewCluster(ctx *pulumi.Context,
 
 	args.ApiVersion = pulumi.StringPtr("postgresql.cnpg.io/v1")
 	args.Kind = pulumi.StringPtr("Cluster")
-	if args.Spec != nil {
-		args.Spec = args.Spec.ToClusterSpecPtrOutput().ApplyT(func(v *ClusterSpec) *ClusterSpec { return v.Defaults() }).(ClusterSpecPtrOutput)
-	}
 	opts = utilities.PkgResourceDefaultOpts(opts)
 	var resource Cluster
 	err := ctx.RegisterResource("kubernetes:postgresql.cnpg.io/v1:Cluster", name, args, &resource, opts...)
@@ -73,30 +69,24 @@ func (ClusterState) ElementType() reflect.Type {
 }
 
 type clusterArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-	// Specification of the desired behavior of the cluster.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec *ClusterSpec `pulumi:"spec"`
-	// Most recently observed status of the cluster. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status *ClusterStatus `pulumi:"status"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion *string `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind *string `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata *metav1.ObjectMeta `pulumi:"metadata"`
+	Spec     *ClusterSpec       `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a Cluster resource.
 type ClusterArgs struct {
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
 	ApiVersion pulumi.StringPtrInput
-	Kind       pulumi.StringPtrInput
-	Metadata   metav1.ObjectMetaPtrInput
-	// Specification of the desired behavior of the cluster.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ClusterSpecPtrInput
-	// Most recently observed status of the cluster. This data may not be up
-	// to date. Populated by the system. Read-only.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Status ClusterStatusPtrInput
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringPtrInput
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaPtrInput
+	Spec     ClusterSpecPtrInput
 }
 
 func (ClusterArgs) ElementType() reflect.Type {
@@ -122,6 +112,56 @@ func (i *Cluster) ToClusterOutputWithContext(ctx context.Context) ClusterOutput 
 	return pulumi.ToOutputWithContext(ctx, i).(ClusterOutput)
 }
 
+// ClusterArrayInput is an input type that accepts ClusterArray and ClusterArrayOutput values.
+// You can construct a concrete instance of `ClusterArrayInput` via:
+//
+//	ClusterArray{ ClusterArgs{...} }
+type ClusterArrayInput interface {
+	pulumi.Input
+
+	ToClusterArrayOutput() ClusterArrayOutput
+	ToClusterArrayOutputWithContext(context.Context) ClusterArrayOutput
+}
+
+type ClusterArray []ClusterInput
+
+func (ClusterArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Cluster)(nil)).Elem()
+}
+
+func (i ClusterArray) ToClusterArrayOutput() ClusterArrayOutput {
+	return i.ToClusterArrayOutputWithContext(context.Background())
+}
+
+func (i ClusterArray) ToClusterArrayOutputWithContext(ctx context.Context) ClusterArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ClusterArrayOutput)
+}
+
+// ClusterMapInput is an input type that accepts ClusterMap and ClusterMapOutput values.
+// You can construct a concrete instance of `ClusterMapInput` via:
+//
+//	ClusterMap{ "key": ClusterArgs{...} }
+type ClusterMapInput interface {
+	pulumi.Input
+
+	ToClusterMapOutput() ClusterMapOutput
+	ToClusterMapOutputWithContext(context.Context) ClusterMapOutput
+}
+
+type ClusterMap map[string]ClusterInput
+
+func (ClusterMap) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Cluster)(nil)).Elem()
+}
+
+func (i ClusterMap) ToClusterMapOutput() ClusterMapOutput {
+	return i.ToClusterMapOutputWithContext(context.Background())
+}
+
+func (i ClusterMap) ToClusterMapOutputWithContext(ctx context.Context) ClusterMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ClusterMapOutput)
+}
+
 type ClusterOutput struct{ *pulumi.OutputState }
 
 func (ClusterOutput) ElementType() reflect.Type {
@@ -136,32 +176,74 @@ func (o ClusterOutput) ToClusterOutputWithContext(ctx context.Context) ClusterOu
 	return o
 }
 
-func (o ClusterOutput) ApiVersion() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Cluster) pulumi.StringPtrOutput { return v.ApiVersion }).(pulumi.StringPtrOutput)
+// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+func (o ClusterOutput) ApiVersion() pulumi.StringOutput {
+	return o.ApplyT(func(v *Cluster) pulumi.StringOutput { return v.ApiVersion }).(pulumi.StringOutput)
 }
 
-func (o ClusterOutput) Kind() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *Cluster) pulumi.StringPtrOutput { return v.Kind }).(pulumi.StringPtrOutput)
+// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+func (o ClusterOutput) Kind() pulumi.StringOutput {
+	return o.ApplyT(func(v *Cluster) pulumi.StringOutput { return v.Kind }).(pulumi.StringOutput)
 }
 
+// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 func (o ClusterOutput) Metadata() metav1.ObjectMetaOutput {
 	return o.ApplyT(func(v *Cluster) metav1.ObjectMetaOutput { return v.Metadata }).(metav1.ObjectMetaOutput)
 }
 
-// Specification of the desired behavior of the cluster.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o ClusterOutput) Spec() ClusterSpecOutput {
 	return o.ApplyT(func(v *Cluster) ClusterSpecOutput { return v.Spec }).(ClusterSpecOutput)
 }
 
-// Most recently observed status of the cluster. This data may not be up
-// to date. Populated by the system. Read-only.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o ClusterOutput) Status() ClusterStatusPtrOutput {
 	return o.ApplyT(func(v *Cluster) ClusterStatusPtrOutput { return v.Status }).(ClusterStatusPtrOutput)
 }
 
+type ClusterArrayOutput struct{ *pulumi.OutputState }
+
+func (ClusterArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*Cluster)(nil)).Elem()
+}
+
+func (o ClusterArrayOutput) ToClusterArrayOutput() ClusterArrayOutput {
+	return o
+}
+
+func (o ClusterArrayOutput) ToClusterArrayOutputWithContext(ctx context.Context) ClusterArrayOutput {
+	return o
+}
+
+func (o ClusterArrayOutput) Index(i pulumi.IntInput) ClusterOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) *Cluster {
+		return vs[0].([]*Cluster)[vs[1].(int)]
+	}).(ClusterOutput)
+}
+
+type ClusterMapOutput struct{ *pulumi.OutputState }
+
+func (ClusterMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*Cluster)(nil)).Elem()
+}
+
+func (o ClusterMapOutput) ToClusterMapOutput() ClusterMapOutput {
+	return o
+}
+
+func (o ClusterMapOutput) ToClusterMapOutputWithContext(ctx context.Context) ClusterMapOutput {
+	return o
+}
+
+func (o ClusterMapOutput) MapIndex(k pulumi.StringInput) ClusterOutput {
+	return pulumi.All(o, k).ApplyT(func(vs []interface{}) *Cluster {
+		return vs[0].(map[string]*Cluster)[vs[1].(string)]
+	}).(ClusterOutput)
+}
+
 func init() {
 	pulumi.RegisterInputType(reflect.TypeOf((*ClusterInput)(nil)).Elem(), &Cluster{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ClusterArrayInput)(nil)).Elem(), ClusterArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ClusterMapInput)(nil)).Elem(), ClusterMap{})
 	pulumi.RegisterOutputType(ClusterOutput{})
+	pulumi.RegisterOutputType(ClusterArrayOutput{})
+	pulumi.RegisterOutputType(ClusterMapOutput{})
 }

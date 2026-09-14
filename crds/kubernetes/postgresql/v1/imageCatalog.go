@@ -16,12 +16,13 @@ import (
 type ImageCatalog struct {
 	pulumi.CustomResourceState
 
-	ApiVersion pulumi.StringPtrOutput  `pulumi:"apiVersion"`
-	Kind       pulumi.StringPtrOutput  `pulumi:"kind"`
-	Metadata   metav1.ObjectMetaOutput `pulumi:"metadata"`
-	// Specification of the desired behavior of the ImageCatalog.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ImageCatalogSpecOutput `pulumi:"spec"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion pulumi.StringOutput `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringOutput `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaOutput `pulumi:"metadata"`
+	Spec     ImageCatalogSpecOutput  `pulumi:"spec"`
 }
 
 // NewImageCatalog registers a new resource with the given unique name, arguments, and options.
@@ -66,22 +67,24 @@ func (ImageCatalogState) ElementType() reflect.Type {
 }
 
 type imageCatalogArgs struct {
-	ApiVersion *string            `pulumi:"apiVersion"`
-	Kind       *string            `pulumi:"kind"`
-	Metadata   *metav1.ObjectMeta `pulumi:"metadata"`
-	// Specification of the desired behavior of the ImageCatalog.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec *ImageCatalogSpec `pulumi:"spec"`
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+	ApiVersion *string `pulumi:"apiVersion"`
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind *string `pulumi:"kind"`
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata *metav1.ObjectMeta `pulumi:"metadata"`
+	Spec     *ImageCatalogSpec  `pulumi:"spec"`
 }
 
 // The set of arguments for constructing a ImageCatalog resource.
 type ImageCatalogArgs struct {
+	// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
 	ApiVersion pulumi.StringPtrInput
-	Kind       pulumi.StringPtrInput
-	Metadata   metav1.ObjectMetaPtrInput
-	// Specification of the desired behavior of the ImageCatalog.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
-	Spec ImageCatalogSpecPtrInput
+	// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind pulumi.StringPtrInput
+	// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	Metadata metav1.ObjectMetaPtrInput
+	Spec     ImageCatalogSpecPtrInput
 }
 
 func (ImageCatalogArgs) ElementType() reflect.Type {
@@ -107,6 +110,56 @@ func (i *ImageCatalog) ToImageCatalogOutputWithContext(ctx context.Context) Imag
 	return pulumi.ToOutputWithContext(ctx, i).(ImageCatalogOutput)
 }
 
+// ImageCatalogArrayInput is an input type that accepts ImageCatalogArray and ImageCatalogArrayOutput values.
+// You can construct a concrete instance of `ImageCatalogArrayInput` via:
+//
+//	ImageCatalogArray{ ImageCatalogArgs{...} }
+type ImageCatalogArrayInput interface {
+	pulumi.Input
+
+	ToImageCatalogArrayOutput() ImageCatalogArrayOutput
+	ToImageCatalogArrayOutputWithContext(context.Context) ImageCatalogArrayOutput
+}
+
+type ImageCatalogArray []ImageCatalogInput
+
+func (ImageCatalogArray) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*ImageCatalog)(nil)).Elem()
+}
+
+func (i ImageCatalogArray) ToImageCatalogArrayOutput() ImageCatalogArrayOutput {
+	return i.ToImageCatalogArrayOutputWithContext(context.Background())
+}
+
+func (i ImageCatalogArray) ToImageCatalogArrayOutputWithContext(ctx context.Context) ImageCatalogArrayOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ImageCatalogArrayOutput)
+}
+
+// ImageCatalogMapInput is an input type that accepts ImageCatalogMap and ImageCatalogMapOutput values.
+// You can construct a concrete instance of `ImageCatalogMapInput` via:
+//
+//	ImageCatalogMap{ "key": ImageCatalogArgs{...} }
+type ImageCatalogMapInput interface {
+	pulumi.Input
+
+	ToImageCatalogMapOutput() ImageCatalogMapOutput
+	ToImageCatalogMapOutputWithContext(context.Context) ImageCatalogMapOutput
+}
+
+type ImageCatalogMap map[string]ImageCatalogInput
+
+func (ImageCatalogMap) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*ImageCatalog)(nil)).Elem()
+}
+
+func (i ImageCatalogMap) ToImageCatalogMapOutput() ImageCatalogMapOutput {
+	return i.ToImageCatalogMapOutputWithContext(context.Background())
+}
+
+func (i ImageCatalogMap) ToImageCatalogMapOutputWithContext(ctx context.Context) ImageCatalogMapOutput {
+	return pulumi.ToOutputWithContext(ctx, i).(ImageCatalogMapOutput)
+}
+
 type ImageCatalogOutput struct{ *pulumi.OutputState }
 
 func (ImageCatalogOutput) ElementType() reflect.Type {
@@ -121,25 +174,70 @@ func (o ImageCatalogOutput) ToImageCatalogOutputWithContext(ctx context.Context)
 	return o
 }
 
-func (o ImageCatalogOutput) ApiVersion() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *ImageCatalog) pulumi.StringPtrOutput { return v.ApiVersion }).(pulumi.StringPtrOutput)
+// APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+func (o ImageCatalogOutput) ApiVersion() pulumi.StringOutput {
+	return o.ApplyT(func(v *ImageCatalog) pulumi.StringOutput { return v.ApiVersion }).(pulumi.StringOutput)
 }
 
-func (o ImageCatalogOutput) Kind() pulumi.StringPtrOutput {
-	return o.ApplyT(func(v *ImageCatalog) pulumi.StringPtrOutput { return v.Kind }).(pulumi.StringPtrOutput)
+// Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+func (o ImageCatalogOutput) Kind() pulumi.StringOutput {
+	return o.ApplyT(func(v *ImageCatalog) pulumi.StringOutput { return v.Kind }).(pulumi.StringOutput)
 }
 
+// Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 func (o ImageCatalogOutput) Metadata() metav1.ObjectMetaOutput {
 	return o.ApplyT(func(v *ImageCatalog) metav1.ObjectMetaOutput { return v.Metadata }).(metav1.ObjectMetaOutput)
 }
 
-// Specification of the desired behavior of the ImageCatalog.
-// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
 func (o ImageCatalogOutput) Spec() ImageCatalogSpecOutput {
 	return o.ApplyT(func(v *ImageCatalog) ImageCatalogSpecOutput { return v.Spec }).(ImageCatalogSpecOutput)
 }
 
+type ImageCatalogArrayOutput struct{ *pulumi.OutputState }
+
+func (ImageCatalogArrayOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*[]*ImageCatalog)(nil)).Elem()
+}
+
+func (o ImageCatalogArrayOutput) ToImageCatalogArrayOutput() ImageCatalogArrayOutput {
+	return o
+}
+
+func (o ImageCatalogArrayOutput) ToImageCatalogArrayOutputWithContext(ctx context.Context) ImageCatalogArrayOutput {
+	return o
+}
+
+func (o ImageCatalogArrayOutput) Index(i pulumi.IntInput) ImageCatalogOutput {
+	return pulumi.All(o, i).ApplyT(func(vs []interface{}) *ImageCatalog {
+		return vs[0].([]*ImageCatalog)[vs[1].(int)]
+	}).(ImageCatalogOutput)
+}
+
+type ImageCatalogMapOutput struct{ *pulumi.OutputState }
+
+func (ImageCatalogMapOutput) ElementType() reflect.Type {
+	return reflect.TypeOf((*map[string]*ImageCatalog)(nil)).Elem()
+}
+
+func (o ImageCatalogMapOutput) ToImageCatalogMapOutput() ImageCatalogMapOutput {
+	return o
+}
+
+func (o ImageCatalogMapOutput) ToImageCatalogMapOutputWithContext(ctx context.Context) ImageCatalogMapOutput {
+	return o
+}
+
+func (o ImageCatalogMapOutput) MapIndex(k pulumi.StringInput) ImageCatalogOutput {
+	return pulumi.All(o, k).ApplyT(func(vs []interface{}) *ImageCatalog {
+		return vs[0].(map[string]*ImageCatalog)[vs[1].(string)]
+	}).(ImageCatalogOutput)
+}
+
 func init() {
 	pulumi.RegisterInputType(reflect.TypeOf((*ImageCatalogInput)(nil)).Elem(), &ImageCatalog{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ImageCatalogArrayInput)(nil)).Elem(), ImageCatalogArray{})
+	pulumi.RegisterInputType(reflect.TypeOf((*ImageCatalogMapInput)(nil)).Elem(), ImageCatalogMap{})
 	pulumi.RegisterOutputType(ImageCatalogOutput{})
+	pulumi.RegisterOutputType(ImageCatalogArrayOutput{})
+	pulumi.RegisterOutputType(ImageCatalogMapOutput{})
 }
