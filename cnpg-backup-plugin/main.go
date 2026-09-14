@@ -65,7 +65,7 @@ func (p *Plugin) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	_, err = helm.NewRelease(ctx, nsprobe.PluginDeploymentName, &helm.ReleaseArgs{
+	release, err := helm.NewRelease(ctx, nsprobe.PluginDeploymentName, &helm.ReleaseArgs{
 		Chart:     pulumi.String(p.config.Chart.Name),
 		Version:   pulumi.String(p.config.Chart.Version),
 		Namespace: namespace.ToStringPtrOutput(),
@@ -77,7 +77,7 @@ func (p *Plugin) Install(ctx *pulumi.Context) error {
 		return fmt.Errorf("failed to install Helm chart: %w", err)
 	}
 
-	ctx.Export("releaseName", pulumi.String(nsprobe.PluginDeploymentName))
+	ctx.Export("releaseName", release.Status.Name())
 	ctx.Export("namespace", namespace.ToStringPtrOutput())
 	return nil
 }
