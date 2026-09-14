@@ -406,21 +406,9 @@ deploy-backup-plugin stack="" retries="60" interval="10":
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
-    echo "Waiting for the plugin deployment to roll out..."
-    for i in $(seq 1 "{{ retries }}"); do
-        if kubectl -n operators rollout status deploy/plugin-barman-cloud --timeout=10s >/dev/null 2>&1; then
-            echo "plugin-barman-cloud rolled out (namespace operators)."
-            break
-        fi
-        echo "Waiting for plugin-barman-cloud (try $i/{{ retries }})..."
-        sleep "{{ interval }}"
-        if [[ "$i" == "{{ retries }}" ]]; then
-            echo "Error: plugin-barman-cloud never rolled out." >&2
-            kubectl -n operators get deploy,pods -l app.kubernetes.io/instance=plugin-barman-cloud 2>&1 || \
-                kubectl -n operators get deploy,pods 2>&1
-            exit 1
-        fi
-    done
+    just postgres _wait-ready --namespace operators \
+        --selector app.kubernetes.io/name=plugin-barman-cloud \
+        --count 1 --retries "{{ retries }}" --interval "{{ interval }}"
 
     echo "Checking the ObjectStore CRD is registered..."
     kubectl get crd objectstores.barmancloud.cnpg.io
