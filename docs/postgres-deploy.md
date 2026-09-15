@@ -214,6 +214,8 @@ Common issues:
 - **Backup failing**: `postgres-backup-sa` key missing or IAM condition pinned to a different bucket — re-run `configure-backup`; if the plugin is missing, `deploy-cluster`'s preview fails — run `deploy-backup-plugin`
 - **Import finds no backup**: `--source-cluster` doesn't match the backup folder name in the source bucket — see [import details](reference/postgres/import.md)
 
+For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnostics), install the `kubectl cnpg` plugin — see [kubectl cnpg plugin](reference/postgres/troubleshooting.md#kubectl-cnpg-plugin).
+
 ---
 
 ## 8. Related Documents
