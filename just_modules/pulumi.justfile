@@ -118,9 +118,9 @@ set-secret folder key value stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} -s "${stack_name}" config set --path --secret "{{ key }}" "{{ value }}"
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
 
 # Set a plain (unencrypted) config value on a stack (config set --path).
 # Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>]
@@ -133,9 +133,9 @@ set-config folder key value stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} -s "${stack_name}" config set --path "{{ key }}" "{{ value }}"
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
 
 # Preview Pulumi changes for a stack in a folder.
 # Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]

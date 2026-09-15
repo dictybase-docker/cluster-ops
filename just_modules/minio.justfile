@@ -93,8 +93,8 @@ deploy root_user root_password namespace="prod" stack="" retries="60" interval="
 
     FOLDER="minio"
     NS="{{ namespace }}"
-    ROOT_USER="{{ root_user }}"
-    ROOT_PASSWORD="{{ root_password }}"
+    ROOT_USER={{ quote(root_user) }}
+    ROOT_PASSWORD={{ quote(root_password) }}
 
     if [[ -z "$ROOT_USER" || -z "$ROOT_PASSWORD" ]]; then
         echo "Error: --root-user and --root-password are both required; this recipe never invents credentials." >&2
@@ -150,9 +150,9 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
     set -euo pipefail
 
     BUCKET="{{ bucket }}"
-    SRC_URL="{{ source_url }}"
-    SRC_USER="{{ source_user }}"
-    SRC_PASSWORD="{{ source_password }}"
+    SRC_URL={{ quote(source_url) }}
+    SRC_USER={{ quote(source_user) }}
+    SRC_PASSWORD={{ quote(source_password) }}
     NS="{{ namespace }}"
     SECRET="{{ secret }}"
 

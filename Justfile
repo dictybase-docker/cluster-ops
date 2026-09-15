@@ -157,10 +157,10 @@ aider:
 [arg("value", long="value", short="v", help="Env var value")]
 [group('dev-tools')]
 set-env-var name value: build
-    ./bin/cluster-ops env set-var --name={{ name }} --value={{ value }}
+    ./bin/cluster-ops env set-var --name={{ quote(name) }} --value={{ quote(value) }}
     direnv allow
     # Verify the service account was created
-    echo "Environmental variable {{ name }} has been set to {{ value }}"
+    echo "Environmental variable" {{ quote(name) }} "has been set to" {{ quote(value) }}
 
 # --- Build & Publish ---
 # ref: Git reference (branch, tag, or commit hash) to use for the build
@@ -183,7 +183,7 @@ build-publish-backup-image ref user pass: setup
     with-dockerfile --docker-file build/package/Dockerfile \
     with-image --image database-backup \
     with-namespace publish-from-repo \
-    --user={{ user }} --password={{ pass }}
+    --user={{ quote(user) }} --password={{ quote(pass) }}
 
 # --- Cluster Operations ---
 

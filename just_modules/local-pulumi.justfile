@@ -21,8 +21,8 @@ new-project folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-lo
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 
@@ -51,8 +51,8 @@ new-stack folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-loca
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 
@@ -81,8 +81,8 @@ create-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulum
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 
@@ -100,8 +100,8 @@ remove-resource folder stack="local" pass_entry="pulumi/local-passphrase": pulum
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 
@@ -120,8 +120,8 @@ new-stack-from folder stack="local" from-stack="experiments" pass_entry="pulumi/
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 

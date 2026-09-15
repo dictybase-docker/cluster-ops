@@ -441,13 +441,13 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! PASSPHRASE=$(pass show "{{ pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve passphrase from '{{ pass_entry }}'"
+    if ! PASSPHRASE=$(pass show {{ quote(pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve passphrase from" {{ quote(pass_entry) }}
         exit 1
     fi
 
-    if ! ROOT_PASSWORD=$(pass show "{{ root_pass_entry }}" | head -n 1); then
-        echo "Error: Failed to retrieve root password from '{{ root_pass_entry }}'"
+    if ! ROOT_PASSWORD=$(pass show {{ quote(root_pass_entry) }} | head -n 1); then
+        echo "Error: Failed to retrieve root password from" {{ quote(root_pass_entry) }}
         exit 1
     fi
 
@@ -464,8 +464,8 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
 
     echo "Creating local stacks..."
-    just local-pulumi new-stack --folder arangodb-operator --stack {{ stack }} --pass-entry {{ pass_entry }}
-    just local-pulumi new-stack --folder arangodb-single --stack {{ stack }} --pass-entry {{ pass_entry }}
+    just local-pulumi new-stack --folder arangodb-operator --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
+    just local-pulumi new-stack --folder arangodb-single --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
 
     echo "Setting arangodb-operator config..."
     pulumi -C arangodb-operator config set-all --stack "{{ stack }}" --path \
@@ -485,10 +485,10 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
         --secret "arangodb-single:properties.secret.password=$ROOT_PASSWORD"
 
     echo "Deploying arangodb-operator..."
-    just local-pulumi create-resource --folder arangodb-operator --stack {{ stack }} --pass-entry {{ pass_entry }}
+    just local-pulumi create-resource --folder arangodb-operator --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
 
     echo "Deploying arangodb-single..."
-    just local-pulumi create-resource --folder arangodb-single --stack {{ stack }} --pass-entry {{ pass_entry }}
+    just local-pulumi create-resource --folder arangodb-single --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
 
 # Configure the arangodb-restore stack in one non-interactive command.
 # Resolves every value the restore Job needs, then runs ensure-stack plus one
@@ -873,7 +873,7 @@ deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" 
 
     FOLDER="arangodb-cluster"
     NS="{{ namespace }}"
-    ROOT_PASSWORD="{{ root_password }}"
+    ROOT_PASSWORD={{ quote(root_password) }}
 
     if [[ -z "$ROOT_PASSWORD" ]]; then
         echo "Error: --root-password is required; this recipe never invents a root password." >&2
@@ -914,8 +914,8 @@ create-databases app_user app_password namespace="prod" stack="" retries="60" in
 
     FOLDER="create-arangodb-databases"
     NS="{{ namespace }}"
-    APP_USER="{{ app_user }}"
-    APP_PASSWORD="{{ app_password }}"
+    APP_USER={{ quote(app_user) }}
+    APP_PASSWORD={{ quote(app_password) }}
 
     if [[ -z "$APP_USER" || -z "$APP_PASSWORD" ]]; then
         echo "Error: --app-user and --app-password are both required." >&2
@@ -1082,7 +1082,7 @@ configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_
 
     FOLDER="backup_secrets"
     NS="{{ namespace }}"
-    RESTIC_PASSWORD="{{ restic_password }}"
+    RESTIC_PASSWORD={{ quote(restic_password) }}
     SETUP_SA="{{ setup_sa }}"
     GCS_PROJECT="{{ gcs_project }}"
     KEY_FILE="{{ gcs_key_file }}"
@@ -1180,7 +1180,7 @@ configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsC
 
     FOLDER="source_backup_secrets"
     NS="{{ namespace }}"
-    RESTIC_PASSWORD="{{ restic_password }}"
+    RESTIC_PASSWORD={{ quote(restic_password) }}
     GCS_PROJECT="{{ gcs_project }}"
     KEY_FILE="{{ gcs_key_file }}"
     KEY_NAME="{{ key_name }}"

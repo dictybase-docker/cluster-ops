@@ -435,7 +435,7 @@ deploy-cluster app_password cluster="logto" namespace="prod" stack="" instances=
     FOLDER="cloudnative-pg-cluster"
     NS="{{ namespace }}"
     CLUSTER="{{ cluster }}"
-    APP_PASSWORD="{{ app_password }}"
+    APP_PASSWORD={{ quote(app_password) }}
 
     if [[ -z "$APP_PASSWORD" ]]; then
         echo "Error: --app-password is required; this recipe never invents a password." >&2

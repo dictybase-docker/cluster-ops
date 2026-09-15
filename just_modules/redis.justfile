@@ -94,7 +94,7 @@ deploy password name="redis" namespace="prod" stack="" retries="60" interval="10
     FOLDER="redis-standalone"
     NS="{{ namespace }}"
     NAME="{{ name }}"
-    PASSWORD="{{ password }}"
+    PASSWORD={{ quote(password) }}
 
     if [[ -z "$PASSWORD" ]]; then
         echo "Error: --password is required; this recipe never invents a password." >&2
