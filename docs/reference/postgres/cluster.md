@@ -40,7 +40,7 @@ just postgres deploy-cluster --app-password '<app-password>'
 
 ## Bootstrap Ownership
 
-The bootstrap `database` and `owner` (`logto`/`logto` in prod) are **fixed at first initdb**. Changing them in config afterwards does not rename the database or the role — it breaks idempotence. The owner role is also declared under `managed.roles` with `login`/`createdb`/`createrole` and `passwordSecret` pointing back at the same Secret — the operator reconciles the role password from `logto-app`, so rotating the password means updating that Secret (via `deploy-cluster --app-password`) and the operator applies it. Superuser access (`postgres` role) is enabled via `superuser: true`; its credentials land in Secret `logto-superuser`.
+The bootstrap `database` and `owner` (`logto`/`logto` in prod) are **fixed at first initdb**. Changing them in config afterwards does not rename the database or the role — it breaks idempotence. The owner role is also declared under `managed.roles` with `login` only (no `createdb`/`createrole` — least privilege per CNPG guidance; the owner does its DDL via database ownership) and `passwordSecret` pointing back at the same Secret — the operator reconciles the role password from `logto-app`, so rotating the password means updating that Secret (via `deploy-cluster --app-password`) and the operator applies it. Superuser access (`postgres` role) is enabled via `superuser: true`; its credentials land in Secret `logto-superuser`.
 
 ## Services
 

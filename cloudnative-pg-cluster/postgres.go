@@ -138,11 +138,14 @@ func (prop *Properties) buildClusterSpec(
 		Managed: &cnpgv1.ClusterSpecManagedArgs{
 			Roles: cnpgv1.ClusterSpecManagedRolesArray{
 				&cnpgv1.ClusterSpecManagedRolesArgs{
-					Name:       pulumi.String(cluster.Bootstrap.Owner),
-					Ensure:     pulumi.String("present"),
-					Login:      pulumi.Bool(true),
-					Createdb:   pulumi.Bool(true),
-					Createrole: pulumi.Bool(true),
+					Name:   pulumi.String(cluster.Bootstrap.Owner),
+					Ensure: pulumi.String("present"),
+					Login:  pulumi.Bool(true),
+					// Least privilege per CNPG docs: the app owner
+					// does its own DDL via database ownership; roles
+					// stay declarative (operator-reconciled).
+					Createdb:   pulumi.Bool(false),
+					Createrole: pulumi.Bool(false),
 					// Password tracks the bootstrap user Secret, so the
 					// operator reconciles the role password with the
 					// Secret instead of leaving initdb's copy behind.
