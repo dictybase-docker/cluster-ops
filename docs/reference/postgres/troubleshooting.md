@@ -17,6 +17,24 @@ Back to: [PostgreSQL Deploy Guide](../../postgres-deploy.md)
 | `config set` path errors on a fresh stack | `properties.clusters[0]` scaffold missing from `Pulumi.dcr-kube1.yaml` | Restore the template's `clusters:` list — the recipes address `clusters[0]` by index |
 | PVCs left after teardown | Teardown run without `--delete-pvcs yes` | `kubectl delete pvc -n prod -l cnpg.io/cluster=<name>` |
 
+## kubectl cnpg Plugin
+
+Cluster-ops CLI for CloudNativePG. Install via [krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/) (or Homebrew: `brew install krew`, then add `~/.krew/bin` to `PATH`):
+
+```bash
+kubectl krew install cnpg
+```
+
+| Task | Command |
+|------|---------|
+| Health / node status | `kubectl cnpg status <cluster> -n prod` |
+| `psql` shell on primary | `kubectl cnpg psql <cluster> -n prod` |
+| On-demand backup | `kubectl cnpg backup <cluster> -n prod` |
+| Rolling restart / config reload | `kubectl cnpg restart|reload <cluster> -n prod` |
+| Diagnostics bundle | `kubectl cnpg report cluster <cluster> -n prod` |
+
+Full list: `kubectl cnpg --help`.
+
 ## Reading Operator and Instance Logs
 
 ```bash
