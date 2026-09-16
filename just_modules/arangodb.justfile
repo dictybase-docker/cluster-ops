@@ -1317,6 +1317,20 @@ deploy-backup namespace="prod" stack="" retries="90" interval="10":
 
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
 
+    # Pin the GCP project for the pulumi-gcp provider. Without it, the provider
+    # falls back to the GOOGLE_CLOUD_PROJECT env var, which can carry a stale
+    # value from another cluster env — bucket creates then target the wrong
+    # project and fail 403 (same failure as cloudnative-pg-cluster before the
+    # gcp:project pin). The env file also sets GOOGLE_CLOUD_PROJECT, but the
+    # stack config wins and is immune to shell leaks.
+    PROJECT="${PROJECT_ID:-}"
+    if [[ -z "$PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --project." >&2
+        exit 1
+    fi
+    just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
+        --key 'gcp:project' --value "$PROJECT"
+
     # Hard guard, not just documentation: `dictycr-source` is the read-only
     # identity for the FOREIGN source project. Backing up through it would
     # attempt writes into someone else's bucket with a credential that has no
