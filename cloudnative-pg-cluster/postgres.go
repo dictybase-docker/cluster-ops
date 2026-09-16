@@ -276,7 +276,7 @@ func (prop *Properties) buildPostgresqlArgs(
 			"autovacuum_vacuum_scale_factor": pulumi.String("0.1"),
 			"autovacuum_max_workers":         pulumi.String("4"),
 			"datestyle":                      pulumi.String("mdy"),
-			"timezone":                       pulumi.String("US/Central"),
+			"timezone":                       pulumi.String("America/Chicago"),
 			"lc_messages":                    pulumi.String("C"),
 			"lc_monetary":                    pulumi.String("C"),
 			"lc_numeric":                     pulumi.String("C"),
