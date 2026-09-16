@@ -123,19 +123,24 @@ set-secret folder key value stack="":
     pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
 
 # Set a plain (unencrypted) config value on a stack (config set --path).
-# Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>]
+# Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>] [--plaintext <yes>]
 [arg("value", long="value", short="v", help="Config value to store")]
 [arg("key", long="key", short="k", help="Config key path, e.g. properties.restoreId")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
 [arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("plaintext", long="plaintext", help="Pass --plaintext when the value is not a secret but the CLI would guess otherwise")]
 [no-cd]
-set-config folder key value stack="":
+set-config folder key value stack="" plaintext="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
+    if [ -n "{{ plaintext }}" ]; then
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --plaintext {{ quote(key) }} {{ quote(value) }}
+    else
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
+    fi
 
 # Preview Pulumi changes for a stack in a folder.
 # Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]
