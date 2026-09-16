@@ -13,9 +13,13 @@ encryptedkey: CiQAMO2WIOwww0DxhN9gcOX3f3RVef5uQvJj8LjYk6NZtktR2GoSSQDjx5R/C+2gEW
 # `standard` flavor on Debian trixie (the `system` flavor is deprecated;
 # bump the tag from the official catalog — see docs/reference/postgres/cluster.md).
 config:
+  # Pin the GCP project for the pulumi-gcp provider. Without this, provider
+  # falls back to GOOGLE_CLOUD_PROJECT env, which can leak a stale value from
+  # another cluster env (bucket creates then 403 in the wrong project).
+  gcp:project: dcr-kube1
   cloudnative-pg-cluster:properties:
     backupSecret:
-      filepath: credentials/dcr-kube1/postgres-backup-sa.json
+      filepath: /Users/sba964/Projects/devenv/golang/cluster-ops/credentials/dcr-kube1/postgres-backup-sa.json
       key: gcsCredentials
       # filepath: set by `just postgres configure-backup`
       # (credentials/<project-id>/postgres-backup-sa.json; its content is
@@ -42,6 +46,9 @@ config:
             userSecret:
               name: logto-app
               # password: set by `just postgres deploy-cluster --app-password`
+
+              password:
+                secure: v1:k6OlXFsmuckwXbBt:3RUZVUAnf2dPeOZbhF05L6LOJDQxdgEUACgWCP0m5Q==
           image:
             name: ghcr.io/cloudnative-pg/postgresql
             tag: 16.15-202609101440-standard-trixie

@@ -55,6 +55,7 @@ Set these as you go; they never move to Git.
 | Variable | Set up in | Purpose |
 |----------|-----------|---------|
 | `PROJECT_ID` | [Prerequisites](prerequisites.md) — needed before bootstrap | GCP project for SA, SSH, and `bootstrap-bundle --project` |
+| `GOOGLE_CLOUD_PROJECT` | Same value as `PROJECT_ID`; pin it or a stale value from another cluster env leaks into pulumi-gcp, which reads it before its provider config | Prevents pulumi creating GCP resources in the wrong project |
 | `GOOGLE_APPLICATION_CREDENTIALS` | [Service accounts](service-accounts.md) | Active GCP service-account JSON |
 | `SA_MANAGER_KEY` | [Service accounts](service-accounts.md) | Path to `sa-manager.json` (optional; same file as GAC at first) |
 | `KUBECONFIG` | [File isolation](file-isolation.md) | Exported kubeconfig path |

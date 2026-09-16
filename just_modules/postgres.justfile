@@ -167,7 +167,10 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
     BUCKET="${BUCKET:-cloudnative-pg-backup-${PROJECT}}"
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
-    KEY_FILE="${KEY_FILE:-credentials/${PROJECT}/${SA_NAME}.json}"
+    # Relative paths break at `pulumi -C` time: pulumi changes the working
+    # directory to the stack folder, so os.ReadFile of a repo-relative path
+    # fails with ENOENT. Default to an absolute path from the repo root.
+    KEY_FILE="${KEY_FILE:-{{ justfile_directory() }}/credentials/${PROJECT}/${SA_NAME}.json}"
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
 
     SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
@@ -178,20 +181,34 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
     echo "Key file       : ${KEY_FILE}"
     echo
 
-    # Idempotent: "already exists" is the expected result on a re-run.
-    gcloud iam service-accounts create "$SA_NAME" \
-        --project "$PROJECT" \
-        --display-name "CloudNativePG backup GCS writer" \
-        || echo "Service account already exists — continuing."
+    # Idempotent: create only when missing. Describe-probe mirrors
+    # cluster.justfile / sa.justfile; `create || echo` would spew a red
+    # ERROR on every re-run of an existing SA.
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
+        echo "Service account already exists — continuing."
+    else
+        gcloud iam service-accounts create "$SA_NAME" \
+            --project "$PROJECT" \
+            --display-name "CloudNativePG backup GCS writer"
+    fi
 
-    # Least privilege: project-level binding with an IAM condition pinning the
-    # grant to the backup bucket. A plain bucket-level binding is impossible
+    # Least privilege: project-level bindings with an IAM condition pinning the
+    # grants to the backup bucket. A plain bucket-level binding is impossible
     # here — the cluster stack creates the bucket AFTER this key must exist.
     # Additive and idempotent on re-run.
+    #
+    # Two roles are required, not one: `objectAdmin` covers object writes but
+    # NOT bucket-metadata reads. barman-cloud's destination check does a
+    # GET on the bucket (storage.buckets.get), so without `bucketViewer` WAL
+    # archiving and backups fail with 403 (verified on dcr-kube1 2026-09-16).
     gcloud projects add-iam-policy-binding "$PROJECT" \
         --member "serviceAccount:${SA_EMAIL}" \
         --role roles/storage.objectAdmin \
         --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=postgres-backup-bucket-writer,description=Object admin limited to the CloudNativePG backup bucket"
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.bucketViewer \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=postgres-backup-bucket-reader,description=Bucket metadata reader for the CloudNativePG backup bucket"
 
     # Key creation is NOT idempotent — every run mints a new key and old ones
     # keep working until deleted. Reuse an existing key file when present.
@@ -219,7 +236,8 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'properties.clusters[0].cluster.backup.bucket' --value "$BUCKET"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
-        --key 'properties.backupSecret.filepath' --value "$KEY_FILE"
+        --key 'properties.backupSecret.filepath' --value "$KEY_FILE" \
+        --plaintext yes
 
     # Composite mode: also deploy the Barman Cloud CNPG-I plugin — the
     # cluster stack probes its stack and archives WAL through it, so the
@@ -256,7 +274,9 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
     TARGET_TIME="{{ target_time }}"
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
-    KEY_FILE="${KEY_FILE:-credentials/${SRC_PROJECT}/${SA_NAME}.json}"
+    # Absolute default — `pulumi -C` changes the working directory, so a
+    # repo-relative path would not resolve when the stack reads it.
+    KEY_FILE="${KEY_FILE:-{{ justfile_directory() }}/credentials/${SRC_PROJECT}/${SA_NAME}.json}"
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
 
     for v in "$SRC_CLUSTER" "$BUCKET" "$SRC_PROJECT"; do

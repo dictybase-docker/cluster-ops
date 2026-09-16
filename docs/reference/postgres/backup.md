@@ -23,7 +23,7 @@ Composite tail: after the SA/key/config steps it also runs [`deploy-backup-plugi
 ## Behavior
 
 - Creates service account `postgres-backup-sa` (idempotent)
-- Grants `roles/storage.objectAdmin` with an IAM condition pinning it to `projects/_/buckets/cloudnative-pg-backup-<project-id>` — nothing else in the project
+- Grants `roles/storage.objectAdmin` **and** `roles/storage.bucketViewer`, both with an IAM condition pinning them to `projects/_/buckets/cloudnative-pg-backup-<project-id>` — nothing else in the project. The `objectAdmin` role alone is insufficient: barman-cloud's destination check performs a bucket GET (`storage.buckets.get`), which `objectAdmin` does not include — without `bucketViewer`, WAL archiving and backups fail with 403
 - Mints `credentials/<project-id>/postgres-backup-sa.json` — **skipped if the file already exists** (key creation is not idempotent; old keys keep working until deleted). Audit with `gcloud iam service-accounts keys list --iam-account postgres-backup-sa@<project>.iam.gserviceaccount.com --project <project>`
 - Creates no namespaces — the `namespace-bootstrap` stack owns `prod`/`operators` ([`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces))
 - Sets `properties.clusters[0].cluster.backup.bucket` and `properties.backupSecret.filepath` on the cluster stack
@@ -36,7 +36,7 @@ Composite tail: after the SA/key/config steps it also runs [`deploy-backup-plugi
 | `--bucket` | No | `cloudnative-pg-backup-<project-id>` | The bucket is created later by the cluster stack — this recipe only grants access to the name |
 | `--project` | No | `$PROJECT_ID` | From the cluster env |
 | `--sa-name` | No | `postgres-backup-sa` | Created/reused in this project |
-| `--key-file` | No | `credentials/<project>/<sa-name>.json` | Read at `pulumi up` time by the cluster stack |
+| `--key-file` | No | `<repo>/credentials/<project>/<sa-name>.json` (absolute) | Stored as-is in the stack config and read at `pulumi up` time — must be absolute, `pulumi -C` changes the working directory |
 | `--stack` | No | `$PULUMI_STACK` | No dev fallback |
 
 ## Service Account Pairs — Do Not Mix
