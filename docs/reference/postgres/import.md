@@ -23,7 +23,7 @@ Printed at the top of every run: the resolved project, CNPG cluster, bucket, rea
 The recipe closes by printing this command with the resolved values filled in. Run it before `deploy-cluster` to confirm the reader key can actually see the source backups — a wrong `--source-cnpg-cluster` or a missing grant otherwise surfaces only as a recovery that never starts:
 
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS=<key-file> gsutil ls gs://<bucket>/<bucket-path>/<source-cnpg-cluster>/
+GOOGLE_APPLICATION_CREDENTIALS=<key-file> gcloud storage ls gs://<bucket>/<bucket-path>/<source-cnpg-cluster>/
 ```
 
 Expect the barman object-store layout (base backups plus archived WAL) under that prefix. An empty listing or `AccessDenied` means the import would produce an unusable cluster.
@@ -32,7 +32,7 @@ Expect the barman object-store layout (base backups plus archived WAL) under tha
 
 1. Resolves the source identity: `--source-project` > `--source-env-file` > probe `.env.*.<source-cluster>` > bucket-name suffix in the source stack config. Probed env files must contain `PROJECT_ID`. Prod stack configs are named after the cluster (`Pulumi.dcr-kube1.yaml`), lab stacks after the env (cluster `dcr-experiments` → `Pulumi.experiments.yaml`) — both are probed. Nothing probed (e.g. a legacy bucket like the lab `dev` stack) → the run stops with the resolution error
 2. Creates/reuses reader service account `postgres-source-reader` **in the source project** — source-side IAM runs with the source env file's `GOOGLE_APPLICATION_CREDENTIALS` when probed (the source cluster's own manager identity); otherwise the current identity must hold SA-admin + bucket-admin there
-3. Grants `roles/storage.objectViewer` on the source bucket only (bucket-level `gsutil iam ch` — the bucket already exists)
+3. Grants `roles/storage.objectViewer` on the source bucket only (bucket-level `gcloud storage buckets add-iam-policy-binding` — the bucket already exists)
 4. Mints `credentials/<source-project>/postgres-source-reader.json` — **skipped if the file already exists** (keys are not idempotent; old ones keep working until deleted). Audit: `gcloud iam service-accounts keys list --iam-account postgres-source-reader@<source-project>.iam.gserviceaccount.com --project <source-project>`
 5. Stores the recovery source on the cluster stack: `properties.clusters[0].cluster.bootstrap.recovery.{sourceCluster,bucket,bucketPath}` and `properties.sourceSecret.{name,key,filepath}` — and removes a stale `targetTime` from a previous run when `--target-time` is omitted, so "latest" is never silently a PITR
 

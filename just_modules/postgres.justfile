@@ -422,9 +422,10 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     # Read-only, pinned to the source bucket. The bucket already exists here
     # (the source cluster's backups live in it), so a bucket-level binding
     # works — no project-level condition needed.
-    src_gcloud gsutil iam ch \
-        "serviceAccount:${SA_EMAIL}:roles/storage.objectViewer" \
-        "gs://${BUCKET}"
+    src_gcloud gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectViewer \
+        --project "$SRC_PROJECT"
 
     # Key creation is NOT idempotent — reuse an existing key file.
     if [[ -f "$KEY_FILE" ]]; then
@@ -471,7 +472,7 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     echo "Next: just postgres deploy-cluster --app-password '<app-password>'"
     echo
     echo "Sanity check the source backup is readable with the new key:"
-    echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gsutil ls gs://$BUCKET/$BUCKET_PATH/$SRC_CNPG_CLUSTER/"
+    echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gcloud storage ls gs://$BUCKET/$BUCKET_PATH/$SRC_CNPG_CLUSTER/"
 
 # Reset a RUNNING cluster's data and re-import from the configured recovery
 # source. Deletes the Cluster CR and its data PVCs only — operator, backup

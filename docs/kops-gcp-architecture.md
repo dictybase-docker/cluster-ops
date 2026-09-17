@@ -192,7 +192,7 @@ Deploying a kOps cluster on GCP has unique architecture details and gotchas that
 The kOps state store holds your entire cluster configuration and security credentials. It must be locked down:
 *   **Uniform Bucket-Level Access (UBLA):** Enforce consistent IAM permissions across all objects.
 *   **Public Access Prevention (PAP):** Block public access.
-*   **Object Versioning:** Enable versioning (`gsutil versioning set on gs://...`) to protect against accidental state corruption or deletion.
+*   **Object Versioning:** Enable versioning (`gcloud storage buckets update gs://... --versioning`) to protect against accidental state corruption or deletion.
 *   **Retention Policies:** Set Object Lifecycle Management rules to clean up or archive extremely old state versions.
 *   **Encryption:** Enable encryption at rest, utilizing Customer-Managed Encryption Keys (CMEK) if dictated by compliance.
 

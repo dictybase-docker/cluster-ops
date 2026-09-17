@@ -58,7 +58,7 @@ CloudNativePG `ScheduledBackup` uses the **six-field** cron format (seconds firs
 
   ```bash
   GOOGLE_APPLICATION_CREDENTIALS=credentials/<project-id>/postgres-backup-sa.json \
-    gsutil ls -r gs://cloudnative-pg-backup-<project-id>/logto/logto/
+    gcloud storage ls --recursive gs://cloudnative-pg-backup-<project-id>/logto/logto/
   ```
 
   The layout is `<destinationPath>/<serverName>/`. `destinationPath` is `gs://<bucket>/<bucketPath>` (`bucketPath: logto`), and the cluster's own store sets no `serverName`, so barman uses the **cluster name** — also `logto` ([ObjectStore CRD](../../../crds/kubernetes/barmancloud/v1/pulumiTypes.go): *"the cluster name is used if this parameter is omitted"*). Hence the doubled `logto/logto/`. A recovery source store is the same shape with `serverName` pinned to the source cluster ([import](import.md#behavior)).
