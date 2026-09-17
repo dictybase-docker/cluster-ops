@@ -458,11 +458,14 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
             'properties.clusters[0].cluster.bootstrap.recovery.targetTime' >/dev/null 2>&1 || true
     fi
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
-        --key 'properties.sourceSecret.name' --value 'postgres-source-credentials'
+        --key 'properties.sourceSecret.name' --value 'postgres-source-credentials' \
+        --plaintext yes
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
-        --key 'properties.sourceSecret.key' --value 'gcsCredentials'
+        --key 'properties.sourceSecret.key' --value 'gcsCredentials' \
+        --plaintext yes
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
-        --key 'properties.sourceSecret.filepath' --value "$KEY_FILE"
+        --key 'properties.sourceSecret.filepath' --value "$KEY_FILE" \
+        --plaintext yes
 
     echo
     echo "Next: just postgres deploy-cluster --app-password '<app-password>'"
