@@ -35,9 +35,7 @@ For experienced users. Full details in sections below.
 # Enter cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
-# 1. Configure backup secrets (creates the backup SA + key, and Secret
-#    dictycr). Project/key default from the cluster env:
-#    $PROJECT_ID and credentials/$PROJECT_ID/backup-gcs-sa.json
+# 1. Backup secrets — backup SA + key, then Secret dictycr
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 
 # 2. Deploy operator
@@ -46,10 +44,12 @@ just arangodb deploy-operator
 # 3. Deploy cluster
 just arangodb deploy-cluster --root-password '<root-password>'
 
-# 4. Import data — first load from a restic snapshot in another GCP project.
-#    This creates the databases; nothing needs to pre-create them.
-#    (Run the grant recipe from inside the source cluster's environment first)
+# 4a. Source bucket reader — runs in the SOURCE cluster's environment
+just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
+
+# 4b. First load — back in this cluster's environment
+just cluster-env --env prod --cluster <prod-cluster>
 just arangodb configure-source-secrets \
   --restic-password '<source-restic-pass>' \
   --gcs-project '<source-project-id>' \
@@ -66,12 +66,10 @@ just arangodb verify
 
 Optional steps:
 ```bash
-# Create databases / application user by hand. Not part of the normal flow —
-# the import creates the databases. Optional recipe: see databases.md.
+# Databases / application user by hand — the first load already creates them
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
-# Loaders, if there is no restic snapshot to import from
-# (require Pulumi.dcr-kube1.yaml — doesn't exist yet)
+# Loaders — reserved for a future revision, no production stack config yet
 just arangodb deploy-loader --folder arangodb-dataloader
 
 # Restore drill (on clone cluster)
@@ -100,20 +98,16 @@ Verify 3 Ready amd64 nodes with `dedicated=database:NoSchedule` taint.
 just arangodb check-pool
 ```
 
-Prints PASS/FAIL for: node count, architecture (amd64), taint, Ready status. Shows zone spread.
-
 ---
 
 ## 2. Prerequisites
 
-Creates the backup service account + key, and Secret `dictycr`. The namespaces (`prod`/`operators`) come from the `namespace-bootstrap` stack, applied during [pulumi setup §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces).
-→ [Backup details](reference/arangodb/backup.md)
+Creates the backup service account + key, and Secret `dictycr`. StorageClasses, the `prod`/`operators` namespaces, and each project's `Pulumi.<cluster>.yaml` must already exist — see the [prerequisite list](reference/arangodb/pool-requirements.md#prerequisites).
+→ [Backup secret details](reference/arangodb/backup.md#configure-backup-secrets)
 
 ```bash
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 ```
-
-Also required: CSI + StorageClasses from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces), and a `Pulumi.<cluster>.yaml` in every project this guide deploys — `ensure-stack` refuses to init without it ([stack names](reference/pulumi/stack-names.md)).
 
 ---
 
@@ -137,8 +131,6 @@ Creates root-password Secret and 9-member Cluster (3 agents, 3 dbservers, 3 coor
 just arangodb deploy-cluster --root-password '<strong-root-password>'
 ```
 
-Coordinator address: `http://arangodb.prod.svc.cluster.local:8529`
-
 ---
 
 ## 4. Import Data
@@ -150,7 +142,7 @@ Sections 1–3 give you a running, **empty** cluster — no application database
 Production first load is a cross-project restic bootstrap: the in-cluster restore Job (restic → arangorestore) reads a snapshot straight out of a GCS bucket owned by a **different GCP project**.
 → [Bootstrap details](reference/arangodb/bootstrap.md)
 
-Run inside the SOURCE cluster's environment:
+**In the SOURCE cluster's environment:**
 
 ```bash
 just cluster-env --env <source-env> --cluster <source-cluster>
@@ -176,20 +168,21 @@ just arangodb bootstrap-from-snapshot \
 
 ### 4.2 Fix Authentication
 
-Reset root to this cluster's `arangodb-pass`, and (re)create the app user or Secret `backend` only if the restore left them wrong.
-→ [Bootstrap details](reference/arangodb/bootstrap.md#fix-authentication)
+The restore brings the source's `_users`, so `root` now carries the **source's** password. Reset it to this cluster's `arangodb-pass`.
+→ [Fix authentication](reference/arangodb/bootstrap.md#fix-authentication)
 
 ```bash
 just arangodb reset-root-password
-
-# Only if the app user or its password is wrong — see databases.md
-just arangodb create-databases --app-user '<user>' --app-password '<password>'
 ```
 
 ### 4.3 Alternative: Loaders
 
-Reserved for a future revision. No loader project has a `Pulumi.dcr-kube1.yaml` in this repo yet, and `deploy-loader` refuses to run without one.
-→ [Import details](reference/arangodb/import.md)
+**Reserved for a future revision — skip it.** Loaders are the fallback when there is no restic snapshot to bootstrap from.
+→ [Import details](reference/arangodb/import.md#current-state)
+
+```bash
+just arangodb deploy-loader --folder arangodb-dataloader
+```
 
 ---
 
@@ -210,14 +203,8 @@ Run on **clone cluster only**. In-cluster Job: restic restore → arangorestore.
 → [Restore details](reference/arangodb/restore.md)
 
 ```bash
-# Configure
 just arangodb configure-restore --namespace <target-namespace>
-
-# Apply and follow
 just arangodb apply-restore
-
-# List snapshots if needed
-just arangodb list-snapshots-in-cluster --namespace <target-namespace>
 ```
 
 ---
@@ -235,24 +222,18 @@ just arangodb teardown --namespace prod --delete-pvcs yes
 
 ## 7. Verify
 
-Read-only checks: pool, operator, storage, members, jobs. Exits non-zero if any required check fails.
+Read-only audit of pool, operator, storage, members, Service and Jobs. Exits non-zero if any required check fails.
+→ [Verify details](reference/arangodb/verify.md)
 
 ```bash
 just arangodb verify
 ```
 
-Checks: 3 `pool=database` nodes with taint, Running operator, StorageClasses, ArangoDeployment, 9 ready pods, correct PVCs, Service on 8529.
-
 ---
 
 ## 8. Troubleshooting
 
-→ [Full troubleshooting table](reference/arangodb/troubleshooting.md)
-
-Common issues:
-- **No stack name error**: Enter `just cluster-env` first, or pass `--stack <name>`
-- **Pod Pending (taint)**: Check CR toleration vs node taint
-- **App cannot connect**: Verify `arangodb.prod.svc.cluster.local:8529` and Secret `backend`
+→ [Full troubleshooting table](reference/arangodb/troubleshooting.md), including the [cross-project bootstrap failures](reference/arangodb/troubleshooting.md#cross-project-bootstrap-deploy-guide-4) from section 4.
 
 ---
 
@@ -278,7 +259,7 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 - [Backup details](reference/arangodb/backup.md)
 - [Restore details](reference/arangodb/restore.md)
 - [Teardown details](reference/arangodb/teardown.md)
-- [Databases details](reference/arangodb/databases.md)
+- [Verify details](reference/arangodb/verify.md)
 - [Troubleshooting](reference/arangodb/troubleshooting.md)
 
 **Other documentation:**

@@ -32,7 +32,7 @@ just arangodb deploy-cluster --root-password '<strong-root-password>'
 
 ## Wait Budget
 
-`--retries 90 --interval 10` (15 minutes). Full PVC/zone checks come in [verify step](../../arangodb-deploy.md#7-verify).
+`--retries 90 --interval 10` (15 minutes). Readiness is all this waits on; PVC class/size and Service checks come from [`just arangodb verify`](verify.md).
 
 ## Coordinator Address
 

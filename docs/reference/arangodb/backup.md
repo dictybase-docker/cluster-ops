@@ -46,6 +46,8 @@ Flags: `--bucket` (default `restic-arangodb-backup-prod`), `--project` (default 
 
 `backup_secrets/main.go` creates Secret `dictycr` from a **local file** on the machine running `pulumi up`, placed in the app namespace taken from the `namespace-bootstrap` stack's `appNamespace` export (`prod` on production, `dev` on lab). It creates no namespaces ([`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)).
 
+Everything that must exist before this runs is listed in [prerequisites](pool-requirements.md#prerequisites).
+
 ```bash
 just arangodb configure-backup-secrets --restic-password '<restic repository password>'
 ```

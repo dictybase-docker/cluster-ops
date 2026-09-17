@@ -52,7 +52,11 @@ See [`kops-gcp-architecture.md` §4.2](../../kops-gcp-architecture.md#2-stateful
 
 Before installing ArangoDB ([§3](../../arangodb-deploy.md#3-install-arangodb)):
 
-1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)
-2. **Namespaces + Secrets** — `prod`, `operators`, and Secret `dictycr` (with `gcsCredentials`, `gcsProject`, `resticPass`), all from `backup_secrets` stack
+| # | Prerequisite | Owner | Why it blocks the install |
+|---|--------------|-------|---------------------------|
+| 1 | StorageClasses `dictycr-ssd` and `dictycr-balanced` (PD CSI driver) | `storage_class` stack — `just gcp-pulumi apply-storageclass`, [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces) | Agent and DBServer PVCs name these classes; without them members stay Pending |
+| 2 | Namespaces `prod` and `operators` | `namespace-bootstrap` stack — `just gcp-pulumi apply-namespaces`, same §5 | Nothing in the ArangoDB stacks creates a namespace |
+| 3 | Secret `dictycr` (`resticPass`, `gcsProject`, `gcsCredentials`) | `backup_secrets` stack — [configure-backup-secrets](backup.md#configure-backup-secrets) | Backup and restore Jobs resolve it at apply time, so it must exist before them |
+| 4 | A `Pulumi.<cluster>.yaml` in every project this guide deploys | the repo — [stack names](../pulumi/stack-names.md#guard) | `ensure-stack` refuses to initialize a stack with no template and points at `fork-stack` |
 
-Apply `backup_secrets` **first** — `arangodb-operator` does not create its own `operators` namespace.
+**Namespaces are never created as a side effect.** `backup_secrets/main.go` and `arangodb-operator` both probe the `namespace-bootstrap` stack (`nsprobe.Probe`) and take their target from its `appNamespace` / `operatorsNamespace` exports; a missing bootstrap fails at preview, and an explicit `--namespace` that disagrees with the export stops the recipe before any Pulumi work.
