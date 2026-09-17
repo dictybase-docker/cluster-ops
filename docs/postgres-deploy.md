@@ -27,7 +27,7 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 |------|-----------|-------|---------|
 | **1.** | Fresh deploy, no import | 1 → 2 → 3 → 5 → 9 | Database **empty** (initdb) |
 | **2.** | Fresh deploy, import from a source cluster | 1 → 2 → 3 → **4** → 5 → 9 | Database **holds the source cluster's data** (recovery) |
-| **3.** | Cluster already deployed, want the source cluster's data | 4 (if not on the stack yet) → **6** | Source data **replaces the current data** |
+| **3.** | Cluster already deployed, want the source cluster's data | 4 (if not on the stack, or to change it) → **6** | Source data **replaces the current data** |
 
 Case 1 does not turn into case 2 by re-running `deploy-cluster` — data moves only at first-instance creation. Case 3 is the only way in afterwards. Step 4 is picked by the case, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
 
@@ -118,7 +118,7 @@ Registers another cluster's CloudNativePG backup as this stack's recovery source
 
   case 3  cluster exists, want source data --> 4 (*)  --> 6 reset-cluster (recovery)  --> source data replaces the current data
 
-  (*) only if no recovery source is on the stack yet — 6 aborts when there is none
+  (*) set it once, re-run 4 to change the source — 6 aborts only when none is set
 ```
 
 → [Import details](reference/postgres/import.md) · [flags](reference/postgres/import.md#flags)
