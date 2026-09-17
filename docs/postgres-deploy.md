@@ -8,27 +8,29 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 - [Quick Reference](#quick-reference)
 - [1. Pool Check](#1-pool-check)
-- [2. Install PostgreSQL](#2-install-postgresql)
-  - [2.1 Operator](#21-operator)
-  - [2.2 Backup wiring](#22-backup-wiring)
-  - [2.3 Cluster](#23-cluster)
-- [3. Import Data](#3-import-data)
-- [4. Backup & Restore](#4-backup--restore)
-  - [4.1 Backup](#41-backup)
-  - [4.2 Restore](#42-restore)
-- [5. Teardown](#5-teardown)
-- [6. Verify](#6-verify)
-- [7. Troubleshooting](#7-troubleshooting)
-- [8. Related Documents](#8-related-documents)
+- [2. Operator](#2-operator)
+- [3. Backup Wiring](#3-backup-wiring)
+- [4. Import Source (Optional)](#4-import-source-optional)
+- [5. Create the Cluster](#5-create-the-cluster)
+- [6. Re-import Into an Existing Cluster](#6-re-import-into-an-existing-cluster)
+- [7. Backup & Restore](#7-backup--restore)
+- [8. Teardown](#8-teardown)
+- [9. Verify](#9-verify)
+- [10. Troubleshooting](#10-troubleshooting)
+- [11. Related Documents](#11-related-documents)
 
 ---
 
 ## Quick Reference
 
-For experienced users. Full details in sections below.
+| Your intent | Steps |
+|-------------|-------|
+| New cluster, empty database | 1 → 2 → 3 → 5 → 9 |
+| New cluster holding another cluster's data | 1 → 2 → 3 → **4** → 5 → 9 |
+| Load another cluster's data into a cluster that **already exists** | 4 (if not configured yet) → **6** — destroys the current data |
 
 ```bash
-# Enter cluster environment first
+# Enter the cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
 # 1. Verify the stateful-db pool
@@ -37,36 +39,28 @@ just postgres check-pool
 # 2. Deploy the CloudNativePG operator
 just postgres deploy-operator
 
-# 3. Backup wiring — creates the postgres-backup-sa service account + key,
-#    stores the backup bucket + key path on the cluster stack, and deploys
-#    the Barman Cloud CNPG-I plugin (composite tail). The plugin needs the
-#    RUNNING operator, hence this order.
-#    Project/bucket default from the cluster env: $PROJECT_ID, bucket
-#    cloudnative-pg-backup-$PROJECT_ID, key credentials/$PROJECT_ID/postgres-backup-sa.json
+# 3. Backup identity, stack config, and Barman Cloud plugin
 just postgres configure-backup
 
-# 4. First load — import from another cluster's CloudNativePG backup.
-#    Creates a reader SA in the SOURCE project, grants it read on the
-#    source bucket, and stores the recovery source on the stack.
-just postgres configure-source \
-  --source-cluster <source-cluster-name> \
-  --bucket <source-bucket> \
-  --source-project <source-project-id>
+# 4. IMPORT ONLY — register the source cluster's backup; skip for an empty database
+just postgres configure-source --source-stack <source-cluster-name>
 
-# 5. Deploy the PostgreSQL 16 cluster (single instance on the database
-#    pool, GCS backup bucket + daily ScheduledBackup included).
-#    With the recovery source set, the first bootstraps from the source
-#    backup instead of an empty database.
+# 5. Create the PostgreSQL 16 cluster — imports when step 4 ran, else empty
 just postgres deploy-cluster --app-password '<app-password>'
 
-# 6. Verify installation
+# 9. Verify the installation
 just postgres verify
 ```
 
 Optional steps:
 ```bash
-# Teardown (clone only, destructive — deletes data PVCs AND every backup
-# in the bucket)
+# Point-in-time import — replaces step 4, still before step 5
+just postgres configure-source --source-stack <source-cluster-name> --target-time '<rfc3339>'
+
+# Re-import into a cluster that already exists (section 6) — destroys current data
+just postgres reset-cluster --reset-data yes --app-password '<app-password>'
+
+# Teardown (clone only) — deletes the data PVCs and every backup in the bucket
 just postgres teardown --namespace prod --delete-pvcs yes --delete-backups yes
 ```
 
@@ -74,116 +68,90 @@ just postgres teardown --namespace prod --delete-pvcs yes --delete-backups yes
 
 **Everything below runs inside the cluster-env sub-shell.**
 
-- Enter it with `just cluster-env --env prod --cluster <prod-cluster>`. The sub-shell sources `.env.prod.<prod-cluster>` and exports `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID`, and `KUBECONFIG`.
-- Recipes default `--stack` to `$PULUMI_STACK`, so no recipe below needs the flag.
-- Outside the sub-shell recipes fail with `Error: no stack name`.
-- Leave the sub-shell with `exit` or Ctrl-D.
+- Enter it with `just cluster-env --env prod --cluster <prod-cluster>` → [cluster env](reference/pulumi/cluster-env.md#activating-the-shell).
+- Recipes default `--stack` to `$PULUMI_STACK`, so no command below needs the flag.
 
 ## 1. Pool Check
 
-Verify 3 Ready nodes labeled `pool=database` with the `dedicated=database:NoSchedule` taint. The Cluster CR carries a matching nodeSelector + toleration — pods stay Pending without them.
+Verifies the `stateful-db` pool: 3 Ready nodes labeled `pool=database`, carrying the `dedicated=database:NoSchedule` taint.
 → [Pool requirements](reference/postgres/pool-requirements.md)
 
 ```bash
 just postgres check-pool
 ```
 
-Prints PASS/FAIL for: node count, taint, Ready status. Shows zone spread.
-
 ---
 
-## 2. Install PostgreSQL
+## 2. Operator
 
-### 2.1 Operator
-
-Installs the `cloudnative-pg` Helm chart (operator **1.30.0**, the floor for Kubernetes 1.36) into the namespace exported by `namespace-bootstrap`.
+Installs the CloudNativePG operator into the `operators` namespace. Must run before §3 — the Barman Cloud plugin needs a running operator.
 → [Operator details](reference/postgres/operator.md)
 
 ```bash
 just postgres deploy-operator
 ```
 
-### 2.2 Backup wiring
+---
 
-Creates the `postgres-backup-sa` service account + JSON key, grants it object-admin on the backup bucket only, stores the backup wiring on the cluster stack, and deploys the Barman Cloud CNPG-I plugin. This is a **different service account** from ArangoDB's `backup-gcs-sa` — its IAM condition is pinned to the CloudNativePG bucket, and the two are not interchangeable. Run after the operator is running.
+## 3. Backup Wiring
+
+Creates the `postgres-backup-sa` identity and key, records the backup bucket and key path on the cluster stack, and deploys the Barman Cloud plugin.
 → [Backup details](reference/postgres/backup.md) · [Plugin details](reference/postgres/backup-plugin.md)
 
 ```bash
 just postgres configure-backup
 ```
 
-Also required: CSI + StorageClasses and the shared namespaces from [`pulumi-setup.md` §5](pulumi-setup.md#5-first-apply--storageclass-and-namespaces).
+---
 
-### 2.3 Cluster
+## 4. Import Source (Optional)
 
-Creates the app-user Secret, backup-credentials Secret, GCS backup bucket, `ObjectStore` CR, single-instance PostgreSQL **16** Cluster, and daily ScheduledBackup (plugin method).
+**Skip this section for an empty database. Run it before §5** — once the Cluster exists, only §6 can import.
+Registers another cluster's CloudNativePG backup as this stack's recovery source; nothing is copied until §5.
+→ [Import details](reference/postgres/import.md) · [flags](reference/postgres/import.md#flags)
+
+```bash
+just postgres configure-source --source-stack <source-cluster-name>
+```
+
+---
+
+## 5. Create the Cluster
+
+Creates the Secrets, backup bucket, `ObjectStore`, PostgreSQL **16** Cluster, and daily ScheduledBackup. With §4 configured the first instance replays the source backup; without it, initdb creates an empty `logto` database.
 → [Cluster details](reference/postgres/cluster.md)
 
 ```bash
 just postgres deploy-cluster --app-password '<app-password>'
 ```
 
-What you get out of the box:
-
-- **Single instance, no failover** — if the pod or node dies, the database is down for a few minutes while Kubernetes restarts it. Longer-term safety comes from daily backups plus continuous WAL archiving. Need high availability? Raise `instances` in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`.
-- **PostgreSQL 16** with modest defaults — 100Gi of storage, up to 200 connections, 512MB shared buffers.
-- **One database, one app user** — both named `logto`, nothing else created. The app user is deliberately low-privilege (login only); the `postgres` superuser covers admin work.
-- **`--app-password` is the app user's password** — it lives in the `logto-app` Secret; rerun the command with a new value to rotate it.
-- **Admin access stays open** — the `postgres` superuser is enabled, credentials in the `logto-superuser` Secret.
-- **One address for apps**: `postgres://<owner>@logto-rw.prod.svc.cluster.local:5432/<database>`. With a single instance, the `-rw`, `-ro`, and `-r` services all point to the same pod.
-
-If you plan to load existing data rather than start empty, run `configure-source` (next section) **before** `deploy-cluster`. Bootstrap is one-shot — the first creation of the Cluster decides empty vs imported.
-
 ---
 
-## 3. Import Data
+## 6. Re-import Into an Existing Cluster
 
-Sections 1–3 give a running, **empty** cluster. This section fills it from a CloudNativePG backup living in a **different GCP project** — the source cluster's barman object store, written by the same operator version. The new Cluster bootstraps with `bootstrap.recovery` against that store; no dump/load, no extra tooling.
-→ [Import details](reference/postgres/import.md)
-
-**Destructive to run twice.** The import is the Cluster's bootstrap: once the first instance exists, re-running `deploy-cluster` does not re-import. To re-import, [teardown](#5-teardown) first.
-
-Run the reader-SA setup in the SOURCE cluster's environment — it creates `postgres-source-reader` in the source project and grants it read on the source bucket:
+**Destructive.** Deletes the Cluster CR and its data PVCs, then re-bootstraps from the recovery source registered in §4.
+→ [Reset details](reference/postgres/import.md#reset-re-import-into-a-running-cluster)
 
 ```bash
-just postgres configure-source \
-  --source-cluster <source-cluster-name> \
-  --bucket <source-bucket> \
-  --source-project <source-project-id>
+just postgres reset-cluster --reset-data yes --app-password '<app-password>'
 ```
 
 ---
 
-**Back in THIS cluster's environment** — the deploy reads the stored recovery source:
+## 7. Backup & Restore
 
-```bash
-just postgres deploy-cluster --app-password '<app-password>'
-```
-
-`--source-cluster` must be the **source cluster's CNPG `Cluster` name** — CloudNativePG stores backups under a folder named after it, and the recovery source refers to that folder. Add `--target-time '<rfc3339>'` for point-in-time instead of latest.
-
----
-
-## 4. Backup & Restore
-
-### 4.1 Backup
-
-Continuous WAL archiving plus a daily base backup to `gs://cloudnative-pg-backup-<project-id>` through the Barman Cloud plugin, created by `deploy-cluster` — nothing extra to run.
-→ [Backup details](reference/postgres/backup.md)
+WAL archiving and the daily base backup are created by §5 and run themselves — nothing to deploy. In-place restore of this cluster's own backups has no recipe yet; re-importing from a source cluster is §6.
+→ [Backup details](reference/postgres/backup.md) · [restore](reference/postgres/backup.md#restore)
 
 ```bash
 kubectl get scheduledbackups.postgresql.cnpg.io -n prod
 ```
 
-### 4.2 Restore
-
-Reserved for a future revision. No in-cluster restore recipe exists yet — recovery is the import path above (new cluster) or a manual `bootstrap.recovery` edit, not covered further here.
-
 ---
 
-## 5. Teardown
+## 8. Teardown
 
-**Destructive. Clone only.** Deletes the data PVCs and, because the backup bucket lives in the same stack with `ForceDestroy: true`, **every backup in the bucket**.
+**Destructive. Clone only.** Destroys the cluster stack: the data PVCs and every backup in the bucket. To replace only the data, use §6.
 → [Teardown details](reference/postgres/teardown.md)
 
 ```bash
@@ -192,33 +160,26 @@ just postgres teardown --namespace prod --delete-pvcs yes --delete-backups yes
 
 ---
 
-## 6. Verify
+## 9. Verify
 
-Read-only checks: pool, operator, StorageClasses, Cluster CR phase, pods, PVCs, Services, ScheduledBackup. Exits non-zero if any required check fails.
+Read-only check of pool, operator, storage, Cluster phase, pods, PVCs, Services, and ScheduledBackup. Exits non-zero on any failure.
+→ [Verify details](reference/postgres/verify.md)
 
 ```bash
 just postgres verify
 ```
 
-Checks: 3 `pool=database` nodes with taint, Running operator, Cluster phase `Cluster in healthy state`, 1 ready instance pod, 1 Bound PVC, Services `logto-rw`/`logto-ro`/`logto-r` on 5432.
-
 ---
 
-## 7. Troubleshooting
+## 10. Troubleshooting
 
 → [Full troubleshooting table](reference/postgres/troubleshooting.md)
 
-Common issues:
-- **No stack name error**: Enter `just cluster-env` first, or pass `--stack <name>`
-- **Pod Pending (taint)**: Node pool missing or `placement.pool` mismatch — see [pool requirements](reference/postgres/pool-requirements.md)
-- **Backup failing**: `postgres-backup-sa` key missing or IAM condition pinned to a different bucket — re-run `configure-backup`; if the plugin is missing, `deploy-cluster`'s preview fails — run `deploy-backup-plugin`
-- **Import finds no backup**: `--source-cluster` doesn't match the backup folder name in the source bucket — see [import details](reference/postgres/import.md)
-
-For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnostics), install the `kubectl cnpg` plugin — see [kubectl cnpg plugin](reference/postgres/troubleshooting.md#kubectl-cnpg-plugin).
+For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnostics), use the [`kubectl cnpg` plugin](reference/postgres/troubleshooting.md#kubectl-cnpg-plugin).
 
 ---
 
-## 8. Related Documents
+## 11. Related Documents
 
 **Reference details for this guide:**
 - [Pool requirements](reference/postgres/pool-requirements.md)
@@ -228,6 +189,7 @@ For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnosti
 - [Backup details](reference/postgres/backup.md)
 - [Barman Cloud plugin](reference/postgres/backup-plugin.md)
 - [Teardown details](reference/postgres/teardown.md)
+- [Verify details](reference/postgres/verify.md)
 - [Troubleshooting](reference/postgres/troubleshooting.md)
 
 **Other documentation:**

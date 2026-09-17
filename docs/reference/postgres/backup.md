@@ -18,7 +18,7 @@ The plugin reads an **`ObjectStore` CR** (`barmancloud.cnpg.io/v1`, name `<clust
 just postgres configure-backup
 ```
 
-Composite tail: after the SA/key/config steps it also runs [`deploy-backup-plugin`](backup-plugin.md) so one command wires identity, config, and plugin.
+Composite tail: after the SA/key/config steps it also runs [`deploy-backup-plugin`](backup-plugin.md) so one command wires identity, config, and plugin. That tail needs a **running** operator (it aborts when the `clusters.postgresql.cnpg.io` CRD is absent), so [`deploy-operator`](operator.md) comes first.
 
 ## Behavior
 
@@ -49,6 +49,19 @@ Neither key can write the other system's bucket. Reusing ArangoDB's key here fai
 ## Schedule Format
 
 CloudNativePG `ScheduledBackup` uses the **six-field** cron format (seconds first): `0 0 0 * * *` = daily at 00:00:00. A five-field expression is rejected by the operator.
+
+## Restore
+
+- **Own backups, in place** (same cluster, same bucket) — no recipe yet, reserved for a future revision. CloudNativePG can do it via a `bootstrap.recovery` pointed at this cluster's own ObjectStore, but nothing in this repo wires that path.
+- **Another cluster's backups** — that is the import path: [`configure-source`](import.md) plus a fresh `deploy-cluster`, or [`reset-cluster`](import.md#reset-re-import-into-a-running-cluster) when the cluster already exists.
+- **Bucket contents** are readable with the backup key for manual inspection:
+
+  ```bash
+  GOOGLE_APPLICATION_CREDENTIALS=credentials/<project-id>/postgres-backup-sa.json \
+    gsutil ls -r gs://cloudnative-pg-backup-<project-id>/logto/logto/
+  ```
+
+  The layout is `<destinationPath>/<serverName>/`. `destinationPath` is `gs://<bucket>/<bucketPath>` (`bucketPath: logto`), and the cluster's own store sets no `serverName`, so barman uses the **cluster name** — also `logto` ([ObjectStore CRD](../../../crds/kubernetes/barmancloud/v1/pulumiTypes.go): *"the cluster name is used if this parameter is omitted"*). Hence the doubled `logto/logto/`. A recovery source store is the same shape with `serverName` pinned to the source cluster ([import](import.md#behavior)).
 
 ## Hazard
 

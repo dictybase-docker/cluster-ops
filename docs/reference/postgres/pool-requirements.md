@@ -10,6 +10,8 @@ Stack: `cloudnative-pg-cluster`, image `ghcr.io/cloudnative-pg/postgresql:16.15-
 |-----------|-------|------|
 | Instance (primary only — no replicas) | 1 | 100Gi `dictycr-balanced` |
 
+PostgreSQL tuning: `pgconfig.maxConnections` **200** and `pgconfig.sharedBuffers` **512MB** in the stack config are the only two settings exposed there. Both land in the Cluster's `spec.postgresql.parameters`, alongside a fixed tuning set (work_mem, WAL sizing, checkpoint, logging, autovacuum) hardcoded in `cloudnative-pg-cluster/postgres.go` — edit that file to change anything else.
+
 Placement comes from `placement` in `cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml`:
 
 - `nodeSelector pool=database` plus a `dedicated=database:NoSchedule` toleration
@@ -36,7 +38,7 @@ Checks and prints PASS/FAIL for:
 
 ## Prerequisites
 
-Before installing PostgreSQL ([§2](../../postgres-deploy.md#2-install-postgresql)):
+Before installing the operator ([§2](../../postgres-deploy.md#2-operator)), both from [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces):
 
-1. **CSI + StorageClasses** — [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)
-2. **Namespaces** — `prod` and `operators`, ensured by `just postgres configure-backup`
+1. **CSI + StorageClasses** — `dictycr-balanced` (the data PVC) and `dictycr-ssd`; `just postgres verify` checks for both
+2. **Namespaces** — `prod` and `operators`, owned by the `namespace-bootstrap` stack (`just gcp-pulumi apply-namespaces`). No PostgreSQL recipe creates them: `deploy-operator` refuses a namespace that does not match the stack's `operatorsNamespace` export, and `deploy-backup-plugin` aborts when `operators` is missing
