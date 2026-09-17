@@ -477,13 +477,333 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     echo "Sanity check the source backup is readable with the new key:"
     echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gcloud storage ls gs://$BUCKET/$BUCKET_PATH/$SRC_CNPG_CLUSTER/"
 
+# Clear this cluster's own backup archive before a bootstrap recovery. The
+# archive must be empty because CNPG rejects a recovery whose destination
+# already contains base backups or WAL. Internal helper for reset/logical import.
+[arg("folder", long="folder", short="f", help="Pulumi project folder")]
+[arg("cluster", long="cluster", short="c", help="Cluster name / Barman server name")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name")]
+[private]
+[no-cd]
+_clear-own-backup-archive folder cluster stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="{{ folder }}"
+    CLUSTER="{{ cluster }}"
+    STACK=$(just postgres _require-stack --stack "{{ stack }}")
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    BUCKET=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.backup.bucket' 2>/dev/null || true)
+    BUCKET_PATH=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.backup.bucketPath' 2>/dev/null || true)
+    BACKUP_KEY=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.backupSecret.filepath' 2>/dev/null || true)
+    if [[ -z "$BUCKET" || -z "$BUCKET_PATH" || -z "$BACKUP_KEY" ]]; then
+        echo "Error: cannot resolve own backup bucket, bucket path, or backup key from stack '$STACK'." >&2
+        exit 1
+    fi
+    if [[ ! -f "$BACKUP_KEY" ]]; then
+        echo "Error: backup key not found: $BACKUP_KEY" >&2
+        exit 1
+    fi
+
+    PREFIX="gs://${BUCKET}/${BUCKET_PATH}/${CLUSTER}/"
+    echo "Clearing own backup archive: $PREFIX"
+    set +e
+    output=$(CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$BACKUP_KEY" \
+        gcloud storage rm -r "$PREFIX" --quiet 2>&1)
+    status=$?
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+        printf '%s\n' "$output"
+    elif printf '%s\n' "$output" | grep -qiE 'matched no objects|No URLs matched|does not exist'; then
+        echo "No own backup objects to clear."
+    else
+        printf '%s\n' "$output" >&2
+        exit "$status"
+    fi
+
+# Export one source PostgreSQL database into a durable custom-format archive.
+# The client image must be the target PostgreSQL major or newer.
+# Usage: just postgres dump-logical --source-cluster <cluster> [--source-kubeconfig <path>] [--source-env-file <path>] [--source-namespace <ns>] [--source-service <svc>] [--source-database <db>] [--source-secret <name>] [--output <path>] [--client-image <image>] [--port <port>]
+[arg("source_cluster", long="source-cluster", help="Source k8s cluster name; resolves its env file")]
+[arg("source_kubeconfig", long="source-kubeconfig", help="Source kubeconfig path; default from the source env file")]
+[arg("source_env_file", long="source-env-file", help="Source env file; default .env.*.<source-cluster>")]
+[arg("source_namespace", long="source-namespace", help="Source PostgreSQL namespace")]
+[arg("source_service", long="source-service", help="Source PostgreSQL read/write Service")]
+[arg("source_database", long="source-database", help="Source database to dump")]
+[arg("source_secret", long="source-secret", help="Source Secret containing username/password")]
+[arg("output", long="output", short="o", help="Custom-format archive path")]
+[arg("client_image", long="client-image", help="PostgreSQL client image; use target major or newer")]
+[arg("port", long="port", help="Local source port-forward port")]
+[group('postgres')]
+[no-cd]
+dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-app" output="" client_image="postgres:16" port="15432":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    REPO="{{ justfile_directory() }}"
+    SOURCE_CLUSTER={{ quote(source_cluster) }}
+    SOURCE_KUBECONFIG={{ quote(source_kubeconfig) }}
+    SOURCE_ENV_FILE={{ quote(source_env_file) }}
+    SOURCE_NS={{ quote(source_namespace) }}
+    SOURCE_SERVICE={{ quote(source_service) }}
+    SOURCE_DB={{ quote(source_database) }}
+    SOURCE_SECRET={{ quote(source_secret) }}
+    CLIENT_IMAGE={{ quote(client_image) }}
+    SOURCE_PORT={{ quote(port) }}
+    ARCHIVE={{ quote(output) }}
+
+    if [[ -z "$SOURCE_CLUSTER" ]]; then
+        echo "Error: --source-cluster is required." >&2
+        exit 1
+    fi
+    if [[ -z "$SOURCE_ENV_FILE" ]]; then
+        SOURCE_ENV_FILE=$(ls "$REPO"/.env.*."$SOURCE_CLUSTER" 2>/dev/null | head -1 || true)
+    fi
+    if [[ -n "$SOURCE_ENV_FILE" && "$SOURCE_ENV_FILE" != /* ]]; then
+        SOURCE_ENV_FILE="$REPO/$SOURCE_ENV_FILE"
+    fi
+    if [[ -z "$SOURCE_KUBECONFIG" && -n "$SOURCE_ENV_FILE" && -f "$SOURCE_ENV_FILE" ]]; then
+        SOURCE_KUBECONFIG=$(sed -n 's/^KUBECONFIG=//p' "$SOURCE_ENV_FILE" | tail -1)
+        SOURCE_CLUSTER_NAME=$(sed -n 's/^CLUSTER_NAME=//p' "$SOURCE_ENV_FILE" | tail -1)
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG%\"}"; SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG#\"}"
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG%\'}"; SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG#\'}"
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG//\$\{PWD\}/$REPO}"
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG//\$PWD/$REPO}"
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG//\$\{CLUSTER_NAME\}/$SOURCE_CLUSTER_NAME}"
+        SOURCE_KUBECONFIG="${SOURCE_KUBECONFIG//\$CLUSTER_NAME/$SOURCE_CLUSTER_NAME}"
+    fi
+    if [[ -n "$SOURCE_KUBECONFIG" && "$SOURCE_KUBECONFIG" != /* ]]; then
+        SOURCE_KUBECONFIG="$REPO/$SOURCE_KUBECONFIG"
+    fi
+    if [[ -z "$SOURCE_KUBECONFIG" || ! -f "$SOURCE_KUBECONFIG" ]]; then
+        echo "Error: source kubeconfig not found; pass --source-kubeconfig or use a source env file with KUBECONFIG." >&2
+        exit 1
+    fi
+
+    if [[ -z "$ARCHIVE" ]]; then
+        ARCHIVE="scratch/postgres/${SOURCE_CLUSTER}-${SOURCE_DB}-$(date -u +%Y%m%d-%H%M%S).dump"
+    fi
+    if [[ "$ARCHIVE" != /* ]]; then
+        ARCHIVE="$PWD/$ARCHIVE"
+    fi
+    mkdir -p "$(dirname "$ARCHIVE")"
+    PARTIAL="${ARCHIVE}.partial"
+    CHECKSUM="${ARCHIVE}.sha256"
+    METADATA="${ARCHIVE}.metadata"
+    PF_LOG=$(mktemp -t postgres-logical-pf)
+    PF_PID=""
+
+    cleanup() {
+        [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null || true
+        rm -f "$PF_LOG" "$PARTIAL"
+    }
+    trap cleanup EXIT
+
+    if nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null; then
+        echo "Error: local port $SOURCE_PORT is already in use." >&2
+        exit 1
+    fi
+    kubectl --kubeconfig "$SOURCE_KUBECONFIG" port-forward \
+        -n "$SOURCE_NS" "svc/$SOURCE_SERVICE" "$SOURCE_PORT:5432" \
+        >"$PF_LOG" 2>&1 &
+    PF_PID=$!
+    for i in $(seq 1 30); do
+        nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null && break
+        sleep 1
+    done
+    if ! nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null; then
+        cat "$PF_LOG" >&2
+        echo "Error: source port-forward did not open on $SOURCE_PORT." >&2
+        exit 1
+    fi
+
+    SOURCE_USER=$(kubectl --kubeconfig "$SOURCE_KUBECONFIG" get secret "$SOURCE_SECRET" -n "$SOURCE_NS" -o jsonpath='{.data.username}' | base64 -d)
+    SOURCE_PASSWORD=$(kubectl --kubeconfig "$SOURCE_KUBECONFIG" get secret "$SOURCE_SECRET" -n "$SOURCE_NS" -o jsonpath='{.data.password}' | base64 -d)
+    if [[ -z "$SOURCE_USER" || -z "$SOURCE_PASSWORD" ]]; then
+        echo "Error: source Secret '$SOURCE_SECRET' has no username/password." >&2
+        exit 1
+    fi
+
+    DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
+    DB_HOST="{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}"
+    SOURCE_VERSION=$(docker run --rm $DOCKER_NET_FLAGS \
+        -e "PGPASSWORD=$SOURCE_PASSWORD" "$CLIENT_IMAGE" \
+        psql -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" -Atqc 'show server_version' | tr -d '[:space:]')
+    echo "Source PostgreSQL version: $SOURCE_VERSION"
+    echo "Creating logical archive: $ARCHIVE"
+    docker run --rm $DOCKER_NET_FLAGS \
+        -e "PGPASSWORD=$SOURCE_PASSWORD" "$CLIENT_IMAGE" \
+        pg_dump -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" \
+        --format=custom --no-owner --no-acl --quote-all-identifiers > "$PARTIAL"
+    mv "$PARTIAL" "$ARCHIVE"
+
+    sha256_file() {
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | awk '{print $1}'
+        else
+            shasum -a 256 "$1" | awk '{print $1}'
+        fi
+    }
+    DIGEST=$(sha256_file "$ARCHIVE")
+    printf '%s  %s\n' "$DIGEST" "$(basename "$ARCHIVE")" > "$CHECKSUM"
+    {
+        printf 'source_cluster=%s\n' "$SOURCE_CLUSTER"
+        printf 'source_database=%s\n' "$SOURCE_DB"
+        printf 'source_server_version=%s\n' "$SOURCE_VERSION"
+        printf 'client_image=%s\n' "$CLIENT_IMAGE"
+        printf 'created_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "$METADATA"
+    echo "Archive: $ARCHIVE"
+    echo "Checksum: $CHECKSUM"
+    echo "Metadata: $METADATA"
+
+# Restore a logical archive into a target cluster, creating an empty target when
+# needed. Removes physical bootstrap recovery config before deployment.
+# Usage: just postgres restore-logical --archive <path> --app-password <pw> [--replace-data yes] [--cluster <name>] [--namespace <ns>] [--service <svc>] [--database <db>] [--client-image <image>] [--stack <name>]
+[arg("archive", long="archive", short="f", help="Custom-format logical archive path")]
+[arg("app_password", long="app-password", short="p", help="Target app password; used when creating the target")]
+[arg("replace_data", long="replace-data", help="Must be yes when a target Cluster already exists")]
+[arg("cluster", long="cluster", short="c", help="Target Cluster name")]
+[arg("namespace", long="namespace", short="n", help="Target PostgreSQL namespace")]
+[arg("service", long="service", help="Target PostgreSQL read/write Service")]
+[arg("database", long="database", help="Target database")]
+[arg("target_secret", long="target-secret", help="Target Secret containing username/password")]
+[arg("client_image", long="client-image", help="PostgreSQL client image; use target major")]
+[arg("port", long="port", help="Local target port-forward port")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name")]
+[group('postgres')]
+[no-cd]
+restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-app" client_image="postgres:16" port="15433" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="cloudnative-pg-cluster"
+    ARCHIVE={{ quote(archive) }}
+    APP_PASSWORD={{ quote(app_password) }}
+    REPLACE_DATA={{ quote(replace_data) }}
+    CLUSTER={{ quote(cluster) }}
+    NS={{ quote(namespace) }}
+    SERVICE={{ quote(service) }}
+    DATABASE={{ quote(database) }}
+    TARGET_SECRET={{ quote(target_secret) }}
+    CLIENT_IMAGE={{ quote(client_image) }}
+    TARGET_PORT={{ quote(port) }}
+    STACK=$(just postgres _require-stack --stack "{{ stack }}")
+
+    if [[ -z "$ARCHIVE" || ! -f "$ARCHIVE" ]]; then
+        echo "Error: logical archive not found: $ARCHIVE" >&2
+        exit 1
+    fi
+    if [[ "$ARCHIVE" != /* ]]; then
+        ARCHIVE="$PWD/$ARCHIVE"
+    fi
+    CHECKSUM="${ARCHIVE}.sha256"
+    if [[ ! -f "$CHECKSUM" ]]; then
+        echo "Error: checksum file not found: $CHECKSUM" >&2
+        exit 1
+    fi
+    sha256_file() {
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | awk '{print $1}'
+        else
+            shasum -a 256 "$1" | awk '{print $1}'
+        fi
+    }
+    EXPECTED=$(awk 'NR == 1 {print $1}' "$CHECKSUM")
+    ACTUAL=$(sha256_file "$ARCHIVE")
+    if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+        echo "Error: archive checksum mismatch for $ARCHIVE." >&2
+        exit 1
+    fi
+
+    TARGET_EXISTS="no"
+    if kubectl get cluster "$CLUSTER" -n "$NS" >/dev/null 2>&1; then
+        TARGET_EXISTS="yes"
+    fi
+    if [[ "$TARGET_EXISTS" == "yes" && "$REPLACE_DATA" != "yes" ]]; then
+        echo "Error: target Cluster '$CLUSTER' already exists; pass --replace-data yes to destroy and recreate it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" -s "$STACK" config rm --path \
+        'properties.clusters[0].cluster.bootstrap.recovery' >/dev/null 2>&1 || true
+    pulumi -C "$FOLDER" -s "$STACK" config rm --path \
+        'properties.sourceSecret' >/dev/null 2>&1 || true
+
+    if [[ "$TARGET_EXISTS" == "yes" ]]; then
+        just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
+        kubectl delete cluster "$CLUSTER" -n "$NS" --wait --timeout=300s
+        kubectl delete jobs,pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER},cnpg.io/jobRole=full-recovery" --ignore-not-found
+        for i in $(seq 1 30); do
+            [[ -z "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]] && break
+            sleep 2
+        done
+        kubectl delete pvc -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" --ignore-not-found
+        pulumi -C "$FOLDER" -s "$STACK" refresh --yes
+    else
+        just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
+    fi
+
+    if [[ -z "$APP_PASSWORD" ]]; then
+        echo "Error: --app-password is required to create the logical-import target." >&2
+        exit 1
+    fi
+    just postgres deploy-cluster --app-password "$APP_PASSWORD" \
+        --cluster "$CLUSTER" --namespace "$NS" --stack "$STACK"
+
+    PF_LOG=$(mktemp -t postgres-logical-restore-pf)
+    PF_PID=""
+    cleanup() {
+        [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null || true
+        rm -f "$PF_LOG"
+    }
+    trap cleanup EXIT
+    if nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
+        echo "Error: local port $TARGET_PORT is already in use." >&2
+        exit 1
+    fi
+    kubectl port-forward -n "$NS" "svc/$SERVICE" "$TARGET_PORT:5432" >"$PF_LOG" 2>&1 &
+    PF_PID=$!
+    for i in $(seq 1 30); do
+        nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null && break
+        sleep 1
+    done
+    if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
+        cat "$PF_LOG" >&2
+        echo "Error: target port-forward did not open on $TARGET_PORT." >&2
+        exit 1
+    fi
+
+    TARGET_USER=$(kubectl get secret "$TARGET_SECRET" -n "$NS" -o jsonpath='{.data.username}' | base64 -d)
+    TARGET_PASSWORD=$(kubectl get secret "$TARGET_SECRET" -n "$NS" -o jsonpath='{.data.password}' | base64 -d)
+    DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
+    DB_HOST="{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}"
+    ARCHIVE_DIR=$(dirname "$ARCHIVE")
+    ARCHIVE_NAME=$(basename "$ARCHIVE")
+    echo "Restoring $ARCHIVE into $NS/$DATABASE..."
+    docker run --rm $DOCKER_NET_FLAGS \
+        -v "$ARCHIVE_DIR:/work:ro" \
+        -e "PGPASSWORD=$TARGET_PASSWORD" "$CLIENT_IMAGE" \
+        pg_restore -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" \
+        --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl \
+        "/work/$ARCHIVE_NAME"
+    docker run --rm $DOCKER_NET_FLAGS \
+        -e "PGPASSWORD=$TARGET_PASSWORD" "$CLIENT_IMAGE" \
+        psql -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" -v ON_ERROR_STOP=1 -c 'ANALYZE VERBOSE'
+    echo "Logical restore complete."
+
 # Reset a RUNNING cluster's data and re-import from the configured recovery
-# source. Deletes the Cluster CR and its data PVCs only — operator, backup
-# bucket and its backups, Secrets, and ScheduledBackup all stay — refreshes
-# Pulumi state so the next apply recreates the Cluster CR, whose first
-# instance bootstraps with bootstrap.recovery (replays the source base
-# backup + WAL instead of initdb). The surgical alternative to
-# teardown+redeploy: existing backups survive.
+# source. Clears this cluster's own backup archive, deletes the Cluster CR
+# and its data PVCs; operator, backup bucket, source backups, Secrets, and
+# ScheduledBackup stay. Refreshes Pulumi state so the next apply recreates
+# the Cluster CR, whose first instance bootstraps with bootstrap.recovery
+# (replays the source base backup + WAL instead of initdb). The surgical
+# alternative to teardown+redeploy: source backups survive.
 # Run AFTER configure-source — the recovery source must already be on the
 # stack, and this recipe aborts if it is not (a reset without it would
 # bootstrap EMPTY, not re-import). Requires --reset-data yes so the data
@@ -539,30 +859,7 @@ reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" r
         exit 1
     fi
 
-    # The cluster's OWN backup archive must be empty before bootstrap.recovery
-    # runs, or the barman plugin aborts the full-recovery with
-    # "Expected empty archive" — CNPG requires a clean WAL-archive destination.
-    # The previous incarnation's base/ + wals/ are stale by definition (the
-    # data is being destroyed), so clear them; the SOURCE archive is untouched.
-    OWN_BUCKET=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
-        'properties.clusters[0].cluster.backup.bucket' 2>/dev/null || true)
-    OWN_BUCKET_PATH=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
-        'properties.clusters[0].cluster.backup.bucketPath' 2>/dev/null || true)
-    BACKUP_KEY=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
-        'properties.backupSecret.filepath' 2>/dev/null || true)
-    if [[ -n "$OWN_BUCKET" && -n "$OWN_BUCKET_PATH" ]]; then
-        OWN_PREFIX="gs://${OWN_BUCKET}/${OWN_BUCKET_PATH}/${CLUSTER}/"
-        echo "Clearing this cluster's own backup archive ($OWN_PREFIX)..."
-        if [[ -n "$BACKUP_KEY" && -f "$BACKUP_KEY" ]]; then
-            CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$BACKUP_KEY" \
-                gcloud storage rm -r "$OWN_PREFIX" --quiet 2>/dev/null \
-                || echo "  (no own backups to clear)"
-        else
-            echo "Warning: backup key missing at '$BACKUP_KEY' — using the active gcloud identity." >&2
-            gcloud storage rm -r "$OWN_PREFIX" --quiet 2>/dev/null \
-                || echo "  (no own backups to clear, or the bucket is not reachable)"
-        fi
-    fi
+    just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
     echo
 
     echo "Resetting cluster '$CLUSTER' in '$NS' (stack '$STACK')..."
@@ -579,6 +876,13 @@ reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" r
         echo "Inspect: kubectl get cluster $CLUSTER -n $NS -o jsonpath='{.metadata.finalizers}'" >&2
         exit 1
     fi
+
+    # The operator may leave failed recovery Jobs/pods behind after an
+    # unrecoverable bootstrap. They carry the cluster label and would block
+    # the pod wait below, so remove them explicitly before waiting.
+    kubectl delete jobs,pods -n "$NS" \
+        -l "cnpg.io/cluster=${CLUSTER},cnpg.io/jobRole=full-recovery" \
+        --ignore-not-found
 
     # Belt-and-braces: no instance pods must remain before touching PVCs.
     pods_gone() {
