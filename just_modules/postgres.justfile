@@ -413,11 +413,14 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     [[ -n "$NOTES" ]] && echo "Inferred       : ${NOTES}"
     echo
 
-    # Idempotent: "already exists" is the expected result on a re-run.
-    src_gcloud gcloud iam service-accounts create "$SA_NAME" \
-        --project "$SRC_PROJECT" \
-        --display-name "CloudNativePG cross-project backup reader" \
-        || echo "Service account already exists — continuing."
+    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
+    if src_gcloud gcloud iam service-accounts describe "$SA_EMAIL" --project "$SRC_PROJECT" >/dev/null 2>&1; then
+        echo "Service account ${SA_EMAIL} already exists — continuing."
+    else
+        src_gcloud gcloud iam service-accounts create "$SA_NAME" \
+            --project "$SRC_PROJECT" \
+            --display-name "CloudNativePG cross-project backup reader"
+    fi
 
     # Read-only, pinned to the source bucket. The bucket already exists here
     # (the source cluster's backups live in it), so a bucket-level binding

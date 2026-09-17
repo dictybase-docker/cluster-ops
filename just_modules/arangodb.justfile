@@ -1025,11 +1025,14 @@ _setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup
     echo "Key file       : ${KEY_FILE}"
     echo
 
-    # Idempotent: "already exists" is the expected result on a re-run.
-    gcloud iam service-accounts create "$SA_NAME" \
-        --project "$PROJECT" \
-        --display-name "ArangoDB backup GCS writer" \
-        || echo "Service account already exists — continuing."
+    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
+        echo "Service account already exists — continuing."
+    else
+        gcloud iam service-accounts create "$SA_NAME" \
+            --project "$PROJECT" \
+            --display-name "ArangoDB backup GCS writer"
+    fi
 
     # Least privilege, ordering-safe: a project-level binding with an IAM
     # condition pinning it to the backup bucket. A plain bucket-level binding
@@ -1262,11 +1265,14 @@ grant-source-bucket-reader bucket source_project="" sa_name="arangodb-restic-rea
     echo "Key file       : ${KEY_FILE}"
     echo
 
-    # Idempotent: "already exists" is the expected result on a re-run.
-    gcloud iam service-accounts create "$SA_NAME" \
-        --project "$SOURCE_PROJECT" \
-        --display-name "ArangoDB restic cross-project reader" \
-        || echo "Service account already exists — continuing."
+    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$SOURCE_PROJECT" >/dev/null 2>&1; then
+        echo "Service account already exists — continuing."
+    else
+        gcloud iam service-accounts create "$SA_NAME" \
+            --project "$SOURCE_PROJECT" \
+            --display-name "ArangoDB restic cross-project reader"
+    fi
 
     # Least privilege: BUCKET-level objectViewer (list+get). Never grant
     # project-wide storage.admin, and never grant write on the source project.
