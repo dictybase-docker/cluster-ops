@@ -137,7 +137,7 @@ check-pool pool="database" node_count="3":
 
     echo
     if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll pool checks passed.\033[0m Proceed to §3 Install PostgreSQL.\n'
+        printf '\033[32mAll pool checks passed.\033[0m Next: just postgres deploy-operator.\n'
     else
         printf '\033[31m%d check(s) failed.\033[0m See reference/postgres/pool-requirements.md for fixes.\n' "$failures"
         exit 1
@@ -245,28 +245,44 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
     just postgres deploy-backup-plugin --stack "$STACK"
 
     echo
-    echo "Next: just postgres deploy-operator"
+    echo "Next: just postgres deploy-cluster --app-password '<app-password>'"
+    echo "      (importing another cluster's data? run 'just postgres configure-source' first)"
 
 # Wire a source cluster's CloudNativePG backup for import: creates/reuses a
 # reader service account in the SOURCE project, grants it read on the source
 # bucket, mints/reuses its key, and stores the recovery source on the cluster
 # stack. Run AFTER configure-backup, BEFORE deploy-cluster.
-# Usage: just postgres configure-source --source-cluster <name> --bucket <source-bucket> --source-project <id> [--bucket-path <path>] [--target-time <rfc3339>] [--stack <name>]
-[arg("source_cluster", long="source-cluster", short="c", help="CNPG Cluster name in the source project (also the backup folder name)")]
-[arg("bucket", long="bucket", short="b", help="Source GCS bucket holding the barman backups")]
-[arg("source_project", long="source-project", short="g", help="GCP project id owning the source bucket")]
+# Usage: just postgres configure-source --source-stack <source-cluster-name>
+#   The source identity is standardized: given the source cluster's name (the
+#   `.env.<env>.<name>` suffix, e.g. dcr-experiments), the recipe probes that
+#   env file for the source PROJECT_ID, falls back to the backup bucket name in
+#   cloudnative-pg-cluster/Pulumi.<name>.yaml (prod stacks share the cluster
+#   name, lab stacks use the env name — both probed), and defaults the CNPG
+#   cluster name and bucket path to logto — the values every stack in this
+#   repo uses. Source-side IAM (reader SA, bucket grant, key mint) runs with
+#   the source env file's GOOGLE_APPLICATION_CREDENTIALS when probed; else
+#   the current identity must hold SA-admin + bucket-admin in the source
+#   project. A source not managed from this checkout needs --source-project
+#   <id> or --source-env-file <path>. Every inferred value has an override.
+[arg("source_stack", long="source-stack", help="Source cluster name — the .env.<env>.<name> suffix; probed for the source PROJECT_ID and stack config")]
+[arg("source_cluster", long="source-cluster", short="c", help="CNPG Cluster name in the source project = backup folder name (default logto; override only if the source Cluster CR is not named logto)")]
+[arg("bucket", long="bucket", short="b", help="Source GCS bucket holding the barman backups (default from the source stack config, else cloudnative-pg-backup-<source-project>)")]
+[arg("source_project", long="source-project", short="g", help="SOURCE GCP project id owning the source bucket (default from --source-stack / --source-env-file probing)")]
 [arg("bucket_path", long="bucket-path", short="p", help="Path inside the bucket (source cluster's backup.bucketPath; default logto)")]
 [arg("target_time", long="target-time", short="t", help="Optional RFC3339 PITR timestamp; default = latest available")]
 [arg("sa_name", long="sa-name", short="a", help="Reader service account short name to create/reuse in the source project")]
-[arg("key_file", long="key-file", short="f", help="Where to write the reader key (default credentials/<source-project>/postgres-source-reader.json)")]
+[arg("key_file", long="key-file", short="f", help="Where to write the reader key (default credentials/<source-project>/<sa-name>.json)")]
+[arg("source_env_file", long="source-env-file", short="e", help="Env file with the source PROJECT_ID (and manager credential for source-side IAM); default: probe .env.*.<source-stack>")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('postgres')]
 [no-cd]
-configure-source source_cluster bucket source_project bucket_path="logto" target_time="" sa_name="postgres-source-reader" key_file="" stack="":
+configure-source source_stack="" source_cluster="" bucket="" source_project="" bucket_path="logto" target_time="" sa_name="postgres-source-reader" key_file="" source_env_file="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     FOLDER="cloudnative-pg-cluster"
+    REPO="{{ justfile_directory() }}"
+    SRC_STACK="{{ source_stack }}"
     SRC_CLUSTER="{{ source_cluster }}"
     BUCKET="{{ bucket }}"
     SRC_PROJECT="{{ source_project }}"
@@ -274,30 +290,130 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
     TARGET_TIME="{{ target_time }}"
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
-    # Absolute default — `pulumi -C` changes the working directory, so a
-    # repo-relative path would not resolve when the stack reads it.
-    KEY_FILE="${KEY_FILE:-{{ justfile_directory() }}/credentials/${SRC_PROJECT}/${SA_NAME}.json}"
+    ENV_FILE="{{ source_env_file }}"
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
+    NOTES=""
 
-    for v in "$SRC_CLUSTER" "$BUCKET" "$SRC_PROJECT"; do
-        if [[ -z "$v" ]]; then
-            echo "Error: --source-cluster, --bucket and --source-project are all required." >&2
+    # --- Source GCP project -------------------------------------------------
+    # Precedence: --source-project > --source-env-file > probe
+    # .env.*.<source-stack> > bucket-name suffix in the source stack config.
+    # Probing works only when the source cluster is managed from this
+    # checkout; a cross-project source usually needs --source-project.
+    if [[ -z "$SRC_PROJECT" && -n "$ENV_FILE" ]]; then
+        if [[ ! -f "$ENV_FILE" ]]; then
+            echo "Error: --source-env-file '$ENV_FILE' not found." >&2
             exit 1
         fi
+        SRC_PROJECT=$(sed -n 's/^PROJECT_ID=//p' "$ENV_FILE" | tail -1)
+        NOTES="project from env file ${ENV_FILE#$REPO/}"
+    fi
+    if [[ -z "$SRC_PROJECT" && -n "$SRC_STACK" ]]; then
+        ENV_HIT=$( (ls "$REPO"/.env.*."$SRC_STACK" 2>/dev/null || true) | head -1)
+        if [[ -n "$ENV_HIT" ]]; then
+            SRC_PROJECT=$(sed -n 's/^PROJECT_ID=//p' "$ENV_HIT" | tail -1)
+            NOTES="project from env file ${ENV_HIT#$REPO/}"
+        fi
+    fi
+    # Source stack config candidates: prod stacks are named after the cluster
+    # (Pulumi.dcr-kube1.yaml), lab stacks after the env (cluster dcr-experiments
+    # -> Pulumi.experiments.yaml) — try the exact name, then the dcr- prefix
+    # stripped.
+    CFG_FILE=""
+    for cand in "$SRC_STACK" "${SRC_STACK#dcr-}"; do
+        if [[ -n "$cand" && -f "$REPO/$FOLDER/Pulumi.$cand.yaml" ]]; then
+            CFG_FILE="$REPO/$FOLDER/Pulumi.$cand.yaml"
+            CFG_NAME="Pulumi.$cand.yaml"
+            break
+        fi
     done
+    if [[ -z "$SRC_PROJECT" && -n "$CFG_FILE" ]]; then
+        CFG_BUCKET=$(sed -n 's/^[[:space:]]*bucket:[[:space:]]*//p' "$CFG_FILE" | head -1)
+        CFG_BUCKET="${CFG_BUCKET#gs://}"
+        if [[ "$CFG_BUCKET" == cloudnative-pg-backup-* ]]; then
+            SRC_PROJECT="${CFG_BUCKET#cloudnative-pg-backup-}"
+            NOTES="project from bucket name in $CFG_NAME"
+        fi
+    fi
+    # Strip optional quotes around the value (PROJECT_ID="x").
+    SRC_PROJECT="${SRC_PROJECT%\"}"; SRC_PROJECT="${SRC_PROJECT#\"}"
+    SRC_PROJECT="${SRC_PROJECT%\'}"; SRC_PROJECT="${SRC_PROJECT#\'}"
+    if [[ -z "$SRC_PROJECT" ]]; then
+        echo "Error: cannot resolve the SOURCE GCP project id." >&2
+        echo "  Pass --source-project <id>, or --source-stack/--source-env-file" >&2
+        echo "  naming an env file that contains PROJECT_ID=<id>." >&2
+        exit 1
+    fi
+
+    # --- Source-side identity ------------------------------------------------
+    # SA creation, bucket IAM, and key minting run against the SOURCE project.
+    # When the source cluster's env file is available (probed or explicit),
+    # scope those commands to its GOOGLE_APPLICATION_CREDENTIALS — the source
+    # cluster's own manager identity. Otherwise the current identity must
+    # already hold SA-admin + bucket-admin there; GCP names the missing role
+    # if it does not.
+    ENV_FILE="${ENV_FILE:-${ENV_HIT:-}}"
+    SOURCE_CRED=""
+    if [[ -n "$ENV_FILE" && -f "$ENV_FILE" ]]; then
+        SOURCE_CRED=$(sed -n 's/^GOOGLE_APPLICATION_CREDENTIALS=//p' "$ENV_FILE" | tail -1)
+        SOURCE_CRED="${SOURCE_CRED%\"}"; SOURCE_CRED="${SOURCE_CRED#\"}"
+        SOURCE_CRED="${SOURCE_CRED%\'}"; SOURCE_CRED="${SOURCE_CRED#\'}"
+        SOURCE_CRED="${SOURCE_CRED//\$\{PWD\}/$REPO}"
+        SOURCE_CRED="${SOURCE_CRED//\$PWD/$REPO}"
+    fi
+    _SRC_NOTE_PRINTED=""
+    src_gcloud() {
+        if [[ -n "$SOURCE_CRED" && -f "$SOURCE_CRED" ]]; then
+            CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$SOURCE_CRED" \
+                GOOGLE_APPLICATION_CREDENTIALS="$SOURCE_CRED" "$@"
+        else
+            if [[ -z "$_SRC_NOTE_PRINTED" ]]; then
+                echo "Note: no source env credential — running source-side IAM with the" >&2
+                echo "current identity; it must hold SA-admin + bucket-admin in $SRC_PROJECT." >&2
+                _SRC_NOTE_PRINTED=1
+            fi
+            "$@"
+        fi
+    }
+    [[ -n "$SOURCE_CRED" && -f "$SOURCE_CRED" ]] \
+        && NOTES="$NOTES; source IAM via ${SOURCE_CRED#$REPO/}"
+
+    # --- Source bucket --------------------------------------------------------
+    # Precedence: --bucket > source stack config (backup.bucket) >
+    # cloudnative-pg-backup-<source-project> — the name every cluster stack
+    # in this repo creates for its own backups.
+    if [[ -z "$BUCKET" && -n "$CFG_FILE" ]]; then
+        BUCKET=$(sed -n 's/^[[:space:]]*bucket:[[:space:]]*//p' "$CFG_FILE" | head -1)
+        BUCKET="${BUCKET#gs://}"
+        [[ -n "$BUCKET" ]] && NOTES="$NOTES; bucket from $CFG_NAME"
+    fi
+    if [[ -z "$BUCKET" ]]; then
+        BUCKET="cloudnative-pg-backup-${SRC_PROJECT}"
+    fi
+
+    # --- CNPG cluster name = backup folder name -------------------------------
+    # Every stack in this repo names its Cluster CR logto, so the default is
+    # right unless the source overrode the cluster name at deploy time.
+    if [[ -z "$SRC_CLUSTER" ]]; then
+        SRC_CLUSTER="logto"
+    fi
+
+    # Absolute default — `pulumi -C` changes the working directory, so a
+    # repo-relative path would not resolve when the stack reads it.
+    KEY_FILE="${KEY_FILE:-$REPO/credentials/${SRC_PROJECT}/${SA_NAME}.json}"
 
     SA_EMAIL="${SA_NAME}@${SRC_PROJECT}.iam.gserviceaccount.com"
 
     echo "Source project : ${SRC_PROJECT}"
-    echo "Source cluster : ${SRC_CLUSTER}"
+    echo "Source cluster : ${SRC_CLUSTER}   (CNPG Cluster name = backup folder)"
     echo "Source bucket  : gs://${BUCKET}/${BUCKET_PATH}"
     echo "Reader SA      : ${SA_EMAIL}"
     echo "Key file       : ${KEY_FILE}"
     [[ -n "$TARGET_TIME" ]] && echo "PITR target    : ${TARGET_TIME}"
+    [[ -n "$NOTES" ]] && echo "Inferred       : ${NOTES}"
     echo
 
     # Idempotent: "already exists" is the expected result on a re-run.
-    gcloud iam service-accounts create "$SA_NAME" \
+    src_gcloud gcloud iam service-accounts create "$SA_NAME" \
         --project "$SRC_PROJECT" \
         --display-name "CloudNativePG cross-project backup reader" \
         || echo "Service account already exists — continuing."
@@ -305,7 +421,7 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
     # Read-only, pinned to the source bucket. The bucket already exists here
     # (the source cluster's backups live in it), so a bucket-level binding
     # works — no project-level condition needed.
-    gsutil iam ch \
+    src_gcloud gsutil iam ch \
         "serviceAccount:${SA_EMAIL}:roles/storage.objectViewer" \
         "gs://${BUCKET}"
 
@@ -314,7 +430,7 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
         echo "Key file '$KEY_FILE' already exists — NOT creating another key."
     else
         mkdir -p "$(dirname "$KEY_FILE")"
-        gcloud iam service-accounts keys create "$KEY_FILE" \
+        src_gcloud gcloud iam service-accounts keys create "$KEY_FILE" \
             --iam-account "$SA_EMAIL" \
             --project "$SRC_PROJECT"
         chmod 600 "$KEY_FILE"
@@ -333,6 +449,12 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
     if [[ -n "$TARGET_TIME" ]]; then
         just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
             --key 'properties.clusters[0].cluster.bootstrap.recovery.targetTime' --value "$TARGET_TIME"
+    else
+        # Omitting --target-time means "latest available". Drop any stale
+        # PITR timestamp from a previous run — a leftover would silently PITR.
+        GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}" \
+            pulumi -C "$FOLDER" -s "$STACK" config rm --path \
+            'properties.clusters[0].cluster.bootstrap.recovery.targetTime' >/dev/null 2>&1 || true
     fi
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'properties.sourceSecret.name' --value 'postgres-source-credentials'
@@ -346,6 +468,111 @@ configure-source source_cluster bucket source_project bucket_path="logto" target
     echo
     echo "Sanity check the source backup is readable with the new key:"
     echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gsutil ls gs://$BUCKET/$BUCKET_PATH/$SRC_CLUSTER/"
+
+# Reset a RUNNING cluster's data and re-import from the configured recovery
+# source. Deletes the Cluster CR and its data PVCs only — operator, backup
+# bucket and its backups, Secrets, and ScheduledBackup all stay — refreshes
+# Pulumi state so the next apply recreates the Cluster CR, whose first
+# instance bootstraps with bootstrap.recovery (replays the source base
+# backup + WAL instead of initdb). The surgical alternative to
+# teardown+redeploy: existing backups survive.
+# Run AFTER configure-source — the recovery source must already be on the
+# stack, and this recipe aborts if it is not (a reset without it would
+# bootstrap EMPTY, not re-import). Requires --reset-data yes so the data
+# loss is never silent.
+# Usage: just postgres reset-cluster --reset-data yes [--cluster <name>] [--namespace <ns>] [--app-password '<pw>'] [--stack <name>]
+[arg("reset_data", long="reset-data", help="Must be 'yes' — deletes the Cluster CR and every data PVC in it")]
+[arg("cluster", long="cluster", short="c", help="Cluster name — must match properties.clusters[0].cluster.name (default logto)")]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the Cluster")]
+[arg("app_password", long="app-password", short="p", help="Chain deploy-cluster with this app password after the reset (otherwise run deploy-cluster by hand)")]
+[arg("retries", long="retries", short="r", help="Instance pod removal probe attempts (default 30)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('postgres')]
+[no-cd]
+reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" retries="30" interval="10" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="cloudnative-pg-cluster"
+    NS="{{ namespace }}"
+    CLUSTER="{{ cluster }}"
+    APP_PASSWORD="{{ app_password }}"
+    STACK=$(just postgres _require-stack --stack "{{ stack }}")
+
+    if [[ "{{ reset_data }}" != "yes" ]]; then
+        echo "Refusing reset." >&2
+        echo "This deletes the Cluster CR '$CLUSTER' in '$NS' and every data PVC:" >&2
+        echo "  - all current database files are destroyed" >&2
+        echo "  - the next deploy-cluster re-imports from the recovery source" >&2
+        echo "Re-run with --reset-data yes to proceed." >&2
+        exit 1
+    fi
+
+    # The recovery source must already be on the stack — a reset without it
+    # would silently bootstrap EMPTY, not re-import.
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    SRC_CLUSTER=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster' 2>/dev/null) || {
+        echo "Error: no recovery source on stack '$STACK' — bootstrap would be EMPTY." >&2
+        echo "Run 'just postgres configure-source --source-stack <name>' first." >&2
+        exit 1
+    }
+    SRC_BUCKET=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.bootstrap.recovery.bucket' 2>/dev/null || true)
+    SRC_BUCKET_PATH=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.bootstrap.recovery.bucketPath' 2>/dev/null || true)
+    TARGET_TIME=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.bootstrap.recovery.targetTime' 2>/dev/null || true)
+
+    if ! kubectl get cluster "$CLUSTER" -n "$NS" >/dev/null 2>&1; then
+        echo "Error: Cluster CR '$CLUSTER' not found in '$NS' — nothing to reset." >&2
+        echo "For a fresh deploy use 'just postgres deploy-cluster' instead." >&2
+        exit 1
+    fi
+
+    echo "Resetting cluster '$CLUSTER' in '$NS' (stack '$STACK')..."
+    echo "  Destroyed : all current database files (Cluster CR + data PVCs)"
+    echo "  Kept      : operator, backup bucket + backups, Secrets, ScheduledBackup"
+    echo "  Re-import : gs://${SRC_BUCKET:-<unset>}/${SRC_BUCKET_PATH}/$SRC_CLUSTER/"
+    [[ -n "$TARGET_TIME" ]] && echo "  PITR      : $TARGET_TIME"
+    echo
+
+    echo "Deleting Cluster CR '$CLUSTER' (operator removes the instance pods)..."
+    if ! kubectl delete cluster "$CLUSTER" -n "$NS" --wait --timeout=300s; then
+        echo "Error: Cluster deletion timed out — a finalizer may be stuck." >&2
+        echo "Inspect: kubectl get cluster $CLUSTER -n $NS -o jsonpath='{.metadata.finalizers}'" >&2
+        exit 1
+    fi
+
+    # Belt-and-braces: no instance pods must remain before touching PVCs.
+    pods_gone() {
+        [[ -z "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]]
+    }
+    for ((i = 1; i <= {{ retries }}; i++)); do
+        pods_gone && break
+        sleep "{{ interval }}"
+    done
+    if ! pods_gone; then
+        echo "Error: instance pods still present after {{ retries }} probes — PVCs left in place." >&2
+        kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" >&2 || true
+        exit 1
+    fi
+
+    echo "Deleting data PVCs..."
+    kubectl delete pvc -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" --ignore-not-found
+
+    echo "Refreshing Pulumi state so the next apply recreates the Cluster CR..."
+    pulumi -C "$FOLDER" -s "$STACK" refresh --yes
+
+    if [[ -n "$APP_PASSWORD" ]]; then
+        just postgres deploy-cluster --app-password "$APP_PASSWORD" \
+            --cluster "$CLUSTER" --namespace "$NS" --stack "$STACK"
+    else
+        echo
+        echo "Reset complete. Re-import with:"
+        echo "  just postgres deploy-cluster --app-password '<app-password>' --cluster $CLUSTER --namespace $NS"
+    fi
 
 # Deploy the CloudNativePG operator stack, then wait until it is serving.
 # One command for: ensure-stack, preview, apply, operator pod ready, CRD present.

@@ -11,18 +11,30 @@ The source backup was written by the same CloudNativePG operator process (barman
 ## Command
 
 ```bash
-just postgres configure-source \
-  --source-cluster <source-cluster-name> \
-  --bucket <source-bucket> \
-  --source-project <source-project-id>
+just postgres configure-source --source-stack <source-cluster-name>
 ```
+
+One flag for a source cluster standardized like this repo's own: the recipe resolves the source GCP project from `.env.<env>.<source-cluster>` (its `PROJECT_ID` line), falling back to the backup bucket name in the source stack config (`cloudnative-pg-backup-<project-id>` → project id), and defaults the CNPG cluster name and bucket path to `logto`. A source managed from another checkout needs `--source-project <id>` — the bucket then defaults to `cloudnative-pg-backup-<id>` — or `--source-env-file <path>` to an env file that contains `PROJECT_ID`.
+
+Printed at the top of every run: the resolved project, CNPG cluster, bucket, reader SA, key file, PITR target if any, and where each inferred value came from.
+
+## Source Pre-Flight
+
+The recipe closes by printing this command with the resolved values filled in. Run it before `deploy-cluster` to confirm the reader key can actually see the source backups — a wrong `--source-cluster` or a missing grant otherwise surfaces only as a recovery that never starts:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=<key-file> gsutil ls gs://<bucket>/<bucket-path>/<source-cluster>/
+```
+
+Expect the barman object-store layout (base backups plus archived WAL) under that prefix. An empty listing or `AccessDenied` means the import would produce an unusable cluster.
 
 ## Behavior
 
-- Creates/reuses reader service account `postgres-source-reader` **in the source project**
-- Grants `roles/storage.objectViewer` on the source bucket only (bucket-level `gsutil iam ch` — the bucket already exists)
-- Mints `credentials/<source-project>/postgres-source-reader.json` — **skipped if the file already exists** (keys are not idempotent; old ones keep working until deleted). Audit: `gcloud iam service-accounts keys list --iam-account postgres-source-reader@<source-project>.iam.gserviceaccount.com --project <source-project>`
-- Stores the recovery source on the cluster stack: `properties.clusters[0].cluster.bootstrap.recovery.{sourceCluster,bucket,bucketPath[,targetTime]}` and `properties.sourceSecret.{name,key,filepath}`
+1. Resolves the source identity: `--source-project` > `--source-env-file` > probe `.env.*.<source-stack>` > bucket-name suffix in the source stack config. Probed env files must contain `PROJECT_ID`. Prod stack configs are named after the cluster (`Pulumi.dcr-kube1.yaml`), lab stacks after the env (cluster `dcr-experiments` → `Pulumi.experiments.yaml`) — both are probed. Nothing probed (e.g. a legacy bucket like the lab `dev` stack) → the run stops with the resolution error
+2. Creates/reuses reader service account `postgres-source-reader` **in the source project** — source-side IAM runs with the source env file's `GOOGLE_APPLICATION_CREDENTIALS` when probed (the source cluster's own manager identity); otherwise the current identity must hold SA-admin + bucket-admin there
+3. Grants `roles/storage.objectViewer` on the source bucket only (bucket-level `gsutil iam ch` — the bucket already exists)
+4. Mints `credentials/<source-project>/postgres-source-reader.json` — **skipped if the file already exists** (keys are not idempotent; old ones keep working until deleted). Audit: `gcloud iam service-accounts keys list --iam-account postgres-source-reader@<source-project>.iam.gserviceaccount.com --project <source-project>`
+5. Stores the recovery source on the cluster stack: `properties.clusters[0].cluster.bootstrap.recovery.{sourceCluster,bucket,bucketPath}` and `properties.sourceSecret.{name,key,filepath}` — and removes a stale `targetTime` from a previous run when `--target-time` is omitted, so "latest" is never silently a PITR
 
 The next `deploy-cluster` then:
 
@@ -34,9 +46,11 @@ The next `deploy-cluster` then:
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--source-cluster` | Yes | — | The source cluster's **CNPG `Cluster` name** — CNPG stores backups under a folder named after it, and the recovery source must match that folder. This is the backup folder name, not this cluster's name |
-| `--bucket` | Yes | — | Source GCS bucket holding the barman backups |
-| `--source-project` | Yes | — | GCP project owning the source bucket |
+| `--source-stack` | One of the source flags | — | Source cluster name — the `.env.<env>.<name>` suffix (e.g. `dcr-experiments`). Probed for the source `PROJECT_ID` and the source stack config (cluster name, then `dcr-` stripped for lab stacks) |
+| `--source-project` | One of the source flags | inferred | Source GCP project id owning the bucket. Required when the source is not managed from this checkout; bucket defaults to `cloudnative-pg-backup-<id>` |
+| `--source-env-file` | One of the source flags | probed | Env file to read the source `PROJECT_ID` and manager credential from — must contain `PROJECT_ID`; use when the file lives outside the repo's `.env.*` naming |
+| `--source-cluster` | No | `logto` | Source CNPG `Cluster` name = the backup folder name. Override only if the source Cluster CR is not `logto` |
+| `--bucket` | No | source stack config, else `cloudnative-pg-backup-<source-project>` | Source GCS bucket holding the barman backups |
 | `--bucket-path` | No | `logto` | Source cluster's `backup.bucketPath` |
 | `--target-time` | No | latest | RFC3339 PITR timestamp; omit for latest available |
 | `--sa-name` | No | `postgres-source-reader` | Reader SA created in the source project |
@@ -57,7 +71,32 @@ The `postgres-backup-sa` (from [backup](backup.md)) has objectAdmin pinned by IA
 
 ## One-Shot Bootstrap
 
-Recovery **is** the bootstrap. Once the first instance exists, `deploy-cluster` re-runs are no-ops for data — the operator does not re-import. To re-import, [teardown](teardown.md) the Cluster and redeploy with the recovery source still set. To stop referencing the source after a successful import, remove the `bootstrap.recovery` block from the stack config (`pulumi config rm --path properties.clusters[0].cluster.bootstrap.recovery`).
+Recovery **is** the bootstrap. Once the first instance exists, `deploy-cluster` re-runs are no-ops for data — the operator does not re-import. To re-import into a running cluster, use [reset-cluster](#reset-re-import-into-a-running-cluster); a full [teardown](teardown.md) also works. To stop referencing the source after a successful import, remove the `bootstrap.recovery` block from the stack config (`pulumi config rm --path properties.clusters[0].cluster.bootstrap.recovery`).
+
+## Reset: Re-import Into a Running Cluster
+
+`bootstrap.recovery` only fires at first-instance creation, so a running cluster cannot re-import in place — the data must be reset first. `reset-cluster` is the surgical form: it deletes the Cluster CR and data PVCs **only** (operator, backup bucket and its backups, Secrets, ScheduledBackup all stay), refreshes Pulumi state, and the next `deploy-cluster` bootstraps from the recovery source again.
+
+```bash
+just postgres reset-cluster --reset-data yes --app-password '<app-password>'
+```
+
+Behavior:
+
+1. Refuses to run unless the recovery source is already on the stack (set by [configure-source](#command)) — a reset without it would bootstrap EMPTY, not re-import. Aborts equally when the Cluster CR does not exist (a fresh deploy wants `deploy-cluster` directly)
+2. Deletes the Cluster CR (the operator removes the instance pods), waits until no instance pods remain, then deletes the data PVCs
+3. `pulumi refresh` so the next apply recreates the Cluster CR instead of diffing a phantom
+4. Chains `deploy-cluster` when `--app-password` is given; otherwise prints the re-import command
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--reset-data` | Yes | — | Must be `yes` — deletes the Cluster CR and every data PVC in it |
+| `--app-password` | No | — | Chain `deploy-cluster` after the reset with this app password |
+| `--cluster` | No | `logto` | Must match `properties.clusters[0].cluster.name` |
+| `--namespace` | No | `prod` | Namespace holding the Cluster |
+| `--retries` | No | `30` | Instance pod removal probe attempts |
+| `--interval` | No | `10` | Seconds between probes |
+| `--stack` | No | `$PULUMI_STACK` | No dev fallback |
 
 ## After the Import
 
@@ -66,6 +105,6 @@ Recovery **is** the bootstrap. Once the first instance exists, `deploy-cluster` 
 
 ## Warnings
 
-- **Run order matters.** `configure-source` before `deploy-cluster`. If the Cluster already exists, the import cannot retro-apply — teardown first.
+- **Run order matters.** `configure-source` before `deploy-cluster`. If the Cluster already exists, the import cannot retro-apply — [reset it](#reset-re-import-into-a-running-cluster) first.
 - **Source version floor.** The source backup must come from a CloudNativePG version this operator (1.30.x) can read — any 1.x barman object store works, but the WAL format must be a PostgreSQL major this operator supports (14–18).
 - **Key hygiene.** The reader key grants read on another project's backups. Delete it when the import is done if it is not needed for a repeat.
