@@ -8,7 +8,7 @@ Imports data from **another cluster's** CloudNativePG backup into a freshly-crea
 
 The source backup was written by the same CloudNativePG operator process (barman object store layout: base backups + WAL under `gs://<bucket>/<bucketPath>/<clusterName>/`), so the new cluster reads it natively.
 
-**Physical, not logical.** The new instance inherits the source's on-disk data directory byte for byte, so the **source and target must run the same PostgreSQL major**. For a cross-major move (PG 14 source into a PG 16 target) this path cannot work at all — use [logical import](logical-import.md) instead.
+**Physical, not logical.** The new instance inherits the source's on-disk data directory byte for byte, so the **source and target must run the same PostgreSQL major**. For a cross-major move (PG 14 source into a PG 16 target) this path cannot work at all — use [logical import](logical-import.md) instead. The two paths are mutually exclusive on one stack: `restore-logical` treats the config this recipe writes as target state it must destroy, refusing to start without `--replace-data yes` and then removing `bootstrap.recovery` and `sourceSecret` outright.
 
 ## Command
 
@@ -86,10 +86,11 @@ just postgres reset-cluster --reset-data yes --app-password '<app-password>'
 Behavior:
 
 1. Refuses to run unless the recovery source is already on the stack (set by [configure-source](#command)) — a reset without it would bootstrap EMPTY, not re-import. Aborts equally when the Cluster CR does not exist (a fresh deploy wants `deploy-cluster` directly)
-2. Clears this cluster's own backup archive — `gs://<backup.bucket>/<bucketPath>/<cluster>/`, removed with the backup SA key — so `bootstrap.recovery` starts on an empty WAL-archive destination instead of aborting with `Expected empty archive`
-3. Deletes the Cluster CR (the operator removes the instance pods), waits until no instance pods remain, then deletes the data PVCs
-4. `pulumi refresh` so the next apply recreates the Cluster CR instead of diffing a phantom
-5. Chains `deploy-cluster` when `--app-password` is given; otherwise prints the re-import command
+2. Clears this cluster's own backup archive — `gs://<backup.bucket>/<bucketPath>/<cluster>/`, removed with the backup SA key — so `bootstrap.recovery` starts on an empty WAL-archive destination instead of aborting with `Expected empty archive`. Shared with [`restore-logical`](logical-import.md#behavior--restore-logical), and it fails closed: only "prefix does not exist" is tolerated, a permission or network failure aborts the reset rather than leaving a half-cleared archive for the recovery to trip over
+3. Deletes the Cluster CR (300s timeout; a timeout points at a stuck finalizer), then removes leftover `cnpg.io/jobRole=full-recovery` Jobs/pods from earlier failed recoveries — they carry the cluster label and would otherwise keep the pod wait below spinning until it gives up
+4. Waits until no `cnpg.io/cluster=<cluster>` pod remains (`--retries` × `--interval`, default 30 × 10s). Still present at the end: the PVCs are left in place and the reset aborts
+5. Deletes the data PVCs, then `pulumi refresh` so the next apply recreates the Cluster CR instead of diffing a phantom
+6. Chains `deploy-cluster` when `--app-password` is given; otherwise prints the re-import command
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
@@ -112,3 +113,4 @@ Behavior:
 - **Same major, not "any supported major".** This operator can *run* PostgreSQL 14–18, but that is the range of majors it supports, not a compatibility range for recovery. A base backup + WAL set only replays into the major that wrote it: a PG 14 backup recovered into a PG 16 cluster never starts — the instance exits with `database files are incompatible with server` (`The data directory was initialized by PostgreSQL version 14, which is not compatible with this version 16`). Cross-major migrations go through [logical import](logical-import.md).
 - **Operator version floor.** Independently of the major, the source backup must come from a CloudNativePG version this operator (1.30.x) can read — any 1.x barman object store works.
 - **Key hygiene.** The reader key grants read on another project's backups. Delete it when the import is done if it is not needed for a repeat.
+- **A logical restore un-configures this path.** [`restore-logical`](logical-import.md) strips `bootstrap.recovery` and `sourceSecret` from the stack. Re-run `configure-source` before any later `reset-cluster`, which aborts with `no recovery source on stack` otherwise.
