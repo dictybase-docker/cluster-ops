@@ -214,4 +214,6 @@ setup-sa-manager project_id="" key_file="":
     echo "  SA email : ${sa_email}"
     echo "  Key file : ${key_file}"
     echo ""
-    echo "Next: set up your environment — see docs/kops-setup.md Section 2."
+    echo "Next: just gcp-cluster configure-gcloud --name ${project_id}-sa-manager --project ${project_id} --key-file ${key_file}"
+    echo "Then: just gcp-cluster setup-kops-creator --project ${project_id}"
+    echo "(Both are folded into: just gcp-cluster bootstrap-identities)"

@@ -5,7 +5,7 @@
 build:
     cd "{{ invocation_directory() }}" && go build -o bin/cluster-ops ./cmd/cluster-ops
 
-# Generate a per-project SSH keypair for kops node access (Section 1.6).
+# Generate a per-project SSH keypair for kops node access.
 # Key path: SSH_KEY env var if set (takes precedence), else credentials/<project>/k8sVM.
 # Options: -p/--project <project-id>, -t/--type ed25519|rsa (default ed25519).
 # Refuses to overwrite an existing keypair.
@@ -487,7 +487,8 @@ instance-groups:
     kops get ig
 
 # ─────────────────────────────────────────────
-# Disposable cluster lifecycle recipes (Section 9)
+# Disposable cluster lifecycle recipes (delete-cluster, delete-state-bucket,
+# cleanup-gcloud-config)
 # ─────────────────────────────────────────────
 
 # Teardown: dry-run preview or full destroy for the target cluster.
@@ -582,7 +583,7 @@ delete-cluster cluster="" kops_name="" project="" state="" confirm="no":
 
     echo "Teardown complete."
 
-# Delete the GCS state bucket and all objects/versions (Section 6.4).
+# Delete the GCS state bucket and all objects/versions.
 # Dry-run by default; pass --confirm yes to delete permanently.
 # Bucket is derived from --cluster (kops-state-<cluster>) unless --bucket-name / BUCKET_NAME is set.
 # Usage: just gcp-cluster delete-state-bucket [--cluster <name>] [--bucket-name <bucket|gs://bucket>] [--confirm yes]
@@ -1232,8 +1233,8 @@ bootstrap-identities project="":
 # call — the inverse of rotate-to-creator, for admin tasks that need SA/KMS
 # admin rights (gcp-pulumi bootstrap-backend, creating other SAs). cluster-cred
 # edits the env file; configure-gcloud activates the named config. One shell
-# boundary is still required AFTER this — re-enter cluster-env so Section 3
-# tools (kops/kubectl) pick up the new GOOGLE_APPLICATION_CREDENTIALS.
+# boundary is still required AFTER this — re-enter cluster-env so kops, kubectl
+# and pulumi pick up the new GOOGLE_APPLICATION_CREDENTIALS.
 # Usage: just gcp-cluster rotate-to-manager [--project <project-id>]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [group('cluster-management')]
@@ -1266,15 +1267,17 @@ rotate-to-manager project="":
     just gcp-cluster configure-gcloud --name "${project_id}-sa-manager" --project "${project_id}" --key-file "${manager_key}"
 
     echo
-    echo "Rotated. Re-enter the shell so Section 3 tools pick up the new credential:"
+    echo "Rotated to sa-manager. Re-enter the shell so kops/kubectl/pulumi pick up the new credential:"
     echo "  exit"
     echo "  just cluster-env --env <env> --cluster <cluster-name>"
+    echo "Then run the admin recipe that needs it, e.g. 'just gcp-pulumi bootstrap-backend'."
+    echo "Rotate back afterwards with: just gcp-cluster rotate-to-creator"
 
 # Rotate the env file + gcloud identity to the least-privilege kops-cluster-creator
 # in one call. cluster-cred edits the env file; configure-gcloud activates the
 # named config from the key directly (no GOOGLE_APPLICATION_CREDENTIALS needed).
-# One shell boundary is still required AFTER this — re-enter cluster-env so
-# Section 3 tools (kops/kubectl) pick up the new GOOGLE_APPLICATION_CREDENTIALS.
+# One shell boundary is still required AFTER this — re-enter cluster-env so kops
+# and kubectl pick up the new GOOGLE_APPLICATION_CREDENTIALS.
 # Usage: just gcp-cluster rotate-to-creator [--project <project-id>]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [group('cluster-management')]
@@ -1301,9 +1304,10 @@ rotate-to-creator project="":
     just gcp-cluster configure-gcloud --name "${project_id}-kops-cluster-creator" --project "${project_id}" --key-file "${creator_key}"
 
     echo
-    echo "Rotated. Re-enter the shell so Section 3 tools pick up the new credential:"
+    echo "Rotated to kops-cluster-creator. Re-enter the shell so kops/kubectl pick up the new credential:"
     echo "  exit"
     echo "  just cluster-env --env <env> --cluster <cluster-name>"
+    echo "Then continue with: just gcp-cluster show-public-ip"
 
 # Push Git-canonical manifests to state storage, preview, apply, and confirm
 # zero drift. The repeatable Day-2 loop — folds replace-manifests + plan-cluster

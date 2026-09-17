@@ -110,7 +110,7 @@ install-tools:
     file="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
     if [[ ! -f "${file}" ]]; then
         echo "Error: tool versions file '${file}' does not exist."
-        echo "Create it first — see Section 1 of docs/kops-setup.md."
+        echo "Create it first: just create-cluster-env --env <env> --cluster <cluster-name> --project <project-id>"
         exit 1
     fi
     echo "Installing plugins from ${file}..."
@@ -122,7 +122,7 @@ install-tools:
     echo "Done: every tool in ${file} installed."
 
 # Install every pinned asdf tool, then verify the full toolchain (core + asdf).
-# Composite of install-tools + check-tools — the one command to run in Section 1.
+# Composite of install-tools + check-tools — run it inside `just cluster-env`.
 # Usage: just prepare-tools
 [group('setup-tools')]
 prepare-tools: install-tools check-tools

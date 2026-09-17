@@ -48,7 +48,7 @@ just gcp-cluster generate-ssh-key
 # 3. Bootstrap both identities (sa-manager + kops-cluster-creator), then rotate
 just gcp-cluster bootstrap-identities
 just gcp-cluster rotate-to-creator
-# >>> shell boundary: re-enter so Section 3 tools pick up the new credential
+# >>> shell boundary: re-enter so kops/kubectl pick up the new credential
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 
@@ -77,6 +77,7 @@ Then continue with [`pulumi-setup.md`](pulumi-setup.md).
 ## 1. Prerequisites & Execution Context
 
 You need a GCP project with billing enabled and the core system tools installed. One GCP project hosts exactly one cluster.
+Stay inside the `cluster-env` sub-shell from here to the end of the guide.
 → [Prerequisites](reference/kops/prerequisites.md) · [Cluster env](reference/kops/cluster-env.md) · [Tool versions](reference/kops/tool-versions.md) · [File isolation](reference/kops/file-isolation.md)
 
 ```bash
@@ -89,15 +90,11 @@ just prepare-tools
 just gcp-cluster generate-ssh-key
 ```
 
-`cluster-env` exports `PROJECT_ID` and `CLUSTER_NAME` (session-only — never written to the gitignored `.env.<env>.<cluster>` file) for the life of that shell. `prepare-tools` folds `install-tools` + `check-tools`. `generate-ssh-key` needs no flags once `PROJECT_ID` is set.
-
-Stay inside the `cluster-env` sub-shell for the rest of this guide. `create-cluster-env` creates or preserves the per-cluster asdf manifest, so `prepare-tools` uses this cluster's tool versions automatically.
-
 ---
 
 ## 2. Service Accounts & Authentication
 
-Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two composite recipes do the whole chain; one shell re-entry is still required at the end so Section 3 tools pick up the new credential.
+Start with the broad `sa-manager` identity, use it to create the least-privilege `kops-cluster-creator`, then rotate to that narrower key. Two composite recipes do the whole chain; one shell re-entry at the end is still required before `show-public-ip`.
 → [Service accounts](reference/kops/service-accounts.md)
 
 ```bash
@@ -107,7 +104,7 @@ just gcp-cluster bootstrap-identities
 # Rotate credential + gcloud identity to the least-privilege kops-cluster-creator
 just gcp-cluster rotate-to-creator
 
-# >>> shell boundary: re-enter so Section 3 tools pick up the new credential
+# >>> shell boundary: re-enter so kops/kubectl pick up the new credential
 exit
 just cluster-env --env <env> --cluster <cluster-name>
 ```
@@ -116,7 +113,8 @@ just cluster-env --env <env> --cluster <cluster-name>
 
 ## 3. Cluster Bootstrap (Git-Native Flow)
 
-`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**. **The command is not idempotent** — a built-in guard prevents re-running over existing bundles, so any post-generation edits belong directly in YAML. Review and commit before `create-cluster` touches the cloud.
+`bootstrap-bundle` renders the manifest bundle locally — zero cloud calls — and is the handoff point after which **Git owns cluster identity and shape**.
+**Not idempotent.** Every change after generation is made directly in the YAML, reviewed, and committed before `create-cluster` touches the cloud.
 → [Bootstrap detail](reference/kops/bootstrap.md)
 
 ```bash
@@ -142,29 +140,25 @@ just gcp-cluster create-cluster
 ## 4. Day-2 Operations (Git-First Workflow)
 
 Every configuration and scaling change is edit YAML → commit → apply → verify no drift.
-→ [Day-2 operations](reference/kops/day2-operations.md)
+→ [Day-2 operations](reference/kops/day2-operations.md) · [Change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix) · [CI drift detection](reference/kops/day2-operations.md#drift-detection-ci) · [Break-glass edits](reference/kops/day2-operations.md#break-glass-emergency-edits)
 
 ```bash
 $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
 git commit -am "${CLUSTER_NAME}: scale stateless-web pool to 8"
 
 just gcp-cluster apply-cluster
-```
 
-Changing `machineType`, disk size, `image`, or `kubernetesVersion` also needs a rolling update; pool scaling and CIDR changes do not ([change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix)):
-
-```bash
+# Replace VMs after a machineType, disk, image, or kubernetesVersion change
 just gcp-cluster rolling-update            # dry-run inspection
 just gcp-cluster rolling-update --yes yes  # execute
 ```
-
-Wire `drift-manifests` (blocking) and `plan-cluster` (review output) into CI on PR and a nightly cron ([CI drift detection](reference/kops/day2-operations.md#drift-detection-ci)). After any break-glass `kops edit`, reconcile Git immediately with `just gcp-cluster export-bundle`.
 
 ---
 
 ## 5. Exploring the Cluster
 
-Export the kubeconfig and open the terminal UI. `KUBECONFIG` is already set from `just cluster-env`, so export writes that path with no flags.
+Export the admin kubeconfig to `$KUBECONFIG`, then open the terminal UI. Re-export whenever the admin credential expires.
+→ [Cluster access](reference/kops/cluster-access.md)
 
 ```bash
 just gcp-cluster export-kubeconfig
@@ -175,6 +169,7 @@ just gcp-cluster k9s
 
 ## 6. Disposable Cluster Lifecycle
 
+**Destructive. Deletes every VM, boot disk, and etcd volume in the cluster.**
 VMs are transient; the blueprint in Git plus local cluster configuration are durable. Teardown destroys compute only — the state bucket, SSH keypair, SA keys, env file, and per-cluster tool manifest all survive.
 → [Teardown](reference/kops/teardown.md) · [What survives](reference/kops/teardown.md#what-survives-teardown)
 
@@ -202,8 +197,6 @@ just cluster-env --env <env> --cluster <cluster-name>
 just gcp-cluster create-cluster
 ```
 
-The Kubernetes layer comes back empty — reapply [`pulumi-setup.md`](pulumi-setup.md) then [`arangodb-deploy.md`](arangodb-deploy.md).
-
 ---
 
 ## 7. Next Steps
@@ -226,6 +219,7 @@ The Kubernetes layer comes back empty — reapply [`pulumi-setup.md`](pulumi-set
 - [Service accounts & authentication](reference/kops/service-accounts.md)
 - [Cluster bootstrap detail](reference/kops/bootstrap.md)
 - [Day-2 operations detail](reference/kops/day2-operations.md)
+- [Cluster access — kubeconfig, k9s, status](reference/kops/cluster-access.md)
 - [Teardown & disposable lifecycle](reference/kops/teardown.md)
 - [Declarative re-creation](reference/kops/recreation.md)
 

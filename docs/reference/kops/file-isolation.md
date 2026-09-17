@@ -10,16 +10,18 @@ One GCP project hosts exactly one cluster. Scope cluster-specific files to the p
 |----------|----------|
 | SSH keys | `credentials/${PROJECT_ID}/` |
 | Service-account JSON | `credentials/${PROJECT_ID}/` |
-| kubeconfig | `clusters/${PROJECT_ID}/` |
+| kubeconfig | `clusters/<cluster-name>/` |
 
-Paths are relative to the repo root. `create-cluster-env --project <id>` defaults `KUBECONFIG` to `clusters/<project-id>/kubeconfig`.
+Paths are relative to the repo root. Because one project hosts exactly one cluster, the two namings identify the same thing; the recipes just pick different keys.
+
+`create-cluster-env` resolves `KUBECONFIG` in this order: `--kubeconfig`, then a non-empty inherited `KUBECONFIG`, then an existing `clusters/<cluster-name>/kubeconfig`, then an existing `clusters/<project-id>/kubeconfig` (legacy layout), else the default `clusters/<cluster-name>/kubeconfig`.
 
 ```bash
 SSH_KEY="${PWD}/credentials/${PROJECT_ID}/k8sVM.pub"
-KUBECONFIG="${PWD}/clusters/${PROJECT_ID}/kubeconfig"
+KUBECONFIG="${PWD}/clusters/${CLUSTER_NAME}/kubeconfig"
 ```
 
-`just gcp-cluster export-kubeconfig` writes `$KUBECONFIG` when that variable is set.
+`just gcp-cluster export-kubeconfig` writes `$KUBECONFIG` when that variable is set, creating the parent directory first — [cluster access](cluster-access.md).
 
 ## SSH Keypair
 

@@ -21,7 +21,7 @@ Folds `setup-sa-manager` + `configure-gcloud --name ${PROJECT_ID}-sa-manager` + 
 
 ### `rotate-to-creator`
 
-Folds `cluster-cred` + `configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator` into one call. `configure-gcloud` uses a **separate** named configuration, so your `sa-manager` config stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so Section 3 tools (`kops`/`kubectl`) see the new `GOOGLE_APPLICATION_CREDENTIALS`.
+Folds `cluster-cred` + `configure-gcloud --name ${PROJECT_ID}-kops-cluster-creator` into one call. `configure-gcloud` uses a **separate** named configuration, so your `sa-manager` config stays available for the rare task that needs it. The single `exit`/re-enter afterwards is the only boundary: it re-sources the env file so `kops` and `kubectl` see the new `GOOGLE_APPLICATION_CREDENTIALS`. The recipe prints the next command (`just gcp-cluster show-public-ip`) when it finishes.
 
 ### `rotate-to-manager`
 
