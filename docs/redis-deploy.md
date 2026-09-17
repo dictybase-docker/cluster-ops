@@ -63,16 +63,12 @@ just redis check-pool
 
 ## 2. Install Redis
 
-Creates Secret `redis-auth` and a single-pod Redis **8.4.6** Deployment: AOF persistence on, TCP probes, 50Gi `dictycr-balanced` PVC, password auth from the Secret.
-→ [Install details](reference/redis/install.md)
+Creates Secret `redis-auth` and a single-pod Redis **8.4.6** Deployment: AOF persistence on, TCP probes, 50Gi `dictycr-balanced` PVC, password auth from the Secret. Single instance by design — no failover, no replica, no data import path.
+→ [Install details](reference/redis/install.md) · [address and credentials](reference/redis/install.md#service-and-credentials)
 
 ```bash
 just redis deploy --password '<password>'
 ```
-
-Address: `redis://:<password>@redis.prod.svc.cluster.local:6379` — password in Secret `redis-auth` (key `password`).
-
-**Single instance by design — no failover.** If the pod or node dies, Redis is down until Kubernetes reschedules it (PVC reattach, typically minutes); data survives via the AOF on the PVC. There is no replica to promote, and **no data import path** — applications seed their own keys on first use.
 
 ---
 
@@ -89,7 +85,8 @@ just redis teardown --namespace prod --delete-pvc yes
 
 ## 4. Verify
 
-Read-only checks plus one authenticated `PING`: pool, pod, PVC, Service on 6379, Secret. Exits non-zero if any required check fails.
+Read-only checks plus one authenticated `PING`. Exits non-zero if any check fails.
+→ [Verify details](reference/redis/verify.md)
 
 ```bash
 just redis verify
@@ -114,6 +111,7 @@ Common issues:
 - [Pool requirements](reference/redis/pool-requirements.md)
 - [Install details](reference/redis/install.md)
 - [Teardown details](reference/redis/teardown.md)
+- [Verify details](reference/redis/verify.md)
 - [Troubleshooting](reference/redis/troubleshooting.md)
 
 **Other documentation:**
