@@ -1,6 +1,6 @@
 # Logto Deployment Details
 
-Back to: [Production Logto with PostgreSQL](../../logto-deploy.md)
+Back to: [Logto Deploy Guide](../../logto-deploy.md)
 
 Reference for the repository's production Logto deployment boundary, PostgreSQL wiring, version pin, and verification checks.
 
@@ -44,7 +44,7 @@ Logto v1.43.0 release notes require database alterations before the new version 
 |---|---|---|
 | Production cluster shell | `echo "$PULUMI_STACK"` | Run inside `just cluster-env --env prod --cluster <prod-cluster>` |
 | Kubernetes access | `kubectl config current-context` | Must target intended production cluster |
-| PostgreSQL operator and cluster | `just postgres verify` | Cluster name `logto`, namespace `prod` |
+| PostgreSQL operator and cluster | `just postgres verify` | Cluster name `logto`, namespace `prod`. Installed by [`postgres-deploy.md`](../../postgres-deploy.md), never from the Logto guide |
 | PostgreSQL application Secret | `kubectl -n prod get secret logto-app` | Contains username and password keys |
 | PostgreSQL write Service | `kubectl -n prod get service logto-rw` | Logto uses Kubernetes service environment variables |
 | Production Logto config | `test -f log-to/Pulumi.<production-stack>.yaml` | Not present in the repository today; add and review before apply |
@@ -101,18 +101,18 @@ Before applying:
 1. Confirm PostgreSQL created `logto-app` and `logto-rw` in `prod`.
 2. Confirm the image tag is `1.43.0`, not `latest`.
 3. Confirm `endpoint`, TLS secret, and host are production values.
-4. Run `pulumi -C log-to preview` and inspect every resource change.
+4. Run `just gcp-pulumi preview --folder log-to` and inspect every resource change.
 
 ## Deployment
 
-Run from inside the production cluster shell:
+Run from inside the production cluster shell. `create-resource` runs `pulumi up -f -y` — it does not prompt, so the preview is the only review point:
 
 ```bash
-pulumi -C log-to preview
-pulumi -C log-to up
+just gcp-pulumi preview --folder log-to
+just gcp-pulumi create-resource --folder log-to
 ```
 
-The first apply creates the PVC and Deployment. The container then runs its database seed and alteration commands before starting Logto. A failed migration leaves the rollout unhealthy; inspect logs before retrying.
+The first apply creates PVC `logto-claim` and Deployment `logto`, then Services `logto-api` and `logto-admin`, then Ingress `logto-ingress`. The container then runs its database seed and alteration commands before starting Logto. A failed migration leaves the rollout unhealthy; inspect logs before retrying.
 
 For later upgrades, update only the image tag, preview, apply, and verify migration logs before routing traffic to the new pod.
 
@@ -122,7 +122,8 @@ Run these checks after apply:
 
 ```bash
 kubectl -n prod rollout status deployment/logto
-kubectl -n prod get pods,svc,ingress -l app=logto
+kubectl -n prod get pods -l app=logto
+kubectl -n prod get svc/logto-api svc/logto-admin ingress/logto-ingress
 kubectl -n prod logs deployment/logto --tail=200
 ```
 
