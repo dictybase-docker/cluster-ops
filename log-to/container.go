@@ -19,10 +19,20 @@ func (lt *Logto) ContainerArray(
 			Image: pulumi.String(
 				fmt.Sprintf("%s:%s", config.Image.Name, config.Image.Tag),
 			),
-			Command:      pulumi.StringArray{pulumi.String("/bin/sh")},
-			Args:         lt.ContainerArgs(),
-			Env:          lt.ContainerEnvArgsArray(dbSecretName),
-			Ports:        lt.ContainerPortArray(),
+			Command: pulumi.StringArray{pulumi.String("/bin/sh")},
+			Args:    lt.ContainerArgs(),
+			Env:     lt.ContainerEnvArgsArray(dbSecretName),
+			Ports:   lt.ContainerPortArray(),
+			ReadinessProbe: &corev1.ProbeArgs{
+				HttpGet: &corev1.HTTPGetActionArgs{
+					Path: pulumi.StringPtr("/api/status"),
+					Port: pulumi.Int(config.APIPort),
+				},
+				InitialDelaySeconds: pulumi.Int(10),
+				PeriodSeconds:       pulumi.Int(10),
+				TimeoutSeconds:      pulumi.Int(5),
+				FailureThreshold:    pulumi.Int(12),
+			},
 			VolumeMounts: lt.ContainerVolumeMountArray(),
 		},
 	}
