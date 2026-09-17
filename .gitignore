@@ -57,3 +57,6 @@ pulumi-files/local-state/.pulumi
 .worktrees/
 /.env.prod.dcr-kube1
 /.tool-versions.prod.dcr-kube1
+
+# Isolated worktrees (used by task worktrees)
+worktrees/
