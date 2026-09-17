@@ -49,6 +49,10 @@ config:
 
               password:
                 secure: v1:k6OlXFsmuckwXbBt:3RUZVUAnf2dPeOZbhF05L6LOJDQxdgEUACgWCP0m5Q==
+            recovery:
+              sourceCluster: logto
+              bucket: cloudnative-pg-backup-dcr-experiments
+              bucketPath: logto
           image:
             name: ghcr.io/cloudnative-pg/postgresql
             tag: 16.15-202609101440-standard-trixie
@@ -69,3 +73,7 @@ config:
           walBackup:
             compression: gzip
             maxParallel: 3
+    sourceSecret:
+      name: postgres-source-credentials
+      key: gcsCredentials
+      filepath: /Users/sba964/Projects/devenv/golang/cluster-ops/credentials/dcr-experiments/postgres-source-reader.json
