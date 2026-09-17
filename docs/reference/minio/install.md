@@ -48,4 +48,6 @@ Application config reads the same Secret — e.g. `graphql_server` maps `rootUse
 
 ## No HA
 
-Standalone mode is one pod + one PVC. There is no erasure coding across nodes and no failover — a pod/node failure is downtime until reschedule. See the guide [§2](../../minio-deploy.md#2-install-minio) for the mitigation (bucket-level copies elsewhere).
+Standalone mode is one pod + one PVC. There is no erasure coding across nodes and no failover — a pod or node failure is downtime until Kubernetes reschedules the pod and the PVC reattaches, typically minutes.
+
+The mitigation is **bucket-level copies kept outside this cluster**: the source endpoint the data was imported from, or a reversed [`import-bucket`](import.md) run that mirrors this MinIO into another S3-compatible target. Nothing inside the `minio` stack protects the data — deleting the PVC ([teardown](teardown.md)) destroys every object.

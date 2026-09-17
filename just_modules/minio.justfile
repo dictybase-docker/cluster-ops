@@ -69,7 +69,7 @@ check-pool pool="database" node_count="3":
 
     echo
     if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll pool checks passed.\033[0m Proceed to Install MinIO.\n'
+        printf '\033[32mAll pool checks passed.\033[0m Next: just minio deploy --root-user <user> --root-password <pw>.\n'
     else
         printf '\033[31m%d check(s) failed.\033[0m See reference/minio/pool-requirements.md for fixes.\n' "$failures"
         exit 1

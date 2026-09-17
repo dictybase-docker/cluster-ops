@@ -72,22 +72,19 @@ just minio check-pool
 ## 2. Install MinIO
 
 Creates the root-credentials Secret `minio-root` and installs the Bitnami MinIO chart **17.0.23** (image `bitnamilegacy/minio:2025.7.23-debian-12-r3`) in standalone mode with a 150Gi `dictycr-balanced` PVC.
-→ [Install details](reference/minio/install.md)
+Standalone means **no node-level HA** — one pod, one PVC, no erasure coding across nodes.
+→ [Install details](reference/minio/install.md) · [address and credentials](reference/minio/install.md#service-and-credentials) · [no HA](reference/minio/install.md#no-ha)
 
 ```bash
 just minio deploy --root-user '<user>' --root-password '<password>'
 ```
 
-S3 API address: `http://minio.prod.svc.cluster.local:9000` — credentials in Secret `minio-root` (keys `rootUser`/`rootPassword`).
-
-**Standalone means no node-level HA.** One pod, one PVC — if the pod or node dies, MinIO is down until Kubernetes reschedules it (PVC reattach, typically minutes). There is no erasure-code replication across nodes. Bucket-level copies of critical data live outside this cluster (the source you imported from, or another `import-bucket` run reversed).
-
 ---
 
 ## 3. Import Data
 
-Sections 1–2 give a running, **empty** MinIO. This section mirrors one bucket at a time from a source MinIO/S3 endpoint (another cluster, cloud storage, anywhere S3-compatible) using `mc mirror`.
-→ [Import details](reference/minio/import.md)
+`deploy` leaves MinIO running and **empty**. This step mirrors one bucket per run from a source MinIO/S3 endpoint (another cluster, cloud storage, anywhere S3-compatible) with `mc mirror`, and is re-runnable.
+→ [Import details](reference/minio/import.md) · [idempotence](reference/minio/import.md#idempotence)
 
 ```bash
 just minio import-bucket \
@@ -96,8 +93,6 @@ just minio import-bucket \
   --source-user '<source-access-key>' \
   --source-password '<source-secret-key>'
 ```
-
-Re-runnable — `mc mirror --preserve --overwrite` copies only what changed. `--remove` (delete target objects missing at the source) exists but is **off by default**.
 
 ---
 
@@ -114,7 +109,8 @@ just minio teardown --namespace prod --delete-pvc yes
 
 ## 5. Verify
 
-Read-only checks: pool, MinIO pod, PVC, Service on 9000, Secret. Exits non-zero if any required check fails.
+Read-only checks: pool node count, MinIO pod, PVC, Service on 9000, Secret. Exits non-zero if any check fails.
+→ [Verify details](reference/minio/verify.md)
 
 ```bash
 just minio verify
@@ -140,6 +136,7 @@ Common issues:
 - [Install details](reference/minio/install.md)
 - [Import details](reference/minio/import.md)
 - [Teardown details](reference/minio/teardown.md)
+- [Verify details](reference/minio/verify.md)
 - [Troubleshooting](reference/minio/troubleshooting.md)
 
 **Other documentation:**
