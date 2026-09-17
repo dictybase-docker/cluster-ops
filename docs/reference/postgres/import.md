@@ -8,6 +8,8 @@ Imports data from **another cluster's** CloudNativePG backup into a freshly-crea
 
 The source backup was written by the same CloudNativePG operator process (barman object store layout: base backups + WAL under `gs://<bucket>/<bucketPath>/<clusterName>/`), so the new cluster reads it natively.
 
+**Physical, not logical.** The new instance inherits the source's on-disk data directory byte for byte, so the **source and target must run the same PostgreSQL major**. For a cross-major move (PG 14 source into a PG 16 target) this path cannot work at all — use [logical import](logical-import.md) instead.
+
 ## Command
 
 ```bash
@@ -107,5 +109,6 @@ Behavior:
 ## Warnings
 
 - **Run order matters.** `configure-source` before `deploy-cluster`. If the Cluster already exists, the import cannot retro-apply — [reset it](#reset-re-import-into-a-running-cluster) first.
-- **Source version floor.** The source backup must come from a CloudNativePG version this operator (1.30.x) can read — any 1.x barman object store works, but the WAL format must be a PostgreSQL major this operator supports (14–18).
+- **Same major, not "any supported major".** This operator can *run* PostgreSQL 14–18, but that is the range of majors it supports, not a compatibility range for recovery. A base backup + WAL set only replays into the major that wrote it: a PG 14 backup recovered into a PG 16 cluster never starts — the instance exits with `database files are incompatible with server` (`The data directory was initialized by PostgreSQL version 14, which is not compatible with this version 16`). Cross-major migrations go through [logical import](logical-import.md).
+- **Operator version floor.** Independently of the major, the source backup must come from a CloudNativePG version this operator (1.30.x) can read — any 1.x barman object store works.
 - **Key hygiene.** The reader key grants read on another project's backups. Delete it when the import is done if it is not needed for a repeat.

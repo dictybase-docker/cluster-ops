@@ -31,6 +31,8 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 Case 1 does not turn into case 2 by re-running `deploy-cluster` — data moves only at first-instance creation. Case 3 is the only way in afterwards. Step 4 is picked by the case, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
 
+All three cases assume the source runs the **same PostgreSQL major** as this cluster: §4/§6 replay the source's data files, and a PG 14 base backup into a PG 16 instance aborts with `database files are incompatible with server`. Across majors, skip §4 and §6 entirely and migrate logically — `dump-logical` exports the source database to a checksummed archive, `restore-logical` recreates an empty target and loads it. → [Logical import details](reference/postgres/logical-import.md)
+
 ```bash
 # Enter the cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
@@ -61,6 +63,10 @@ just postgres configure-source --source-cluster <cluster-name> --target-time '<r
 
 # Re-import into a cluster that already exists (section 6) — destroys current data
 just postgres reset-cluster --reset-data yes --app-password '<app-password>'
+
+# Cross-major migration (e.g. PG 14 source into this PG 16 cluster) — replaces steps 4 and 6
+just postgres dump-logical --source-cluster <cluster-name>
+just postgres restore-logical --archive scratch/postgres/<archive>.dump --app-password '<app-password>' --replace-data yes
 
 # Teardown (clone only) — deletes the data PVCs and every backup in the bucket
 just postgres teardown --namespace prod --delete-pvcs yes --delete-backups yes
@@ -199,6 +205,7 @@ For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnosti
 - [Operator details](reference/postgres/operator.md)
 - [Cluster details](reference/postgres/cluster.md)
 - [Import details](reference/postgres/import.md)
+- [Logical import details](reference/postgres/logical-import.md)
 - [Backup details](reference/postgres/backup.md)
 - [Barman Cloud plugin](reference/postgres/backup-plugin.md)
 - [Teardown details](reference/postgres/teardown.md)
