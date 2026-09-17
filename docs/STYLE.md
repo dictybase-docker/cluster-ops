@@ -36,8 +36,16 @@ Every numbered section in a guide has exactly three parts, in this order:
 1. **One or two summary lines** — what the step creates or does, and the one
    thing the operator must know before running it.
 2. **A `→ [X details](...)` link** to the reference doc (use a `#anchor` when
-   pointing at a specific section).
+   pointing at a specific section). Every numbered section has one. If no
+   reference doc covers the step yet, create it — a step with nowhere to link
+   is a missing reference doc, not an excuse for prose in the guide.
 3. **A single fenced bash block** with the minimal invocation.
+
+**Nothing follows the bash block.** No trailing paragraph, no flag tour, no
+enumeration of what the command prints, no connection strings, no "what you
+get" inventory, no notes about the recipe's own output text. The only
+exceptions: one bold warning line at the head of a destructive section, and
+one skip/ordering line at the head of an optional step.
 
 Rationale, flag tables, failure modes, and "how it works" prose do **not**
 belong in the guide. Move them to the reference doc and link.
@@ -45,6 +53,23 @@ belong in the guide. Move them to the reference doc and link.
 Reference doc sections use the consistent shape: *What It Does* →
 *Behavior* (numbered steps of what the recipe does) → *Flags* (table with
 Required / Default / Notes columns) → warnings/lifecycle.
+
+### Trust the recipe
+
+Recipes validate their own preconditions and fail loudly with a named cause.
+Do not pre-explain guard flags, permission requirements, or failure modes in
+the guide — the operator meets them only if they happen, and the
+troubleshooting reference owns that mapping.
+
+### Order by operator intent
+
+Section order is the order the operator runs things, and a step that must
+precede another is never documented after it. A step that only takes effect
+at creation time (one-shot bootstrap, an `--option` consumed by a later
+recipe) belongs *inside* the creation flow as its own numbered step, not as a
+follow-up section — structure that contradicts the prose is the single
+biggest source of confusion in these guides. When a guide serves more than
+one intent, open the Quick Reference with an intent → steps table.
 
 ## 3. Commands Default from the Cluster Environment
 
@@ -115,6 +140,18 @@ buried sentence:
   section into another doc, delete the original, don't leave both.
 - **Don't grow the guide.** New explanation goes to the reference doc; the
   guide gains at most a line and a link.
+- **Relocate, never delete.** Every fact removed from a guide must already
+  exist in the matching reference doc, or be added there in that doc's shape
+  in the same change. Trimming a guide is a move operation.
 - **Keep Quick Reference and TOC in sync** with the body after every edit.
 - When a recipe's flags or defaults change, update its reference doc's flag
   table in the same change.
+- **Recipe output is documentation.** `Next: …` / `Proceed to …` lines printed
+  by a recipe are read more often than the guide. Restructuring a guide means
+  updating those echoes in the same change, and they point at the **next
+  recipe command**, never at a section number — section numbers drift, recipe
+  names don't.
+- **Trace claims to a source.** A statement about a tool's default behavior
+  (storage layout, implicit field value, operator behavior) cites the schema,
+  CRD, or code that proves it. If it cannot be traced, verify it live or leave
+  it out — hedged prose ("depends on the plugin default") helps nobody.

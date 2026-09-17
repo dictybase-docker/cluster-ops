@@ -11,6 +11,10 @@
 #      multi-command fenced bash block (STYLE.md rule 6)
 #   5. Forbidden patterns: emoji, !!!, TODO/FIXME, hardcoded --stack prod
 #   6. Guide section numbering has no gaps after the first numbered section
+#   7. Guide section shape: no prose after the command block (STYLE.md rule 2)
+#   8. Guide section has a reference link (STYLE.md rule 2)
+#   9. Recipe echoes in just_modules/ point at recipes, not section numbers
+#      (STYLE.md rule 8)
 #
 # Usage: just docs-lint
 
@@ -141,6 +145,31 @@ if secs and "## Table of Contents" in text:
             bad += 1
         want += 1
 
+# 7+8. guide section shape (STYLE.md rule 2): a numbered section that runs a
+#      command ends with that command's fenced block, and links a reference
+#      doc. Prose after the block belongs in reference/.
+if secs and "## Table of Contents" in text:
+    bounds = [(n, start, (secs[k + 1][1] - 1) if k + 1 < len(secs) else len(lines))
+              for k, (n, start) in enumerate(secs)]
+    for n, start, end in bounds:
+        body = list(range(start, end + 1))
+        fences = [i for i in body if i in fence_lines and lines[i - 1].strip().startswith("```")]
+        if not fences:
+            continue  # narrative section (Related Documents, link-only)
+        last = max(fences)
+        for i in range(last + 1, end + 1):
+            s = lines[i - 1].strip()
+            if not s or s == "---" or s.startswith("#"):
+                continue
+            p(f"section {n}: prose after the command block — move it to "
+              f"reference/ (STYLE.md rule 2)", i)
+            bad += 1
+            break
+        if not any("](reference/" in lines[i - 1] for i in body):
+            p(f"section {n}: no reference-doc link — every command section "
+              f"links its reference doc (STYLE.md rule 2)", start)
+            bad += 1
+
 sys.exit(1 if bad else 0)
 PYEOF
 }
@@ -156,7 +185,23 @@ done < <(cd "$root" && find docs README.md -name '*.md' 2>/dev/null | grep -v '^
 echo
 if [ "$failures" -eq 0 ]; then
     printf '%sAll %d docs pass mechanical checks.\n' "$(_check_pfx PASS 32)" "$count"
+else
+    printf '%s%d doc(s) failed.\n' "$(_check_pfx FAIL 31)" "$failures"
+fi
+
+# 9. Recipe echoes must point at the next recipe, not at a guide section
+#    number or title — section numbers drift, recipe names do not
+#    (STYLE.md rule 8).
+echoes=$(cd "$root" && grep -rnE '(echo|printf)[^#]*(Proceed to|see|refer to|section)[[:space:]]*(\xc2\xa7|Section )[0-9]' just_modules/ 2>/dev/null || true)
+if [ -n "$echoes" ]; then
+    echo
+    echo "recipe echoes referencing guide section numbers (STYLE.md rule 8):"
+    echo "$echoes" | sed 's/^/  /'
+    echo "  -> print the next recipe command instead, e.g. 'Next: just <mod> <recipe>'"
+    failures=$((failures + 1))
+fi
+
+if [ "$failures" -eq 0 ]; then
     exit 0
 fi
-printf '%s%d doc(s) failed.\n' "$(_check_pfx FAIL 31)" "$failures"
 exit 1
