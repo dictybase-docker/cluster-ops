@@ -23,13 +23,13 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 ## Quick Reference
 
-| Your intent | Steps |
-|-------------|-------|
-| New cluster, empty database | 1 → 2 → 3 → 5 → 9 |
-| New cluster holding another cluster's data | 1 → 2 → 3 → **4** → 5 → 9 |
-| Load another cluster's data into a cluster that **already exists** | 4 (if not configured yet) → **6** — destroys the current data |
+| Case | Situation | Steps | Outcome |
+|------|-----------|-------|---------|
+| **1.** | Fresh deploy, no import | 1 → 2 → 3 → 5 → 9 | Database **empty** (initdb) |
+| **2.** | Fresh deploy, import from a source cluster | 1 → 2 → 3 → **4** → 5 → 9 | Database **holds the source cluster's data** (recovery) |
+| **3.** | Cluster already deployed, want the source cluster's data | 4 (if not on the stack yet) → **6** | Source data **replaces the current data** |
 
-Step 4 is picked by intent, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
+Case 1 does not turn into case 2 by re-running `deploy-cluster` — data moves only at first-instance creation. Case 3 is the only way in afterwards. Step 4 is picked by the case, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
 
 ```bash
 # Enter the cluster environment first
@@ -108,15 +108,15 @@ just postgres configure-backup
 
 ## 4. Import Source (Optional)
 
-Runnable in any case — cluster present or not, database empty or not. It only records another cluster's CloudNativePG backup as this stack's recovery source and mints the source reader key; it copies nothing and does not touch a running Cluster.
-**Gated on intent, not on state** — skip it when you want an empty database, run it before §5 to import at first create, run it before §6 to re-import. Data moves only at first-instance creation, so once the Cluster exists §6 is the only step that replays it.
+Registers another cluster's CloudNativePG backup as this stack's recovery source and mints the source reader key. Copies nothing, never touches a running Cluster — the data moves later, when the first instance is created.
+**Gated on the case, not on state** — runnable whether or not the Cluster exists. Skip it in case 1, run it before §5 in case 2, before §6 in case 3.
 
 ```text
-                      +-- empty database ----------------> skip 4 --> 5 deploy-cluster (initdb)
-                      |
-  what do you want? --+-- import at first create --------> 4 -------> 5 deploy-cluster (recovery)
-                      |
-                      +-- re-import, Cluster exists -----> 4 (*) ---> 6 reset-cluster  (recovery)
+  case 1  fresh deploy, no import          --> skip 4 --> 5 deploy-cluster (initdb)   --> empty database; to fill it, go to case 3
+
+  case 2  fresh deploy, source import      --> 4      --> 5 deploy-cluster (recovery) --> database holds the source cluster's data
+
+  case 3  cluster exists, want source data --> 4 (*)  --> 6 reset-cluster (recovery)  --> source data replaces the current data
 
   (*) only if no recovery source is on the stack yet — 6 aborts when there is none
 ```
