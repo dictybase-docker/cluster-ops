@@ -14,7 +14,7 @@ The recipe folds five stages into one sequential run; each aborts the run on fai
 
 1. [pulumi-manager key](#1-pulumi-manager-key) — `just gcp-sa create-sa --sa-name pulumi-manager`, **skipped when the existing key authenticates**
 2. Key-propagation wait — a freshly minted SA key can take ~1 minute before token exchange works; the recipe loops until the key authenticates
-3. [KMS keyring and crypto key](#2-kms-keyring-and-crypto-key) — runs **as `sa-manager`** (`--credentials-file $GOOGLE_APPLICATION_CREDENTIALS`); `pulumi-manager` holds only `cloudkms.cryptoOperator` and cannot create keyrings
+3. [KMS keyring and crypto key](#2-kms-keyring-and-crypto-key) — `just gcp-kms create-keyring-and-key`, run **as `sa-manager`** (`--credentials-file $GOOGLE_APPLICATION_CREDENTIALS`); `pulumi-manager` holds only `cloudkms.cryptoOperator` and cannot create keyrings
 4. [GCS state bucket and login](#3-gcs-state-bucket-and-login) — `just gcp-pulumi pulumi-gcs-setup`
 5. [Verify](check-backend.md) — `just gcp-pulumi check-backend`
 

@@ -4,7 +4,7 @@ Back to: [Pulumi Setup Guide](../../pulumi-setup.md)
 
 ## What It Is
 
-`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` file — see [README §1.3](../../kops-setup.md#1-prerequisites--execution-context).
+`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` file — see [`kops-setup.md` §1](../../kops-setup.md#1-prerequisites--execution-context).
 
 It also creates `.tool-versions.<env>.<cluster>` from the repo `.tool-versions` manifest when that per-cluster file is missing. Existing per-cluster manifests are preserved unchanged. The env file records the manifest selector so `prepare-tools` installs the correct versions after `cluster-env` activation.
 
@@ -56,3 +56,5 @@ just cluster-env --env <env> --cluster <cluster-name>
 ```
 
 The recipe prints which variables are set and which are still empty. Stay in that sub-shell for the rest of the setup. Type `exit` or press Ctrl-D to leave.
+
+Credentials belong in this file only, never in `.envrc` ([prerequisites](prerequisites.md#access)) — the env file is gitignored, `.envrc` is not, and it leaks into every shell in the repo rather than the one cluster it belongs to.

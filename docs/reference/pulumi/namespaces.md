@@ -14,7 +14,7 @@ Deploy once per cluster, right after [StorageClass](storage-class.md).
 
 ## Deploy
 
-Applies the stack, then verifies exactly the namespaces `Pulumi.<stack>.yaml` declares:
+Applies the stack, then verifies exactly the namespaces `Pulumi.<stack>.yaml` declares — no per-environment flags, because the expected names are read from the stack config being applied (`yq` on `namespace-bootstrap/Pulumi.<stack>.yaml`), so production and lab both verify correctly:
 
 ```bash
 just gcp-pulumi apply-namespaces

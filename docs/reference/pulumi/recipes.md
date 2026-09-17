@@ -37,7 +37,7 @@ All recipes accept `--stack <name>`. If omitted they use `$PULUMI_STACK`, fallin
 
 | Recipe | What it checks | Flags |
 |--------|----------------|-------|
-| `just gcp-pulumi check-tools` | `pulumi`, `gcloud`, `kubectl`, `jq` present; prints versions | none |
+| `just gcp-pulumi check-tools` | `pulumi`, `gcloud`, `kubectl`, `jq`, `yq` present; prints versions | none |
 | `just gcp-pulumi check-backend` | `PULUMI_*` set, manager key present, bucket exists and is versioned, KMS key reachable, active login matches `$PULUMI_BACKEND_URL` | none |
 | `just gcp-pulumi check-storageclass` | Named StorageClasses exist and use the expected provisioner; reports the cluster default | `--classes`, `--provisioner` |
 

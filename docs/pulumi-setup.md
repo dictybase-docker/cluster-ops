@@ -37,8 +37,7 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 # 3. Enter the cluster shell — stay here for everything below
 just cluster-env --env <env> --cluster <cluster-name>
 
-# 4. Rotate to the admin identity (you are on kops-cluster-creator after kops setup;
-#    the bootstrap needs SA-key-admin and KMS roles the creator lacks), then re-enter
+# 4. Rotate to the admin identity, then re-enter the shell
 just gcp-cluster rotate-to-manager
 exit
 just cluster-env --env <env> --cluster <cluster-name>
@@ -66,7 +65,7 @@ Stack names, per-stack configuration, and the full recipe list: [Stack names](re
 
 ## 1. Prerequisites
 
-Cluster must be up and validated through [README §3](kops-setup.md#3-cluster-bootstrap-git-native-flow), with the PD CSI driver enabled — without it PVCs stay Pending.
+Cluster must be up and validated through [`kops-setup.md` §3](kops-setup.md#3-cluster-bootstrap-git-native-flow), with the PD CSI driver enabled — without it PVCs stay Pending.
 → [Prerequisites detail](reference/pulumi/prerequisites.md)
 
 ```bash
@@ -77,7 +76,8 @@ just gcp-pulumi check-tools
 
 ## 2. Cluster Environment
 
-`create-cluster-env` writes a gitignored `.env.<env>.<cluster-name>` holding every `PULUMI_*` variable and the active asdf manifest selector. It also creates `.tool-versions.<env>.<cluster>` from the repo manifest when missing, while preserving an existing per-cluster manifest.
+`create-cluster-env` writes the gitignored `.env.<env>.<cluster-name>` holding every `PULUMI_*` variable and the per-cluster asdf manifest selector, creating `.tool-versions.<env>.<cluster>` from the repo manifest when that file is missing.
+Everything below runs inside the sub-shell `cluster-env` opens — leave it with `exit`.
 → [Cluster env detail](reference/pulumi/cluster-env.md)
 
 ```bash
@@ -85,16 +85,14 @@ just create-cluster-env --env <env> --cluster <cluster-name> --force yes
 just cluster-env --env <env> --cluster <cluster-name>
 ```
 
-Stay in the sub-shell that `cluster-env` opens for the rest of this guide. Credentials belong in this file, never in `.envrc`.
-
 ---
 
 ## 3. Backend Bootstrap
 
-Run **as `sa-manager`** — you are on `kops-cluster-creator` after kops setup, and the bootstrap needs roles the creator lacks. The recipe preflights and names any missing roles.
-→ [Backend bootstrap detail](reference/pulumi/backend-bootstrap.md)
+Creates the `pulumi-manager` key, the KMS keyring and crypto key, and the versioned GCS state bucket, then verifies the wiring. Once per GCP project.
+→ [Backend bootstrap detail](reference/pulumi/backend-bootstrap.md) · [stages](reference/pulumi/backend-bootstrap.md#stages)
 
-**Rotate, if the shell is still on `kops-cluster-creator`:**
+**Rotate to `sa-manager` first — skip if this shell already carries it:**
 
 ```bash
 just gcp-cluster rotate-to-manager
@@ -102,13 +100,11 @@ exit
 just cluster-env --env <env> --cluster <cluster-name>
 ```
 
-**Bootstrap the backend:**
+**Then bootstrap:**
 
 ```bash
 just gcp-pulumi bootstrap-backend
 ```
-
-`bootstrap-backend` folds `create-sa`, `create-keyring-and-key`, `pulumi-gcs-setup`, `check-backend` into one sequential run ([stages](reference/pulumi/backend-bootstrap.md#stages)).
 
 ---
 
@@ -134,16 +130,12 @@ Deploy once per cluster, before any database stack. StorageClass first — Arang
 just gcp-pulumi apply-storageclass
 ```
 
-Then the shared namespaces — the `operators` namespace every operator Helm release targets, and the app namespace (`prod` on production clusters). The namespace-bootstrap stack is the only writer of both; operator programs and secret stacks probe it instead of creating namespaces themselves.
+Then the shared namespaces — the `operators` namespace every operator Helm release targets, and the app namespace (`prod` on production clusters). The `namespace-bootstrap` stack is the only writer of both; operator programs and secret stacks probe it instead of creating namespaces themselves.
 → [Namespaces detail](reference/pulumi/namespaces.md)
 
 ```bash
 just gcp-pulumi apply-namespaces
 ```
-
-No per-environment flags: both recipes derive their expectations from `Pulumi.<stack>.yaml`, so prod and lab verify correctly without flags.
-
-Lab and local stacks differ — see the [StorageClass detail](reference/pulumi/storage-class.md#deploy--lab-stacks). Sizing and class choice: [`kops-gcp-architecture.md` §6](kops-gcp-architecture.md#6-database-storage--retrieval).
 
 ---
 
