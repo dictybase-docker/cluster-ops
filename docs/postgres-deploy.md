@@ -29,6 +29,8 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 | New cluster holding another cluster's data | 1 → 2 → 3 → **4** → 5 → 9 |
 | Load another cluster's data into a cluster that **already exists** | 4 (if not configured yet) → **6** — destroys the current data |
 
+Step 4 is picked by intent, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
+
 ```bash
 # Enter the cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
@@ -42,7 +44,7 @@ just postgres deploy-operator
 # 3. Backup identity, stack config, and Barman Cloud plugin
 just postgres configure-backup
 
-# 4. IMPORT ONLY — register the source cluster's backup; skip for an empty database
+# 4. IMPORT ONLY — register where to import from; skip only if you want an empty database
 just postgres configure-source --source-stack <source-cluster-name>
 
 # 5. Create the PostgreSQL 16 cluster — imports when step 4 ran, else empty
@@ -106,8 +108,19 @@ just postgres configure-backup
 
 ## 4. Import Source (Optional)
 
-**Skip this section for an empty database. Run it before §5** — once the Cluster exists, only §6 can import.
-Registers another cluster's CloudNativePG backup as this stack's recovery source; nothing is copied until §5.
+Runnable in any case — cluster present or not, database empty or not. It only records another cluster's CloudNativePG backup as this stack's recovery source and mints the source reader key; it copies nothing and does not touch a running Cluster.
+**Gated on intent, not on state** — skip it when you want an empty database, run it before §5 to import at first create, run it before §6 to re-import. Data moves only at first-instance creation, so once the Cluster exists §6 is the only step that replays it.
+
+```text
+                      +-- empty database ----------------> skip 4 --> 5 deploy-cluster (initdb)
+                      |
+  what do you want? --+-- import at first create --------> 4 -------> 5 deploy-cluster (recovery)
+                      |
+                      +-- re-import, Cluster exists -----> 4 (*) ---> 6 reset-cluster  (recovery)
+
+  (*) only if no recovery source is on the stack yet — 6 aborts when there is none
+```
+
 → [Import details](reference/postgres/import.md) · [flags](reference/postgres/import.md#flags)
 
 ```bash
