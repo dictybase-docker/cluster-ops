@@ -11,7 +11,7 @@ The source backup was written by the same CloudNativePG operator process (barman
 ## Command
 
 ```bash
-just postgres configure-source --source-stack <source-cluster-name>
+just postgres configure-source --source-cluster <cluster-name>
 ```
 
 One flag for a source cluster standardized like this repo's own: the recipe resolves the source GCP project from `.env.<env>.<source-cluster>` (its `PROJECT_ID` line), falling back to the backup bucket name in the source stack config (`cloudnative-pg-backup-<project-id>` → project id), and defaults the CNPG cluster name and bucket path to `logto`. A source managed from another checkout needs `--source-project <id>` — the bucket then defaults to `cloudnative-pg-backup-<id>` — or `--source-env-file <path>` to an env file that contains `PROJECT_ID`.
@@ -20,17 +20,17 @@ Printed at the top of every run: the resolved project, CNPG cluster, bucket, rea
 
 ## Source Pre-Flight
 
-The recipe closes by printing this command with the resolved values filled in. Run it before `deploy-cluster` to confirm the reader key can actually see the source backups — a wrong `--source-cluster` or a missing grant otherwise surfaces only as a recovery that never starts:
+The recipe closes by printing this command with the resolved values filled in. Run it before `deploy-cluster` to confirm the reader key can actually see the source backups — a wrong `--source-cnpg-cluster` or a missing grant otherwise surfaces only as a recovery that never starts:
 
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS=<key-file> gsutil ls gs://<bucket>/<bucket-path>/<source-cluster>/
+GOOGLE_APPLICATION_CREDENTIALS=<key-file> gsutil ls gs://<bucket>/<bucket-path>/<source-cnpg-cluster>/
 ```
 
 Expect the barman object-store layout (base backups plus archived WAL) under that prefix. An empty listing or `AccessDenied` means the import would produce an unusable cluster.
 
 ## Behavior
 
-1. Resolves the source identity: `--source-project` > `--source-env-file` > probe `.env.*.<source-stack>` > bucket-name suffix in the source stack config. Probed env files must contain `PROJECT_ID`. Prod stack configs are named after the cluster (`Pulumi.dcr-kube1.yaml`), lab stacks after the env (cluster `dcr-experiments` → `Pulumi.experiments.yaml`) — both are probed. Nothing probed (e.g. a legacy bucket like the lab `dev` stack) → the run stops with the resolution error
+1. Resolves the source identity: `--source-project` > `--source-env-file` > probe `.env.*.<source-cluster>` > bucket-name suffix in the source stack config. Probed env files must contain `PROJECT_ID`. Prod stack configs are named after the cluster (`Pulumi.dcr-kube1.yaml`), lab stacks after the env (cluster `dcr-experiments` → `Pulumi.experiments.yaml`) — both are probed. Nothing probed (e.g. a legacy bucket like the lab `dev` stack) → the run stops with the resolution error
 2. Creates/reuses reader service account `postgres-source-reader` **in the source project** — source-side IAM runs with the source env file's `GOOGLE_APPLICATION_CREDENTIALS` when probed (the source cluster's own manager identity); otherwise the current identity must hold SA-admin + bucket-admin there
 3. Grants `roles/storage.objectViewer` on the source bucket only (bucket-level `gsutil iam ch` — the bucket already exists)
 4. Mints `credentials/<source-project>/postgres-source-reader.json` — **skipped if the file already exists** (keys are not idempotent; old ones keep working until deleted). Audit: `gcloud iam service-accounts keys list --iam-account postgres-source-reader@<source-project>.iam.gserviceaccount.com --project <source-project>`
@@ -38,18 +38,18 @@ Expect the barman object-store layout (base backups plus archived WAL) under tha
 
 The next `deploy-cluster` then:
 
-1. Creates Secret `postgres-source-credentials` (content of the reader key, under `gcsCredentials`) plus a read-only **ObjectStore** CR for the source bucket, named `<source-cluster>-store`
-2. Adds an `externalClusters` entry named after the source cluster, referencing that ObjectStore via the Barman Cloud plugin config
+1. Creates Secret `postgres-source-credentials` (content of the reader key, under `gcsCredentials`) plus a read-only **ObjectStore** CR for the source bucket, named `<source-cnpg-cluster>-store`
+2. Adds an `externalClusters` entry named after the source CNPG cluster, referencing that ObjectStore via the Barman Cloud plugin config
 3. Sets `bootstrap.recovery.source` to the same name — the first instance replays the source backup instead of running initdb
 
 ## Flags
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--source-stack` | One of the source flags | — | Source cluster name — the `.env.<env>.<name>` suffix (e.g. `dcr-experiments`). Probed for the source `PROJECT_ID` and the source stack config (cluster name, then `dcr-` stripped for lab stacks) |
+| `--source-cluster` | One of the source flags | — | Source cluster name — the `.env.<env>.<name>` suffix (e.g. `dcr-experiments`). Probed for the source `PROJECT_ID` and the source stack config (cluster name, then `dcr-` stripped for lab stacks) |
 | `--source-project` | One of the source flags | inferred | Source GCP project id owning the bucket. Required when the source is not managed from this checkout; bucket defaults to `cloudnative-pg-backup-<id>` |
 | `--source-env-file` | One of the source flags | probed | Env file to read the source `PROJECT_ID` and manager credential from — must contain `PROJECT_ID`; use when the file lives outside the repo's `.env.*` naming |
-| `--source-cluster` | No | `logto` | Source CNPG `Cluster` name = the backup folder name. Override only if the source Cluster CR is not `logto` |
+| `--source-cnpg-cluster` | No | `logto` | Source CNPG `Cluster` name = the backup folder name. Override only if the source Cluster CR is not `logto` |
 | `--bucket` | No | source stack config, else `cloudnative-pg-backup-<source-project>` | Source GCS bucket holding the barman backups |
 | `--bucket-path` | No | `logto` | Source cluster's `backup.bucketPath` |
 | `--target-time` | No | latest | RFC3339 PITR timestamp; omit for latest available |

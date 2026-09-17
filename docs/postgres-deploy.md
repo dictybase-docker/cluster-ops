@@ -45,7 +45,7 @@ just postgres deploy-operator
 just postgres configure-backup
 
 # 4. IMPORT ONLY — register where to import from; skip only if you want an empty database
-just postgres configure-source --source-stack <source-cluster-name>
+just postgres configure-source --source-cluster <cluster-name>
 
 # 5. Create the PostgreSQL 16 cluster — imports when step 4 ran, else empty
 just postgres deploy-cluster --app-password '<app-password>'
@@ -57,7 +57,7 @@ just postgres verify
 Optional steps:
 ```bash
 # Point-in-time import — replaces step 4, still before step 5
-just postgres configure-source --source-stack <source-cluster-name> --target-time '<rfc3339>'
+just postgres configure-source --source-cluster <cluster-name> --target-time '<rfc3339>'
 
 # Re-import into a cluster that already exists (section 6) — destroys current data
 just postgres reset-cluster --reset-data yes --app-password '<app-password>'
@@ -124,7 +124,7 @@ Registers another cluster's CloudNativePG backup as this stack's recovery source
 → [Import details](reference/postgres/import.md) · [flags](reference/postgres/import.md#flags)
 
 ```bash
-just postgres configure-source --source-stack <source-cluster-name>
+just postgres configure-source --source-cluster <cluster-name>
 ```
 
 ---

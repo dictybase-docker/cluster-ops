@@ -252,7 +252,7 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
 # reader service account in the SOURCE project, grants it read on the source
 # bucket, mints/reuses its key, and stores the recovery source on the cluster
 # stack. Run AFTER configure-backup, BEFORE deploy-cluster.
-# Usage: just postgres configure-source --source-stack <source-cluster-name>
+# Usage: just postgres configure-source --source-cluster <cluster-name>
 #   The source identity is standardized: given the source cluster's name (the
 #   `.env.<env>.<name>` suffix, e.g. dcr-experiments), the recipe probes that
 #   env file for the source PROJECT_ID, falls back to the backup bucket name in
@@ -264,26 +264,26 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
 #   the current identity must hold SA-admin + bucket-admin in the source
 #   project. A source not managed from this checkout needs --source-project
 #   <id> or --source-env-file <path>. Every inferred value has an override.
-[arg("source_stack", long="source-stack", help="Source cluster name — the .env.<env>.<name> suffix; probed for the source PROJECT_ID and stack config")]
-[arg("source_cluster", long="source-cluster", short="c", help="CNPG Cluster name in the source project = backup folder name (default logto; override only if the source Cluster CR is not named logto)")]
+[arg("source_cluster", long="source-cluster", short="c", help="Source cluster name — the .env.<env>.<name> suffix; probed for the source PROJECT_ID and stack config")]
+[arg("source_cnpg_cluster", long="source-cnpg-cluster", help="CNPG Cluster name in the source project = backup folder name (default logto; override only if the source Cluster CR is not named logto)")]
 [arg("bucket", long="bucket", short="b", help="Source GCS bucket holding the barman backups (default from the source stack config, else cloudnative-pg-backup-<source-project>)")]
-[arg("source_project", long="source-project", short="g", help="SOURCE GCP project id owning the source bucket (default from --source-stack / --source-env-file probing)")]
+[arg("source_project", long="source-project", short="g", help="SOURCE GCP project id owning the source bucket (default from --source-cluster / --source-env-file probing)")]
 [arg("bucket_path", long="bucket-path", short="p", help="Path inside the bucket (source cluster's backup.bucketPath; default logto)")]
 [arg("target_time", long="target-time", short="t", help="Optional RFC3339 PITR timestamp; default = latest available")]
 [arg("sa_name", long="sa-name", short="a", help="Reader service account short name to create/reuse in the source project")]
 [arg("key_file", long="key-file", short="f", help="Where to write the reader key (default credentials/<source-project>/<sa-name>.json)")]
-[arg("source_env_file", long="source-env-file", short="e", help="Env file with the source PROJECT_ID (and manager credential for source-side IAM); default: probe .env.*.<source-stack>")]
+[arg("source_env_file", long="source-env-file", short="e", help="Env file with the source PROJECT_ID (and manager credential for source-side IAM); default: probe .env.*.<source-cluster>")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
 [group('postgres')]
 [no-cd]
-configure-source source_stack="" source_cluster="" bucket="" source_project="" bucket_path="logto" target_time="" sa_name="postgres-source-reader" key_file="" source_env_file="" stack="":
+configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_project="" bucket_path="logto" target_time="" sa_name="postgres-source-reader" key_file="" source_env_file="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     FOLDER="cloudnative-pg-cluster"
     REPO="{{ justfile_directory() }}"
-    SRC_STACK="{{ source_stack }}"
     SRC_CLUSTER="{{ source_cluster }}"
+    SRC_CNPG_CLUSTER="{{ source_cnpg_cluster }}"
     BUCKET="{{ bucket }}"
     SRC_PROJECT="{{ source_project }}"
     BUCKET_PATH="{{ bucket_path }}"
@@ -296,7 +296,7 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
 
     # --- Source GCP project -------------------------------------------------
     # Precedence: --source-project > --source-env-file > probe
-    # .env.*.<source-stack> > bucket-name suffix in the source stack config.
+    # .env.*.<source-cluster> > bucket-name suffix in the source stack config.
     # Probing works only when the source cluster is managed from this
     # checkout; a cross-project source usually needs --source-project.
     if [[ -z "$SRC_PROJECT" && -n "$ENV_FILE" ]]; then
@@ -307,8 +307,8 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
         SRC_PROJECT=$(sed -n 's/^PROJECT_ID=//p' "$ENV_FILE" | tail -1)
         NOTES="project from env file ${ENV_FILE#$REPO/}"
     fi
-    if [[ -z "$SRC_PROJECT" && -n "$SRC_STACK" ]]; then
-        ENV_HIT=$( (ls "$REPO"/.env.*."$SRC_STACK" 2>/dev/null || true) | head -1)
+    if [[ -z "$SRC_PROJECT" && -n "$SRC_CLUSTER" ]]; then
+        ENV_HIT=$( (ls "$REPO"/.env.*."$SRC_CLUSTER" 2>/dev/null || true) | head -1)
         if [[ -n "$ENV_HIT" ]]; then
             SRC_PROJECT=$(sed -n 's/^PROJECT_ID=//p' "$ENV_HIT" | tail -1)
             NOTES="project from env file ${ENV_HIT#$REPO/}"
@@ -319,7 +319,7 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     # -> Pulumi.experiments.yaml) — try the exact name, then the dcr- prefix
     # stripped.
     CFG_FILE=""
-    for cand in "$SRC_STACK" "${SRC_STACK#dcr-}"; do
+    for cand in "$SRC_CLUSTER" "${SRC_CLUSTER#dcr-}"; do
         if [[ -n "$cand" && -f "$REPO/$FOLDER/Pulumi.$cand.yaml" ]]; then
             CFG_FILE="$REPO/$FOLDER/Pulumi.$cand.yaml"
             CFG_NAME="Pulumi.$cand.yaml"
@@ -339,7 +339,7 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     SRC_PROJECT="${SRC_PROJECT%\'}"; SRC_PROJECT="${SRC_PROJECT#\'}"
     if [[ -z "$SRC_PROJECT" ]]; then
         echo "Error: cannot resolve the SOURCE GCP project id." >&2
-        echo "  Pass --source-project <id>, or --source-stack/--source-env-file" >&2
+        echo "  Pass --source-project <id>, or --source-cluster/--source-env-file" >&2
         echo "  naming an env file that contains PROJECT_ID=<id>." >&2
         exit 1
     fi
@@ -393,8 +393,8 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     # --- CNPG cluster name = backup folder name -------------------------------
     # Every stack in this repo names its Cluster CR logto, so the default is
     # right unless the source overrode the cluster name at deploy time.
-    if [[ -z "$SRC_CLUSTER" ]]; then
-        SRC_CLUSTER="logto"
+    if [[ -z "$SRC_CNPG_CLUSTER" ]]; then
+        SRC_CNPG_CLUSTER="logto"
     fi
 
     # Absolute default — `pulumi -C` changes the working directory, so a
@@ -404,7 +404,8 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     SA_EMAIL="${SA_NAME}@${SRC_PROJECT}.iam.gserviceaccount.com"
 
     echo "Source project : ${SRC_PROJECT}"
-    echo "Source cluster : ${SRC_CLUSTER}   (CNPG Cluster name = backup folder)"
+    echo "Source cluster : ${SRC_CLUSTER}"
+    echo "CNPG Cluster   : ${SRC_CNPG_CLUSTER}   (backup folder)"
     echo "Source bucket  : gs://${BUCKET}/${BUCKET_PATH}"
     echo "Reader SA      : ${SA_EMAIL}"
     echo "Key file       : ${KEY_FILE}"
@@ -441,7 +442,7 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     # re-applies with this set and the bootstrap becomes a recovery.
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
-        --key 'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster' --value "$SRC_CLUSTER"
+        --key 'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster' --value "$SRC_CNPG_CLUSTER"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'properties.clusters[0].cluster.bootstrap.recovery.bucket' --value "$BUCKET"
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
@@ -467,7 +468,7 @@ configure-source source_stack="" source_cluster="" bucket="" source_project="" b
     echo "Next: just postgres deploy-cluster --app-password '<app-password>'"
     echo
     echo "Sanity check the source backup is readable with the new key:"
-    echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gsutil ls gs://$BUCKET/$BUCKET_PATH/$SRC_CLUSTER/"
+    echo "  GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE gsutil ls gs://$BUCKET/$BUCKET_PATH/$SRC_CNPG_CLUSTER/"
 
 # Reset a RUNNING cluster's data and re-import from the configured recovery
 # source. Deletes the Cluster CR and its data PVCs only — operator, backup
@@ -515,7 +516,7 @@ reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" r
     SRC_CLUSTER=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
         'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster' 2>/dev/null) || {
         echo "Error: no recovery source on stack '$STACK' — bootstrap would be EMPTY." >&2
-        echo "Run 'just postgres configure-source --source-stack <name>' first." >&2
+        echo "Run 'just postgres configure-source --source-cluster <name>' first." >&2
         exit 1
     }
     SRC_BUCKET=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
