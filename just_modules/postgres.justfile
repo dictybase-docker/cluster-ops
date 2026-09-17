@@ -539,9 +539,36 @@ reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" r
         exit 1
     fi
 
+    # The cluster's OWN backup archive must be empty before bootstrap.recovery
+    # runs, or the barman plugin aborts the full-recovery with
+    # "Expected empty archive" — CNPG requires a clean WAL-archive destination.
+    # The previous incarnation's base/ + wals/ are stale by definition (the
+    # data is being destroyed), so clear them; the SOURCE archive is untouched.
+    OWN_BUCKET=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.backup.bucket' 2>/dev/null || true)
+    OWN_BUCKET_PATH=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.clusters[0].cluster.backup.bucketPath' 2>/dev/null || true)
+    BACKUP_KEY=$(pulumi -C "$FOLDER" -s "$STACK" config get --path \
+        'properties.backupSecret.filepath' 2>/dev/null || true)
+    if [[ -n "$OWN_BUCKET" && -n "$OWN_BUCKET_PATH" ]]; then
+        OWN_PREFIX="gs://${OWN_BUCKET}/${OWN_BUCKET_PATH}/${CLUSTER}/"
+        echo "Clearing this cluster's own backup archive ($OWN_PREFIX)..."
+        if [[ -n "$BACKUP_KEY" && -f "$BACKUP_KEY" ]]; then
+            CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$BACKUP_KEY" \
+                gcloud storage rm -r "$OWN_PREFIX" --quiet 2>/dev/null \
+                || echo "  (no own backups to clear)"
+        else
+            echo "Warning: backup key missing at '$BACKUP_KEY' — using the active gcloud identity." >&2
+            gcloud storage rm -r "$OWN_PREFIX" --quiet 2>/dev/null \
+                || echo "  (no own backups to clear, or the bucket is not reachable)"
+        fi
+    fi
+    echo
+
     echo "Resetting cluster '$CLUSTER' in '$NS' (stack '$STACK')..."
     echo "  Destroyed : all current database files (Cluster CR + data PVCs)"
-    echo "  Kept      : operator, backup bucket + backups, Secrets, ScheduledBackup"
+    echo "  Cleared   : this cluster's own backup archive (base + WAL)"
+    echo "  Kept      : operator, backup bucket, Secrets, ScheduledBackup"
     echo "  Re-import : gs://${SRC_BUCKET:-<unset>}/${SRC_BUCKET_PATH}/$SRC_CLUSTER/"
     [[ -n "$TARGET_TIME" ]] && echo "  PITR      : $TARGET_TIME"
     echo

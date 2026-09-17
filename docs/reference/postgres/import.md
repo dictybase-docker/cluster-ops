@@ -75,7 +75,7 @@ Recovery **is** the bootstrap. Once the first instance exists, `deploy-cluster` 
 
 ## Reset: Re-import Into a Running Cluster
 
-`bootstrap.recovery` only fires at first-instance creation, so a running cluster cannot re-import in place — the data must be reset first. `reset-cluster` is the surgical form: it deletes the Cluster CR and data PVCs **only** (operator, backup bucket and its backups, Secrets, ScheduledBackup all stay), refreshes Pulumi state, and the next `deploy-cluster` bootstraps from the recovery source again.
+`bootstrap.recovery` only fires at first-instance creation, so a running cluster cannot re-import in place — the data must be reset first. `reset-cluster` is the surgical form: it clears this cluster's own backup archive (base + WAL), deletes the Cluster CR and data PVCs, refreshes Pulumi state, and the next `deploy-cluster` bootstraps from the recovery source again. The operator, backup bucket, Secrets, and ScheduledBackup stay — but the cluster's own backups must go, because CNPG aborts a recovery whose WAL-archive destination still holds a previous incarnation's `base/` and `wals/` (`Expected empty archive`).
 
 ```bash
 just postgres reset-cluster --reset-data yes --app-password '<app-password>'
@@ -84,9 +84,10 @@ just postgres reset-cluster --reset-data yes --app-password '<app-password>'
 Behavior:
 
 1. Refuses to run unless the recovery source is already on the stack (set by [configure-source](#command)) — a reset without it would bootstrap EMPTY, not re-import. Aborts equally when the Cluster CR does not exist (a fresh deploy wants `deploy-cluster` directly)
-2. Deletes the Cluster CR (the operator removes the instance pods), waits until no instance pods remain, then deletes the data PVCs
-3. `pulumi refresh` so the next apply recreates the Cluster CR instead of diffing a phantom
-4. Chains `deploy-cluster` when `--app-password` is given; otherwise prints the re-import command
+2. Clears this cluster's own backup archive — `gs://<backup.bucket>/<bucketPath>/<cluster>/`, removed with the backup SA key — so `bootstrap.recovery` starts on an empty WAL-archive destination instead of aborting with `Expected empty archive`
+3. Deletes the Cluster CR (the operator removes the instance pods), waits until no instance pods remain, then deletes the data PVCs
+4. `pulumi refresh` so the next apply recreates the Cluster CR instead of diffing a phantom
+5. Chains `deploy-cluster` when `--app-password` is given; otherwise prints the re-import command
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
