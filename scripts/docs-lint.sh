@@ -7,14 +7,19 @@
 #   1. TOC links resolve to real headings (per file)
 #   2. In-document anchors resolve to real headings (per file)
 #   3. Relative file-link targets exist on disk
-#   4. Comment-as-step: an env/context switch hidden as a comment inside a
-#      multi-command fenced bash block (STYLE.md rule 6)
-#   5. Forbidden patterns: emoji, !!!, TODO/FIXME, hardcoded --stack prod
-#   6. Guide section numbering has no gaps after the first numbered section
-#   7. Guide section shape: no prose after the command block (STYLE.md rule 2)
-#   8. Guide section has a reference link (STYLE.md rule 2)
-#   9. Recipe echoes in just_modules/ point at recipes, not section numbers
-#      (STYLE.md rule 8)
+#   4. Forbidden patterns: emoji, !!!, TODO/FIXME, hardcoded --stack prod
+#   5. Guide section numbering has no gaps after the first numbered section
+#   6. Guide section shape: no prose after the command block (STYLE.md rule 2)
+#   7. Guide section has a reference link (STYLE.md rule 2)
+#   8. Recipe echoes in just_modules/ point at recipes, not section numbers
+#      or titles (STYLE.md rule 8)
+#
+# STYLE.md rule 6 (env/context switches split into labeled blocks) is not
+# checked here — spotting a switch hidden in a comment needs more context
+# than a script can see, so it stays a review rule. The former
+# "comment-as-step" heuristic was removed: its command count could never
+# exceed zero (only comment lines reached it), and repairing it to actually
+# count commands false-positived on every Quick Reference block.
 #
 # Usage: just docs-lint
 
@@ -85,39 +90,7 @@ for i, l in enumerate(lines, 1):
             p(f"link target missing: {t}", i)
             bad += 1
 
-# 4. comment-as-step inside fenced bash blocks
-#    A fenced block with >1 command whose comment matches switch vocabulary.
-switch_words = re.compile(
-    r"#.*(only if|if still|rotate|switch|re-enter|enter the|as .+ identity)",
-    re.I,
-)
-in_fence = False
-block_start = 0
-block_body = []
-for i, l in enumerate(lines, 1):
-    if l.strip().startswith("```"):
-        if in_fence:
-            if block_body and any(switch_words.search(c) for c in block_body):
-                cmds = sum(1 for c in block_body if c.startswith("just ") or c.startswith("kubectl "))
-                if cmds > 1:
-                    p(
-                        "comment-as-step: env/context switch hidden as a comment — "
-                        "split into separate labeled blocks (STYLE.md rule 6)",
-                        block_start,
-                    )
-                    bad += 1
-            in_fence = False
-            block_body = []
-        else:
-            in_fence = True
-            block_start = i
-        continue
-    if in_fence:
-        # inside a fence: only lines starting with '#' that are not commands are comments
-        if l.startswith("#"):
-            block_body.append(l)
-
-# 5. forbidden patterns
+# 4. forbidden patterns
 for i, l in enumerate(lines, 1):
     if i in fence_lines:
         continue
@@ -131,7 +104,7 @@ for i, l in enumerate(lines, 1):
         p("hardcoded --stack prod; default from $PULUMI_STACK", i)
         bad += 1
 
-# 6. guide numbering gaps (only files that look like guides: have TOC + numbered sections)
+# 5. guide numbering gaps (only files that look like guides: have TOC + numbered sections)
 secs = []
 for i, l in enumerate(lines, 1):
     m = re.match(r"^## (\d+)\. ", l)
@@ -145,7 +118,7 @@ if secs and "## Table of Contents" in text:
             bad += 1
         want += 1
 
-# 7+8. guide section shape (STYLE.md rule 2): a numbered section that runs a
+# 6+7. guide section shape (STYLE.md rule 2): a numbered section that runs a
 #      command ends with that command's fenced block, and links a reference
 #      doc. Prose after the block belongs in reference/.
 if secs and "## Table of Contents" in text:
@@ -189,13 +162,13 @@ else
     printf '%s%d doc(s) failed.\n' "$(_check_pfx FAIL 31)" "$failures"
 fi
 
-# 9. Recipe echoes must point at the next recipe, not at a guide section
+# 8. Recipe echoes must point at the next recipe, not at a guide section
 #    number or title — section numbers drift, recipe names do not
 #    (STYLE.md rule 8).
-echoes=$(cd "$root" && grep -rnE '(echo|printf)[^#]*(Proceed to|see|refer to|section)[[:space:]]*(\xc2\xa7|Section )[0-9]' just_modules/ 2>/dev/null || true)
+echoes=$(cd "$root" && grep -rnE '(echo|printf)[^#]*(Proceed to[[:space:]]+[A-Z]|(Proceed to|see|refer to|section)[[:space:]]*(\xc2\xa7|Section )[0-9])' just_modules/ 2>/dev/null || true)
 if [ -n "$echoes" ]; then
     echo
-    echo "recipe echoes referencing guide section numbers (STYLE.md rule 8):"
+    echo "recipe echoes referencing guide section numbers or titles (STYLE.md rule 8):"
     echo "$echoes" | sed 's/^/  /'
     echo "  -> print the next recipe command instead, e.g. 'Next: just <mod> <recipe>'"
     failures=$((failures + 1))
