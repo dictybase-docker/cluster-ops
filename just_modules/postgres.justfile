@@ -540,9 +540,10 @@ _clear-own-backup-archive folder cluster stack="":
 [arg("port", long="port", help="Local source port-forward port")]
 [group('postgres')]
 [no-cd]
-dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-app" output="" client_image="postgres:16" port="15432":
+dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-app" output="" client_image="postgres:16.15" port="15432":
     #!/usr/bin/env bash
     set -euo pipefail
+    umask 077
 
     REPO="{{ justfile_directory() }}"
     SOURCE_CLUSTER={{ quote(source_cluster) }}
@@ -677,7 +678,7 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
 [arg("stack", long="stack", short="s", help="Pulumi stack name")]
 [group('postgres')]
 [no-cd]
-restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-app" client_image="postgres:16" port="15433" stack="":
+restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-app" client_image="postgres:16.15" port="15433" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -694,16 +695,17 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     TARGET_PORT={{ quote(port) }}
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
 
+    if [[ "$ARCHIVE" != /* ]]; then
+        ARCHIVE="$PWD/$ARCHIVE"
+    fi
     if [[ -z "$ARCHIVE" || ! -f "$ARCHIVE" ]]; then
         echo "Error: logical archive not found: $ARCHIVE" >&2
         exit 1
     fi
-    if [[ "$ARCHIVE" != /* ]]; then
-        ARCHIVE="$PWD/$ARCHIVE"
-    fi
     CHECKSUM="${ARCHIVE}.sha256"
-    if [[ ! -f "$CHECKSUM" ]]; then
-        echo "Error: checksum file not found: $CHECKSUM" >&2
+    METADATA="${ARCHIVE}.metadata"
+    if [[ ! -f "$CHECKSUM" || ! -f "$METADATA" ]]; then
+        echo "Error: archive sidecars are required: $CHECKSUM and $METADATA" >&2
         exit 1
     fi
     sha256_file() {
@@ -719,21 +721,103 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         echo "Error: archive checksum mismatch for $ARCHIVE." >&2
         exit 1
     fi
+    if [[ -z "$APP_PASSWORD" ]]; then
+        echo "Error: --app-password is required before target mutation." >&2
+        exit 1
+    fi
 
+    DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
+    ARCHIVE_DIR=$(dirname "$ARCHIVE")
+    ARCHIVE_NAME=$(basename "$ARCHIVE")
+    CLIENT_VERSION=$(docker run --rm $DOCKER_NET_FLAGS "$CLIENT_IMAGE" pg_restore --version | awk '{print $3}')
+    SOURCE_VERSION=$(sed -n 's/^source_server_version=//p' "$METADATA" | tail -1)
+    CLIENT_MAJOR="${CLIENT_VERSION%%.*}"
+    SOURCE_MAJOR="${SOURCE_VERSION%%.*}"
+    if [[ ! "$CLIENT_MAJOR" =~ ^[0-9]+$ || ! "$SOURCE_MAJOR" =~ ^[0-9]+$ ]]; then
+        echo "Error: archive metadata or client version is invalid (source=$SOURCE_VERSION client=$CLIENT_VERSION)." >&2
+        exit 1
+    fi
+    if [[ "$SOURCE_MAJOR" -gt "$CLIENT_MAJOR" ]]; then
+        echo "Error: source PostgreSQL major $SOURCE_MAJOR is newer than client/target major $CLIENT_MAJOR." >&2
+        exit 1
+    fi
+    if ! docker run --rm $DOCKER_NET_FLAGS -v "$ARCHIVE_DIR:/work:ro" "$CLIENT_IMAGE" \
+        pg_restore --list "/work/$ARCHIVE_NAME" >/dev/null; then
+        echo "Error: pg_restore cannot read archive $ARCHIVE." >&2
+        exit 1
+    fi
+
+    read_optional_config() {
+        local key="$1" output status
+        set +e
+        output=$(pulumi -C "$FOLDER" -s "$STACK" config get --path "$key" 2>&1)
+        status=$?
+        set -e
+        if [[ "$status" -eq 0 ]]; then
+            printf '%s\n' "$output"
+            return 0
+        fi
+        if printf '%s\n' "$output" | grep -qiE 'not found|does not exist|not set|no value'; then
+            return 0
+        fi
+        printf '%s\n' "$output" >&2
+        exit "$status"
+    }
+    remove_optional_config() {
+        local key="$1" output status
+        set +e
+        output=$(pulumi -C "$FOLDER" -s "$STACK" config rm --path "$key" 2>&1)
+        status=$?
+        set -e
+        if [[ "$status" -eq 0 ]]; then
+            return 0
+        fi
+        if printf '%s\n' "$output" | grep -qiE 'not found|does not exist|not set|no value'; then
+            return 0
+        fi
+        printf '%s\n' "$output" >&2
+        exit "$status"
+    }
+    RECOVERY_SOURCE=$(read_optional_config 'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster')
+    SOURCE_SECRET_NAME=$(read_optional_config 'properties.sourceSecret.name')
+    OWN_BUCKET=$(read_optional_config 'properties.clusters[0].cluster.backup.bucket')
+    OWN_BUCKET_PATH=$(read_optional_config 'properties.clusters[0].cluster.backup.bucketPath')
+    BACKUP_KEY=$(read_optional_config 'properties.backupSecret.filepath')
+    OWN_ARCHIVE_PRESENT="no"
+    if [[ -n "$OWN_BUCKET" || -n "$OWN_BUCKET_PATH" || -n "$BACKUP_KEY" ]]; then
+        if [[ -z "$OWN_BUCKET" || -z "$OWN_BUCKET_PATH" || -z "$BACKUP_KEY" || ! -f "$BACKUP_KEY" ]]; then
+            echo "Error: cannot safely inspect the target backup archive; backup bucket/path/key is incomplete." >&2
+            exit 1
+        fi
+        OWN_PREFIX="gs://${OWN_BUCKET}/${OWN_BUCKET_PATH}/${CLUSTER}/"
+        set +e
+        OWN_LIST=$(CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$BACKUP_KEY" \
+            gcloud storage ls -r "$OWN_PREFIX" 2>&1)
+        OWN_STATUS=$?
+        set -e
+        if [[ "$OWN_STATUS" -eq 0 && -n "$OWN_LIST" ]]; then
+            OWN_ARCHIVE_PRESENT="yes"
+        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qiE 'matched no objects|No URLs matched|does not exist'; then
+            printf '%s\n' "$OWN_LIST" >&2
+            exit "$OWN_STATUS"
+        fi
+    fi
     TARGET_EXISTS="no"
     if kubectl get cluster "$CLUSTER" -n "$NS" >/dev/null 2>&1; then
         TARGET_EXISTS="yes"
     fi
-    if [[ "$TARGET_EXISTS" == "yes" && "$REPLACE_DATA" != "yes" ]]; then
-        echo "Error: target Cluster '$CLUSTER' already exists; pass --replace-data yes to destroy and recreate it." >&2
+    TARGET_STATE_PRESENT="no"
+    if [[ "$TARGET_EXISTS" == "yes" || -n "$RECOVERY_SOURCE" || -n "$SOURCE_SECRET_NAME" || "$OWN_ARCHIVE_PRESENT" == "yes" ]]; then
+        TARGET_STATE_PRESENT="yes"
+    fi
+    if [[ "$TARGET_STATE_PRESENT" == "yes" && "$REPLACE_DATA" != "yes" ]]; then
+        echo "Error: target state requires --replace-data yes (existing Cluster, physical import config, or own backup archive)." >&2
         exit 1
     fi
 
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    pulumi -C "$FOLDER" -s "$STACK" config rm --path \
-        'properties.clusters[0].cluster.bootstrap.recovery' >/dev/null 2>&1 || true
-    pulumi -C "$FOLDER" -s "$STACK" config rm --path \
-        'properties.sourceSecret' >/dev/null 2>&1 || true
+    remove_optional_config 'properties.clusters[0].cluster.bootstrap.recovery'
+    remove_optional_config 'properties.sourceSecret'
 
     if [[ "$TARGET_EXISTS" == "yes" ]]; then
         just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
@@ -744,10 +828,11 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
             sleep 2
         done
         kubectl delete pvc -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" --ignore-not-found
-        pulumi -C "$FOLDER" -s "$STACK" refresh --yes
     else
         just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
     fi
+
+    pulumi -C "$FOLDER" -s "$STACK" refresh --yes
 
     if [[ -z "$APP_PASSWORD" ]]; then
         echo "Error: --app-password is required to create the logical-import target." >&2
