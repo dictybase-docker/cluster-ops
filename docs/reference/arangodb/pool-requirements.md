@@ -4,7 +4,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 ## ArangoDB Resource Shape
 
-Stack: `arangodb-cluster`, image `arangodb:3.12.10.1`, amd64, `externalAccess: None`
+Stack: `arangodb-cluster`, image `arangodb:3.12.11`, amd64, `externalAccess: None`
 
 | Role | Count | CPU | Memory | Disk |
 |------|-------|-----|--------|------|

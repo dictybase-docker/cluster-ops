@@ -6,7 +6,7 @@ const (
 	defaultName         = "arangodb"
 	defaultMode         = "Cluster"
 	defaultEnvironment  = "Production"
-	defaultVersion      = "3.12.10.1"
+	defaultVersion      = "3.12.11"
 	defaultArchitecture = "amd64"
 	defaultTLSCASecret  = "None"
 	arangoDeploymentKey = "arango_deployment"
@@ -57,7 +57,7 @@ type ArangoClusterConfig struct {
 	Version      string       `json:"version"`
 	Environment  string       `json:"environment"`
 	Architecture string       `json:"architecture"`
-	TLS          TLSConfig    `json:"tls,omitempty"`
+	TLS          TLSConfig    `json:"tls"`
 	Secret       SecretConfig `json:"secret"`
 	Agents       MemberConfig `json:"agents"`
 	DBServers    MemberConfig `json:"dbservers"`

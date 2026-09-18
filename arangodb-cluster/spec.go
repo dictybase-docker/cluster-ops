@@ -5,7 +5,7 @@ import (
 )
 
 // buildClusterSpec generates the Kubernetes CR spec map for kube-arangodb ArangoDeployment.
-func buildClusterSpec(cfg *ArangoClusterConfig) map[string]interface{} {
+func buildClusterSpec(cfg *ArangoClusterConfig) map[string]any {
 	deployName := cfg.Name
 	if deployName == "" {
 		deployName = defaultName
@@ -31,20 +31,20 @@ func buildClusterSpec(cfg *ArangoClusterConfig) map[string]interface{} {
 		caSecretName = defaultTLSCASecret
 	}
 
-	spec := map[string]interface{}{
+	spec := map[string]any{
 		"mode":            defaultMode,
 		"environment":     env,
 		"image":           fmt.Sprintf("arangodb:%s", version),
 		"imagePullPolicy": "IfNotPresent",
 		"architecture":    []string{arch},
-		"externalAccess": map[string]interface{}{
+		"externalAccess": map[string]any{
 			"type": "None",
 		},
-		"tls": map[string]interface{}{
+		"tls": map[string]any{
 			"caSecretName": caSecretName,
 		},
-		"bootstrap": map[string]interface{}{
-			"passwordSecretNames": map[string]interface{}{
+		"bootstrap": map[string]any{
+			"passwordSecretNames": map[string]any{
 				"root": cfg.Secret.Name,
 			},
 		},
@@ -57,8 +57,8 @@ func buildClusterSpec(cfg *ArangoClusterConfig) map[string]interface{} {
 }
 
 // buildMemberGroup builds the configuration map for a member group with placement and anti-affinity.
-func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage bool) map[string]interface{} {
-	group := map[string]interface{}{
+func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage bool) map[string]any {
+	group := map[string]any{
 		"count": cfg.Count,
 	}
 
@@ -67,9 +67,9 @@ func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage boo
 	}
 
 	if len(cfg.Tolerations) > 0 {
-		tolerations := make([]map[string]interface{}, 0, len(cfg.Tolerations))
+		tolerations := make([]map[string]any, 0, len(cfg.Tolerations))
 		for _, t := range cfg.Tolerations {
-			tolerations = append(tolerations, map[string]interface{}{
+			tolerations = append(tolerations, map[string]any{
 				"key":      t.Key,
 				"operator": t.Operator,
 				"value":    t.Value,
@@ -94,15 +94,15 @@ func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage boo
 }
 
 // buildAntiAffinity constructs PodAntiAffinity rules to ensure failure domain spread.
-func buildAntiAffinity(deployName, role string) map[string]interface{} {
-	return map[string]interface{}{
-		"podAntiAffinity": map[string]interface{}{
-			"preferredDuringSchedulingIgnoredDuringExecution": []map[string]interface{}{
+func buildAntiAffinity(deployName, role string) map[string]any {
+	return map[string]any{
+		"podAntiAffinity": map[string]any{
+			"preferredDuringSchedulingIgnoredDuringExecution": []map[string]any{
 				{
 					"weight": 100,
-					"podAffinityTerm": map[string]interface{}{
-						"labelSelector": map[string]interface{}{
-							"matchLabels": map[string]interface{}{
+					"podAffinityTerm": map[string]any{
+						"labelSelector": map[string]any{
+							"matchLabels": map[string]any{
 								arangoDeploymentKey: deployName,
 								"role":              role,
 							},
@@ -112,9 +112,9 @@ func buildAntiAffinity(deployName, role string) map[string]interface{} {
 				},
 				{
 					"weight": 50,
-					"podAffinityTerm": map[string]interface{}{
-						"labelSelector": map[string]interface{}{
-							"matchLabels": map[string]interface{}{
+					"podAffinityTerm": map[string]any{
+						"labelSelector": map[string]any{
+							"matchLabels": map[string]any{
 								arangoDeploymentKey: deployName,
 								"role":              role,
 							},
@@ -128,10 +128,10 @@ func buildAntiAffinity(deployName, role string) map[string]interface{} {
 }
 
 // buildResources builds the resources map for requests and limits.
-func buildResources(cfg MemberConfig) map[string]interface{} {
-	resources := make(map[string]interface{})
-	requests := make(map[string]interface{})
-	limits := make(map[string]interface{})
+func buildResources(cfg MemberConfig) map[string]any {
+	resources := make(map[string]any)
+	requests := make(map[string]any)
+	limits := make(map[string]any)
 
 	if cfg.CPURequest != "" {
 		requests["cpu"] = cfg.CPURequest
@@ -157,12 +157,12 @@ func buildResources(cfg MemberConfig) map[string]interface{} {
 }
 
 // buildVolumeClaimTemplate builds the volumeClaimTemplate spec for persistent storage.
-func buildVolumeClaimTemplate(storageClass, size string) map[string]interface{} {
-	spec := map[string]interface{}{
+func buildVolumeClaimTemplate(storageClass, size string) map[string]any {
+	spec := map[string]any{
 		"volumeMode":  "Filesystem",
 		"accessModes": []string{"ReadWriteOnce"},
-		"resources": map[string]interface{}{
-			"requests": map[string]interface{}{
+		"resources": map[string]any{
+			"requests": map[string]any{
 				"storage": size,
 			},
 		},
@@ -172,7 +172,7 @@ func buildVolumeClaimTemplate(storageClass, size string) map[string]interface{} 
 		spec["storageClassName"] = storageClass
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"spec": spec,
 	}
 }

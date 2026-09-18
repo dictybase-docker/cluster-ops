@@ -7,7 +7,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 `arangodb-cluster/Pulumi.dcr-kube1.yaml` creates:
 - Root-password Secret `arangodb-pass`
 - `ArangoDeployment` Cluster CR matching the [resource shape](pool-requirements.md): 3 agents, 3 dbservers, 3 coordinators
-- Image: `arangodb:3.12.10.1`
+- Image: `arangodb:3.12.11`
 - `externalAccess: None`
 - TLS: `caSecretName: "None"` (plain HTTP, internal only)
 

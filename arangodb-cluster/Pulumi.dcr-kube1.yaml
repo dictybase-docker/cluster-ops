@@ -5,7 +5,7 @@ config:
   arangodb-cluster:properties:
     name: arangodb
     namespace: prod
-    version: 3.12.10.1
+    version: 3.12.11
     environment: Production
     architecture: amd64
     tls:
