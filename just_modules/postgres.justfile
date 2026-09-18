@@ -631,13 +631,22 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
 
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
     DB_HOST="{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}"
-    SOURCE_VERSION=$(docker run --rm $DOCKER_NET_FLAGS \
-        -e "PGPASSWORD=$SOURCE_PASSWORD" "$CLIENT_IMAGE" \
+    CLIENT_VERSION=$(PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
+        -e PGPASSWORD "$CLIENT_IMAGE" pg_dump --version | awk '{print $3}')
+    SOURCE_VERSION=$(PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
+        -e PGPASSWORD "$CLIENT_IMAGE" \
         psql -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" -Atqc 'show server_version' | tr -d '[:space:]')
+    CLIENT_MAJOR="${CLIENT_VERSION%%.*}"
+    SOURCE_MAJOR="${SOURCE_VERSION%%.*}"
+    if [[ ! "$CLIENT_MAJOR" =~ ^[0-9]+$ || ! "$SOURCE_MAJOR" =~ ^[0-9]+$ || "$SOURCE_MAJOR" -gt "$CLIENT_MAJOR" ]]; then
+        echo "Error: source PostgreSQL version $SOURCE_VERSION is not supported by client $CLIENT_VERSION." >&2
+        exit 1
+    fi
     echo "Source PostgreSQL version: $SOURCE_VERSION"
+    echo "Client PostgreSQL version: $CLIENT_VERSION"
     echo "Creating logical archive: $ARCHIVE"
-    docker run --rm $DOCKER_NET_FLAGS \
-        -e "PGPASSWORD=$SOURCE_PASSWORD" "$CLIENT_IMAGE" \
+    PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
+        -e PGPASSWORD "$CLIENT_IMAGE" \
         pg_dump -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" \
         --format=custom --no-owner --no-acl --quote-all-identifiers > "$PARTIAL"
     mv "$PARTIAL" "$ARCHIVE"
@@ -655,6 +664,7 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
         printf 'source_cluster=%s\n' "$SOURCE_CLUSTER"
         printf 'source_database=%s\n' "$SOURCE_DB"
         printf 'source_server_version=%s\n' "$SOURCE_VERSION"
+        printf 'client_version=%s\n' "$CLIENT_VERSION"
         printf 'client_image=%s\n' "$CLIENT_IMAGE"
         printf 'created_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } > "$METADATA"
@@ -731,14 +741,12 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     ARCHIVE_NAME=$(basename "$ARCHIVE")
     CLIENT_VERSION=$(docker run --rm $DOCKER_NET_FLAGS "$CLIENT_IMAGE" pg_restore --version | awk '{print $3}')
     SOURCE_VERSION=$(sed -n 's/^source_server_version=//p' "$METADATA" | tail -1)
+    DUMP_CLIENT_VERSION=$(sed -n 's/^client_version=//p' "$METADATA" | tail -1)
     CLIENT_MAJOR="${CLIENT_VERSION%%.*}"
     SOURCE_MAJOR="${SOURCE_VERSION%%.*}"
-    if [[ ! "$CLIENT_MAJOR" =~ ^[0-9]+$ || ! "$SOURCE_MAJOR" =~ ^[0-9]+$ ]]; then
-        echo "Error: archive metadata or client version is invalid (source=$SOURCE_VERSION client=$CLIENT_VERSION)." >&2
-        exit 1
-    fi
-    if [[ "$SOURCE_MAJOR" -gt "$CLIENT_MAJOR" ]]; then
-        echo "Error: source PostgreSQL major $SOURCE_MAJOR is newer than client/target major $CLIENT_MAJOR." >&2
+    DUMP_CLIENT_MAJOR="${DUMP_CLIENT_VERSION%%.*}"
+    if [[ ! "$CLIENT_MAJOR" =~ ^[0-9]+$ || ! "$SOURCE_MAJOR" =~ ^[0-9]+$ || ! "$DUMP_CLIENT_MAJOR" =~ ^[0-9]+$ ]]; then
+        echo "Error: archive metadata or client version is invalid (source=$SOURCE_VERSION dump-client=$DUMP_CLIENT_VERSION client=$CLIENT_VERSION)." >&2
         exit 1
     fi
     if ! docker run --rm $DOCKER_NET_FLAGS -v "$ARCHIVE_DIR:/work:ro" "$CLIENT_IMAGE" \
@@ -757,7 +765,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
             printf '%s\n' "$output"
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE 'not found|does not exist|not set|no value'; then
+        if printf '%s\n' "$output" | grep -qiE 'config (key|value).*not found'; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -772,7 +780,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         if [[ "$status" -eq 0 ]]; then
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE 'not found|does not exist|not set|no value'; then
+        if printf '%s\n' "$output" | grep -qiE 'config (key|value).*not found'; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -783,6 +791,12 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     OWN_BUCKET=$(read_optional_config 'properties.clusters[0].cluster.backup.bucket')
     OWN_BUCKET_PATH=$(read_optional_config 'properties.clusters[0].cluster.backup.bucketPath')
     BACKUP_KEY=$(read_optional_config 'properties.backupSecret.filepath')
+    TARGET_TAG=$(read_optional_config 'properties.clusters[0].cluster.image.tag')
+    TARGET_MAJOR="${TARGET_TAG%%.*}"
+    if [[ ! "$TARGET_MAJOR" =~ ^[0-9]+$ || "$TARGET_MAJOR" -ne "$CLIENT_MAJOR" || "$DUMP_CLIENT_MAJOR" -gt "$CLIENT_MAJOR" ]]; then
+        echo "Error: target/client/archive PostgreSQL majors are incompatible (target=$TARGET_TAG dump-client=$DUMP_CLIENT_VERSION client=$CLIENT_VERSION)." >&2
+        exit 1
+    fi
     OWN_ARCHIVE_PRESENT="no"
     if [[ -n "$OWN_BUCKET" || -n "$OWN_BUCKET_PATH" || -n "$BACKUP_KEY" ]]; then
         if [[ -z "$OWN_BUCKET" || -z "$OWN_BUCKET_PATH" || -z "$BACKUP_KEY" || ! -f "$BACKUP_KEY" ]]; then
@@ -797,14 +811,22 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         set -e
         if [[ "$OWN_STATUS" -eq 0 && -n "$OWN_LIST" ]]; then
             OWN_ARCHIVE_PRESENT="yes"
-        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qiE 'matched no objects|No URLs matched|does not exist'; then
+        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qiE 'matched no objects|No URLs matched'; then
             printf '%s\n' "$OWN_LIST" >&2
             exit "$OWN_STATUS"
         fi
     fi
+    CLUSTER_GET_OUTPUT=""
+    set +e
+    CLUSTER_GET_OUTPUT=$(kubectl get cluster "$CLUSTER" -n "$NS" 2>&1)
+    CLUSTER_GET_STATUS=$?
+    set -e
     TARGET_EXISTS="no"
-    if kubectl get cluster "$CLUSTER" -n "$NS" >/dev/null 2>&1; then
+    if [[ "$CLUSTER_GET_STATUS" -eq 0 ]]; then
         TARGET_EXISTS="yes"
+    elif ! printf '%s\n' "$CLUSTER_GET_OUTPUT" | grep -qiE 'NotFound|not found'; then
+        printf '%s\n' "$CLUSTER_GET_OUTPUT" >&2
+        exit "$CLUSTER_GET_STATUS"
     fi
     TARGET_STATE_PRESENT="no"
     if [[ "$TARGET_EXISTS" == "yes" || -n "$RECOVERY_SOURCE" || -n "$SOURCE_SECRET_NAME" || "$OWN_ARCHIVE_PRESENT" == "yes" ]]; then
@@ -827,6 +849,11 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
             [[ -z "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]] && break
             sleep 2
         done
+        if [[ -n "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]]; then
+            echo "Error: target pods still present after 60 seconds; refusing to delete PVCs." >&2
+            kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" >&2 || true
+            exit 1
+        fi
         kubectl delete pvc -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" --ignore-not-found
     else
         just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
@@ -871,14 +898,14 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     ARCHIVE_DIR=$(dirname "$ARCHIVE")
     ARCHIVE_NAME=$(basename "$ARCHIVE")
     echo "Restoring $ARCHIVE into $NS/$DATABASE..."
-    docker run --rm $DOCKER_NET_FLAGS \
+    PGPASSWORD="$TARGET_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
         -v "$ARCHIVE_DIR:/work:ro" \
-        -e "PGPASSWORD=$TARGET_PASSWORD" "$CLIENT_IMAGE" \
+        -e PGPASSWORD "$CLIENT_IMAGE" \
         pg_restore -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" \
         --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl \
         "/work/$ARCHIVE_NAME"
-    docker run --rm $DOCKER_NET_FLAGS \
-        -e "PGPASSWORD=$TARGET_PASSWORD" "$CLIENT_IMAGE" \
+    PGPASSWORD="$TARGET_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
+        -e PGPASSWORD "$CLIENT_IMAGE" \
         psql -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" -v ON_ERROR_STOP=1 -c 'ANALYZE VERBOSE'
     echo "Logical restore complete."
 

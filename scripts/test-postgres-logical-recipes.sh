@@ -44,7 +44,7 @@ else
     digest=$(shasum -a 256 "$tmp_dir/archive.dump" | awk '{print $1}')
 fi
 printf '%s  archive.dump\n' "$digest" > "$tmp_dir/archive.dump.sha256"
-printf 'source_server_version=14.13\n' > "$tmp_dir/archive.dump.metadata"
+printf 'source_server_version=14.13\nclient_version=16.15\n' > "$tmp_dir/archive.dump.metadata"
 log_file="$tmp_dir/calls.log"
 : > "$log_file"
 
@@ -64,10 +64,19 @@ cat > "$tmp_dir/bin/pulumi" <<'EOF'
 set -euo pipefail
 printf 'pulumi %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
+    *"config get"*)
+        if [[ "${STUB_PULUMI_CONFIG_ERROR:-no}" == yes ]]; then
+            echo 'error: stack not found' >&2
+            exit 42
+        fi
+        ;;
+esac
+case "$*" in
     *"config get"*"backup.bucketPath"*) printf 'logto\n' ;;
     *"config get"*"backup.bucket"*) printf 'test-bucket\n' ;;
     *"config get"*"backupSecret.filepath"*) printf '%s\n' "${STUB_BACKUP_KEY}" ;;
     *"config get"*"bootstrap.recovery.sourceCluster"*) printf 'logto\n' ;;
+    *"config get"*"image.tag"*) printf '%s\n' "${STUB_TARGET_TAG:-16.15-test}" ;;
     *"config rm"*) [[ "${STUB_PULUMI_RM_FAIL:-no}" != yes ]] ;;
     *"refresh"*) exit 0 ;;
     *) exit 0 ;;
@@ -78,11 +87,26 @@ cat > "$tmp_dir/bin/kubectl" <<'EOF'
 set -euo pipefail
 printf 'kubectl %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
-    *"get cluster"*) [[ "${STUB_CLUSTER_EXISTS:-no}" == yes ]] ;;
+    *"get cluster"*)
+        if [[ "${STUB_KUBECTL_GET_CLUSTER_ERROR:-no}" == yes ]]; then
+            echo 'Error from server (Forbidden): access denied' >&2
+            exit 1
+        fi
+        if [[ "${STUB_CLUSTER_EXISTS:-no}" == yes ]]; then
+            exit 0
+        fi
+        echo 'Error from server (NotFound): clusters.postgresql.cnpg.io "logto" not found' >&2
+        exit 1
+        ;;
     *"get secret"*"username"*) printf 'bG9ndG8=\n' ;;
     *"get secret"*"password"*) printf 'cHc=\n' ;;
     *"port-forward"*) exit 0 ;;
-    *"get pods"*) exit 0 ;;
+    *"get pods"*)
+        if [[ "${STUB_PODS_REMAIN:-no}" == yes ]]; then
+            printf 'pod/logto-1\n'
+        fi
+        exit 0
+        ;;
     *) exit 0 ;;
 esac
 EOF
@@ -92,6 +116,13 @@ set -euo pipefail
 printf 'docker %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
     *"pg_restore --version"*) printf 'pg_restore (PostgreSQL) 16.15\n' ;;
+    *"pg_dump --version"*) printf 'pg_dump (PostgreSQL) 16.15\n' ;;
+    *"pg_restore --list"*)
+        if [[ "${STUB_PG_RESTORE_LIST_FAIL:-no}" == yes ]]; then
+            echo 'invalid archive' >&2
+            exit 8
+        fi
+        ;;
 esac
 exit 0
 EOF
@@ -108,6 +139,12 @@ case "$*" in
         if [[ "${STUB_GCLOUD_NO_OBJECTS:-no}" == yes ]]; then
             echo 'One or more URLs matched no objects.' >&2
             exit 1
+        fi
+        ;;
+    *"storage ls"*)
+        if [[ "${STUB_GCLOUD_LS_FAIL:-no}" == yes ]]; then
+            echo 'permission denied' >&2
+            exit 13
         fi
         ;;
 esac
@@ -139,6 +176,12 @@ run_stub_env() {
         "STUB_PULUMI_RM_FAIL=$pulumi_rm_fail" \
         "STUB_GCLOUD_RM_FAIL=$gcloud_rm_fail" \
         "STUB_GCLOUD_NO_OBJECTS=$gcloud_no_objects" \
+        "STUB_GCLOUD_LS_FAIL=${STUB_GCLOUD_LS_FAIL:-no}" \
+        "STUB_PG_RESTORE_LIST_FAIL=${STUB_PG_RESTORE_LIST_FAIL:-no}" \
+        "STUB_KUBECTL_GET_CLUSTER_ERROR=${STUB_KUBECTL_GET_CLUSTER_ERROR:-no}" \
+        "STUB_TARGET_TAG=${STUB_TARGET_TAG:-16.15-test}" \
+        "STUB_PULUMI_CONFIG_ERROR=${STUB_PULUMI_CONFIG_ERROR:-no}" \
+        "STUB_PODS_REMAIN=${STUB_PODS_REMAIN:-no}" \
         "STUB_NC_STATE=$tmp_dir/nc-state-$$" \
         bash -c "$script"
 }
@@ -178,7 +221,11 @@ if run_stub_env no yes no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: Pulumi config failure unexpectedly succeeded' >&2
     exit 1
 fi
-grep -q 'pulumi .*config rm' "$log_file"
+if ! grep -q 'pulumi .*config rm' "$log_file"; then
+    echo 'FAIL: Pulumi config rm was not reached; calls:' >&2
+    cat "$log_file" >&2
+    exit 1
+fi
 ! grep -q 'deploy-cluster' "$log_file"
 echo 'Pulumi config failure propagation: PASS'
 
@@ -200,15 +247,87 @@ run_stub_env no no no no "$restore_replace_render" >/dev/null
 refresh_line=$(grep -n 'pulumi .*refresh' "$log_file" | head -1 | cut -d: -f1)
 deploy_line=$(grep -n 'just .*deploy-cluster' "$log_file" | head -1 | cut -d: -f1)
 [[ -n "$refresh_line" && -n "$deploy_line" && "$refresh_line" -lt "$deploy_line" ]]
-echo 'refresh-before-deploy: PASS'
+! grep -q 'PGPASSWORD=pw' "$log_file"
+echo 'refresh-before-deploy/password argv hygiene: PASS'
 
-source_env="$repo_root/.env.dev.dcr-experiments"
+: > "$log_file"
+if STUB_PG_RESTORE_LIST_FAIL=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: pg_restore --list failure unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -qE 'pulumi config rm|gcloud|kubectl delete|deploy-cluster' "$log_file"
+echo 'archive format guard/no mutation: PASS'
+
+printf 'source_server_version=17.13\nclient_version=17.13\n' > "$tmp_dir/archive.dump.metadata"
+if run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: source-major mismatch unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -qE 'pulumi config rm|gcloud|kubectl delete|deploy-cluster' "$log_file"
+printf 'source_server_version=14.13\nclient_version=16.15\n' > "$tmp_dir/archive.dump.metadata"
+echo 'source-major guard/no mutation: PASS'
+
+: > "$log_file"
+if STUB_TARGET_TAG=17.13 run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: target/client major mismatch unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -qE 'pulumi config rm|gcloud|kubectl delete|deploy-cluster' "$log_file"
+echo 'target-major guard/no mutation: PASS'
+
+: > "$log_file"
+if STUB_KUBECTL_GET_CLUSTER_ERROR=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: Kubernetes connectivity error unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -q 'pulumi .*config rm' "$log_file"
+echo 'Kubernetes error propagation: PASS'
+
+: > "$log_file"
+if STUB_PULUMI_CONFIG_ERROR=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: Pulumi stack error unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -q 'pulumi .*config rm' "$log_file"
+echo 'Pulumi read error propagation: PASS'
+
+: > "$log_file"
+if STUB_GCLOUD_LS_FAIL=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: GCS list error unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -q 'pulumi .*config rm' "$log_file"
+echo 'GCS list error propagation: PASS'
+
+reset_render=$(just --dry-run postgres reset-cluster --reset-data yes --retries 1 --interval 0 2>&1)
+: > "$log_file"
+run_stub_env yes no no no "$reset_render" >/dev/null 2>&1 || true
+job_delete_line=$(grep -n 'kubectl delete jobs,pods' "$log_file" | head -1 | cut -d: -f1)
+pod_wait_line=$(grep -n 'kubectl get pods' "$log_file" | head -1 | cut -d: -f1)
+[[ -n "$job_delete_line" && -n "$pod_wait_line" && "$job_delete_line" -lt "$pod_wait_line" ]]
+echo 'stale recovery cleanup ordering: PASS'
+
+: > "$log_file"
+if STUB_PODS_REMAIN=yes run_stub_env yes no no no "$reset_render" >/dev/null 2>&1; then
+    echo 'FAIL: remaining pods reset unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -q 'kubectl delete pvc' "$log_file"
+echo 'remaining pod protects PVCs: PASS'
+
+source_env="$tmp_dir/source.env"
+source_kubeconfig_fixture="$tmp_dir/source-kubeconfig.yaml"
+touch "$source_kubeconfig_fixture"
+printf 'CLUSTER_NAME=fixture-source\nKUBECONFIG=\${PWD}/\${CLUSTER_NAME}-kubeconfig.yaml\n' > "$source_env"
 source_kubeconfig=$(sed -n 's/^KUBECONFIG=//p' "$source_env" | tail -1)
 source_cluster_name=$(sed -n 's/^CLUSTER_NAME=//p' "$source_env" | tail -1)
-source_kubeconfig="${source_kubeconfig//\$\{PWD\}/$repo_root}"
-source_kubeconfig="${source_kubeconfig//\$PWD/$repo_root}"
+source_kubeconfig="${source_kubeconfig//\$\{PWD\}/$tmp_dir}"
+source_kubeconfig="${source_kubeconfig//\$PWD/$tmp_dir}"
 source_kubeconfig="${source_kubeconfig//\$\{CLUSTER_NAME\}/$source_cluster_name}"
 source_kubeconfig="${source_kubeconfig//\$CLUSTER_NAME/$source_cluster_name}"
+# The fixture path is intentionally named after CLUSTER_NAME.
+mkdir -p "$(dirname "$source_kubeconfig")"
+touch "$source_kubeconfig"
 test -f "$source_kubeconfig"
 echo 'source env kubeconfig resolution: PASS'
 
