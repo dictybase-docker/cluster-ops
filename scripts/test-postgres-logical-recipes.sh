@@ -124,7 +124,8 @@ set -euo pipefail
 printf 'docker %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
     *"pg_restore --version"*) printf 'pg_restore (PostgreSQL) 16.15\n' ;;
-    *"pg_dump --version"*) printf 'pg_dump (PostgreSQL) 16.15\n' ;;
+    *"pg_dump --version"*) printf 'pg_dump (PostgreSQL) %s\n' "${STUB_DUMP_CLIENT_VERSION:-16.15}" ;;
+    *"psql"*) printf '%s\n' "${STUB_SOURCE_VERSION:-14.13}" ;;
     *"pg_restore --list"*)
         if [[ "${STUB_PG_RESTORE_LIST_FAIL:-no}" == yes ]]; then
             echo 'invalid archive' >&2
@@ -145,7 +146,7 @@ case "$*" in
             exit 13
         fi
         if [[ "${STUB_GCLOUD_NO_OBJECTS:-no}" == yes ]]; then
-            echo 'One or more URLs matched no objects.' >&2
+            echo 'ERROR: (gcloud.storage.rm) One or more URLs matched no objects.' >&2
             exit 1
         fi
         ;;
@@ -155,7 +156,7 @@ case "$*" in
             exit 13
         fi
         if [[ "${STUB_GCLOUD_LS_NO_OBJECTS:-no}" == yes ]]; then
-            echo 'One or more URLs matched no objects.' >&2
+            echo 'ERROR: (gcloud.storage.ls) One or more URLs matched no objects.' >&2
             exit 1
         fi
         ;;
@@ -197,6 +198,8 @@ run_stub_env() {
         "STUB_TARGET_TAG=${STUB_TARGET_TAG:-16.15-test}" \
         "STUB_PULUMI_CONFIG_ERROR=${STUB_PULUMI_CONFIG_ERROR:-no}" \
         "STUB_PODS_REMAIN=${STUB_PODS_REMAIN:-no}" \
+        "STUB_SOURCE_VERSION=${STUB_SOURCE_VERSION:-14.13}" \
+        "STUB_DUMP_CLIENT_VERSION=${STUB_DUMP_CLIENT_VERSION:-16.15}" \
         "STUB_NC_STATE=$nc_state" \
         bash -c "$script"
 }
@@ -213,8 +216,22 @@ run_stub_flag() {
     return "$status"
 }
 
+dump_env="$tmp_dir/source.env"
+dump_kubeconfig="$tmp_dir/source-kubeconfig.yaml"
+touch "$dump_kubeconfig"
+printf 'CLUSTER_NAME=fixture-source\nKUBECONFIG=%s\n' "$dump_kubeconfig" > "$dump_env"
+dump_render=$(just --dry-run postgres dump-logical --source-cluster fixture-source --source-kubeconfig "$dump_kubeconfig" --source-env-file "$dump_env" --output "$tmp_dir/dump.dump" 2>&1)
 restore_render=$(just --dry-run postgres restore-logical --archive "$tmp_dir/archive.dump" --app-password test-password 2>&1)
 restore_replace_render=$(just --dry-run postgres restore-logical --archive "$tmp_dir/archive.dump" --app-password test-password --replace-data yes 2>&1)
+
+: > "$log_file"
+if run_stub_flag STUB_SOURCE_VERSION 17.13 no no no no "$dump_render" >/dev/null 2>&1; then
+    echo 'FAIL: dump source-major mismatch unexpectedly succeeded' >&2
+    exit 1
+fi
+! grep -q 'pg_dump -h' "$log_file"
+! test -f "$tmp_dir/dump.dump"
+echo 'dump source-major guard/no mutation: PASS'
 
 : > "$log_file"
 cp "$tmp_dir/archive.dump.sha256" "$tmp_dir/bad.sha256"

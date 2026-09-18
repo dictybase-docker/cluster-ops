@@ -518,7 +518,7 @@ _clear-own-backup-archive folder cluster stack="":
     set -e
     if [[ "$status" -eq 0 ]]; then
         printf '%s\n' "$output"
-    elif printf '%s\n' "$output" | grep -qi 'matched no objects'; then
+    elif printf '%s\n' "$output" | grep -Fqx 'ERROR: (gcloud.storage.rm) One or more URLs matched no objects.'; then
         echo "No own backup objects to clear."
     else
         printf '%s\n' "$output" >&2
@@ -765,7 +765,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
             printf '%s\n' "$output"
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE "^error: configuration key '.*' not found for stack '.*'$"; then
+        if [[ "$output" == "error: configuration key '$key' not found for stack '$STACK'" ]]; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -780,7 +780,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         if [[ "$status" -eq 0 ]]; then
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE "^error: configuration key '.*' not found for stack '.*'$"; then
+        if [[ "$output" == "error: configuration key '$key' not found for stack '$STACK'" ]]; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -798,12 +798,11 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         exit 1
     fi
     OWN_ARCHIVE_PRESENT="no"
-    if [[ -n "$OWN_BUCKET" || -n "$OWN_BUCKET_PATH" || -n "$BACKUP_KEY" ]]; then
-        if [[ -z "$OWN_BUCKET" || -z "$OWN_BUCKET_PATH" || -z "$BACKUP_KEY" || ! -f "$BACKUP_KEY" ]]; then
-            echo "Error: cannot safely inspect the target backup archive; backup bucket/path/key is incomplete." >&2
-            exit 1
-        fi
-        OWN_PREFIX="gs://${OWN_BUCKET}/${OWN_BUCKET_PATH}/${CLUSTER}/"
+    if [[ -z "$OWN_BUCKET" || -z "$OWN_BUCKET_PATH" || -z "$BACKUP_KEY" || ! -f "$BACKUP_KEY" ]]; then
+        echo "Error: cannot safely inspect the target backup archive; backup bucket/path/key is incomplete." >&2
+        exit 1
+    fi
+    OWN_PREFIX="gs://${OWN_BUCKET}/${OWN_BUCKET_PATH}/${CLUSTER}/"
         set +e
         OWN_LIST=$(CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$BACKUP_KEY" \
             gcloud storage ls -r "$OWN_PREFIX" 2>&1)
@@ -811,11 +810,10 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         set -e
         if [[ "$OWN_STATUS" -eq 0 && -n "$OWN_LIST" ]]; then
             OWN_ARCHIVE_PRESENT="yes"
-        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qi 'matched no objects'; then
+        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -Fqx 'ERROR: (gcloud.storage.ls) One or more URLs matched no objects.'; then
             printf '%s\n' "$OWN_LIST" >&2
             exit "$OWN_STATUS"
         fi
-    fi
     CLUSTER_GET_OUTPUT=""
     set +e
     CLUSTER_GET_OUTPUT=$(kubectl get cluster "$CLUSTER" -n "$NS" 2>&1)
