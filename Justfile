@@ -17,6 +17,7 @@ mod postgres 'just_modules/postgres.justfile'
 mod logto 'just_modules/logto.justfile'
 mod minio 'just_modules/minio.justfile'
 mod redis 'just_modules/redis.justfile'
+mod nats 'just_modules/nats.justfile'
 mod docker 'just_modules/docker.justfile'
 
 # Variables
