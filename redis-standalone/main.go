@@ -135,7 +135,14 @@ func (rds *RedisStandalone) createPersistentVolumeClaim(
 		ctx,
 		fmt.Sprintf("%s-data", rds.Config.Name),
 		&corev1.PersistentVolumeClaimArgs{
-			Metadata: rds.createMetadata(),
+			Metadata: &metav1.ObjectMetaArgs{
+				// The claim name must match createRedisVolume's claimName
+				// (<name>-data), not the bare config name — a mismatch leaves
+				// the pod Pending forever.
+				Name:      pulumi.String(rds.dataPVCName()),
+				Namespace: pulumi.String(rds.Config.Namespace),
+				Labels:    rds.createLabels(),
+			},
 			Spec: &corev1.PersistentVolumeClaimSpecArgs{
 				AccessModes: pulumi.StringArray{
 					pulumi.String("ReadWriteOnce"),
@@ -315,17 +322,23 @@ func (rds *RedisStandalone) createTCPProbe(
 	}
 }
 
+// dataPVCName is the single source of truth for the data PVC name —
+// used by createPersistentVolumeClaim's metadata.name and by
+// createRedisVolume's claimName. A mismatch leaves the pod Pending
+// forever.
+func (rds *RedisStandalone) dataPVCName() string {
+	return fmt.Sprintf("%s-data", rds.Config.Name)
+}
+
 // createRedisVolume references the data PVC by its deterministic name —
 // the same name createPersistentVolumeClaim uses.
 func (rds *RedisStandalone) createRedisVolume(
 	_ *corev1.PersistentVolumeClaim,
 ) *corev1.VolumeArgs {
 	return &corev1.VolumeArgs{
-		Name: pulumi.String(fmt.Sprintf("%s-data", rds.Config.Name)),
+		Name: pulumi.String(rds.dataPVCName()),
 		PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSourceArgs{
-			ClaimName: pulumi.String(
-				fmt.Sprintf("%s-data", rds.Config.Name),
-			),
+			ClaimName: pulumi.String(rds.dataPVCName()),
 		},
 	}
 }

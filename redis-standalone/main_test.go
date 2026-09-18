@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -88,4 +89,17 @@ func TestContainerProductionAuthAOFAndProbes(t *testing.T) {
 
 	require.NotNil(t, container.ReadinessProbe)
 	require.NotNil(t, container.LivenessProbe)
+}
+
+func TestDataPVCNameMatchesVolumeClaimName(t *testing.T) {
+	// Regression: the PVC used to be created with the bare config name
+	// (redis) while the pod volume referenced <name>-data, leaving the
+	// pod Pending forever. Both must derive from one helper.
+	rds := NewRedisStandalone(prodRedisConfig())
+	assert.Equal(t, "redis-data", rds.dataPVCName())
+	assert.Equal(
+		t,
+		rds.dataPVCName(),
+		fmt.Sprintf("%s-data", rds.Config.Name),
+	)
 }
