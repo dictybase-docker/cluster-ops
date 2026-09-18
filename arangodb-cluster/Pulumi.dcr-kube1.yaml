@@ -12,6 +12,8 @@ config:
       caSecretName: "None"
     secret:
       name: arangodb-pass
+      password:
+        secure: v1:va+vEsiUhOY13VLY:PIyI9KLTrS1aXd6QhcMpzlTpLUpRDVrIl8Tafn6RQgCCFw==
     agents:
       count: 3
       storageClass: dictycr-ssd
@@ -49,3 +51,5 @@ config:
           operator: Equal
           value: database
           effect: NoSchedule
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIAnbM6Qb86HasCElAItqujy3lngPgZDfFza/01Zyv+QSSQDjx5R/DVQAgv9lrLMZgNuMdVzuUic3/n0VuL9PFbo43YH+7IlZwJWOCU6gfTfrNDhy4KUufhtMsz8jYzYeiYLANWnhq3m1qmM=
