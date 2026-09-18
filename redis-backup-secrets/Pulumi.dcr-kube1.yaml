@@ -1,0 +1,27 @@
+# Production configuration for redis-backup-secrets
+# This stack creates Secret `redis-backup-auth` in namespace `prod`,
+# consumed by redis-backup. It creates NO namespaces — the
+# namespace-bootstrap stack owns `prod` and `operators` (just gcp-pulumi
+# apply-namespaces, docs/pulumi-setup.md §5). Apply this stack BEFORE
+# redis-backup.
+#
+# Configure required secrets before deployment via:
+#   just gcp-pulumi set-secret --folder redis-backup-secrets --key properties.secret.resticPass --value "<restic repository password>"
+#   just gcp-pulumi set-secret --folder redis-backup-secrets --key properties.secret.gcsProject --value "<gcp-project-id>"
+#   just gcp-pulumi set-secret --folder redis-backup-secrets --key properties.secret.serviceAccount.keyname --value "gcsCredentials"
+#   just gcp-pulumi set-secret --folder redis-backup-secrets --key properties.secret.serviceAccount.filepath --value "credentials/<project-id>/redis-backup-sa.json"
+#
+# properties.secret.serviceAccount.filepath must point to a real GCS service
+# account JSON key (Storage Object Admin on the backup bucket) that exists on
+# disk where `pulumi up` runs. Create it with `just redis setup-backup-sa` —
+# it mints credentials/<project-id>/redis-backup-sa.json with the right IAM
+# grant; its contents are read and stored as the `redis-backup-auth`
+# secret's `gcsCredentials` key, matching redis-backup's bucketSecret.key
+# and this repo's set convention.
+#
+# Configure required values via:
+#   just redis configure-backup-secrets --restic-password '<restic-pass>'
+config:
+  redis-backup-secrets:properties:
+    secret:
+      name: redis-backup-auth

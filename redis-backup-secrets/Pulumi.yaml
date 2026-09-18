@@ -1,0 +1,7 @@
+name: redis-backup-secrets
+runtime: go
+description: A Pulumi program to create the redis backup identity Secret
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

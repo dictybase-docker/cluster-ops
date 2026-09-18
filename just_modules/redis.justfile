@@ -227,3 +227,304 @@ teardown namespace name="redis" delete_pvc="no" stack="":
     kubectl delete pvc -n "$NS" "${NAME}-data" --ignore-not-found
 
     echo "Teardown complete."
+
+# ── backup ───────────────────────────────────────────────────────────────────
+
+# Wait for a Kubernetes Job to complete; tolerates the "not yet created"
+# window and the TTL cleanup window.
+# Usage: just redis _wait-job --namespace <ns> --job <name> [--retries <n>] [--interval <s>]
+[private]
+[arg("namespace", long="namespace", short="n", help="Namespace the Job runs in")]
+[arg("job", long="job", short="j", help="Job name")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[no-cd]
+_wait-job namespace job retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    JOB="{{ job }}"
+    RETRIES="{{ retries }}"
+    INTERVAL="{{ interval }}"
+    seen=0
+
+    for i in $(seq 1 "$RETRIES"); do
+        set +e
+        out=$(kubectl get job -n "$NS" "$JOB" -o json 2>&1)
+        status=$?
+        set -e
+        if [[ $status -ne 0 ]]; then
+            if [[ $seen -eq 1 ]]; then
+                echo "Job $JOB is gone from $NS — it finished and its TTL removed it."
+                exit 0
+            fi
+            if echo "$out" | grep -qi "not found"; then
+                echo "Waiting for job $JOB to appear in $NS (try $i/$RETRIES)..."
+                sleep "$INTERVAL"
+                continue
+            fi
+            echo "$out" >&2
+            echo "Error: kubectl get job $JOB -n $NS failed." >&2
+            exit 1
+        fi
+        seen=1
+        succeeded=$(printf '%s\n' "$out" | jq -r '.status.succeeded // 0')
+        failed=$(printf '%s\n' "$out" | jq -r '.status.failed // 0')
+        if [[ "$succeeded" -ge 1 ]]; then
+            echo "Job $JOB completed in $NS."
+            exit 0
+        fi
+        if [[ "$failed" -ge 1 ]]; then
+            echo "Error: job $JOB in $NS failed. Last 100 log lines:" >&2
+            kubectl logs -n "$NS" "job/$JOB" --all-containers --tail=100 || true
+            exit 1
+        fi
+        echo "Waiting for job $JOB in $NS (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo "Error: job $JOB in $NS did not finish after $((RETRIES * INTERVAL))s." >&2
+    kubectl get job -n "$NS" "$JOB" || true
+    exit 1
+
+# Create the backup writer service account in THIS cluster's GCP project and
+# mint credentials/<project-id>/redis-backup-sa.json — the key file
+# configure-backup-secrets reads at pulumi up time. Grants
+# roles/storage.objectAdmin pinned to the backup bucket by an IAM condition,
+# so it works BEFORE deploy-backup creates the bucket. Run once per project;
+# safe to re-run (key creation is skipped when the file already exists).
+# Usage: just redis setup-backup-sa [--bucket <name>] [--project <id>] [--sa-name <n>] [--key-file <path>]
+[arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<project>/<sa-name>.json)")]
+[group('redis')]
+[no-cd]
+setup-backup-sa bucket="restic-redis-backup-dcr-kube1" project="" sa_name="redis-backup-sa" key_file="":
+    just redis _setup-backup-sa \
+        --bucket "{{ bucket }}" \
+        --project "{{ project }}" \
+        --sa-name "{{ sa_name }}" \
+        --key-file "{{ key_file }}"
+
+# Shared body of setup-backup-sa, called by configure-backup-secrets too. Not
+# meant to be invoked directly — use either of those two instead.
+[private]
+[arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<project>/<sa-name>.json)")]
+[no-cd]
+_setup-backup-sa bucket="restic-redis-backup-dcr-kube1" project="" sa_name="redis-backup-sa" key_file="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    BUCKET="{{ bucket }}"
+    PROJECT="{{ project }}"
+    [ -z "${PROJECT}" ] && PROJECT="${PROJECT_ID:-}"
+    SA_NAME="{{ sa_name }}"
+    KEY_FILE="{{ key_file }}"
+
+    if [[ -z "$PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --project." >&2
+        exit 1
+    fi
+
+    SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
+    KEY_FILE="${KEY_FILE:-credentials/${PROJECT}/${SA_NAME}.json}"
+
+    echo "Project        : ${PROJECT}"
+    echo "Backup bucket  : gs://${BUCKET}"
+    echo "Service account: ${SA_EMAIL}"
+    echo "Key file       : ${KEY_FILE}"
+    echo
+
+    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
+        echo "Service account already exists — continuing."
+    else
+        gcloud iam service-accounts create "$SA_NAME" \
+            --project "$PROJECT" \
+            --display-name "Redis backup GCS writer"
+    fi
+
+    # Least privilege, ordering-safe: a project-level binding with an IAM
+    # condition pinning it to the backup bucket. A plain bucket-level binding
+    # is impossible here — deploy-backup creates the bucket AFTER this key
+    # must already exist. Additive and idempotent on re-run.
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectAdmin \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=redis-backup-bucket-writer,description=Object admin limited to the Redis restic backup bucket"
+
+    # Key creation is NOT idempotent — every run mints a new key and old ones
+    # keep working until deleted. Reuse an existing key file when present.
+    if [[ -f "$KEY_FILE" ]]; then
+        echo
+        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
+        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
+        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT"
+    else
+        mkdir -p "$(dirname "$KEY_FILE")"
+        gcloud iam service-accounts keys create "$KEY_FILE" \
+            --iam-account "$SA_EMAIL" \
+            --project "$PROJECT"
+        chmod 600 "$KEY_FILE"
+        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
+    fi
+
+    echo
+    echo "Next: just redis configure-backup-secrets --restic-password '<restic-pass>'"
+
+# Create the `redis-backup-auth` backup Secret. Creates no namespaces — the
+# namespace-bootstrap stack owns prod/operators (just gcp-pulumi
+# apply-namespaces, docs/pulumi-setup.md §5).
+# One command for: ensure SA + key, ensure-stack, all four secret values,
+# preview, apply, verify. Apply this FIRST — the backup jobs read the Secret
+# at apply time.
+# Usage: just redis configure-backup-secrets --restic-password <pw> [--no-setup-sa] [--gcs-project <id>] [--gcs-key-file <path>] [--key-name <k>] [--namespace <ns>] [--stack <name>]
+[arg("restic_password", long="restic-password", short="p", help="restic repository password (required)")]
+[arg("setup_sa", long="setup-sa", help="Create/refresh the redis-backup-sa service account + key first (disable with --no-setup-sa when pointing at your own key)")]
+[arg("gcs_project", long="gcs-project", short="g", help="GCP project id that owns the backup bucket (defaults to PROJECT_ID from the cluster env)")]
+[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to a GCS-capable service account JSON key (defaults to credentials/<project-id>/redis-backup-sa.json; read at pulumi up time)")]
+[arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
+[arg("namespace", long="namespace", short="n", help="Optional guard: must equal the namespace-bootstrap appNamespace export (default: no override)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('redis')]
+[no-cd]
+configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_file="" key_name="gcsCredentials" namespace="" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-backup-secrets"
+    NS="{{ namespace }}"
+    RESTIC_PASSWORD={{ quote(restic_password) }}
+    SETUP_SA="{{ setup_sa }}"
+    GCS_PROJECT="{{ gcs_project }}"
+    KEY_FILE="{{ gcs_key_file }}"
+    KEY_NAME="{{ key_name }}"
+
+    # Both GCS arguments default off the active cluster env: `just cluster-env`
+    # sources .env.<env>.<cluster>, which exports PROJECT_ID.
+    [[ -z "$GCS_PROJECT" ]] && GCS_PROJECT="${PROJECT_ID:-}"
+    [[ -z "$KEY_FILE" && -n "$GCS_PROJECT" ]] && KEY_FILE="credentials/${GCS_PROJECT}/redis-backup-sa.json"
+
+    if [[ -z "$RESTIC_PASSWORD" ]]; then
+        echo "Error: --restic-password is required." >&2
+        exit 1
+    fi
+    if [[ -z "$GCS_PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --gcs-project." >&2
+        exit 1
+    fi
+    if [[ -z "$KEY_FILE" ]]; then
+        echo "Error: --gcs-key-file is required." >&2
+        exit 1
+    fi
+
+    # The default key layout is produced by the SA setup helper. Pointing at a
+    # custom key (--gcs-key-file) skips it; force it back on with --setup-sa
+    # or opt a default-layout run out with --no-setup-sa.
+    DEFAULT_KEY_FILE="credentials/${GCS_PROJECT}/redis-backup-sa.json"
+    if [[ "$SETUP_SA" == "true" && "$KEY_FILE" == "$DEFAULT_KEY_FILE" ]]; then
+        just redis _setup-backup-sa --project "$GCS_PROJECT"
+    elif [[ "$SETUP_SA" == "true" ]]; then
+        echo "Custom --gcs-key-file given — skipping SA setup; verifying the key file exists."
+    fi
+
+    if [[ ! -f "$KEY_FILE" ]]; then
+        echo "Error: service account key '$KEY_FILE' does not exist on this machine." >&2
+        exit 1
+    fi
+    # Absolute path: redis-backup-secrets/main.go reads this file with
+    # os.ReadFile at `pulumi up` time, and pulumi -C changes the working
+    # directory, so a relative path would resolve against the project dir,
+    # not your shell.
+    KEY_FILE=$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")
+
+    STACK=$(just redis _require-stack --stack "{{ stack }}")
+
+    # The Secret's namespace is NOT configured here — the redis-backup-secrets
+    # program takes it from the namespace-bootstrap stack's appNamespace
+    # export. An explicit --namespace must match it or the run stops.
+    BOOT_NS=$(pulumi -C namespace-bootstrap stack output appNamespace --stack "$STACK")
+    if [[ -n "$NS" && "$NS" != "$BOOT_NS" ]]; then
+        echo "Error: --namespace '$NS' does not match the namespace-bootstrap export '$BOOT_NS' — the Secret cannot live there." >&2
+        exit 1
+    fi
+    NS="$BOOT_NS"
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --secret "$FOLDER:properties.secret.resticPass=$RESTIC_PASSWORD" \
+        --secret "$FOLDER:properties.secret.gcsProject=$GCS_PROJECT" \
+        --secret "$FOLDER:properties.secret.serviceAccount.keyname=$KEY_NAME" \
+        --secret "$FOLDER:properties.secret.serviceAccount.filepath=$KEY_FILE"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    SECRET_NAME=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.secret.name 2>/dev/null || echo "redis-backup-auth")
+
+    # Namespace comes from the namespace-bootstrap stack; verify it is live.
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: namespace '$NS' does not exist — run 'just gcp-pulumi apply-namespaces' (pulumi setup §5) first." >&2
+        exit 1
+    fi
+    echo
+    kubectl get namespace "$NS"
+    kubectl get secret "$SECRET_NAME" -n "$NS"
+    echo "Keys in $SECRET_NAME:"
+    kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -r '.data | keys[] | "  " + .'
+
+# Deploy the backup bucket, CronJob and immediate Job, then wait for that Job.
+# One command for: gcp:project pin, ensure-stack, preview, apply, Job wait,
+# log tail, CronJob check.
+# Usage: just redis deploy-backup [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Namespace the backup Job runs in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('redis')]
+[no-cd]
+deploy-backup namespace="prod" stack="" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-backup"
+    NS="{{ namespace }}"
+    JOB="redis-immediate-backup-job"
+    CRONJOB="redis-backup-cronjob"
+
+    STACK=$(just redis _require-stack --stack "{{ stack }}")
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+
+    # Pin the GCP project for the pulumi-gcp provider. Without it, the provider
+    # falls back to the GOOGLE_CLOUD_PROJECT env var, which can carry a stale
+    # value from another cluster env — bucket creates then target the wrong
+    # project and fail 403. The env file also sets GOOGLE_CLOUD_PROJECT, but
+    # the stack config wins and is immune to shell leaks.
+    PROJECT="${PROJECT_ID:-}"
+    if [[ -z "$PROJECT" ]]; then
+        echo "Error: no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --project." >&2
+        exit 1
+    fi
+    just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
+        --key 'gcp:project' --value "$PROJECT"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just redis _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    echo "Backup log tail (restic summary should be at the end):"
+    kubectl logs -n "$NS" "job/$JOB" --tail=30 || \
+        echo "Job already removed by its 15-minute TTL — nothing left to tail."
+
+    echo
+    kubectl get cronjob -n "$NS" "$CRONJOB"

@@ -1,0 +1,26 @@
+# Production configuration for redis-backup: the backup bucket
+# restic-redis-backup-dcr-kube1, a daily 1AM CronJob, and an immediate
+# first-run Job. Applies AFTER redis-backup-secrets (the
+# `redis-backup-auth` Secret must exist — the CronJob and Job mount it).
+#
+# Prerequisites: namespace-bootstrap (prod namespace, pulumi setup §5),
+# the redis server (just redis deploy, service `redis` in `prod`), and
+# just redis configure-backup-secrets. Deploy with
+# `just redis deploy-backup`, which also pins gcp:project from PROJECT_ID.
+config:
+  redis-backup:properties:
+    bucket: restic-redis-backup-dcr-kube1
+    bucketSecret:
+      key: gcsCredentials
+      name: redis-backup-auth
+    image:
+      name: dictybase/database-backup
+      tag: sha-ca97436
+    namespace: prod
+    projectSecret:
+      key: gcsProject
+      name: redis-backup-auth
+    resticSecret:
+      key: resticPass
+      name: redis-backup-auth
+    server: redis
