@@ -24,3 +24,6 @@ config:
       key: resticPass
       name: redis-backup-auth
     server: redis
+  gcp:project: dcr-kube1
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIJr+f/7r8xGx3qOIK5DLJBAjZ8iK/hqakB1yDhDFxGUSSQDjx5R/1033OzYQjQM6x+QFeZ0eoDf6wkyQGqlwgKeauSfk6pEIlFMQ5Fwn1nuwtZqVFdHBMpG/GDPvwhHHMtyVKfUSMKsdlf4=

@@ -25,3 +25,14 @@ config:
   redis-backup-secrets:properties:
     secret:
       name: redis-backup-auth
+      gcsProject:
+        secure: v1:KxxRT1+sKvDV8z7K:kmc5hCja6x2seI7WoQ2NqHiNYYN3iu06aQ==
+      resticPass:
+        secure: v1:RcSxiesfXd9GGo8b:deG8Eo0iKI8VV630g5rE/EnZpnC01Fg7a5XbzHVAU91Pbg==
+      serviceAccount:
+        filepath:
+          secure: v1:OkD127cl1dDhHPSe:0CIjnWVpCFzpiU7Osu+/SpJAia8T3ThQwL4xJc+H50jDnMfpoR3Cgn1b+BUnItOPHE8M/ABircTOu9G56hVq4WhBF6AfdMcpv86Ageyl5JyUFdamMTSTdKtR6NeYCXq1qq5uiW0uSXw/Dos=
+        keyname:
+          secure: v1:/cP/tcZPzPpZu80Y:iVHCFeo4xYx/umVn3r4Bc3W60hV9uaKzYYPKOn62
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIM3Llk90i3x4DuaIcX3Te62gGDey0knor/0ObHEiPD8SSQDjx5R/zTdvWaEDL6siHNSHuFIP9LimVPfEX/mLbL8nGyc2xm+ZQNvQbjYpVOY9Idb9v3R3UmmyD/jN3dvrdkHQJ293tXag6Do=
