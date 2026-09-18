@@ -44,7 +44,44 @@ func ReadConfig(ctx *pulumi.Context) (*RedisStandaloneConfig, error) {
 			err,
 		)
 	}
+	if err := redisConfig.validate(); err != nil {
+		return nil, err
+	}
 	return redisConfig, nil
+}
+
+// requiredFields pairs each stack-config field with the config path that
+// populates it.
+func (rds *RedisStandaloneConfig) requiredFields() []struct {
+	path  string
+	value string
+} {
+	return []struct {
+		path  string
+		value string
+	}{
+		{"properties.name", rds.Name},
+		{"properties.image.name", rds.Image.Name},
+		{"properties.image.tag", rds.Image.Tag},
+		{"properties.namespace", rds.Namespace},
+		{"properties.storage.class", rds.Storage.Class},
+		{"properties.storage.size", rds.Storage.Size},
+		{"properties.placement.pool", rds.Placement.Pool},
+	}
+}
+
+// validate fails fast on missing stack config — a zero-value Name would
+// otherwise produce resources named "" and "-data" at the API server.
+func (rds *RedisStandaloneConfig) validate() error {
+	for _, field := range rds.requiredFields() {
+		if field.value == "" {
+			return fmt.Errorf(
+				"redis-standalone config: %s is required",
+				field.path,
+			)
+		}
+	}
+	return nil
 }
 
 func NewRedisStandalone(config *RedisStandaloneConfig) *RedisStandalone {

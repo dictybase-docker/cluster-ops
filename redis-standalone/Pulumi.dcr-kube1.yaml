@@ -10,7 +10,9 @@ encryptedkey: CiQAMO2WICvV6aBwDkfgwZKV59yeTP3y8v1E4al/F+DzGTiMIlkSSQDjx5R/nKmuXr
 # Prerequisites: namespace-bootstrap (prod namespace) + the stateful-db pool.
 config:
   redis-standalone:properties:
+    name: redis
     image:
+      name: redis
       tag: 8.4.6
     namespace: prod
     storage:

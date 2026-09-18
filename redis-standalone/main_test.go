@@ -20,6 +20,8 @@ func prodRedisConfig() *RedisStandaloneConfig {
 	}
 	cfg.Image.Name = "redis"
 	cfg.Image.Tag = "8.4.6"
+	cfg.Storage.Class = "dictycr-balanced"
+	cfg.Storage.Size = "50Gi"
 	cfg.Placement.Pool = "database"
 	return cfg
 }
@@ -86,4 +88,33 @@ func TestDataPVCNameMatchesVolumeClaimName(t *testing.T) {
 		rds.dataPVCName(),
 		fmt.Sprintf("%s-data", rds.Config.Name),
 	)
+}
+
+func TestValidateFailsFastOnMissingFields(t *testing.T) {
+	// Regression: a missing properties.name used to surface as an API
+	// server rejection of a PVC named "-data" instead of a config error.
+	require.NoError(t, prodRedisConfig().validate())
+
+	for _, field := range prodRedisConfig().requiredFields() {
+		blank := prodRedisConfig()
+		switch field.path {
+		case "properties.name":
+			blank.Name = ""
+		case "properties.image.name":
+			blank.Image.Name = ""
+		case "properties.image.tag":
+			blank.Image.Tag = ""
+		case "properties.namespace":
+			blank.Namespace = ""
+		case "properties.storage.class":
+			blank.Storage.Class = ""
+		case "properties.storage.size":
+			blank.Storage.Size = ""
+		case "properties.placement.pool":
+			blank.Placement.Pool = ""
+		}
+		err := blank.validate()
+		require.Error(t, err, "expected error for missing %s", field.path)
+		assert.Contains(t, err.Error(), field.path)
+	}
 }
