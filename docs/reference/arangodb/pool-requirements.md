@@ -6,11 +6,13 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 Stack: `arangodb-cluster`, image `arangodb:3.12.11`, amd64, `externalAccess: None`
 
-| Role | Count | CPU | Memory | Disk |
-|------|-------|-----|--------|------|
-| Agents | 3 | 250m | 1Gi | 20Gi `dictycr-ssd` |
-| DBServers | 3 | 2 | 12Gi | 150Gi `dictycr-balanced` |
-| Coordinators | 3 | 500m | 2Gi | none |
+| Role | Count | CPU request | Memory request | Disk |
+|------|-------|-------------|----------------|------|
+| Agents | 3 | 250m | 512Mi | 20Gi `dictycr-ssd` |
+| DBServers | 3 | 500m | 1Gi | 150Gi `dictycr-balanced` |
+| Coordinators | 3 | 250m | 512Mi | none |
+
+**Requests are scheduler reservations, not caps** — there are no limits on purpose (a memory limit on a dbserver means OOM-killed members; ArangoDB and its cache burst past any fixed bound). The values above are the starting reservation for the current workload size and leave ~9Gi of each node's ~11.6Gi allocatable free; after the first real run, measure with `kubectl top pods -n prod` and raise the dbserver memory request to measured working set + ~50%. Sizing rule of thumb: requests must let all 9 members pack 3-per-node (agent + dbserver + coordinator ≈ 2.5Gi here) — anything above node allocatable makes members permanently Pending.
 
 Anti-affinity is **preferred** (hostname 100, zone 50), not required. No PDBs.
 

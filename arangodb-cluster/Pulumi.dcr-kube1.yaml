@@ -19,7 +19,7 @@ config:
       storageClass: dictycr-ssd
       storageSize: 20Gi
       cpuRequest: 250m
-      memoryRequest: 1Gi
+      memoryRequest: 512Mi
       nodeSelector:
         pool: database
       tolerations:
@@ -31,8 +31,8 @@ config:
       count: 3
       storageClass: dictycr-balanced
       storageSize: 150Gi
-      cpuRequest: "2"
-      memoryRequest: 12Gi
+      cpuRequest: 500m
+      memoryRequest: 1Gi
       nodeSelector:
         pool: database
       tolerations:
@@ -42,8 +42,8 @@ config:
           effect: NoSchedule
     coordinators:
       count: 3
-      cpuRequest: 500m
-      memoryRequest: 2Gi
+      cpuRequest: 250m
+      memoryRequest: 512Mi
       nodeSelector:
         pool: database
       tolerations:
