@@ -31,7 +31,7 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 Case 1 does not turn into case 2 by re-running `deploy-cluster` — data moves only at first-instance creation. Case 3 is the only way in afterwards. Step 4 is picked by the case, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
 
-All three cases assume the source runs the **same PostgreSQL major** as this cluster: §4/§6 replay the source's data files, and a PG 14 base backup into a PG 16 instance aborts with `database files are incompatible with server`. Across majors, skip §4 and §6 entirely and migrate logically — `dump-logical` exports the source database to a checksummed archive, `restore-logical` validates that archive, then always recreates the target empty before loading it. Any pre-existing target state — Cluster CR, physical import config, or backup objects — needs `--replace-data yes`. → [Logical import details](reference/postgres/logical-import.md)
+Physical import cases 2 and 3 assume the source runs the **same PostgreSQL major** as this cluster; case 1 has no source. §4/§6 replay the source's data files, and a PG 14 base backup into a PG 16 instance aborts with `database files are incompatible with server`. Across majors, skip §4 and §6 entirely and migrate logically — `dump-logical` exports the source database to a checksummed archive, `restore-logical` validates that archive, then always recreates the target empty before loading it. Any pre-existing target state — Cluster CR, physical import config, or backup objects — needs `--replace-data yes`. → [Logical import details](reference/postgres/logical-import.md)
 
 ```bash
 # Enter the cluster environment first

@@ -18,7 +18,7 @@ Logical means SQL-level: schema DDL and row data, replayed by the target server.
 | | Physical ([`configure-source`](import.md) + [`reset-cluster`](import.md#reset-re-import-into-a-running-cluster)) | Logical (this doc) |
 |---|---|---|
 | Mechanism | Operator replays base backup + WAL into the PVC | `pg_dump` archive replayed as SQL |
-| Major versions | **Source and target must match** | Source major ≤ client/target major, enforced from the archive metadata before the restore starts |
+| Major versions | **Source and target must match** | Source ≤ dump client ≤ restore client = target major — every link in that chain is checked before the restore mutates anything |
 | Data reached | Whole PostgreSQL instance, byte-identical, PITR-capable | One database; no roles, no ACLs, no other databases |
 | Network path | Target pods read the source **GCS bucket** | Operator workstation port-forwards **both** clusters |
 | Artifact | None (streamed by the operator) | A file on disk you can keep, checksum, and re-restore |
@@ -53,43 +53,50 @@ Runs under `umask 077`: the archive, both sidecars, and any directory the recipe
 1. Resolves the source kubeconfig: `--source-kubeconfig` > `KUBECONFIG` in `--source-env-file` > `KUBECONFIG` in the first `.env.*.<source-cluster>` match. `${PWD}` and `${CLUSTER_NAME}` inside that value are expanded, relative paths resolve against the repo root. No kubeconfig found → the run stops before touching anything
 2. Aborts if local `--port` (default `15432`) is already bound, then port-forwards `svc/<source-service>` in `--source-namespace` and waits up to 30s for the tunnel
 3. Reads `username`/`password` from the **source** `logto-app` Secret — the source app owner, not a superuser and not the target's credentials
-4. Records the source `server_version` (`psql -Atqc 'show server_version'`) and prints it — the one value that proves which major the archive came from
+4. Resolves **both** versions and refuses an impossible pair before exporting anything: the client version from `pg_dump --version` run inside `--client-image`, the source version from `psql -Atqc 'show server_version'`. A non-numeric major on either side, or `source_major > client_major`, aborts with `source PostgreSQL version <source> is not supported by client <client>`. `pg_dump` may read a server older than itself, never newer. Both values are printed — the source one is what proves which major the archive came from
 5. Runs `pg_dump --format=custom --no-owner --no-acl --quote-all-identifiers` inside a `--client-image` container (pinned `postgres:16.15` by default), writing `<archive>.partial` and renaming only on success. An interrupted export leaves no file that looks complete; the `EXIT` trap removes the partial and kills the port-forward
-6. Writes `<archive>.sha256` (`<digest>  <basename>`) and `<archive>.metadata` (`source_cluster`, `source_database`, `source_server_version`, `client_image`, `created_at`)
+6. Writes `<archive>.sha256` (`<digest>  <basename>`) and `<archive>.metadata` (`source_cluster`, `source_database`, `source_server_version`, `client_version`, `client_image`, `created_at`)
 
-The three files travel together and `restore-logical` requires all three: the `.sha256` for the integrity check, the `.metadata` for the source-major check. Losing a sidecar means re-running the dump — neither can be reconstructed from the archive alone.
+`client_version` is the version `pg_dump --version` actually reported, recorded alongside — not instead of — `client_image`. `restore-logical` compares that number, so a floating, re-tagged, or hand-overridden image cannot misrepresent which client build wrote the archive; the image string alone could.
 
-The client image is **pinned to a patch version** (`postgres:16.15`, not `postgres:16`) so the same dump run twice produces archives written by the same `pg_dump` build, and so `client_image` in the metadata names exactly what wrote the file. `restore-logical` pins the same default, which keeps dump and restore on one client build unless someone overrides it on purpose.
+Neither password reaches a command line. `PGPASSWORD` is set on the environment of the `docker run` invocation and forwarded into the container **by name** (`-e PGPASSWORD`, no `=value`), so the credential is absent from the container's argv and from the host process list — `ps` shows the image and the `pg_dump` flags, nothing else. `restore-logical` passes the target password the same way.
+
+The three files travel together and `restore-logical` requires all three: the `.sha256` for the integrity check, the `.metadata` for the source and dump-client majors. Losing a sidecar means re-running the dump — neither can be reconstructed from the archive alone.
+
+The client image is **pinned to a patch version** (`postgres:16.15`, not `postgres:16`) so the same dump run twice produces archives written by the same `pg_dump` build. `restore-logical` pins the same default, which keeps dump and restore on one client build unless someone overrides it on purpose — and if someone does, the recorded `client_version` is what the restore's compatibility check reads, not the tag.
 
 ## Behavior — restore-logical
 
 The recipe runs in two phases. Nothing in the first phase writes to Pulumi config, GCS, or Kubernetes — an abort there leaves the target byte-for-byte as it was.
 
-**Phase 1 — validation, no mutation:**
+**Phase 1 — validation, no mutation.** The order below is the order the recipe runs the checks, and it is deliberate: the purely local ones (files, checksum, required flags) come first, then the ones that need the client image, then the ones that need the stack and the cluster. Every check the recipe is capable of making runs before the first destructive call — it fails closed, never "probably fine":
 
 1. The archive exists (a relative `--archive` resolves against the current directory) and **both** sidecars sit next to it. A missing `.metadata` aborts as hard as a missing `.sha256`: `archive sidecars are required`
 2. SHA-256 of the archive equals the first field of the `.sha256` sidecar, else `archive checksum mismatch`
 3. `--app-password` is set: `--app-password is required before target mutation`. Checked here rather than at deploy time because the target is always recreated — discovering the missing password after the old Cluster is gone would strand the restore
-4. Major compatibility. Client major comes from `pg_restore --version` run inside `--client-image`; source major from `source_server_version` in the `.metadata`. A non-numeric value on either side aborts; so does `source_major > client_major` (`source PostgreSQL major N is newer than client/target major M`). Source *older* than the client is the supported direction — that is the whole point of this path
+4. Three version facts are collected: the **restore client** from `pg_restore --version` run inside `--client-image`, the **source server** from `source_server_version` in the `.metadata`, and the **dump client** from `client_version` in the `.metadata`. Any of the three missing or non-numeric aborts with `archive metadata or client version is invalid (source=… dump-client=… client=…)` — including an archive written by a `dump-logical` old enough to predate the `client_version` field, which has to be re-dumped
 5. `pg_restore --list` must read the archive inside the client image. Catches a file this client cannot parse at all (wrong format, unsupported archive version) before anything is destroyed — the checksum only proves the file is unchanged, not that it is loadable
-6. Target-state probe. **Any** of the following counts as existing state and requires `--replace-data yes`:
+6. Major compatibility, checked once the stack config has been read. The **target** major is the leading number of `properties.clusters[0].cluster.image.tag` (`16.15-202609101440-standard-trixie` → `16`). Two conditions, both mandatory: target major **equals** the restore client's major, and the dump client's major is ≤ the restore client's. Otherwise `target/client/archive PostgreSQL majors are incompatible (target=… dump-client=… client=…)`; a missing or non-numeric `image.tag` aborts the same way.
+
+   Equality, not "client newer or equal": a `pg_restore` ahead of the server it writes into can emit syntax that server rejects, mid-restore, after the old target is already gone. The source major is deliberately *not* re-compared here — `dump-logical` already refused `source > dump client`, so `source ≤ dump client ≤ client = target` holds by construction, and the archive cannot claim a source the target cannot take
+7. Target-state probe. **Any** of the following counts as existing state and requires `--replace-data yes`:
    - the target `Cluster` CR exists in `--namespace`
    - `properties.clusters[0].cluster.bootstrap.recovery.sourceCluster` is on the stack
    - `properties.sourceSecret.name` is on the stack
    - `gs://<backup.bucket>/<bucketPath>/<cluster>/` lists at least one object
 
-   Without the flag: `target state requires --replace-data yes (existing Cluster, physical import config, or own backup archive)`. The probe fails closed — a config read or a `gcloud storage ls` that errors for any reason other than "not set" / "matched no objects" aborts instead of being read as a clean target, and a backup bucket/path/key that is only partly set, or a key file that is not on disk, aborts with `cannot safely inspect the target backup archive`
+   Without the flag: `target state requires --replace-data yes (existing Cluster, physical import config, or own backup archive)`. The probe fails closed at every step — a `pulumi config get` that errors for any reason other than "config key not found", a `kubectl get cluster` that fails with anything other than NotFound, or a `gcloud storage ls` that errors for anything other than "matched no objects" aborts the run instead of being read as a clean target. A backup bucket, bucket path, or key filepath that is only *partly* set on the stack, or a key file that is not on disk, aborts with `cannot safely inspect the target backup archive`: the recipe will not guess that a prefix it cannot list is empty
 
 **Phase 2 — mutation:**
 
-7. Removes the physical recovery config from the stack — `properties.clusters[0].cluster.bootstrap.recovery` and `properties.sourceSecret`. Only "key not set" is tolerated; any other `pulumi config rm` failure aborts rather than being swallowed. Left in place, the recreated cluster would retry the cross-major base-backup replay and fail identically
-8. Clears this cluster's **own** backup archive (`gs://<backup.bucket>/<bucketPath>/<cluster>/`, with the `postgres-backup-sa` key) — on every run, replacement or not. A new incarnation whose WAL-archive destination still holds the previous one's `base/` + `wals/` is rejected ([`Expected empty archive`](troubleshooting.md)). A prefix that does not exist is fine; any other `gcloud storage rm` failure aborts. Bucket, bucket path, and backup key must be on the stack — i.e. [`configure-backup`](backup.md) has run
-9. When the Cluster CR existed: deletes it (`--wait --timeout=300s`), removes leftover `cnpg.io/jobRole=full-recovery` Jobs/pods from earlier failed recoveries, waits up to 60s (30 probes, 2s apart) for every `cnpg.io/cluster=<cluster>` pod to disappear, then deletes the data PVCs
-10. `pulumi refresh --yes` — unconditionally, not only when replacing, so the apply below reconciles against real cluster state instead of diffing a phantom
-11. Chains [`deploy-cluster`](cluster.md) with `--app-password`, `--cluster`, `--namespace`, `--stack` — an empty `logto` database from `initdb`, owned by the app role, with the password you passed
-12. Port-forwards target `svc/logto-rw` to `127.0.0.1:<port>` (default `15433`) and reads the **target** `logto-app` Secret
-13. Runs `pg_restore --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl` with the target-major client. One transaction: any single object failure rolls the entire restore back, leaving an empty database rather than a half-loaded one
-14. Runs `ANALYZE VERBOSE` (`ON_ERROR_STOP=1`). `pg_restore` loads rows but no planner statistics — without this the first production queries plan against an empty `pg_statistic`
+8. Removes the physical recovery config from the stack — `properties.clusters[0].cluster.bootstrap.recovery` and `properties.sourceSecret`. Only "key not set" is tolerated; any other `pulumi config rm` failure aborts rather than being swallowed. Left in place, the recreated cluster would retry the cross-major base-backup replay and fail identically
+9. Clears this cluster's **own** backup archive (`gs://<backup.bucket>/<bucketPath>/<cluster>/`, with the `postgres-backup-sa` key) — on every run, replacement or not. A new incarnation whose WAL-archive destination still holds the previous one's `base/` + `wals/` is rejected ([`Expected empty archive`](troubleshooting.md)). A prefix that does not exist is fine; any other `gcloud storage rm` failure aborts. Bucket, bucket path, and backup key must be on the stack — i.e. [`configure-backup`](backup.md) has run
+10. When the Cluster CR existed: deletes it (`--wait --timeout=300s`), removes leftover `cnpg.io/jobRole=full-recovery` Jobs/pods from earlier failed recoveries, then waits for every `cnpg.io/cluster=<cluster>` pod to disappear — 30 probes, 2s apart, a fixed **60-second** budget with no flag to raise it (unlike [`reset-cluster`](import.md#reset-re-import-into-a-running-cluster), which exposes `--retries`/`--interval`). A pod still present at the end: `target pods still present after 60 seconds; refusing to delete PVCs`, the offending pods are printed, and the PVCs are left intact so the data is still there when the stuck pod is cleared. Only after the wait passes are the data PVCs deleted
+11. `pulumi refresh --yes` — unconditionally, not only when replacing, so the apply below reconciles against real cluster state instead of diffing a phantom
+12. Chains [`deploy-cluster`](cluster.md) with `--app-password`, `--cluster`, `--namespace`, `--stack` — an empty `logto` database from `initdb`, owned by the app role, with the password you passed
+13. Port-forwards target `svc/logto-rw` to `127.0.0.1:<port>` (default `15433`) and reads the **target** `logto-app` Secret
+14. Runs `pg_restore --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl` with the target-major client. One transaction: any single object failure rolls the entire restore back, leaving an empty database rather than a half-loaded one
+15. Runs `ANALYZE VERBOSE` (`ON_ERROR_STOP=1`). `pg_restore` loads rows but no planner statistics — without this the first production queries plan against an empty `pg_statistic`
 
 ## Flags — dump-logical
 
@@ -103,7 +110,7 @@ The recipe runs in two phases. Nothing in the first phase writes to Pulumi confi
 | `--source-database` | No | `logto` | Database to export — one per archive |
 | `--source-secret` | No | `logto-app` | Source Secret read for `username`/`password` |
 | `--output` / `-o` | No | `scratch/postgres/<source-cluster>-<database>-<UTC timestamp>.dump` | Relative paths resolve against the current directory. `scratch` is gitignored — archives never reach the repo. Written under `umask 077` |
-| `--client-image` | No | `postgres:16.15` | Pinned to the target's patch version. Must be the **target** major or newer: `pg_dump` may be newer than the server it reads, never older than the server that will restore it. Recorded in the `.metadata` |
+| `--client-image` | No | `postgres:16.15` | Pinned to the target's patch version. Its major must be ≥ the **source** major (enforced here) and ≤ the **target** major (enforced by `restore-logical`) — for a PG 14 source into a PG 16 target, only 14–16 are valid and 16 is the one that needs no second image at restore time. Both the tag and the reported version land in the `.metadata` |
 | `--port` | No | `15432` | Local port-forward port; the recipe aborts if it is already bound |
 
 ## Flags — restore-logical
@@ -118,7 +125,7 @@ The recipe runs in two phases. Nothing in the first phase writes to Pulumi confi
 | `--service` | No | `logto-rw` | Target read/write Service to port-forward |
 | `--database` | No | `logto` | Target database, created by the target's `bootstrap.initdb` |
 | `--target-secret` | No | `logto-app` | Target Secret read for the restore connection |
-| `--client-image` | No | `postgres:16.15` | Pinned. `pg_restore` must be the target major; its version is also the ceiling the archive's `source_server_version` is checked against |
+| `--client-image` | No | `postgres:16.15` | Pinned. Its `pg_restore --version` major must **equal** the target's `image.tag` major and be ≥ the archive's recorded `client_version` major; both are checked before any mutation |
 | `--port` | No | `15433` | Local port-forward port, distinct from the dump's `15432` so both can be open |
 | `--stack` / `-s` | No | `$PULUMI_STACK` | No dev fallback |
 
