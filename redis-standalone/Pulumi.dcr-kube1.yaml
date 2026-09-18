@@ -1,28 +1,19 @@
-# Production configuration for standalone Redis 8 on the stateful-db pool.
-# The password is set by `just redis deploy --password ..` — never stored here.
+# Production configuration for standalone Redis 8 (official image) into the
+# `prod` namespace, pinned to the stateful-db pool. Unauthenticated: no
+# auth/requirepass — the AOF-protected cache accepts any in-cluster client.
+# The stack is initialized on first deploy by `just redis deploy`
+# (gcp-pulumi ensure-stack), which adds the cluster-env KMS secretsprovider
+# + encryptedkey to this file.
 #
-# Image is the official Redis Open Source 8 (all former Redis Stack modules —
-# Search, JSON, TimeSeries, probabilistic — are merged into core since 8.0;
-# redis-stack-server is EOL since Dec 2025).
+# Prerequisites: namespace-bootstrap (prod namespace) + the stateful-db pool.
 config:
   redis-standalone:properties:
     image:
-      name: redis
       tag: 8.4.6
-    name: redis
     namespace: prod
     storage:
       class: dictycr-balanced
       size: 50Gi
     aof: true
-    auth:
-      secretName: redis-auth
-      key: password
-      # password: set by `just redis deploy --password`
-
-      password:
-        secure: v1:NssbsJYUQuHWXAlY:1mObJgvObXfR92gwamyBpMCY6ejynSD49okHA5VsJbAnfg==
     placement:
       pool: database
-secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
-encryptedkey: CiQAMO2WICvV6aBwDkfgwZKV59yeTP3y8v1E4al/F+DzGTiMIlkSSQDjx5R/nKmuXrnUAlSxltNUw7CPUEdnRw3NqVEJWbX0wajflqaj2/d1UqQ8sqCwzTr0gSh5CxjOTaR+mkWTN7QqnUUXoLyNFRo=

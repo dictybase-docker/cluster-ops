@@ -12,7 +12,7 @@ Stack: `redis-standalone`, image `redis:8.4.6` (official), single pod
 
 Placement comes from `placement.pool` in `redis-standalone/Pulumi.dcr-kube1.yaml` — the pod spec gets a `nodeSelector pool=database` plus a `dedicated=database:NoSchedule` toleration. No CPU/memory requests set — Kubernetes defaults apply.
 
-> **Lab vs Production**: Lab `dev`/`experiments` stacks run `redis-stack-server:7.4.0-v0` with no auth, AOF, or placement — do not edit them. Use `Pulumi.dcr-kube1.yaml` only.
+> **Lab vs Production**: Lab `dev`/`experiments` stacks run `redis-stack-server:7.4.0-v0` with no AOF or placement — do not edit them. Use `Pulumi.dcr-kube1.yaml` only.
 
 ## Kubernetes Pool Requirements
 

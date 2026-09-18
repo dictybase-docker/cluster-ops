@@ -28,8 +28,8 @@ just cluster-env --env prod --cluster <prod-cluster>
 just redis check-pool
 
 # 2. Deploy standalone Redis 8 (single pod, AOF on, PVC on
-#    dictycr-balanced, --requirepass from Secret redis-auth)
-just redis deploy --password '<password>'
+#    dictycr-balanced, unauthenticated)
+just redis deploy
 
 # 3. Verify installation
 just redis verify
@@ -63,11 +63,11 @@ just redis check-pool
 
 ## 2. Install Redis
 
-Creates Secret `redis-auth` and a single-pod Redis **8.4.6** Deployment: AOF persistence on, TCP probes, 50Gi `dictycr-balanced` PVC, password auth from the Secret. Single instance by design — no failover, no replica, no data import path.
-→ [Install details](reference/redis/install.md) · [address and credentials](reference/redis/install.md#service-and-credentials)
+Single-pod Redis **8.4.6** Deployment: AOF persistence on, TCP probes, 50Gi `dictycr-balanced` PVC, unauthenticated — any in-cluster client can connect. Single instance by design — no failover, no replica, no data import path.
+→ [Install details](reference/redis/install.md) · [address](reference/redis/install.md#service)
 
 ```bash
-just redis deploy --password '<password>'
+just redis deploy
 ```
 
 ---
@@ -85,7 +85,7 @@ just redis teardown --namespace prod --delete-pvc yes
 
 ## 4. Verify
 
-Read-only checks plus one authenticated `PING`. Exits non-zero if any check fails.
+Read-only checks plus one `PING` handshake. Exits non-zero if any check fails.
 → [Verify details](reference/redis/verify.md)
 
 ```bash
@@ -101,7 +101,6 @@ just redis verify
 Common issues:
 - **No stack name error**: Enter `just cluster-env` first, or pass `--stack <name>`
 - **Pod Pending (taint)**: Node pool missing or `placement.pool` mismatch — see [pool requirements](reference/redis/pool-requirements.md)
-- **Client `NOAUTH` errors**: Password not from Secret `redis-auth` — see [install details](reference/redis/install.md#service-and-credentials)
 
 ---
 

@@ -20,9 +20,6 @@ func prodRedisConfig() *RedisStandaloneConfig {
 	}
 	cfg.Image.Name = "redis"
 	cfg.Image.Tag = "8.4.6"
-	cfg.Auth.SecretName = "redis-auth"
-	cfg.Auth.Key = "password"
-	cfg.Auth.Password = "test-pw"
 	cfg.Placement.Pool = "database"
 	return cfg
 }
@@ -54,7 +51,7 @@ func TestPodSpecProductionPlacement(t *testing.T) {
 	assert.Equal(t, pulumi.String("NoSchedule"), toleration.Effect)
 }
 
-func TestContainerLabHasNoAuthOrAOF(t *testing.T) {
+func TestContainerLabHasNoAOF(t *testing.T) {
 	rds := NewRedisStandalone(&RedisStandaloneConfig{Name: testRedisName})
 	container := rds.createRedisContainer()
 
@@ -62,7 +59,7 @@ func TestContainerLabHasNoAuthOrAOF(t *testing.T) {
 	assert.Nil(t, container.Env)
 }
 
-func TestContainerProductionAuthAOFAndProbes(t *testing.T) {
+func TestContainerProductionAOFNoAuthAndProbes(t *testing.T) {
 	rds := NewRedisStandalone(prodRedisConfig())
 	container := rds.createRedisContainer()
 
@@ -70,22 +67,9 @@ func TestContainerProductionAuthAOFAndProbes(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, args, pulumi.String("--appendonly"))
 	assert.Contains(t, args, pulumi.String("everysec"))
-	assert.Contains(t, args, pulumi.String("--requirepass"))
-	assert.Contains(t, args, pulumi.String("$(REDIS_PASSWORD)"))
-
-	env, ok := container.Env.(corev1.EnvVarArray)
-	require.True(t, ok)
-	require.Len(t, env, 1)
-	envVar, ok := env[0].(*corev1.EnvVarArgs)
-	require.True(t, ok)
-	assert.Equal(t, pulumi.String("REDIS_PASSWORD"), envVar.Name)
-	require.NotNil(t, envVar.ValueFrom)
-	source, ok := envVar.ValueFrom.(*corev1.EnvVarSourceArgs)
-	require.True(t, ok)
-	secretRef, ok := source.SecretKeyRef.(*corev1.SecretKeySelectorArgs)
-	require.True(t, ok)
-	assert.Equal(t, pulumi.String("redis-auth"), secretRef.Name)
-	assert.Equal(t, pulumi.String("password"), secretRef.Key)
+	// Unauthenticated: no --requirepass, no env injection.
+	assert.NotContains(t, args, pulumi.String("--requirepass"))
+	assert.Nil(t, container.Env)
 
 	require.NotNil(t, container.ReadinessProbe)
 	require.NotNil(t, container.LivenessProbe)

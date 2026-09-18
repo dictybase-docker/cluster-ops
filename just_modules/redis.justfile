@@ -69,17 +69,16 @@ check-pool pool="database" node_count="3":
 
     echo
     if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll pool checks passed.\033[0m Next: just redis deploy --password '\''<password>'\''.\n'
+        printf '\033[32mAll pool checks passed.\033[0m Next: just redis deploy.\n'
     else
         printf '\033[31m%d check(s) failed.\033[0m See reference/redis/pool-requirements.md for fixes.\n' "$failures"
         exit 1
     fi
 
 # Deploy standalone Redis 8, then wait for the pod.
-# One command for: ensure-stack, password secret, preview, apply, readiness.
-# The password is never generated or defaulted — you supply it.
-# Usage: just redis deploy --password <pw> [--name <name>] [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
-[arg("password", long="password", short="p", help="Redis --requirepass password (required; stored encrypted as properties.auth.password)")]
+# One command for: ensure-stack, preview, apply, readiness. The server runs
+# unauthenticated — no password to supply.
+# Usage: just redis deploy [--name <name>] [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
 [arg("name", long="name", help="Deployment/Service name (default redis)")]
 [arg("namespace", long="namespace", short="n", help="Namespace Redis is installed into")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
@@ -87,26 +86,18 @@ check-pool pool="database" node_count="3":
 [arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
 [group('redis')]
 [no-cd]
-deploy password name="redis" namespace="prod" stack="" retries="60" interval="10":
+deploy name="redis" namespace="prod" stack="" retries="60" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
     FOLDER="redis-standalone"
     NS="{{ namespace }}"
     NAME="{{ name }}"
-    PASSWORD={{ quote(password) }}
-
-    if [[ -z "$PASSWORD" ]]; then
-        echo "Error: --password is required; this recipe never invents a password." >&2
-        exit 1
-    fi
 
     STACK=$(just redis _require-stack --stack "{{ stack }}")
 
     echo "Deploying $FOLDER (stack '$STACK') into namespace '$NS'..."
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
-    just gcp-pulumi set-secret --folder "$FOLDER" --stack "$STACK" \
-        --key properties.auth.password --value "$PASSWORD"
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
@@ -131,23 +122,21 @@ deploy password name="redis" namespace="prod" stack="" retries="60" interval="10
     echo
     kubectl get svc -n "$NS" "$NAME"
 
-# Post-install check: pool, pod, PVC, Service, Secret, auth handshake.
-# Exits non-zero on failure.
-# Usage: just redis verify [--name <name>] [--namespace <ns>] [--secret <name>] [--pool <label>] [--node-count <n>]
+# Post-install check: pool, pod, PVC, Service, PING handshake.
+# Exits non-zero on failure. The server runs unauthenticated — no password.
+# Usage: just redis verify [--name <name>] [--namespace <ns>] [--pool <label>] [--node-count <n>]
 [arg("name", long="name", help="Deployment/Service name (default redis)")]
 [arg("namespace", long="namespace", short="n", help="Namespace Redis runs in")]
-[arg("secret", long="secret", short="e", help="Auth Secret name (default redis-auth)")]
 [arg("pool", long="pool", short="p", help="Value of the node label 'pool' (default database)")]
 [arg("node_count", long="node-count", short="c", help="Expected node count in that pool (default 3)")]
 [group('redis')]
 [no-cd]
-verify name="redis" namespace="prod" secret="redis-auth" pool="database" node_count="3":
+verify name="redis" namespace="prod" pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
     NAME="{{ name }}"
     NS="{{ namespace }}"
-    SECRET="{{ secret }}"
     POOL="{{ pool }}"
     WANT_NODES="{{ node_count }}"
     failures=0
@@ -186,22 +175,16 @@ verify name="redis" namespace="prod" secret="redis-auth" pool="database" node_co
         bad "Service $NAME missing or not on 6379"
     fi
 
-    if kubectl get secret -n "$NS" "$SECRET" >/dev/null 2>&1; then
-        ok "Secret $SECRET present"
-    else
-        bad "Secret $SECRET missing in $NS"
-    fi
-
-    # Auth handshake: PING with the password from the Secret must return PONG.
+    # PING handshake: the server is unauthenticated, so a bare PING must
+    # return PONG — a failure is a real connectivity problem.
     if [[ "$pods_ready" -ge 1 ]]; then
         POD=$(kubectl get pods -n "$NS" -l "app=${NAME}" --no-headers -o custom-columns=":metadata.name" | head -n1)
-        PASSWORD=$(kubectl get secret -n "$NS" "$SECRET" -o jsonpath='{.data.password}' | base64 -d)
         pong=$(kubectl exec -n "$NS" "$POD" -- sh -c \
-            "redis-cli -a '$PASSWORD' --no-auth-warning PING" 2>/dev/null || echo "")
+            "redis-cli PING" 2>/dev/null || echo "")
         if [[ "$pong" == "PONG" ]]; then
-            ok "authenticated PING returned PONG"
+            ok "PING returned PONG"
         else
-            bad "authenticated PING failed (got: ${pong:-<no output>})"
+            bad "PING failed (got: ${pong:-<no output>})"
         fi
     fi
 
@@ -212,8 +195,8 @@ verify name="redis" namespace="prod" secret="redis-auth" pool="database" node_co
     fi
     printf 'All checks passed.\n'
 
-# Destroy the Redis stack. Removes the Deployment, Service and Secret; the
-# data PVC is deleted too when --delete-pvc yes is passed.
+# Destroy the Redis stack. Removes the Deployment and Service; the data PVC
+# is deleted too when --delete-pvc yes is passed.
 # Usage: just redis teardown --namespace <ns> --name <name> --delete-pvc yes [--stack <name>]
 [arg("namespace", long="namespace", short="n", help="Namespace Redis runs in")]
 [arg("name", long="name", help="Deployment name (default redis)")]

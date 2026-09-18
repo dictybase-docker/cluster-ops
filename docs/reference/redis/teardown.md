@@ -15,7 +15,7 @@ just redis teardown --namespace prod --delete-pvc yes
 ## Behavior
 
 Order of operations:
-1. `pulumi destroy` on the `redis-standalone` stack — removes the Deployment, Service, and Secret `redis-auth`
+1. `pulumi destroy` on the `redis-standalone` stack — removes the Deployment and Service
 2. Deletes the leftover `redis-data` PVC in the namespace
 
 ## Flags

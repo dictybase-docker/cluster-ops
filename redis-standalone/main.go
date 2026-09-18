@@ -21,13 +21,6 @@ type RedisStandaloneConfig struct {
 		Class string
 		Size  string
 	}
-	// Auth wires --requirepass from a Kubernetes Secret. Zero value
-	// (empty SecretName) keeps the lab stacks unauthenticated.
-	Auth struct {
-		SecretName string `pulumi:"secretName"`
-		Key        string `pulumi:"key"`
-		Password   string `pulumi:"password"`
-	}
 	// AOF enables appendonly persistence (appendfsync everysec).
 	// Off by default so lab stacks keep their previous behavior.
 	AOF bool `pulumi:"aof"`
@@ -66,47 +59,11 @@ func (rds *RedisStandalone) Install(ctx *pulumi.Context) error {
 		return err
 	}
 
-	var authSecret *corev1.Secret
-	if rds.Config.Auth.SecretName != "" {
-		authSecret, err = rds.createAuthSecret(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = rds.createDeployment(ctx, pvc, authSecret)
-	if err != nil {
+	if err := rds.createDeployment(ctx, pvc); err != nil {
 		return err
 	}
 
-	err = rds.createService(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// createAuthSecret stores the Redis password consumed by --requirepass.
-func (rds *RedisStandalone) createAuthSecret(
-	ctx *pulumi.Context,
-) (*corev1.Secret, error) {
-	secret, err := corev1.NewSecret(
-		ctx,
-		rds.Config.Auth.SecretName,
-		&corev1.SecretArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String(rds.Config.Auth.SecretName),
-				Namespace: pulumi.String(rds.Config.Namespace),
-			},
-			StringData: pulumi.StringMap{
-				rds.Config.Auth.Key: pulumi.String(rds.Config.Auth.Password),
-			},
-		})
-	if err != nil {
-		return nil, fmt.Errorf("error creating auth Secret: %w", err)
-	}
-	return secret, nil
+	return rds.createService(ctx)
 }
 
 func (rds *RedisStandalone) createService(ctx *pulumi.Context) error {
@@ -165,12 +122,7 @@ func (rds *RedisStandalone) createPersistentVolumeClaim(
 func (rds *RedisStandalone) createDeployment(
 	ctx *pulumi.Context,
 	pvc *corev1.PersistentVolumeClaim,
-	authSecret *corev1.Secret,
 ) error {
-	depends := []pulumi.Resource{pvc}
-	if authSecret != nil {
-		depends = append(depends, authSecret)
-	}
 	_, err := appsv1.NewDeployment(ctx, rds.Config.Name, &appsv1.DeploymentArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(rds.Config.Name),
@@ -178,7 +130,7 @@ func (rds *RedisStandalone) createDeployment(
 			Labels:    rds.createLabels(),
 		},
 		Spec: rds.createDeploymentSpec(pvc),
-	}, pulumi.DependsOn(depends))
+	}, pulumi.DependsOn([]pulumi.Resource{pvc}))
 	if err != nil {
 		return fmt.Errorf("error creating Deployment: %w", err)
 	}
@@ -257,7 +209,7 @@ func (rds *RedisStandalone) createInitContainer() *corev1.ContainerArgs {
 }
 
 func (rds *RedisStandalone) createRedisContainer() *corev1.ContainerArgs {
-	args := pulumi.StringArray{}
+	var args pulumi.StringArray
 	if rds.Config.AOF {
 		args = append(args,
 			pulumi.String("--appendonly"), pulumi.String("yes"),
@@ -283,32 +235,14 @@ func (rds *RedisStandalone) createRedisContainer() *corev1.ContainerArgs {
 		ReadinessProbe: rds.createTCPProbe(5),
 		LivenessProbe:  rds.createTCPProbe(15),
 	}
-	if rds.Config.Auth.SecretName != "" {
-		container.Env = corev1.EnvVarArray{
-			&corev1.EnvVarArgs{
-				Name: pulumi.String("REDIS_PASSWORD"),
-				ValueFrom: &corev1.EnvVarSourceArgs{
-					SecretKeyRef: &corev1.SecretKeySelectorArgs{
-						Name: pulumi.String(rds.Config.Auth.SecretName),
-						Key:  pulumi.String(rds.Config.Auth.Key),
-					},
-				},
-			},
-		}
-		args = append(
-			args,
-			pulumi.String("--requirepass"),
-			pulumi.String("$(REDIS_PASSWORD)"),
-		)
-	}
 	if len(args) > 0 {
 		container.Args = args
 	}
 	return container
 }
 
-// createTCPProbe probes the Redis port with a plain TCP check — works with
-// or without --requirepass (no auth needed for the handshake).
+// createTCPProbe probes the Redis port with a plain TCP check — the Redis
+// protocol handshake needs no auth.
 func (rds *RedisStandalone) createTCPProbe(
 	failureThreshold int,
 ) *corev1.ProbeArgs {
