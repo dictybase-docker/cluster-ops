@@ -518,7 +518,7 @@ _clear-own-backup-archive folder cluster stack="":
     set -e
     if [[ "$status" -eq 0 ]]; then
         printf '%s\n' "$output"
-    elif printf '%s\n' "$output" | grep -qiE 'matched no objects|No URLs matched|does not exist'; then
+    elif printf '%s\n' "$output" | grep -qi 'matched no objects'; then
         echo "No own backup objects to clear."
     else
         printf '%s\n' "$output" >&2
@@ -765,7 +765,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
             printf '%s\n' "$output"
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE 'config (key|value).*not found'; then
+        if printf '%s\n' "$output" | grep -qiE "^error: configuration key '.*' not found for stack '.*'$"; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -780,7 +780,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         if [[ "$status" -eq 0 ]]; then
             return 0
         fi
-        if printf '%s\n' "$output" | grep -qiE 'config (key|value).*not found'; then
+        if printf '%s\n' "$output" | grep -qiE "^error: configuration key '.*' not found for stack '.*'$"; then
             return 0
         fi
         printf '%s\n' "$output" >&2
@@ -811,7 +811,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         set -e
         if [[ "$OWN_STATUS" -eq 0 && -n "$OWN_LIST" ]]; then
             OWN_ARCHIVE_PRESENT="yes"
-        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qiE 'matched no objects|No URLs matched'; then
+        elif [[ "$OWN_STATUS" -ne 0 ]] && ! printf '%s\n' "$OWN_LIST" | grep -qi 'matched no objects'; then
             printf '%s\n' "$OWN_LIST" >&2
             exit "$OWN_STATUS"
         fi
@@ -824,7 +824,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     TARGET_EXISTS="no"
     if [[ "$CLUSTER_GET_STATUS" -eq 0 ]]; then
         TARGET_EXISTS="yes"
-    elif ! printf '%s\n' "$CLUSTER_GET_OUTPUT" | grep -qiE 'NotFound|not found'; then
+    elif ! printf '%s\n' "$CLUSTER_GET_OUTPUT" | grep -qE '^Error from server \(NotFound\):'; then
         printf '%s\n' "$CLUSTER_GET_OUTPUT" >&2
         exit "$CLUSTER_GET_STATUS"
     fi

@@ -69,6 +69,14 @@ case "$*" in
             echo 'error: stack not found' >&2
             exit 42
         fi
+        if [[ "${STUB_PULUMI_MISSING_PHYSICAL:-no}" == yes && "$*" == *"bootstrap.recovery"* ]]; then
+            echo "error: configuration key 'properties.clusters[0].cluster.bootstrap.recovery.sourceCluster' not found for stack 'test-stack'" >&2
+            exit 1
+        fi
+        if [[ "${STUB_PULUMI_MISSING_PHYSICAL:-no}" == yes && "$*" == *"sourceSecret"* ]]; then
+            echo "error: configuration key 'properties.sourceSecret.name' not found for stack 'test-stack'" >&2
+            exit 1
+        fi
         ;;
 esac
 case "$*" in
@@ -146,6 +154,10 @@ case "$*" in
             echo 'permission denied' >&2
             exit 13
         fi
+        if [[ "${STUB_GCLOUD_LS_NO_OBJECTS:-no}" == yes ]]; then
+            echo 'One or more URLs matched no objects.' >&2
+            exit 1
+        fi
         ;;
 esac
 exit 0
@@ -165,7 +177,8 @@ run_stub() {
 }
 
 run_stub_env() {
-    local cluster_exists="$1" pulumi_rm_fail="$2" gcloud_rm_fail="$3" gcloud_no_objects="$4" script="$5"
+    local cluster_exists="$1" pulumi_rm_fail="$2" gcloud_rm_fail="$3" gcloud_no_objects="$4" script="$5" missing_physical="${6:-no}"
+    local nc_state="$tmp_dir/nc-state-${RANDOM}-$$"
     env \
         "PATH=$tmp_dir/bin:$PATH" \
         "STUB_LOG=$log_file" \
@@ -177,13 +190,27 @@ run_stub_env() {
         "STUB_GCLOUD_RM_FAIL=$gcloud_rm_fail" \
         "STUB_GCLOUD_NO_OBJECTS=$gcloud_no_objects" \
         "STUB_GCLOUD_LS_FAIL=${STUB_GCLOUD_LS_FAIL:-no}" \
+        "STUB_GCLOUD_LS_NO_OBJECTS=${STUB_GCLOUD_LS_NO_OBJECTS:-no}" \
+        "STUB_PULUMI_MISSING_PHYSICAL=$missing_physical" \
         "STUB_PG_RESTORE_LIST_FAIL=${STUB_PG_RESTORE_LIST_FAIL:-no}" \
         "STUB_KUBECTL_GET_CLUSTER_ERROR=${STUB_KUBECTL_GET_CLUSTER_ERROR:-no}" \
         "STUB_TARGET_TAG=${STUB_TARGET_TAG:-16.15-test}" \
         "STUB_PULUMI_CONFIG_ERROR=${STUB_PULUMI_CONFIG_ERROR:-no}" \
         "STUB_PODS_REMAIN=${STUB_PODS_REMAIN:-no}" \
-        "STUB_NC_STATE=$tmp_dir/nc-state-$$" \
+        "STUB_NC_STATE=$nc_state" \
         bash -c "$script"
+}
+
+run_stub_flag() {
+    local name="$1" value="$2"
+    shift 2
+    export "$name=$value"
+    set +e
+    run_stub_env "$@"
+    local status=$?
+    set -e
+    unset "$name"
+    return "$status"
 }
 
 restore_render=$(just --dry-run postgres restore-logical --archive "$tmp_dir/archive.dump" --app-password test-password 2>&1)
@@ -251,7 +278,7 @@ deploy_line=$(grep -n 'just .*deploy-cluster' "$log_file" | head -1 | cut -d: -f
 echo 'refresh-before-deploy/password argv hygiene: PASS'
 
 : > "$log_file"
-if STUB_PG_RESTORE_LIST_FAIL=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+if run_stub_flag STUB_PG_RESTORE_LIST_FAIL yes no no no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: pg_restore --list failure unexpectedly succeeded' >&2
     exit 1
 fi
@@ -268,7 +295,7 @@ printf 'source_server_version=14.13\nclient_version=16.15\n' > "$tmp_dir/archive
 echo 'source-major guard/no mutation: PASS'
 
 : > "$log_file"
-if STUB_TARGET_TAG=17.13 run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+if run_stub_flag STUB_TARGET_TAG 17.13 no no no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: target/client major mismatch unexpectedly succeeded' >&2
     exit 1
 fi
@@ -276,7 +303,7 @@ fi
 echo 'target-major guard/no mutation: PASS'
 
 : > "$log_file"
-if STUB_KUBECTL_GET_CLUSTER_ERROR=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+if run_stub_flag STUB_KUBECTL_GET_CLUSTER_ERROR yes no no no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: Kubernetes connectivity error unexpectedly succeeded' >&2
     exit 1
 fi
@@ -284,7 +311,7 @@ fi
 echo 'Kubernetes error propagation: PASS'
 
 : > "$log_file"
-if STUB_PULUMI_CONFIG_ERROR=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+if run_stub_flag STUB_PULUMI_CONFIG_ERROR yes no no no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: Pulumi stack error unexpectedly succeeded' >&2
     exit 1
 fi
@@ -292,12 +319,27 @@ fi
 echo 'Pulumi read error propagation: PASS'
 
 : > "$log_file"
-if STUB_GCLOUD_LS_FAIL=yes run_stub_env no no no no "$restore_replace_render" >/dev/null 2>&1; then
+missing_output=$(run_stub_env no no no no "$restore_render" yes 2>&1) || {
+    echo 'FAIL: exact missing-key diagnostic was not tolerated' >&2
+    printf '%s\n' "$missing_output" >&2
+    exit 1
+}
+echo 'exact missing-key tolerance: PASS'
+
+: > "$log_file"
+if run_stub_flag STUB_GCLOUD_LS_FAIL yes no no no no "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: GCS list error unexpectedly succeeded' >&2
     exit 1
 fi
 ! grep -q 'pulumi .*config rm' "$log_file"
 echo 'GCS list error propagation: PASS'
+
+: > "$log_file"
+if ! run_stub_flag STUB_GCLOUD_LS_NO_OBJECTS yes no no no no "$restore_replace_render" >/dev/null 2>&1; then
+    echo 'FAIL: exact no-object diagnostic was not tolerated' >&2
+    exit 1
+fi
+echo 'exact no-object tolerance: PASS'
 
 reset_render=$(just --dry-run postgres reset-cluster --reset-data yes --retries 1 --interval 0 2>&1)
 : > "$log_file"
@@ -308,7 +350,7 @@ pod_wait_line=$(grep -n 'kubectl get pods' "$log_file" | head -1 | cut -d: -f1)
 echo 'stale recovery cleanup ordering: PASS'
 
 : > "$log_file"
-if STUB_PODS_REMAIN=yes run_stub_env yes no no no "$reset_render" >/dev/null 2>&1; then
+if run_stub_flag STUB_PODS_REMAIN yes yes no no no "$reset_render" >/dev/null 2>&1; then
     echo 'FAIL: remaining pods reset unexpectedly succeeded' >&2
     exit 1
 fi
