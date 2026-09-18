@@ -1,7 +1,9 @@
 config:
   arangodb-operator:properties:
     chart:
-      name: kube-arangodb/kube-arangodb
+      name: kube-arangodb
       repository: https://arangodb.github.io/kube-arangodb
       version: 1.2.42
     deploymentReplication: false
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIPwCIZdpk5I01tp8esPJTyh/sSN6eYAFhs9B2m/+hyoSSQDjx5R/1+lXlqi0mdLTsNVPRlfevP/mJFDC6HkVTNqNt0yaqsdnWhVp+GeBTpONJeGz4i+SlU29kVyh487HQIp1e567gXuuOhA=

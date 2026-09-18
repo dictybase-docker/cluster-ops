@@ -21,3 +21,14 @@ config:
   backup_secrets:properties:
     secret:
       name: dictycr
+      gcsProject:
+        secure: v1:w/qwwk6ejl1Mnzd7:uzaAhmp1TrlTI81Szw0+vjqE6j2R2GAsCg==
+      resticPass:
+        secure: v1:z08EWdgV4opM9VPx:WthbX3n9Pf8FHRbpy6FO88AMMuodY19Ywgws03D4jSfyRw==
+      serviceAccount:
+        filepath:
+          secure: v1:onGWBnwuIMf8rOEA:cQmpZAaSVI1iRO99FafB3yYkKBum0tMee9GhoVfVeJwvWZdZkrRoH1vw4IxYA6CFOoa8L9okxt0kbnsSflV8lNl23ntitffgz+wzIRY22dG+RTDnvspg611xc5Q24XuxC0ArMzwuiO54
+        keyname:
+          secure: v1:q8hwAJSMyYiWQiQ6:NxM2nwpePRkumgCTJKvgXv46nrvF82+f7LmcrLMi
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIGSgjQYXd9CMSWKyUBgTKcPjjjWSqkS26Ec6/vpu7zkSSQDjx5R/ApcxnJWT8lnqHoU9Iu/kuefNJBrAFG4Rn/XMui2jwtz9QHMNcPcB7OWk9NB6HkSOQ8g48vLHaHwAs1FeIdkQI9JnyKE=
