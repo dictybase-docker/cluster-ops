@@ -19,5 +19,10 @@ config:
       secretName: redis-auth
       key: password
       # password: set by `just redis deploy --password`
+
+      password:
+        secure: v1:NssbsJYUQuHWXAlY:1mObJgvObXfR92gwamyBpMCY6ejynSD49okHA5VsJbAnfg==
     placement:
       pool: database
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WICvV6aBwDkfgwZKV59yeTP3y8v1E4al/F+DzGTiMIlkSSQDjx5R/nKmuXrnUAlSxltNUw7CPUEdnRw3NqVEJWbX0wajflqaj2/d1UqQ8sqCwzTr0gSh5CxjOTaR+mkWTN7QqnUUXoLyNFRo=
