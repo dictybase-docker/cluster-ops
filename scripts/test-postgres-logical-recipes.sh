@@ -62,6 +62,7 @@ EOF
 cat > "$tmp_dir/bin/pulumi" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'GOOGLE_APPLICATION_CREDENTIALS=%s\n' "${GOOGLE_APPLICATION_CREDENTIALS:-}" >> "${STUB_LOG}"
 printf 'pulumi %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
     *"config get"*)
@@ -185,6 +186,7 @@ run_stub_env() {
         "STUB_LOG=$log_file" \
         "STUB_BACKUP_KEY=$tmp_dir/key.json" \
         "PULUMI_GCP_CREDENTIALS=$tmp_dir/key.json" \
+        "GOOGLE_APPLICATION_CREDENTIALS=" \
         "PULUMI_STACK=test-stack" \
         "STUB_CLUSTER_EXISTS=$cluster_exists" \
         "STUB_PULUMI_RM_FAIL=$pulumi_rm_fail" \
@@ -292,6 +294,8 @@ refresh_line=$(grep -n 'pulumi .*refresh' "$log_file" | head -1 | cut -d: -f1)
 deploy_line=$(grep -n 'just .*deploy-cluster' "$log_file" | head -1 | cut -d: -f1)
 [[ -n "$refresh_line" && -n "$deploy_line" && "$refresh_line" -lt "$deploy_line" ]]
 ! grep -q 'PGPASSWORD=pw' "$log_file"
+pulumi_credential_line=$(grep '^GOOGLE_APPLICATION_CREDENTIALS=' "$log_file" | head -1)
+[[ "$pulumi_credential_line" == "GOOGLE_APPLICATION_CREDENTIALS=$tmp_dir/key.json" ]]
 echo 'refresh-before-deploy/password argv hygiene: PASS'
 
 : > "$log_file"

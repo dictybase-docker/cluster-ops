@@ -704,6 +704,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     CLIENT_IMAGE={{ quote(client_image) }}
     TARGET_PORT={{ quote(port) }}
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 
     if [[ "$ARCHIVE" != /* ]]; then
         ARCHIVE="$PWD/$ARCHIVE"
@@ -835,7 +836,6 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         exit 1
     fi
 
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     remove_optional_config 'properties.clusters[0].cluster.bootstrap.recovery'
     remove_optional_config 'properties.sourceSecret'
 
