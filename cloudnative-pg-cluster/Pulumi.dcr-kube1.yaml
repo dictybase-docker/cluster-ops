@@ -48,7 +48,7 @@ config:
               # password: set by `just postgres deploy-cluster --app-password`
 
               password:
-                secure: v1:hZbjHSJuw9xjRH5H:P8hy8+Ap9m33NNGE0/KNjRKB1DjEWQMz4Pfybmlccw==
+                secure: v1:JZ/DDaskht3I9gJE:5jm3SGL2mHd0AugMLUo7b5TqpeqkEz/qPDw6WDbO6iodvw==
           image:
             name: ghcr.io/cloudnative-pg/postgresql
             tag: 16.15-202609101440-standard-trixie
