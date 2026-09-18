@@ -540,7 +540,7 @@ _clear-own-backup-archive folder cluster stack="":
 [arg("port", long="port", help="Local source port-forward port")]
 [group('postgres')]
 [no-cd]
-dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-app" output="" client_image="postgres:16.15" port="15432":
+dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-superuser" output="" client_image="postgres:16.15" port="15432":
     #!/usr/bin/env bash
     set -euo pipefail
     umask 077
@@ -595,7 +595,7 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
     PARTIAL="${ARCHIVE}.partial"
     CHECKSUM="${ARCHIVE}.sha256"
     METADATA="${ARCHIVE}.metadata"
-    PF_LOG=$(mktemp -t postgres-logical-pf)
+    PF_LOG=$(mktemp -t postgres-logical-pf.XXXXXX)
     PF_PID=""
 
     cleanup() {
@@ -688,7 +688,7 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
 [arg("stack", long="stack", short="s", help="Pulumi stack name")]
 [group('postgres')]
 [no-cd]
-restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-app" client_image="postgres:16.15" port="15433" stack="":
+restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-superuser" client_image="postgres:16.15" port="15433" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -866,7 +866,7 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     just postgres deploy-cluster --app-password "$APP_PASSWORD" \
         --cluster "$CLUSTER" --namespace "$NS" --stack "$STACK"
 
-    PF_LOG=$(mktemp -t postgres-logical-restore-pf)
+    PF_LOG=$(mktemp -t postgres-logical-restore-pf.XXXXXX)
     PF_PID=""
     cleanup() {
         [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null || true
