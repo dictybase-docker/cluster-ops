@@ -32,6 +32,10 @@ assert_contains "$render_restore" 'sourceSecret' 'source secret cleanup'
 render_reset=$(just --dry-run postgres reset-cluster --reset-data yes 2>&1)
 assert_contains "$render_reset" 'cnpg.io/jobRole=full-recovery' 'stale recovery cleanup'
 assert_contains "$render_reset" '_clear-own-backup-archive' 'own archive guard'
+stack_config="$repo_root/cloudnative-pg-cluster/Pulumi.dcr-kube1.yaml"
+! grep -q '^            recovery:' "$stack_config"
+! grep -q '^    sourceSecret:' "$stack_config"
+echo 'physical source config removed from target stack: PASS'
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
