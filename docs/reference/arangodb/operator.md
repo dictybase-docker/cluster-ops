@@ -4,7 +4,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 ## What It Does
 
-Installs the `kube-arangodb` Helm chart (pinned **1.2.42**, `arangodb-operator/Pulumi.dcr-kube1.yaml`) into namespace `operators`. The operator watches for `ArangoDeployment` custom resources and manages the Cluster's pods, PVCs, and internal Service.
+Installs the `kube-arangodb` Helm chart (pinned **1.4.5**, `arangodb-operator/Pulumi.dcr-kube1.yaml`) into namespace `operators`. The operator watches for `ArangoDeployment` custom resources and manages the Cluster's pods, PVCs, and internal Service. The CRD API group (`database.arangodb.com/v1`) is unchanged from 1.2.x, so existing `ArangoDeployment` resources need no migration; the deployment-replication feature was removed upstream in 1.3.x/1.4.x and its values wiring is gone.
 
 ## Command
 

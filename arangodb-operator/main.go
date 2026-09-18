@@ -16,8 +16,7 @@ type ChartConfig struct {
 }
 
 type ArangoDBConfig struct {
-	Chart                 ChartConfig
-	DeploymentReplication bool
+	Chart ChartConfig
 }
 
 type ArangoDBOperator struct {
@@ -60,11 +59,6 @@ func (aro *ArangoDBOperator) Install(ctx *pulumi.Context) error {
 				"architectures": pulumi.Array{
 					pulumi.String("amd64"),
 					pulumi.String("arm64"),
-				},
-				"features": pulumi.Map{
-					"deploymentReplications": pulumi.Bool(
-						aro.Config.DeploymentReplication,
-					),
 				},
 			},
 		},
