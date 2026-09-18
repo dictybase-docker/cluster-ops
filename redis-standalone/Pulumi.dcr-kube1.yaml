@@ -1,3 +1,5 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WICvV6aBwDkfgwZKV59yeTP3y8v1E4al/F+DzGTiMIlkSSQDjx5R/nKmuXrnUAlSxltNUw7CPUEdnRw3NqVEJWbX0wajflqaj2/d1UqQ8sqCwzTr0gSh5CxjOTaR+mkWTN7QqnUUXoLyNFRo=
 # Production configuration for standalone Redis 8 (official image) into the
 # `prod` namespace, pinned to the stateful-db pool. Unauthenticated: no
 # auth/requirepass — the AOF-protected cache accepts any in-cluster client.
