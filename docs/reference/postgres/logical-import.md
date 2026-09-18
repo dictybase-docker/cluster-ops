@@ -79,24 +79,33 @@ The recipe runs in two phases. Nothing in the first phase writes to Pulumi confi
 6. Major compatibility, checked once the stack config has been read. The **target** major is the leading number of `properties.clusters[0].cluster.image.tag` (`16.15-202609101440-standard-trixie` → `16`). Two conditions, both mandatory: target major **equals** the restore client's major, and the dump client's major is ≤ the restore client's. Otherwise `target/client/archive PostgreSQL majors are incompatible (target=… dump-client=… client=…)`; a missing or non-numeric `image.tag` aborts the same way.
 
    Equality, not "client newer or equal": a `pg_restore` ahead of the server it writes into can emit syntax that server rejects, mid-restore, after the old target is already gone. The source major is deliberately *not* re-compared here — `dump-logical` already refused `source > dump client`, so `source ≤ dump client ≤ client = target` holds by construction, and the archive cannot claim a source the target cannot take
-7. Target-state probe. **Any** of the following counts as existing state and requires `--replace-data yes`:
+7. Backup-config preflight, before the backup prefix is listed. All three of `properties.clusters[0].cluster.backup.bucket`, `…backup.bucketPath`, and `properties.backupSecret.filepath` must be on the stack **and** the key file must exist on disk. Any one of them missing — most often because [`configure-backup`](backup.md) never ran on this stack — aborts with `cannot safely inspect the target backup archive; backup bucket/path/key is incomplete`. The recipe will not guess that a prefix it cannot list is empty, and phase 2 clears that same prefix on every run, so incomplete backup config is a blocker either way
+8. Target-state probe. **Any** of the following counts as existing state and requires `--replace-data yes`:
    - the target `Cluster` CR exists in `--namespace`
    - `properties.clusters[0].cluster.bootstrap.recovery.sourceCluster` is on the stack
    - `properties.sourceSecret.name` is on the stack
    - `gs://<backup.bucket>/<bucketPath>/<cluster>/` lists at least one object
 
-   Without the flag: `target state requires --replace-data yes (existing Cluster, physical import config, or own backup archive)`. The probe fails closed at every step, and every tolerated "absent" answer is matched on its exact message: `error: configuration key '<path>' not found for stack '<stack>'` from `pulumi config get`, an `Error from server (NotFound):` line from `kubectl get cluster`, output containing `matched no objects` from `gcloud storage ls`. Any other failure aborts the run instead of being read as a clean target. A backup bucket, bucket path, or key filepath that is only *partly* set on the stack, or a key file that is not on disk, aborts with `cannot safely inspect the target backup archive`: the recipe will not guess that a prefix it cannot list is empty
+   Without the flag: `target state requires --replace-data yes (existing Cluster, physical import config, or own backup archive)`. The probe fails closed at every step, and only three literal "absent" answers are tolerated — matched exactly, not by substring:
+
+   | Probe | Only tolerated reply |
+   |---|---|
+   | `pulumi config get --path <path>` | whole output equals `error: configuration key '<path>' not found for stack '<stack>'` |
+   | `kubectl get cluster <cluster> -n <ns>` | a line beginning `Error from server (NotFound):` |
+   | `gcloud storage ls -r <prefix>` | a whole line equal to `ERROR: (gcloud.storage.ls) One or more URLs matched no objects.` |
+
+   Any other failure — expired credentials, wrong kube context, a network error, a reworded CLI diagnostic — aborts the run instead of being read as a clean target
 
 **Phase 2 — mutation:**
 
-8. Removes the physical recovery config from the stack — `properties.clusters[0].cluster.bootstrap.recovery` and `properties.sourceSecret`. Only the exact `error: configuration key '<path>' not found for stack '<stack>'` reply is tolerated; any other `pulumi config rm` failure aborts rather than being swallowed. Left in place, the recreated cluster would retry the cross-major base-backup replay and fail identically
-9. Clears this cluster's **own** backup archive (`gs://<backup.bucket>/<bucketPath>/<cluster>/`, with the `postgres-backup-sa` key) — on every run, replacement or not. A new incarnation whose WAL-archive destination still holds the previous one's `base/` + `wals/` is rejected ([`Expected empty archive`](troubleshooting.md)). Only a `gcloud storage rm` whose output contains `matched no objects` is read as "nothing to clear"; any other failure aborts. Bucket, bucket path, and backup key must be on the stack — i.e. [`configure-backup`](backup.md) has run
-10. When the Cluster CR existed: deletes it (`--wait --timeout=300s`), removes leftover `cnpg.io/jobRole=full-recovery` Jobs/pods from earlier failed recoveries, then waits for every `cnpg.io/cluster=<cluster>` pod to disappear — 30 probes, 2s apart, a fixed **60-second** budget with no flag to raise it (unlike [`reset-cluster`](import.md#reset-re-import-into-a-running-cluster), which exposes `--retries`/`--interval`). A pod still present at the end: `target pods still present after 60 seconds; refusing to delete PVCs`, the offending pods are printed, and the PVCs are left intact so the data is still there when the stuck pod is cleared. Only after the wait passes are the data PVCs deleted
-11. `pulumi refresh --yes` — unconditionally, not only when replacing, so the apply below reconciles against real cluster state instead of diffing a phantom
-12. Chains [`deploy-cluster`](cluster.md) with `--app-password`, `--cluster`, `--namespace`, `--stack` — an empty `logto` database from `initdb`, owned by the app role, with the password you passed
-13. Port-forwards target `svc/logto-rw` to `127.0.0.1:<port>` (default `15433`) and reads the **target** `logto-app` Secret
-14. Runs `pg_restore --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl` with the target-major client. One transaction: any single object failure rolls the entire restore back, leaving an empty database rather than a half-loaded one
-15. Runs `ANALYZE VERBOSE` (`ON_ERROR_STOP=1`). `pg_restore` loads rows but no planner statistics — without this the first production queries plan against an empty `pg_statistic`
+9. Removes the physical recovery config from the stack — `properties.clusters[0].cluster.bootstrap.recovery` and `properties.sourceSecret`. Only the exact `error: configuration key '<path>' not found for stack '<stack>'` reply is tolerated; any other `pulumi config rm` failure aborts rather than being swallowed. Left in place, the recreated cluster would retry the cross-major base-backup replay and fail identically
+10. Clears this cluster's **own** backup archive (`gs://<backup.bucket>/<bucketPath>/<cluster>/`, with the `postgres-backup-sa` key) — on every run, replacement or not. A new incarnation whose WAL-archive destination still holds the previous one's `base/` + `wals/` is rejected ([`Expected empty archive`](troubleshooting.md)). Only a whole line equal to `ERROR: (gcloud.storage.rm) One or more URLs matched no objects.` is read as "nothing to clear"; any other `gcloud storage rm` failure aborts. The bucket, bucket path, and key file were already proven present in step 7
+11. When the Cluster CR existed: deletes it (`--wait --timeout=300s`), removes leftover `cnpg.io/jobRole=full-recovery` Jobs/pods from earlier failed recoveries, then waits for every `cnpg.io/cluster=<cluster>` pod to disappear — 30 probes, 2s apart, a fixed **60-second** budget with no flag to raise it (unlike [`reset-cluster`](import.md#reset-re-import-into-a-running-cluster), which exposes `--retries`/`--interval`). A pod still present at the end: `target pods still present after 60 seconds; refusing to delete PVCs`, the offending pods are printed, and the PVCs are left intact so the data is still there when the stuck pod is cleared. Only after the wait passes are the data PVCs deleted
+12. `pulumi refresh --yes` — unconditionally, not only when replacing, so the apply below reconciles against real cluster state instead of diffing a phantom
+13. Chains [`deploy-cluster`](cluster.md) with `--app-password`, `--cluster`, `--namespace`, `--stack` — an empty `logto` database from `initdb`, owned by the app role, with the password you passed
+14. Port-forwards target `svc/logto-rw` to `127.0.0.1:<port>` (default `15433`) and reads the **target** `logto-app` Secret
+15. Runs `pg_restore --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl` with the target-major client. One transaction: any single object failure rolls the entire restore back, leaving an empty database rather than a half-loaded one
+16. Runs `ANALYZE VERBOSE` (`ON_ERROR_STOP=1`). `pg_restore` loads rows but no planner statistics — without this the first production queries plan against an empty `pg_statistic`
 
 ## Flags — dump-logical
 
@@ -181,6 +190,7 @@ Reserved for a future revision: if the two clusters ever get a routable path (VP
 
 ## Official References
 
-- [CloudNativePG — Importing Postgres databases](https://cloudnative-pg.io/docs/devel/database_import)
+- [CloudNativePG — Importing Postgres databases](https://cloudnative-pg.io/docs/devel/database_import) — `devel`, tracks upstream main
+- [CloudNativePG — `database_import.md` at tag v1.30.0](https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.0/docs/src/database_import.md) — source of the same page pinned to the operator version deployed here (`image.tag: 1.30.0` in `cloudnative-pg-operator/Pulumi.dcr-kube1.yaml`); read this one when the `devel` page and the running operator disagree
 - [PostgreSQL — `pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html)
 - [PostgreSQL — `pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html)
