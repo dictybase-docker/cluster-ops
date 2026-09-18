@@ -39,9 +39,13 @@ func NewArangoDBOperator(config *ArangoDBConfig) *ArangoDBOperator {
 }
 
 func (aro *ArangoDBOperator) Install(ctx *pulumi.Context) error {
-	// The namespace comes from the namespace-bootstrap stack's export — probe
-	// it so a missing bootstrap fails at preview, not inside the Helm create.
-	probe, namespace, err := nsprobe.Probe(ctx, "operatorsNamespace")
+	// kube-arangodb 1.4.x is a namespaced operator: the binary watches only
+	// its own pod namespace (MY_POD_NAMESPACE) and the chart grants the
+	// arangodeployments RBAC there. The release must therefore sit in the
+	// app namespace — next to the ArangoDeployment CRs it manages. Take the
+	// namespace from the namespace-bootstrap stack's appNamespace export so
+	// a missing bootstrap fails at preview, not inside the Helm create.
+	probe, namespace, err := nsprobe.Probe(ctx, "appNamespace")
 	if err != nil {
 		return err
 	}

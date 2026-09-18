@@ -818,14 +818,17 @@ teardown namespace delete_pvcs="no" stack="" retries="36" interval="5" operator_
 
 # Deploy the kube-arangodb operator stack, then wait until it is serving.
 # One command for: ensure-stack, preview, apply, operator pod ready, CRD present.
+# Since kube-arangodb 1.4 the operator is namespaced — it watches only its
+# own pod's namespace — so the release installs into the app namespace,
+# next to the ArangoDeployment CRs.
 # Usage: just arangodb deploy-operator [--stack <name>] [--namespace <ns>] [--retries <n>] [--interval <s>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
-[arg("namespace", long="namespace", short="n", help="Namespace the operator is installed into")]
+[arg("namespace", long="namespace", short="n", help="Namespace the operator is installed into; must equal the namespace-bootstrap appNamespace export")]
 [arg("retries", long="retries", short="r", help="Readiness probe attempts (default 60)")]
 [arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
 [group('arangodb')]
 [no-cd]
-deploy-operator stack="" namespace="operators" retries="60" interval="10":
+deploy-operator stack="" namespace="prod" retries="60" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -834,8 +837,8 @@ deploy-operator stack="" namespace="operators" retries="60" interval="10":
     STACK=$(just arangodb _require-stack --stack "{{ stack }}")
 
     # The program takes the release namespace from the namespace-bootstrap
-    # stack's operatorsNamespace export — refuse to wait on anything else.
-    BOOT_NS=$(pulumi -C namespace-bootstrap stack output operatorsNamespace --stack "$STACK")
+    # stack's appNamespace export — refuse to wait on anything else.
+    BOOT_NS=$(pulumi -C namespace-bootstrap stack output appNamespace --stack "$STACK")
     if [[ "$NS" != "$BOOT_NS" ]]; then
         echo "Error: --namespace '$NS' does not match the namespace-bootstrap export '$BOOT_NS' — the operator cannot deploy there." >&2
         exit 1
