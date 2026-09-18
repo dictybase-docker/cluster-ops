@@ -902,6 +902,20 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         pg_restore -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" \
         --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl \
         "/work/$ARCHIVE_NAME"
+    if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
+        kill "$PF_PID" 2>/dev/null || true
+        kubectl port-forward -n "$NS" "svc/$SERVICE" "$TARGET_PORT:5432" >"$PF_LOG" 2>&1 &
+        PF_PID=$!
+        for i in $(seq 1 30); do
+            nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null && break
+            sleep 1
+        done
+        if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
+            cat "$PF_LOG" >&2
+            echo "Error: target port-forward did not reopen on $TARGET_PORT after restore." >&2
+            exit 1
+        fi
+    fi
     PGPASSWORD="$TARGET_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
         -e PGPASSWORD "$CLIENT_IMAGE" \
         psql -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" -v ON_ERROR_STOP=1 -c 'ANALYZE VERBOSE'
