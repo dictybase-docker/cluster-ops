@@ -52,4 +52,4 @@ Adding password auth later means one env/URL change per client plus the Secret w
 
 ## No Failover, No Backup Job
 
-Single pod. Data safety rests on the AOF PVC, which survives pod/node replacement but **not** PVC deletion. The repo's `redis-backup/` project is a restic-based CronJob wired to the ArangoDB `dictycr` secret chain — it is **not** part of this guide and not validated for this stack; treat backup automation as not yet implemented. For cache-style workloads, accept the PVC as the durability boundary.
+Single pod. Data safety rests on the AOF PVC, which survives pod/node replacement but **not** PVC deletion. The daily restic backup to GCS ([backup details](backup.md)) is the off-cluster copy — deploy it right after this stack.

@@ -9,10 +9,11 @@ Provisioning guide for production **standalone Redis 8** on kOps `stateful-db`.
 - [Quick Reference](#quick-reference)
 - [1. Pool Check](#1-pool-check)
 - [2. Install Redis](#2-install-redis)
-- [3. Teardown](#3-teardown)
-- [4. Verify](#4-verify)
-- [5. Troubleshooting](#5-troubleshooting)
-- [6. Related Documents](#6-related-documents)
+- [3. Backup & Restore](#3-backup--restore)
+- [4. Teardown](#4-teardown)
+- [5. Verify](#5-verify)
+- [6. Troubleshooting](#6-troubleshooting)
+- [7. Related Documents](#7-related-documents)
 
 ---
 
@@ -31,7 +32,14 @@ just redis check-pool
 #    dictycr-balanced, unauthenticated)
 just redis deploy
 
-# 3. Verify installation
+# 3. Backup wiring — creates the redis-backup-sa identity + key, stores the
+#    restic repository password and GCS wiring in Secret redis-backup-auth,
+#    then deploys the backup bucket + CronJob (daily 1AM) and runs the
+#    first backup immediately
+just redis configure-backup-secrets --restic-password '<restic-pass>'
+just redis deploy-backup
+
+# 4. Verify installation
 just redis verify
 ```
 
@@ -72,7 +80,19 @@ just redis deploy
 
 ---
 
-## 3. Teardown
+## 3. Backup & Restore
+
+Daily restic backup to `gs://restic-redis-backup-<project-id>` through the redis-scoped `redis-backup-sa` identity, plus an immediate first run. Run **after** `deploy` — the backup jobs read the live `redis` service.
+→ [Backup details](reference/redis/backup.md)
+
+```bash
+just redis configure-backup-secrets --restic-password '<restic-pass>'
+just redis deploy-backup
+```
+
+---
+
+## 4. Teardown
 
 **Destructive. Clone only.** Deletes the data PVC — all Redis data.
 → [Teardown details](reference/redis/teardown.md)
@@ -83,7 +103,7 @@ just redis teardown --namespace prod --delete-pvc yes
 
 ---
 
-## 4. Verify
+## 5. Verify
 
 Read-only checks plus one `PING` handshake. Exits non-zero if any check fails.
 → [Verify details](reference/redis/verify.md)
@@ -94,21 +114,18 @@ just redis verify
 
 ---
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 → [Full troubleshooting table](reference/redis/troubleshooting.md)
 
-Common issues:
-- **No stack name error**: Enter `just cluster-env` first, or pass `--stack <name>`
-- **Pod Pending (taint)**: Node pool missing or `placement.pool` mismatch — see [pool requirements](reference/redis/pool-requirements.md)
-
 ---
 
-## 6. Related Documents
+## 7. Related Documents
 
 **Reference details for this guide:**
 - [Pool requirements](reference/redis/pool-requirements.md)
 - [Install details](reference/redis/install.md)
+- [Backup details](reference/redis/backup.md)
 - [Teardown details](reference/redis/teardown.md)
 - [Verify details](reference/redis/verify.md)
 - [Troubleshooting](reference/redis/troubleshooting.md)
