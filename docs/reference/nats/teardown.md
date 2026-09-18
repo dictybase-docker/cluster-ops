@@ -14,7 +14,7 @@ teardown loses nothing except connectivity while the server is gone.
 ## Behavior
 
 Order of operations:
-1. `pulumi destroy` on the `nats` stack — removes the Helm release (StatefulSet, ConfigMap, Services, Secret `nats-auth`, `nats-box`)
+1. `pulumi destroy` on the `nats` stack — removes the Helm release (StatefulSet, ConfigMap, Services, `nats-box`)
 
 ## Flags
 

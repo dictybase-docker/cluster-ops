@@ -1,11 +1,11 @@
 # Production configuration for the NATS Helm chart (nats-io/k8s) into the
-# `prod` namespace. Core pub/sub, stateless: no JetStream, no resolver, no
-# PVC, and no pool placement — the server schedules on the general `nodes`
-# instance group.
-# The auth token is set by `just nats deploy --token <token>` (stored
-# encrypted as properties.auth.token). The stack is initialized on first
-# deploy by `just nats deploy` (gcp-pulumi ensure-stack), which adds the
-# cluster-env KMS secretsprovider + encryptedkey to this file.
+# `prod` namespace. Core pub/sub, unauthenticated and stateless: no
+# authorization block, no JetStream, no resolver, no PVC, and no pool
+# placement — the server schedules on the general `nodes` instance group and
+# accepts any in-cluster client.
+# The stack is initialized on first deploy by `just nats deploy`
+# (gcp-pulumi ensure-stack), which adds the cluster-env KMS secretsprovider
+# + encryptedkey to this file.
 #
 # Prerequisites: namespace-bootstrap (prod namespace, pulumi setup §5).
 # Chart 2.14.6 tracks config-reloader 0.23.0 and defaults the server image
@@ -20,7 +20,3 @@ config:
     image:
       tag: 2.15.0-alpine
     namespace: prod
-    auth:
-      secretName: nats-auth
-      key: token
-      # token: set by `just nats deploy --token`

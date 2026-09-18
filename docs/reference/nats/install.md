@@ -6,23 +6,22 @@ Back to: [NATS Deploy Guide](../../nats-deploy.md)
 
 Applies the `nats` stack (`Pulumi.dcr-kube1.yaml`) which creates:
 
-1. Secret `nats-auth` — key `token`
-2. Helm release `nats` (chart `nats` **2.14.6**, [nats-io/k8s](https://github.com/nats-io/k8s)) — StatefulSet `nats`, 1 replica, image `nats:2.15.0-alpine` (chart default `2.14.6-alpine` overridden)
-3. Service `nats` on 4222 (client port) plus the headless service for the StatefulSet
-4. `nats-box` deployment (chart default) — the `nats` CLI pod for ad-hoc checks
+1. Helm release `nats` (chart `nats` **2.14.6**, [nats-io/k8s](https://github.com/nats-io/k8s)) — StatefulSet `nats`, 1 replica, image `nats:2.15.0-alpine` (chart default `2.14.6-alpine` overridden)
+2. Service `nats` on 4222 (client port) plus the headless service for the StatefulSet
+3. `nats-box` deployment (chart default) — the `nats` CLI pod for ad-hoc checks
 
-No persistent volume: core pub/sub keeps no message persistence — no JetStream, no resolver, in-flight messages are lost on a pod restart. JetStream persistence is reserved for a future revision.
+No Secret, no PVC: core pub/sub keeps no message persistence — no JetStream, no resolver, in-flight messages are lost on a pod restart. JetStream persistence and token auth are reserved for a future revision.
 
 ## Command
 
 ```bash
-just nats deploy --token '<token>'
+just nats deploy
 ```
 
 ## Behavior
 
-- Runs `ensure-stack` → sets the encrypted `properties.auth.token` → `preview` → `create-resource`
-- Restarts `statefulset/nats` so the pod re-resolves the Secret-backed `TOKEN` env variable — env-backed values never refresh in a running pod
+- Runs `ensure-stack` → `preview` → `create-resource`
+- Validates `--namespace` against `properties.namespace` in the stack config before touching state
 - Waits for `statefulset/nats` to report a ready replica
 - Prints the `nats` Service
 
@@ -30,33 +29,32 @@ just nats deploy --token '<token>'
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--token` | Yes | — | The auth token; stored encrypted as `properties.auth.token`; never generated or defaulted |
 | `--namespace` | No | `prod` | Must match `properties.namespace` in the stack config — the release deploys there and `deploy` aborts on drift |
 | `--stack` | No | `$PULUMI_STACK` | No dev fallback |
 | `--retries` / `--interval` | No | `60` / `10` | 10-minute wait budget |
 
-## Token Auth
+## No Authentication
 
-The chart's `authorization.token` is set to the special value `<< $TOKEN >>` — the chart unquotes it into the rendered `nats.conf` (`"token": $TOKEN`), and the **NATS server expands `$VARIABLE` references from its process environment at startup**. `TOKEN` itself comes from Secret `nats-auth` (key `token`) via `secretKeyRef`. Clients must present the token: `nats://<token>@nats.prod.svc.cluster.local:4222` or `--token` in the CLI. Traced in the rendered ConfigMap of chart 2.14.6.
+The stack sets no `authorization` block — the server **accepts every in-cluster connection**. Any pod in the cluster can publish to any subject, read any subscriber's stream, and delete JetStream state (none exists today). This is a deliberate trade: zero client-side changes for existing apps.
 
-**No unauthenticated fallback exists** — without the token the server answers `-ERR 'authorization violation'`. The `verify` recipe checks both directions (authenticated `rtt` succeeds, unauthenticated `rtt` fails with an authorization violation).
+What keeps the exposure bounded:
+- Port 4222 is ClusterIP-only — no external ingress exists
+- The monitor port 8222 is pod-local, not exposed via the Service
+
+Adding token auth later means one `gnats.Token(...)`-style change per client plus a Secret wiring — the [redis install](../redis/install.md#persistence-and-auth) shows the house pattern.
 
 ## Probes and Shutdown
 
-- **Probes**: the chart wires startup/readiness/liveness `httpGet` checks against the monitor endpoint (`:8222/healthz`) — enabled by chart default, no auth on the monitor path
+- **Probes**: the chart wires startup/readiness/liveness `httpGet` checks against the monitor endpoint (`:8222/healthz`) — enabled by chart default
 - **Graceful shutdown**: lame-duck grace 10s + eviction 30s (chart defaults), `terminationGracePeriodSeconds: 60`
-- **Reloader**: file-backed config changes hot-reload via the `nats-server-config-reloader` sidecar — no pod restart needed for config edits. Secret-backed **env variables do not refresh** in a running pod: token rotation always requires the StatefulSet restart that `deploy` performs
+- **Reloader**: file-backed config changes hot-reload via the `nats-server-config-reloader` sidecar; no pod restart needed for config edits
 
-## Service and Credentials
+## Service
 
 | Item | Value |
 |------|-------|
 | Address | `nats.prod.svc.cluster.local:4222` |
-| URL form | `nats://<token>@nats.prod.svc.cluster.local:4222` |
-| Token | Secret `nats-auth`, key `token` |
 | Monitor | pod-local `:8222/healthz` (not exposed via the Service) |
-
-Read the token with `kubectl get secret nats-auth -n prod -o jsonpath='{.data.token}' \| base64 -d`.
 
 ## Single Server, No Clustering
 

@@ -23,9 +23,9 @@ For experienced users. Full details in sections below.
 # Enter cluster environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
-# 1. Deploy NATS 2.15 (single server, token auth, core pub/sub — no message
-#    persistence; schedules on the general nodes group)
-just nats deploy --token '<token>'
+# 1. Deploy NATS 2.15 (single server, unauthenticated, core pub/sub — no
+#    message persistence; schedules on the general nodes group)
+just nats deploy
 
 # 2. Verify installation
 just nats verify
@@ -33,7 +33,7 @@ just nats verify
 
 Optional steps:
 ```bash
-# Teardown (clone only — removes the server, nats-box, and the auth Secret)
+# Teardown (clone only — removes the server, nats-box, and the config)
 just nats teardown
 ```
 
@@ -48,18 +48,18 @@ just nats teardown
 
 ## 1. Install NATS
 
-Creates Secret `nats-auth` and a single-server NATS **2.15.0** StatefulSet (Helm chart `nats` 2.14.6): token auth on, monitor probes on 8222. Core pub/sub only — no JetStream, no PVC, in-flight messages are lost on a pod restart. Schedules on the general `nodes` group.
-→ [Install details](reference/nats/install.md) · [address and credentials](reference/nats/install.md#service-and-credentials) · [instance group requirements](reference/nats/pool-requirements.md)
+Creates a single-server NATS **2.15.0** StatefulSet (Helm chart `nats` 2.14.6): unauthenticated, monitor probes on 8222. Core pub/sub only — no JetStream, no PVC, in-flight messages are lost on a pod restart. Any pod in the cluster can connect.
+→ [Install details](reference/nats/install.md) · [address](reference/nats/install.md#service) · [instance group requirements](reference/nats/pool-requirements.md)
 
 ```bash
-just nats deploy --token '<token>'
+just nats deploy
 ```
 
 ---
 
 ## 2. Teardown
 
-Removes the Helm release: the server StatefulSet, `nats-box`, the Services, and Secret `nats-auth`. No message persistence — nothing else to delete.
+Removes the Helm release: the server StatefulSet, `nats-box`, the Services, and the ConfigMap. No message persistence — nothing else to delete.
 → [Teardown details](reference/nats/teardown.md)
 
 ```bash
@@ -70,7 +70,7 @@ just nats teardown
 
 ## 3. Verify
 
-Read-only checks plus an authenticated `rtt` and a negative unauthenticated check. Exits non-zero if any check fails.
+Read-only checks plus a client `rtt` handshake. Exits non-zero if any check fails.
 → [Verify details](reference/nats/verify.md)
 
 ```bash
