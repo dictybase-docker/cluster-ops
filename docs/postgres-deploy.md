@@ -13,11 +13,12 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 - [4. Import Source (Optional)](#4-import-source-optional)
 - [5. Create the Cluster](#5-create-the-cluster)
 - [6. Re-import Into an Existing Cluster](#6-re-import-into-an-existing-cluster)
-- [7. Backup & Restore](#7-backup--restore)
-- [8. Teardown](#8-teardown)
-- [9. Verify](#9-verify)
-- [10. Troubleshooting](#10-troubleshooting)
-- [11. Related Documents](#11-related-documents)
+- [7. Cross-Major Import (Logical)](#7-cross-major-import-logical)
+- [8. Backup & Restore](#8-backup--restore)
+- [9. Teardown](#9-teardown)
+- [10. Verify](#10-verify)
+- [11. Troubleshooting](#11-troubleshooting)
+- [12. Related Documents](#12-related-documents)
 
 ---
 
@@ -25,13 +26,11 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 | Case | Situation | Steps | Outcome |
 |------|-----------|-------|---------|
-| **1.** | Fresh deploy, no import | 1 → 2 → 3 → 5 → 9 | Database **empty** (initdb) |
-| **2.** | Fresh deploy, import from a source cluster | 1 → 2 → 3 → **4** → 5 → 9 | Database **holds the source cluster's data** (recovery) |
+| **1.** | Fresh deploy, no import | 1 → 2 → 3 → 5 → 10 | Database **empty** (initdb) |
+| **2.** | Fresh deploy, import from a source cluster | 1 → 2 → 3 → **4** → 5 → 10 | Database **holds the source cluster's data** (recovery) |
 | **3.** | Cluster already deployed, want the source cluster's data | 4 (if not on the stack, or to change it) → **6** | Source data **replaces the current data** |
 
-Case 1 does not turn into case 2 by re-running `deploy-cluster` — data moves only at first-instance creation. Case 3 is the only way in afterwards. Step 4 is picked by the case, never by cluster or database state — see the [§4 decision diagram](#4-import-source-optional).
-
-Physical import cases 2 and 3 assume the source runs the **same PostgreSQL major** as this cluster; case 1 has no source. §4/§6 replay the source's data files, and a PG 14 base backup into a PG 16 instance aborts with `database files are incompatible with server`. Across majors, skip §4 and §6 entirely and migrate logically — `dump-logical` exports the source database to a checksummed archive, `restore-logical` validates that archive, then always recreates the target empty before loading it. Any pre-existing target state — Cluster CR, physical import config, or backup objects — needs `--replace-data yes`. → [Logical import details](reference/postgres/logical-import.md)
+These three cases are the **physical** path and all need a source on the same PostgreSQL major: data moves only at first-instance creation, so [§6](#6-re-import-into-an-existing-cluster) is the only way in once the cluster exists, and a source on a different major skips §4/§6 for [§7](#7-cross-major-import-logical).
 
 ```bash
 # Enter the cluster environment first
@@ -52,7 +51,7 @@ just postgres configure-source --source-cluster <cluster-name>
 # 5. Create the PostgreSQL 16 cluster — imports when step 4 ran, else empty
 just postgres deploy-cluster --app-password '<app-password>'
 
-# 9. Verify the installation
+# 10. Verify the installation
 just postgres verify
 ```
 
@@ -64,7 +63,7 @@ just postgres configure-source --source-cluster <cluster-name> --target-time '<r
 # Re-import into a cluster that already exists (section 6) — destroys current data
 just postgres reset-cluster --reset-data yes --app-password '<app-password>'
 
-# Cross-major migration (e.g. PG 14 source into this PG 16 cluster) — replaces steps 4 and 6
+# Cross-major migration (section 7) — replaces steps 4 and 6
 # restore-logical recreates the target empty; --replace-data yes is the guard for existing target state
 just postgres dump-logical --source-cluster <cluster-name>
 just postgres restore-logical --archive scratch/postgres/<archive>.dump --app-password '<app-password>' --replace-data yes
@@ -158,7 +157,19 @@ just postgres reset-cluster --reset-data yes --app-password '<app-password>'
 
 ---
 
-## 7. Backup & Restore
+## 7. Cross-Major Import (Logical)
+
+**Alternative to §4/§6, never a step after them** — take this path instead when the source runs a **different PostgreSQL major** (e.g. a PG 14 source into this PG 16 cluster), which physical recovery cannot replay at all. `dump-logical` exports one source database to a checksummed archive; `restore-logical` validates it, then recreates the target empty before loading — `--replace-data yes` is the guard for any pre-existing target state (Cluster CR, §4 import config, or this cluster's backup objects).
+→ [Logical import details](reference/postgres/logical-import.md) · [flags](reference/postgres/logical-import.md#flags--dump-logical)
+
+```bash
+just postgres dump-logical --source-cluster <cluster-name>
+just postgres restore-logical --archive scratch/postgres/<archive>.dump --app-password '<app-password>' --replace-data yes
+```
+
+---
+
+## 8. Backup & Restore
 
 WAL archiving and the daily base backup are created by §5 and run themselves — nothing to deploy. In-place restore of this cluster's own backups has no recipe yet; re-importing from a source cluster is §6.
 → [Backup details](reference/postgres/backup.md) · [restore](reference/postgres/backup.md#restore)
@@ -169,7 +180,7 @@ kubectl get scheduledbackups.postgresql.cnpg.io -n prod
 
 ---
 
-## 8. Teardown
+## 9. Teardown
 
 **Destructive. Clone only.** Destroys the cluster stack: the data PVCs and every backup in the bucket. To replace only the data, use §6.
 → [Teardown details](reference/postgres/teardown.md)
@@ -180,7 +191,7 @@ just postgres teardown --namespace prod --delete-pvcs yes --delete-backups yes
 
 ---
 
-## 9. Verify
+## 10. Verify
 
 Read-only check of pool, operator, storage, Cluster phase, pods, PVCs, Services, and ScheduledBackup. Exits non-zero on any failure.
 → [Verify details](reference/postgres/verify.md)
@@ -191,7 +202,7 @@ just postgres verify
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 → [Full troubleshooting table](reference/postgres/troubleshooting.md)
 
@@ -199,7 +210,7 @@ For day-to-day cluster ops (status, `psql`, on-demand backup, restart, diagnosti
 
 ---
 
-## 11. Related Documents
+## 12. Related Documents
 
 **Reference details for this guide:**
 - [Pool requirements](reference/postgres/pool-requirements.md)
