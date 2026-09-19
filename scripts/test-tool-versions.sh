@@ -26,15 +26,15 @@ grep -Fx "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=${manifest}" "${env_file}" >/dev/n
 
 printf 'kubectl preserved-version\n' > "${manifest}"
 cce_log=$(mktemp)
-if ! just create-cluster-env \
+just --verbose create-cluster-env \
     --env "${env_name}" \
     --cluster "${cluster_name}" \
     --project test-project \
-    --force yes >"${cce_log}" 2>&1; then
+    --force yes 2>&1 | tee "${cce_log}" || {
     sed 's/^/  | /' "${cce_log}" >&2
     rm -f "${cce_log}"
     exit 1
-fi
+}
 rm -f "${cce_log}"
 
 grep -Fx 'kubectl preserved-version' "${manifest}" >/dev/null
