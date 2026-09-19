@@ -19,6 +19,8 @@ just check
 | `docs docs-lint` | `scripts/docs-lint.sh` | STYLE.md mechanical rules (TOC, anchors, links, section shape) |
 | `test-postgres-logical` | `scripts/test-postgres-logical-recipes.sh` | logical restore contract incl. destructive ordering + idempotency |
 | `test-logto` | `scripts/test-logto-recipes.sh` | Logto recipe contract |
+| `test-bootstrap` | `scripts/test-bootstrap-bundle.sh` | kops bundle contract (mock kops + kubectl) |
+| `test-tool-versions` | `scripts/test-tool-versions.sh` | per-cluster asdf manifest lifecycle |
 | `build` | `go build ./cmd/cluster-ops` | compile gate |
 
 Each recipe also runs standalone; `just --list` shows them under
