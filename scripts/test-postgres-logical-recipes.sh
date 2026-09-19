@@ -399,3 +399,52 @@ test -f "$source_kubeconfig"
 echo 'source env kubeconfig resolution: PASS'
 
 printf '%s\n' 'logical postgres recipe contract: PASS'
+
+assert_before() {
+    local render="$1" early="$2" late="$3" label="$4"
+    local early_line late_line
+    early_line=$(echo "$render" | grep -nF "$early" | head -1 | cut -d: -f1)
+    late_line=$(echo "$render" | grep -nF "$late" | head -1 | cut -d: -f1)
+    if [ -z "$early_line" ] || [ -z "$late_line" ]; then
+        echo "FAIL: $label: marker missing (early='$early' late='$late')" >&2
+        exit 1
+    fi
+    if [ "$early_line" -ge "$late_line" ]; then
+        echo "FAIL: $label: '$early' (line $early_line) must precede '$late' (line $late_line)" >&2
+        exit 1
+    fi
+}
+
+# Destructive ordering: every preflight check must appear before the first
+# mutating command. Guards the fail-closed contract from commits 4634d6d,
+# a5b7e71, d078722, 73659d5 — a regression that reorders restore before
+# validation fails here.
+assert_before "$render_restore" 'Error: archive checksum mismatch' 'pg_restore -h' 'checksum before restore'
+assert_before "$render_restore" 'majors are incompatible' 'pg_restore -h' 'major compat before restore'
+assert_before "$render_restore" 'Error: pg_restore cannot read archive' 'pg_restore -h' 'archive readable before restore'
+
+# Post-restore hygiene: reopen the port-forward before ANALYZE (commit 4ae1c91).
+# Two port-forward invocations expected (open before restore, reopen after);
+# the reopen must precede ANALYZE.
+pf_first=$(echo "$render_restore" | grep -n 'port-forward' | head -1 | cut -d: -f1)
+pf_reopen=$(echo "$render_restore" | grep -n 'port-forward' | tail -1 | cut -d: -f1)
+analyze_line=$(echo "$render_restore" | grep -n 'ANALYZE VERBOSE' | cut -d: -f1)
+if [ "$pf_first" = "$pf_reopen" ] || [ -z "$pf_first" ]; then
+    echo "FAIL: expected two port-forward invocations (open + reopen), found one" >&2
+    exit 1
+fi
+if [ "$pf_reopen" -ge "$analyze_line" ]; then
+    echo "FAIL: reopen port-forward (line $pf_reopen) must precede ANALYZE (line $analyze_line)" >&2
+    exit 1
+fi
+
+# Idempotency: a second identical dry-run must render byte-identical output.
+render_restore_2=$(just --dry-run postgres restore-logical \
+    --archive scratch/postgres/test.dump \
+    --app-password test-password 2>&1)
+if [ "$render_restore" != "$render_restore_2" ]; then
+    echo "FAIL: restore-logical dry-run not deterministic across two runs" >&2
+    diff <(echo "$render_restore") <(echo "$render_restore_2") | head -20 >&2
+    exit 1
+fi
+echo 'destructive ordering + idempotency: PASS'
