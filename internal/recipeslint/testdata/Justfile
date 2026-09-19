@@ -1,0 +1,82 @@
+# Fixture for internal/recipeslint tests — never run these recipes.
+# Each recipe name encodes the rule it exercises.
+
+# FINE: bare mktemp without template is safe
+mktemp-bare:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp)
+    echo "$out"
+
+# BAD mktemp-no-x: -t template without X suffix
+mktemp-template-no-x:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp -t kubeconfig)
+    echo "$out"
+
+# GOOD: template with X suffix passes
+mktemp-template-x:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp -t kubeconfig-XXXXXX)
+    echo "$out"
+
+# BAD create-pipe-swallow: gcloud create || echo
+create-pipe-swallow:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud iam service-accounts create sa-name --project="$PROJECT" || echo "already exists"
+
+# GOOD: describe-then-create probe passes
+create-probe:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! gcloud iam service-accounts describe sa-name --project="$PROJECT" >/dev/null 2>&1; then
+        gcloud iam service-accounts create sa-name --project="$PROJECT"
+    fi
+
+# BAD ambient-gcp-project: bare $GOOGLE_CLOUD_PROJECT in code
+ambient-gcp-project:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud storage buckets list --project="$GOOGLE_CLOUD_PROJECT"
+
+# GOOD: comment mentioning the variable is not code
+ambient-gcp-comment:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # pulumi-gcp falls back to $GOOGLE_CLOUD_PROJECT when gcp:project is unset
+    echo ok
+
+# BAD hardcoded-stack: literal --stack prod
+hardcoded-stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pulumi stack output bucketName --stack prod
+
+# GOOD: $PULUMI_STACK passes
+stack-from-env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pulumi stack output bucketName --stack "$PULUMI_STACK"
+
+# BAD unquoted-interp: interpolation outside double quotes
+unquoted-interp name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kubectl get cm {{name}}
+
+# GOOD: quoted interpolation passes
+quoted-interp name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kubectl get cm "{{ name }}"
+
+# GOOD: single-rule suppression silences only its own line
+suppressed-mktemp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp -t kubeconfig)  # lint-recipes:allow-mktemp-no-x
+    out2=$(mktemp -t gcs-creds)
+    echo "$out $out2"
