@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 
 	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
@@ -22,18 +21,19 @@ type work struct {
 }
 
 // readDump runs `just --dump --dump-format json` against the target justfile.
-// Only the raw call lives in TryCatchError; the failure is wrapped with the
-// target path via MapLeft.
+// It resolves the justfile by running from the target directory (just finds
+// justfile/Justfile itself) — hardcoding a name breaks on case-sensitive
+// filesystems. Only the raw call lives in TryCatchError; the failure is
+// wrapped with the target path via MapLeft.
 func readDump(w work) IOE.IOEither[error, []byte] {
-	justfile := filepath.Join(w.Cfg.Root, "justfile")
 	return F.Pipe1(
 		IOE.TryCatchError(func() ([]byte, error) {
-			return exec.Command(
-				"just", "--justfile", justfile, "--dump", "--dump-format", "json",
-			).Output()
+			cmd := exec.Command("just", "--dump", "--dump-format", "json")
+			cmd.Dir = w.Cfg.Root
+			return cmd.Output()
 		}),
 		IOE.MapLeft[[]byte](func(err error) error {
-			return fmt.Errorf("just --dump failed for %s: %w", justfile, err)
+			return fmt.Errorf("just --dump failed for %s: %w", w.Cfg.Root, err)
 		}),
 	)
 }
