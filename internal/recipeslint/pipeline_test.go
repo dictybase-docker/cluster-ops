@@ -52,6 +52,9 @@ func TestRunFailsOnFixture(t *testing.T) {
 }
 
 func TestRepoClean(t *testing.T) {
+	if _, err := exec.LookPath("just"); err != nil {
+		t.Skip("just not installed")
+	}
 	err := Run(Config{Root: filepath.Join("..", "..")})
 	require.NoError(t, err, "repo justfiles have findings — fix them before committing")
 }
