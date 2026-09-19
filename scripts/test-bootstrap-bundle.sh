@@ -48,6 +48,50 @@ exit 0
 EOF
 chmod +x "${test_env_dir}/kops"
 
+# Mock kubectl for sync-node-pools: reports the expected current-context and
+# three Ready stateful-db nodes that already carry pool=database and the
+# dedicated=database:NoSchedule taint, so the recipe's readiness loop breaks
+# on the first try and self-verification passes.
+cat << 'EOF' > "${test_env_dir}/kubectl"
+#!/usr/bin/env bash
+set -euo pipefail
+echo "mock kubectl called with: $*" >> "${MOCK_KOPS_LOG}"
+
+if [ "${1:-}" = "config" ] && [ "${2:-}" = "current-context" ]; then
+    echo "dcr-test-1-k8s.local"
+    exit 0
+fi
+
+if [ "${1:-}" = "get" ] && [ "${2:-}" = "nodes" ]; then
+    cat <<'JSON'
+{
+  "items": [
+    {
+      "metadata": {"name": "n1", "labels": {"pool": "database", "kops.k8s.io/instancegroup": "stateful-db"}},
+      "spec": {"taints": [{"key": "dedicated", "value": "database", "effect": "NoSchedule"}]},
+      "status": {"conditions": [{"type": "Ready", "status": "True"}]}
+    },
+    {
+      "metadata": {"name": "n2", "labels": {"pool": "database", "kops.k8s.io/instancegroup": "stateful-db"}},
+      "spec": {"taints": [{"key": "dedicated", "value": "database", "effect": "NoSchedule"}]},
+      "status": {"conditions": [{"type": "Ready", "status": "True"}]}
+    },
+    {
+      "metadata": {"name": "n3", "labels": {"pool": "database", "kops.k8s.io/instancegroup": "stateful-db"}},
+      "spec": {"taints": [{"key": "dedicated", "value": "database", "effect": "NoSchedule"}]},
+      "status": {"conditions": [{"type": "Ready", "status": "True"}]}
+    }
+  ]
+}
+JSON
+    exit 0
+fi
+
+# label/taint and anything else: succeed silently.
+exit 0
+EOF
+chmod +x "${test_env_dir}/kubectl"
+
 export PATH="${test_env_dir}:${PATH}"
 export MOCK_KOPS_LOG="${test_env_dir}/kops.log"
 : > "${MOCK_KOPS_LOG}"
