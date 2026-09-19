@@ -17,3 +17,18 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check out code
+        uses: actions/checkout@v7
+      - name: setup just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: '1.58.0'
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+      - name: run mechanical gates (lint-recipes, docs-lint, contract tests, build)
+        run: just check
