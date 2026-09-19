@@ -140,6 +140,50 @@ test:
 test-bootstrap:
     ./scripts/test-bootstrap-bundle.sh
 
+# Run lint-recipes mechanical checks on all just recipes
+[group('dev-tools')]
+[no-cd]
+lint-recipes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    go run ./cmd/lint-recipes
+
+# Run postgres logical recipe contract tests
+[group('dev-tools')]
+[no-cd]
+test-postgres-logical:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-postgres-logical-recipes.sh"
+
+# Run logto recipe contract tests
+[group('dev-tools')]
+[no-cd]
+test-logto:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-logto-recipes.sh"
+
+# Run per-cluster tool-versions contract tests
+[group('dev-tools')]
+[no-cd]
+test-tool-versions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-tool-versions.sh"
+
+# Run every mechanical gate: recipe lint, docs lint, contract tests, go build.
+# One gate for humans and agents; CI runs the same command.
+# No cloud credentials, Docker daemon, or asdf needed.
+# Usage: just check
+[group('dev-tools')]
+[no-cd]
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just docs docs-lint
+
 # Run aider AI coding assistant with specific configuration
 [group('dev-tools')]
 aider:

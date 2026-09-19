@@ -81,9 +81,13 @@ just --list gcp-pulumi       # Pulumi backend and stacks
 just --list arangodb         # ArangoDB deploy, backup, restore
 ```
 
-Verification recipes are read-only and exit non-zero on failure:
+Verification recipes are read-only and exit non-zero on failure; the
+aggregate mechanical gate (`just check`, see
+[reference/dev/check.md](docs/reference/dev/check.md)) runs recipe lint,
+docs lint, contract tests, and the build on every PR:
 
 ```bash
+just check                          # aggregate mechanical gate
 just check-tools                    # local toolchain
 just gcp-cluster validate-cluster   # cluster health
 just gcp-pulumi check-backend       # Pulumi backend wiring
