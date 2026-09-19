@@ -189,7 +189,7 @@ run_recipe "$just_bin" logto install --stack "$stack" --retries 2 --interval 1 >
 install_calls=()
 while IFS= read -r line; do
     install_calls+=("$line")
-done < <(grep -E '^(just|kubectl)' "$log_file")
+done < <(rg '^(just|kubectl)' "$log_file")
 expected_order=(
     "just logto check"
     "just gcp-pulumi ensure-stack"
@@ -220,7 +220,7 @@ if run_recipe env STUB_PREVIEW_STATUS=1 "$just_bin" logto install --stack "$stac
     echo 'preview failure unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE '^just gcp-pulumi create-resource|^kubectl rollout|^just logto verify' "$log_file"
+! rg -q '^just gcp-pulumi create-resource|^kubectl rollout|^just logto verify' "$log_file"
 echo 'install fail-fast: PASS'
 
 : > "$log_file"
@@ -228,7 +228,7 @@ if run_recipe env STUB_CHECK_STATUS=1 "$just_bin" logto install --stack "$stack"
     echo 'check failure unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE '^just gcp-pulumi ensure-stack|^just gcp-pulumi preview|^just gcp-pulumi create-resource' "$log_file"
+! rg -q '^just gcp-pulumi ensure-stack|^just gcp-pulumi preview|^just gcp-pulumi create-resource' "$log_file"
 echo 'check fail-fast: PASS'
 
 : > "$log_file"
@@ -236,12 +236,12 @@ if run_recipe env STUB_CREATE_STATUS=1 "$just_bin" logto install --stack "$stack
     echo 'create failure unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE '^kubectl rollout|^just logto verify' "$log_file"
+! rg -q '^kubectl rollout|^just logto verify' "$log_file"
 echo 'apply fail-fast: PASS'
 
 : > "$log_file"
 run_recipe "$just_bin" logto verify --stack "$stack" >/tmp/logto-verify-output
-grep -q 'Logto checks passed\.' /tmp/logto-verify-output
+rg -q 'Logto checks passed\.' /tmp/logto-verify-output
 echo 'multi-rule Ingress verification: PASS'
 
 source_text=$(cat just_modules/logto.justfile)
