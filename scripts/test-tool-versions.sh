@@ -26,9 +26,8 @@ grep -Fx "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=${manifest}" "${env_file}" >/dev/n
 
 printf 'kubectl preserved-version\n' > "${manifest}"
 # CI-only diagnosis: extract the create-cluster-env body and run it under
-# bash -x so a silent set -e abort shows its failing line. Runs the real
-# recipe normally on the happy path.
-if [ "${TOOL_VERSIONS_TRACE:-}" = "yes" ]; then
+# bash -x so a silent set -e abort shows its failing line.
+if true; then
     just --dump --dump-format json > /tmp/tv-dump.json
     python3 - <<'PYEOF' > /tmp/tv-recipe.sh
 import json, os
