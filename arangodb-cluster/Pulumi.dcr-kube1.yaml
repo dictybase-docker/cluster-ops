@@ -13,7 +13,7 @@ config:
     secret:
       name: arangodb-pass
       password:
-        secure: v1:va+vEsiUhOY13VLY:PIyI9KLTrS1aXd6QhcMpzlTpLUpRDVrIl8Tafn6RQgCCFw==
+        secure: v1:cd1TKZFr2jz9sRl4:NOJQqcDa2uavR1iPFVUg2HifKUrt5B38Kll8cpE2gmhdvA==
     agents:
       count: 3
       storageClass: dictycr-ssd
