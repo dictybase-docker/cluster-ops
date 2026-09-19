@@ -25,11 +25,17 @@ cmp -s .tool-versions "${manifest}"
 grep -Fx "ASDF_DEFAULT_TOOL_VERSIONS_FILENAME=${manifest}" "${env_file}" >/dev/null
 
 printf 'kubectl preserved-version\n' > "${manifest}"
-just create-cluster-env \
+cce_log=$(mktemp)
+if ! just create-cluster-env \
     --env "${env_name}" \
     --cluster "${cluster_name}" \
     --project test-project \
-    --force yes >/dev/null
+    --force yes >"${cce_log}" 2>&1; then
+    sed 's/^/  | /' "${cce_log}" >&2
+    rm -f "${cce_log}"
+    exit 1
+fi
+rm -f "${cce_log}"
 
 grep -Fx 'kubectl preserved-version' "${manifest}" >/dev/null
 
