@@ -19,7 +19,7 @@ enable-apis project="" api_file:
     echo "Enabling APIs for project ${project_id} from file {{ api_file }}"
 
     go build -o bin/cluster-ops cmd/cluster-ops/main.go
-    ./bin/cluster-ops api enable --project="${project_id}" --api-file-path={{ api_file }}
+    ./bin/cluster-ops api enable --project="${project_id}" --api-file-path={{ quote(api_file) }}
     echo "Finished enabling APIs"
     echo "Ran commands enabled APIs in project ${project_id}:"
 
@@ -79,9 +79,9 @@ disable-apis project="" api_file disable_dependent="false":
 
     go build -o bin/cluster-ops cmd/cluster-ops/main.go
     if [ "{{ disable_dependent }}" = "true" ]; then
-        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ api_file }} --disable-dependent-services
+        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ quote(api_file) }} --disable-dependent-services
     else
-        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ api_file }}
+        ./bin/cluster-ops api disable --project="${project_id}" --api-file-path={{ quote(api_file) }}
     fi
 
     echo "Finished disabling APIs"
@@ -101,15 +101,15 @@ gcloud-auth-sa key_file config_name zone="us-central1-c":
     set -euo pipefail
     echo "Authenticating with gcloud using service account key from {{ key_file }}"
 
-    gcloud config configurations create {{ config_name }}
+    gcloud config configurations create {{ quote(config_name) }}
 
-    gcloud auth activate-service-account --key-file={{ key_file }}
+    gcloud auth activate-service-account --key-file={{ quote(key_file) }}
 
-    project=$(jq -r '.project_id' {{ key_file }})
-    account=$(jq -r '.client_email' {{ key_file }})
+    project=$(jq -r '.project_id' {{ quote(key_file) }})
+    account=$(jq -r '.client_email' {{ quote(key_file) }})
     gcloud config set account $account
     gcloud config set project $project
-    gcloud config set compute/zone {{ zone }}
+    gcloud config set compute/zone {{ quote(zone) }}
 
     echo "Authentication complete. Configuration '{{ config_name }}' is set to project $project with account $account and zone {{ zone }}"
 

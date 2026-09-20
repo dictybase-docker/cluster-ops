@@ -39,12 +39,12 @@ Fail rules:
 | `create-pipe-swallow` | `gcloud ... create \|\| echo "already exists"` swallows the exit code, not stderr; use describe-then-create |
 | `ambient-gcp-project` | `$GOOGLE_CLOUD_PROJECT` in recipe code carries a stale cross-cluster value; bind the project explicitly |
 | `hardcoded-stack` | `--stack` literals predate per-cluster stack names; use `$PULUMI_STACK` |
+| `unquoted-interp` | `{{...}}` outside double quotes; `quote()`-wrapped calls are safe bare |
 
 Warn-only rules (reported, never fail):
 
 | Rule | Reason |
 |------|--------|
-| `unquoted-interp` | `{{...}}` outside double quotes; `quote()`-wrapped calls are safe bare. Warn-only until the pre-existing bare-interpolation debt (~75 findings) is cleared |
 | `port-forward-no-trap` | `kubectl port-forward` in a recipe body with no `trap` cleanup |
 
 ## Suppression

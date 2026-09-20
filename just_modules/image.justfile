@@ -27,7 +27,7 @@ create-machine-image project="" instance backup_for="k8s-node":
     echo "Creating machine image $image_name from instance {{ instance }} in project ${project_id} (zone: $source_zone)"
     gcloud compute machine-images create $image_name \
         --project=${project_id} \
-        --source-instance={{ instance }} \
+        --source-instance={{ quote(instance) }} \
         --source-instance-zone=$source_zone
 
     echo "Machine image creation initiated. Waiting for completion..."

@@ -88,7 +88,7 @@ sa-accounts-setup project="" activate_api="true":
 
     if [ "{{ activate_api }}" = "true" ]; then
         just gcp-api enable-apis --project "${project_id}" \
-             --api-file {{ invocation_directory() }}/gcs-files/apis/enabled_apis.txt
+             --api-file {{ quote(invocation_directory()) }}/gcs-files/apis/enabled_apis.txt
         sleep 10
     fi
 
@@ -100,8 +100,8 @@ sa-accounts-setup project="" activate_api="true":
         if ! gcloud iam service-accounts describe "$sa_email" --project="${project_id}" &>/dev/null; then
             echo "Creating service account: $sa_name"
             just gcp-sa create-sa --project "${project_id}" --sa-name "$sa_name" \
-                --roles-file {{ invocation_directory() }}/gcs-files/roles-permissions/${sa_name}-roles.txt \
-                --output-file {{ invocation_directory() }}/credentials/${project_id}-$sa_name.json
+                --roles-file {{ quote(invocation_directory()) }}/gcs-files/roles-permissions/${sa_name}-roles.txt \
+                --output-file {{ quote(invocation_directory()) }}/credentials/${project_id}-$sa_name.json
         else
             echo "Service account $sa_name already exists. Skipping creation."
         fi
@@ -333,7 +333,7 @@ validate-cluster cluster="" kops_name="" state="" waittime="20":
     state_args=()
     [ -n "${st}" ] && state_args=("--state=${st}")
 
-    kops validate cluster "${name_args[@]+"${name_args[@]}"}" "${state_args[@]+"${state_args[@]}"}" --wait {{ waittime }}m
+    kops validate cluster "${name_args[@]+"${name_args[@]}"}" "${state_args[@]+"${state_args[@]}"}" --wait {{ quote(waittime) }}m
 
 # Display the current status of the cluster
 # Shows version, cluster info, and nodes
@@ -394,7 +394,7 @@ export-named-kubeconfig name duration_hours="24":
     #!/usr/bin/env bash
     set -euo pipefail
     kops export kubeconfig --kubeconfig="{{ name }}.yaml" \
-        --admin={{ duration_hours }}h
+        --admin={{ quote(duration_hours) }}h
 
 # Export a kubeconfig file with a given name and custom hour duration
 
@@ -1810,7 +1810,7 @@ preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_
         bad "SSH public key" "not found: ${ssh_pub}"
     else
         ssh_dir_canon="$(cd "$(dirname "${ssh_pub}")" 2>/dev/null && pwd)"
-        expected_ssh_canon="$(cd "{{ invocation_directory() }}/credentials/${p}" 2>/dev/null && pwd)"
+        expected_ssh_canon="$(cd "{{ quote(invocation_directory()) }}/credentials/${p}" 2>/dev/null && pwd)"
         if [ "${ssh_dir_canon}" != "${expected_ssh_canon}" ]; then
             bad "SSH key isolation" "parent directory (${ssh_dir_canon}) != expected (credentials/${p})"
         else

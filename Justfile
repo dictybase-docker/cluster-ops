@@ -79,22 +79,22 @@ install-tool name version:
     # 1. Plugin present? Auto-install if missing.
     # Note: no grep -q here — -q exits on first match, SIGPIPEs asdf (rc 141),
     # and pipefail would flip the branch. -x + >/dev/null reads all output.
-    if ! asdf plugin list | grep -x '{{ name }}' >/dev/null; then
+    if ! asdf plugin list | grep -x '{{ quote(name) }}' >/dev/null; then
         echo "Installing asdf plugin {{ name }}..."
-        asdf plugin add '{{ name }}'
+        asdf plugin add '{{ quote(name) }}'
     fi
 
     # 2. Binary installed? Install WITHOUT setting any version.
-    if ! asdf list '{{ name }}' '{{ version }}' 2>/dev/null | tr -d ' *' | grep -x '{{ version }}' >/dev/null; then
+    if ! asdf list '{{ quote(name) }}' '{{ quote(version) }}' 2>/dev/null | tr -d ' *' | grep -x '{{ quote(version) }}' >/dev/null; then
         echo "Installing {{ name }} {{ version }}..."
-        asdf install '{{ name }}' '{{ version }}'
+        asdf install '{{ quote(name) }}' '{{ quote(version) }}'
     else
         echo "{{ name }} {{ version }} already installed"
     fi
 
     # 3. Set version in the active tool versions file — single-line edit only.
     echo "Setting {{ name }} {{ version }} in ${versions_file}..."
-    asdf set '{{ name }}' '{{ version }}'
+    asdf set '{{ quote(name) }}' '{{ quote(version) }}'
     echo "Done: {{ name }} {{ version }} → ${versions_file}"
 
 # Install every tool pinned in the active tool versions file.
@@ -223,8 +223,8 @@ build-publish-backup-image ref user pass: setup
     #!/usr/bin/env bash
     set -euxo pipefail
 
-    {{ dagger_bin }} call -m {{ container_module }} \
-    with-ref --ref={{ ref }} \
+    {{ quote(dagger_bin) }} call -m {{ quote(container_module) }} \
+    with-ref --ref={{ quote(ref) }} \
     with-repository --repository dictybase-docker/cluster-ops \
     with-dockerfile --docker-file build/package/Dockerfile \
     with-image --image database-backup \
@@ -345,7 +345,7 @@ create-cluster-env env="" cluster="" project="" credentials="" ssh_key="" kubeco
         pulumi_creds="{{ justfile_directory() }}/credentials/${project_id}/pulumi-manager.json"
     fi
 
-    region="$(grep -E '^[[:space:]]*region:' "{{ justfile_directory() }}/config/kops/${cluster_name}/cluster.yaml" 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
+    region="$(grep -E '^[[:space:]]*region:' "{{ quote(justfile_directory()) }}/config/kops/${cluster_name}/cluster.yaml" 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
     [ -z "${region}" ] && region="us-central1"
 
     pulumi_kms="{{ pulumi_secret_provider }}"
@@ -577,10 +577,10 @@ initialize-pulumi project_id="" keyring_name key_name bucket_name location="us-c
     export PULUMI_GCP_CREDENTIALS="${PWD}/credentials/pulumi-manager.json"
 
     echo "Step 3: Creating Key Ring and Key for Pulumi secrets encryption"
-    just gcp-kms create-keyring-and-key --project-id "${project_id}" --keyring-name {{ keyring_name }} --key-name {{ key_name }} --credentials-file credentials/pulumi-manager.json --location {{ location }}
+    just gcp-kms create-keyring-and-key --project-id "${project_id}" --keyring-name {{ quote(keyring_name) }} --key-name {{ quote(key_name) }} --credentials-file credentials/pulumi-manager.json --location {{ quote(location) }}
 
     echo "Step 4: Initializing Pulumi State Store"
-    just gcp-pulumi pulumi-gcs-setup --sa-json-path credentials/pulumi-manager.json --gcs-bucket {{ bucket_name }} --location {{ location }}
+    just gcp-pulumi pulumi-gcs-setup --sa-json-path credentials/pulumi-manager.json --gcs-bucket {{ quote(bucket_name) }} --location {{ quote(location) }}
     echo "Pulumi deployment environment setup completed successfully!"
 
 # Setup Pulumi deployment environment
@@ -612,12 +612,12 @@ pulumi-init-and-deploy stack from-stack project_id="" keyring_name key_name buck
         exit 1
     fi
 
-    just initialize-pulumi --project-id "${project_id}" --keyring-name {{ keyring_name }} --key-name {{ key_name }} --bucket-name {{ bucket_name }} --location {{ location }}
+    just initialize-pulumi --project-id "${project_id}" --keyring-name {{ quote(keyring_name) }} --key-name {{ quote(key_name) }} --bucket-name {{ quote(bucket_name) }} --location {{ quote(location) }}
     export PULUMI_SECRET_PROVIDER="gcpkms://projects/${project_id}/locations/{{ location }}/keyRings/{{ keyring_name }}/cryptoKeys/{{ key_name }}"
 
     echo "Creating Initial Resources"
-    just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/initial-resources.txt"
-    just gcp-pulumi create-multiple-resources --stack {{ stack }} --from-stack {{ from-stack }} --resources-file "./pulumi-files/database-and-storage-resources.txt"
+    just gcp-pulumi create-multiple-resources --stack {{ quote(stack) }} --from-stack {{ quote(from-stack) }} --resources-file "./pulumi-files/initial-resources.txt"
+    just gcp-pulumi create-multiple-resources --stack {{ quote(stack) }} --from-stack {{ quote(from-stack) }} --resources-file "./pulumi-files/database-and-storage-resources.txt"
 
 # ── verification & setup helpers ───────────────────────────────────────────────
 

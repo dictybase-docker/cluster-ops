@@ -9,8 +9,8 @@
 _wait-for-port port retries="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    for i in $(seq 1 {{ retries }}); do
-        if nc -z localhost {{ port }} 2>/dev/null; then
+    for i in $(seq 1 {{ quote(retries) }}); do
+        if nc -z localhost {{ quote(port) }} 2>/dev/null; then
             echo "Port-forward established on localhost:{{ port }}."
             exit 0
         fi
@@ -25,7 +25,7 @@ _wait-for-port port retries="30":
 _discover-arango-svc namespace="dev":
     #!/usr/bin/env bash
     set -euo pipefail
-    SVC=$(kubectl get svc -n {{ namespace }} --no-headers \
+    SVC=$(kubectl get svc -n {{ quote(namespace) }} --no-headers \
         -o custom-columns=":metadata.name" \
         | grep "^arangodb-single-" | head -n1)
     if [[ -z "$SVC" ]]; then
@@ -206,14 +206,14 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     mkdir -p "{{ output_dir }}"
 
     echo "Fetching credentials from secret 'backend'..."
-    DB_USER=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.user}' | base64 -d)
-    PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ namespace }} -o jsonpath='{.data.password}' | base64 -d)
+    DB_USER=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ quote(namespace) }} -o jsonpath='{.data.user}' | base64 -d)
+    PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ quote(namespace) }} -o jsonpath='{.data.password}' | base64 -d)
 
     echo "Starting port-forward to service/{{ service }}..."
     # Kill any existing port-forward on this port to avoid conflicts
     lsof -ti:8529 | xargs kill -9 2>/dev/null || true
 
-    KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ namespace }} service/{{ service }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ quote(namespace) }} service/{{ quote(service) }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
     just arangodb _wait-for-port --port ${LOCAL_PORT}
@@ -227,7 +227,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     echo "Running arangodump in Docker container..."
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${PWD}/${DUMP_DIR}:/dump" \
-        arangodb/arangodb:{{ image_tag }} \
+        arangodb/arangodb:{{ quote(image_tag) }} \
         arangodump \
         --server.endpoint "$ENDPOINT" \
         --server.username "$DB_USER" \
@@ -269,17 +269,17 @@ list-restic-snapshots bucket="restic-arangodb-backup-dcr-experiments" namespace=
     trap cleanup EXIT
 
     echo "Fetching restic password from cluster..."
-    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.resticPass}' | base64 -d)
+    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ quote(namespace) }} -o jsonpath='{.data.resticPass}' | base64 -d)
 
     echo "Fetching GCS credentials from cluster..."
-    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ quote(namespace) }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
 
     echo "Listing restic snapshots in gs://{{ bucket }}..."
     if [[ -n "{{ latest }}" ]]; then
         RESTIC_REPOSITORY="gs:{{ bucket }}:/" \
         RESTIC_PASSWORD="$RESTIC_PASSWORD" \
         GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_FILE" \
-        restic snapshots | { head -2; tail -n $(( {{ latest }} + 1 )); }
+        restic snapshots | { head -2; tail -n $(( {{ latest }} + 1 )); }  # lint-recipes:allow-unquoted-interp (arithmetic context)
     else
         RESTIC_REPOSITORY="gs:{{ bucket }}:/" \
         RESTIC_PASSWORD="$RESTIC_PASSWORD" \
@@ -313,10 +313,10 @@ restore-latest-snapshot bucket="restic-arangodb-backup-dcr-experiments" namespac
     trap cleanup EXIT
 
     echo "Fetching restic password from cluster..."
-    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.resticPass}' | base64 -d)
+    RESTIC_PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ quote(namespace) }} -o jsonpath='{.data.resticPass}' | base64 -d)
 
     echo "Fetching GCS credentials from cluster..."
-    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ namespace }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
+    KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret dictycr -n {{ quote(namespace) }} -o jsonpath='{.data.gcsCredentials}' | base64 -d > "$GCS_CREDS_FILE"
 
     mkdir -p "{{ output_dir }}"
 
@@ -363,11 +363,11 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
-    just k3d export-kubeconfig --name {{ cluster_name }} --output "$KUBECONFIG_FILE"
+    just k3d export-kubeconfig --name {{ quote(cluster_name) }} --output "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
     echo "Reading desired root password from 'arangodb-pass' secret..."
-    NEW_ROOT_PASS=$(kubectl get secret arangodb-pass -n {{ namespace }} \
+    NEW_ROOT_PASS=$(kubectl get secret arangodb-pass -n {{ quote(namespace) }} \
         -o jsonpath='{.data.password}' | base64 -d)
     if [[ -z "$NEW_ROOT_PASS" ]]; then
         echo "Error: 'arangodb-pass' secret has an empty password field."
@@ -375,13 +375,13 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     fi
 
     echo "Discovering ArangoDB service in namespace '{{ namespace }}'..."
-    ARANGO_SVC=$(just arangodb _discover-arango-svc {{ namespace }})
+    ARANGO_SVC=$(just arangodb _discover-arango-svc {{ quote(namespace) }})
     echo "Found service: $ARANGO_SVC"
 
     lsof -ti:${LOCAL_PORT} | xargs kill -9 2>/dev/null || true
 
     echo "Starting port-forward to service/$ARANGO_SVC..."
-    kubectl port-forward -n {{ namespace }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
+    kubectl port-forward -n {{ quote(namespace) }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
     PF_PID=$!
 
     just arangodb _wait-for-port --port ${LOCAL_PORT}
@@ -397,14 +397,14 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     fi
 
     echo "Fetching operator JWT secret for superuser access..."
-    kubectl get secret arangodb-jwt -n {{ namespace }} \
+    kubectl get secret arangodb-jwt -n {{ quote(namespace) }} \
         -o jsonpath='{.data.token}' | base64 -d > "$JWT_FILE"
 
     echo "Restoring databases from '{{ input_dir }}'..."
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${DUMP_DIR}:/dump" \
         -v "${JWT_FILE}:/jwt.secret:ro" \
-        arangodb/arangodb:{{ image_tag }} \
+        arangodb/arangodb:{{ quote(image_tag) }} \
         arangorestore \
         --server.endpoint "$ENDPOINT" \
         --server.jwt-secret-keyfile /jwt.secret \
@@ -419,7 +419,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${JWT_FILE}:/jwt.secret:ro" \
         -e "ARANGO_NEW_PASS=${NEW_ROOT_PASS}" \
-        arangodb/arangodb:{{ image_tag }} \
+        arangodb/arangodb:{{ quote(image_tag) }} \
         arangosh \
         --server.endpoint "$ENDPOINT" \
         --server.jwt-secret-keyfile /jwt.secret \
@@ -458,14 +458,14 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     trap cleanup EXIT
 
     echo "Exporting k3d kubeconfig..."
-    just k3d export-kubeconfig --name {{ cluster_name }} --output "$KUBECONFIG_FILE"
+    just k3d export-kubeconfig --name {{ quote(cluster_name) }} --output "$KUBECONFIG_FILE"
     export KUBECONFIG="$KUBECONFIG_FILE"
 
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
 
     echo "Creating local stacks..."
-    just local-pulumi new-stack --folder arangodb-operator --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
-    just local-pulumi new-stack --folder arangodb-single --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
+    just local-pulumi new-stack --folder arangodb-operator --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
+    just local-pulumi new-stack --folder arangodb-single --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
 
     echo "Setting arangodb-operator config..."
     pulumi -C arangodb-operator config set-all --stack "{{ stack }}" --path \
@@ -485,10 +485,10 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
         --secret "arangodb-single:properties.secret.password=$ROOT_PASSWORD"
 
     echo "Deploying arangodb-operator..."
-    just local-pulumi create-resource --folder arangodb-operator --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
+    just local-pulumi create-resource --folder arangodb-operator --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
 
     echo "Deploying arangodb-single..."
-    just local-pulumi create-resource --folder arangodb-single --stack {{ stack }} --pass-entry {{ quote(pass_entry) }}
+    just local-pulumi create-resource --folder arangodb-single --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
 
 # Configure the arangodb-restore stack in one non-interactive command.
 # Resolves every value the restore Job needs, then runs ensure-stack plus one
