@@ -33,14 +33,8 @@ type Finding struct {
 	Detail string
 }
 
-// warn reports whether the finding is advisory only. unquoted-interp starts
-// warn-only: ~75 pre-existing bare interpolations across the repo are repo
-// debt (most are trusted identifiers like {{ namespace }}), and mass-quoting
-// without executing the recipes risks breaking them. Promote to fail after
-// a dedicated quote() pass clears the inventory.
-func (f Finding) warn() bool {
-	return f.Rule == RulePortForwardNoTrap || f.Rule == RuleUnquotedInterp
-}
+// warn reports whether the finding is advisory only.
+func (f Finding) warn() bool { return f.Rule == RulePortForwardNoTrap }
 
 // dump mirrors the subset of `just --dump --dump-format json` the linter reads.
 type dump struct {
@@ -156,46 +150,78 @@ func scanComment(line string) int {
 	return -1
 }
 
-// unsafeInterp reports whether the interpolation at line[i:] is unsafe at
-// the given double-quote depth: unsafe markers and literal {{...}} count;
-// safeInterpMarker (quote()-wrapped) never does.
-func unsafeInterp(line string, i, depth int) (unsafe bool, skip int) {
+// interpContext tracks the double-quote state of one nesting level: the
+// base line or a $( ) command substitution, whose quotes are independent
+// of the outer line's quotes.
+type interpContext struct{ inDQ bool }
+
+// interpOutsideQuotes reports whether an interpolation occurs while, at its
+// innermost quoting context, double quotes are not active. It recognizes
+// the flattened markers and literal `{{...}}` text, but never flags
+// safeInterpMarker (quote()-wrapped calls are safe bare). Interpolation
+// inside single quotes still evaluates, so it is flagged too.
+func interpOutsideQuotes(line string) bool {
+	stack := []interpContext{{}}
+	for i := 0; i < len(line); i++ {
+		if step, consumed := interpStep(line, i, &stack); consumed >= 0 {
+			i += consumed
+			if step {
+				return true
+			}
+			continue
+		}
+	}
+	return false
+}
+
+// interpStep consumes one scanner decision at index i: it reports whether an
+// unsafe interpolation starts there and how many extra bytes the scanner
+// should skip (0 to advance one byte normally). Consumed < 0 means the byte
+// needs no interp handling.
+func interpStep(line string, i int, stack *[]interpContext) (unsafe bool, skip int) {
+	top := &(*stack)[len(*stack)-1]
 	switch {
 	case line[i] == safeInterpMarker[0]:
 		return false, 0
 	case line[i] == interpMarker[0]:
-		return depth == 0, 0
+		return !top.inDQ, 0
 	case strings.HasPrefix(line[i:], "{{"):
-		if depth == 0 {
-			return true, 0
-		}
-		if end := strings.Index(line[i:], "}}"); end >= 0 {
-			return false, end + 1 // resume after the closing braces
-		}
-		return false, 0
+		return literalInterp(line[i:], &(*stack)[len(*stack)-1])
+	case line[i] == '$' && strings.HasPrefix(line[i:], "$("):
+		return false, enterSubshell(stack)
+	case line[i] == ')':
+		exitSubshell(stack)
+	case line[i] == '"' && (i == 0 || line[i-1] != '\\'):
+		top.inDQ = !top.inDQ
 	}
-	return false, 0
+	return false, -1
 }
 
-// interpOutsideQuotes reports whether an interpolation occurs while
-// double-quote depth is zero. It recognizes the flattened markers and
-// literal `{{...}}` text, but never flags safeInterpMarker (quote()-wrapped
-// calls are safe bare). Interpolation inside single quotes still evaluates,
-// so it is flagged too.
-func interpOutsideQuotes(line string) bool {
-	depth := 0
-	for i := 0; i < len(line); i++ {
-		if line[i] == '"' && (i == 0 || line[i-1] != '\\') {
-			depth = 1 - depth
-			continue
-		}
-		if unsafe, skip := unsafeInterp(line, i, depth); unsafe {
-			return true
-		} else if skip > 0 {
-			i += skip
-		}
+// enterSubshell pushes a fresh quoting context for a $( ...) substitution and
+// reports the 1-byte skip over the '$'.
+func enterSubshell(stack *[]interpContext) int {
+	*stack = append(*stack, interpContext{})
+	return 1
+}
+
+// exitSubshell pops the innermost $( ...) quoting context.
+func exitSubshell(stack *[]interpContext) {
+	if len(*stack) > 1 {
+		*stack = (*stack)[:len(*stack)-1]
 	}
-	return false
+}
+
+// literalInterp classifies a literal `{{...}}` at the start of rest: unsafe
+// when the current context is outside double quotes; otherwise it skips to
+// past the closing braces when one is present.
+func literalInterp(rest string, ctx *interpContext) (bool, int) {
+	if !ctx.inDQ {
+		return true, 0
+	}
+	if end := strings.Index(rest, "}}"); end >= 0 {
+		return false, end + 1
+	}
+	return false, 0
 }
 
 var allowRe = regexp.MustCompile(`lint-recipes:allow-([a-z-]+)`)

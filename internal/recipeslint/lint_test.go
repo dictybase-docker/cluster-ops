@@ -99,6 +99,25 @@ func TestSuppressions(t *testing.T) {
 	require.Equal(t, RuleMktempNoX, findings[0].Rule)
 }
 
+func TestUnquotedInterpFails(t *testing.T) {
+	r := mkRecipe(
+		"#!/usr/bin/env bash",
+		"set -euo pipefail",
+		"kubectl get cm {{name}}",
+	)
+	findings := checkRecipe("t", r)
+	require.Len(t, findings, 1)
+	require.False(t, findings[0].warn(), "unquoted-interp must fail now that the quote() pass is done")
+
+	// quote()-wrapped interpolation stays safe (two-part line: literal + call node)
+	rSafe := recipe{Shebang: true, Body: [][]any{
+		{"#!/usr/bin/env bash"},
+		{"set -euo pipefail"},
+		{"kubectl get cm ", []any{"call", "quote", []any{"variable", "name"}}},
+	}}
+	require.Empty(t, checkRecipe("t", rSafe))
+}
+
 func TestPortForwardWarn(t *testing.T) {
 	r := mkRecipe(
 		"#!/usr/bin/env bash",

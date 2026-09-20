@@ -23,7 +23,7 @@ analyze-roles project_id="" sa_name credentials output_file="role_analysis_outpu
     ./bin/gcp-tools analyze-roles \
         --project-id=${project_id} \
         --service-account="$sa_email" \
-        --credentials={{ credentials }} \
-        --output={{ output_file }}
+        --credentials={{ quote(credentials) }} \
+        --output={{ quote(output_file) }}
 
     echo "Analysis complete. Results saved to {{ output_file }}"

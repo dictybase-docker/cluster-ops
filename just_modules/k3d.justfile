@@ -71,6 +71,6 @@ minio-forward name=cluster_name namespace='dev' local_port='9000':
     set -euo pipefail
     f=$(mktemp /tmp/k3d-kubeconfig-XXXX.yaml)
     trap 'rm -f "$f"' EXIT
-    k3d kubeconfig get {{ name }} > "$f"
+    k3d kubeconfig get {{ quote(name) }} > "$f"
     echo "Port-forwarding MinIO → localhost:{{ local_port }} (press Ctrl-C to stop)"
-    KUBECONFIG="$f" kubectl port-forward svc/minio {{ local_port }}:9000 -n {{ namespace }}
+    KUBECONFIG="$f" kubectl port-forward svc/minio {{ quote(local_port) }}:9000 -n {{ quote(namespace) }}

@@ -7,7 +7,7 @@ pulumi-local-setup path="pulumi-files/local-state":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{ path }}"
-    pulumi login "file://$(realpath "{{ path }}")"
+    pulumi login "file://$(realpath "{{ quote(path) }}")"
     echo "Pulumi has been set up to use local directory {{ path }} as the backend."
 
 # Create a new Pulumi Go project using the local backend.
@@ -31,14 +31,14 @@ new-project folder stack="local" pass_entry="pulumi/local-passphrase": pulumi-lo
     export PULUMI_CONFIG_PASSPHRASE="$PASSPHRASE"
 
     pulumi new go \
-        --name "$(basename "{{ folder }}")" \
+        --name "$(basename "{{ quote(folder) }}")" \
         --description "A minimal Go Pulumi program" \
         --stack "{{ stack }}" \
         --secrets-provider passphrase \
         --dir "{{ folder }}" \
         --yes
 
-    echo "Project '$(basename "{{ folder }}")' created in {{ folder }} with stack '{{ stack }}'."
+    echo "Project '$(basename "{{ quote(folder) }}")' created in {{ quote(folder) }} with stack '{{ quote(stack) }}'."
 
 # Create a new local stack in a given folder.
 # Usage: just local-pulumi new-stack --folder <dir> [--stack <name>] [--pass-entry <entry>]

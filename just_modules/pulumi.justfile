@@ -93,11 +93,11 @@ ensure-stack folder stack="":
         echo "ERROR: no stack name — set PULUMI_STACK (via cluster env) or pass --stack."
         exit 1
     fi
-    if pulumi -C {{ folder }} stack select "${stack_name}" &>/dev/null; then
+    if pulumi -C {{ quote(folder) }} stack select "${stack_name}" &>/dev/null; then
         echo "Selected existing stack '${stack_name}' in {{ folder }}."
     elif [ -f "{{ folder }}/Pulumi.${stack_name}.yaml" ]; then
         echo "Stack '${stack_name}' not found in {{ folder }}. Initializing from Pulumi.${stack_name}.yaml..."
-        pulumi -C {{ folder }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
+        pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
     else
         echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml to initialize it from." >&2
         echo "       Initializing would create an empty stack and fail at preview with 'missing required configuration variable'." >&2
@@ -153,7 +153,7 @@ preview folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} -s "${stack_name}" preview
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" preview
 
 # Create a new Pulumi stack in a given folder.
 # Usage: just gcp-pulumi new-stack --folder <dir> [--stack <name>]
@@ -166,7 +166,7 @@ new-stack folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} stack init "${stack_name}" --secrets-provider ${PULUMI_SECRET_PROVIDER}
+    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider ${PULUMI_SECRET_PROVIDER}
 
 # Create a new stack in a folder copied from an existing stack's config.
 # Usage: just gcp-pulumi new-stack-from --folder <dir> [--stack <name>] [--from-stack <name>]
@@ -180,7 +180,7 @@ new-stack-from folder stack="" from-stack="experiments":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} stack init "${stack_name}" --copy-config-from {{ from-stack }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
+    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --copy-config-from {{ quote(from-stack) }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
 
 # Deploy resources for a stack.
 # Usage: just gcp-pulumi create-resource --folder <dir> [--stack <name>]
@@ -193,7 +193,7 @@ create-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} up -s "${stack_name}" -f -y
+    pulumi -C {{ quote(folder) }} up -s "${stack_name}" -f -y
 
 # Destroy resources for a stack.
 # Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>]
@@ -206,7 +206,7 @@ remove-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} destroy -s "${stack_name}" -f -y
+    pulumi -C {{ quote(folder) }} destroy -s "${stack_name}" -f -y
 
 # Remove a stack, preserving its config.
 # Usage: just gcp-pulumi cleanup-resource --folder <dir> [--stack <name>]
@@ -219,7 +219,7 @@ cleanup-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ folder }} stack rm -s "${stack_name}" --preserve-config --force --yes
+    pulumi -C {{ quote(folder) }} stack rm -s "${stack_name}" --preserve-config --force --yes
 
 # Create resources for multiple projects listed in a file.
 # Usage: just gcp-pulumi create-multiple-resources --stack <name> --from-stack <name> --resources-file <path>

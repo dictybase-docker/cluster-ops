@@ -1012,7 +1012,7 @@ reset-cluster reset_data="no" cluster="logto" namespace="prod" app_password="" r
     pods_gone() {
         [[ -z "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]]
     }
-    for ((i = 1; i <= {{ retries }}; i++)); do
+    for ((i = 1; i <= {{ quote(retries) }}; i++)); do
         pods_gone && break
         sleep "{{ interval }}"
     done

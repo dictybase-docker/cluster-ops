@@ -76,9 +76,9 @@ create-sa-key project="" sa_name key_file:
     go build -o ./bin/cluster-ops ./cmd/cluster-ops
 
     ./bin/cluster-ops sa create-key \
-      --name={{ sa_name }} \
+      --name={{ quote(sa_name) }} \
       --project="${project_id}" \
-      --output-file={{ key_file }} \
+      --output-file={{ quote(key_file) }} \
 
     echo "Service account key created and saved to {{ key_file }}"
 
@@ -105,7 +105,7 @@ sa-details project_id="" sa_name output_file:
     echo "Fetching details for service account: $sa_email in project: ${project_id}"
     echo "Output will be saved to: {{ output_file }}"
 
-    mkdir -p "$(dirname "{{ output_file }}")"
+    mkdir -p "$(dirname "{{ quote(output_file) }}")"
 
     gcloud iam service-accounts describe "$sa_email" \
     --project="${project_id}" \
@@ -144,7 +144,7 @@ create-hmac-key project="" sa_name output_file:
 
     echo "HMAC key created. Access ID and secret saved to {{ output_file }}"
 
-    echo "Access ID: $(jq -r .accessId {{ output_file }})"
+    echo "Access ID: $(jq -r .accessId {{ quote(output_file) }})"
     echo "Secret: [HIDDEN]"
 
 # Create the sa-manager service account, assign all 13 manager roles, and generate a key.
@@ -199,7 +199,7 @@ setup-sa-manager project_id="" key_file="":
 
     # 2. Assign all 13 manager roles
     echo "=== Step 2/3: Assigning roles from ${roles_file} ==="
-    just gcp-role assign-roles-to-sa --project ${project_id} --sa-name ${sa_name} --roles-file {{ invocation_directory() }}/${roles_file}
+    just gcp-role assign-roles-to-sa --project ${project_id} --sa-name ${sa_name} --roles-file {{ quote(invocation_directory()) }}/${roles_file}
 
     # 3. Create and download a JSON key (pure gcloud CLI — no ADC needed)
     echo "=== Step 3/3: Generating key file ==="

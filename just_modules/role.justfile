@@ -18,13 +18,13 @@ extract-roles-custom project_id="" sa_name output_file:
     echo "Extracting roles for service account: $sa_email in project: ${project_id}"
     echo "Output will be saved to: {{ output_file }}"
 
-    mkdir -p $(dirname {{ output_file }})
+    mkdir -p $(dirname {{ quote(output_file) }})
 
     gcloud projects get-iam-policy ${project_id} --format=json | \
     jq -r '.bindings[] |
     select(.members[] | contains("serviceAccount:'"$sa_email"'")) |
     select(.role | startswith("roles/")) |
-    .role' > {{ output_file }}
+    .role' > {{ quote(output_file) }}
 
     echo "Roles have been extracted and saved to {{ output_file }}"
 
