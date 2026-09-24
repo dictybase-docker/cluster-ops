@@ -43,7 +43,10 @@ just cluster-env --env <source-env> --cluster <source-cluster>
 # 2. Grant the role and mint the key
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
 
-# 3. Return to this cluster's environment for the rest of the guide
+# 3. Read app username only (save output for finalize-bootstrap)
+just arangodb source-app-user --namespace <source-namespace>
+
+# 4. Return to this cluster's environment for the rest of the guide
 just cluster-env --env prod --cluster <prod-cluster>
 ```
 
@@ -126,6 +129,8 @@ To run the two halves separately — for instance to review the config before ap
 
 ## 6. After the Restore
 
+Run [Finalize Import](#finalize-import) first. It resets restore config, rotates credentials, and verifies app access; then confirm the checks below.
+
 1. **Confirm data landed.** The Job shows `Completed`, the `arangorestore` log lists databases created and restored, and a spot check finds documents:
 
    ```bash
@@ -143,18 +148,23 @@ To run the two halves separately — for instance to review the config before ap
 3. **Do not run the loaders** after a successful bootstrap — they would overwrite restored graphs. The one exception is a database that was genuinely absent from the dump.
 4. **Remove the local source SA JSON** if you no longer need it. After bootstrap, ongoing backups use `dictycr` and this cluster's own bucket; `deploy-backup` aborts if it finds `dictycr-source` configured, so the bootstrap identity cannot be shared back in.
 
-## Fix Authentication
+## Finalize Import
 
-The restore runs with `--include-system-collections`, so it brings the source's `_users` along with the data. Two consequences:
-
-**`root` now carries the source's password.** Reset it to this cluster's `arangodb-pass` Secret:
+The restore includes source `_users`, so root and the application user both carry source credentials. Run one required post-import recipe with the imported app username and a **new destination-only password**:
 
 ```bash
-just arangodb reset-root-password
+just arangodb finalize-bootstrap \
+  --app-user '<existing-app-user>' \
+  --app-password '<new-destination-app-password>'
 ```
 
-**The source's application user came along too.** If it is missing, or its password is not what your services expect, (re)create it — and Secret `backend` — with the recipe in [databases.md](databases.md#when-to-run-this):
+The recipe runs these four steps, in order:
 
-```bash
-just arangodb create-databases --app-user '<user>' --app-password '<password>'
-```
+1. Reset `arangodb-restore` config to this cluster's own bucket, `dictycr`, and locking enabled.
+2. Reset root password from this cluster's `arangodb-pass` Secret.
+3. Keep imported app username, set new app password in ArangoDB, update Pulumi-owned Secret `backend`, and reapply configured `rw` grants. **Does not create databases** — import already restored them.
+4. Authenticate as app user against every configured database.
+
+Reruns are safe: each Pulumi Job gets a unique run id. Before creating the next one, recipes remove prior Jobs with no running containers and refresh Pulumi state; a Job with a running container stops preflight. Passwords remain in Pulumi secret config and Kubernetes Secrets, not container arguments.
+
+`reset-root-password` and `configure-app-credentials` remain available as individual recovery steps. Use `create-databases` only for a missing logical database or the loader path in [databases.md](databases.md#when-to-run-this).

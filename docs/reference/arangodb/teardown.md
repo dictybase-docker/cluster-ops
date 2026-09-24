@@ -27,6 +27,7 @@ Order of operations:
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--namespace` | Yes | Target namespace |
+| `--operator-namespace` | No | `prod` | Namespace holding kube-arangodb; override for custom installs |
 | `--delete-pvcs` | No | Omit to leave leftover disks (warning, exit 0). Set `yes` to delete |
 
 Stack comes from `$PULUMI_STACK`.

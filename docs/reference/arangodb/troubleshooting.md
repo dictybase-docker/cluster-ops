@@ -13,7 +13,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 | Quorum loss after drain | No PDB | Drain via operator |
 | Loader Pending after taint | Job has no toleration | Add toleration or use `stateless-web` |
 | App cannot connect | Wrong host or secret | [Cluster details](cluster.md) DNS + Secret `backend` |
-| `deploy-operator` fails `namespaces "operators" not found` | `namespace-bootstrap` stack never applied | `just gcp-pulumi apply-namespaces` ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)) |
+| `deploy-operator` fails `namespaces "prod" not found` | `namespace-bootstrap` stack never applied | `just gcp-pulumi apply-namespaces` ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)) |
 | DB Job 401 | Root password mismatch | Secret `arangodb-pass` vs stack config |
 | Bootstrap 401 `cannot create server connection: forbidden` from the start | Operator never set root — Secret `arangodb-pass` lacks the `username` key (kube-arangodb requires `username` + `password`); operator log shows `invalid secret format in secret arangodb-pass` | Add `username: root` to the Secret, poke the operator (any spec change), then check `POST /_open/auth` returns 200. Fixed at source in `arangodb-cluster/main.go` (Secret now carries both keys) |
 | Backup permission error | Missing bucket or `dictycr` | [Backup details](backup.md) |
@@ -32,7 +32,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 | restic `repository does not exist` | Wrong `--bucket`, or the source repo uses a path prefix so the URI is not `gs:<bucket>:/` | Confirm with `just arangodb list-source-snapshots --bucket <b>`; check the source backup's actual repository URI |
 | `snapshot not found`, or recipe rejects the id | Typo, or `latest` / non-hex value | `just arangodb list-source-snapshots ...` and pass a full id (8–64 lowercase hex) |
 | `confirmTarget must exactly equal` during bootstrap | Hand-edited stack config | Re-run `just arangodb configure-bootstrap ...` |
-| `create-databases` 401 after bootstrap | Restored `_users` replaced `root`, so Secret `arangodb-pass` no longer matches | Run `just arangodb reset-root-password`, then re-run `create-databases` |
+| `create-databases` 401 after import | Restored `_users` replaced `root`, so Secret `arangodb-pass` no longer matches | Run `just arangodb finalize-bootstrap --app-user <existing-user> --app-password <new-destination-password>`; it resets root before rotating app credentials |
 | `configure-source-secrets` fails: namespace `prod` missing | `source_backup_secrets` creates no namespaces by design | Run `just gcp-pulumi apply-namespaces` first ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)); `dictycr` then comes from `configure-backup-secrets` ([§2](../../arangodb-deploy.md#2-prerequisites)) |
 | `deploy-backup` aborts naming `dictycr-source` | Backup stack still points at the read-only bootstrap identity | Set the three secret names back to `dictycr`; never back up through the source identity |
 | A later DR drill reads the **source** bucket | Bootstrap overlay was never reset | `just arangodb reset-restore-config` (`bootstrap-from-snapshot` does this from a `trap`) |

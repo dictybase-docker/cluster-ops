@@ -6,13 +6,15 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 **Not a required step in the normal flow.** The first load in [deploy guide §4](../../arangodb-deploy.md#4-import-data) creates the databases itself (`arangorestore --create-database true --all-databases`) along with the source's collections and users, so nothing needs to pre-create them.
 
-This recipe is for when something is missing anyway — a database the dump did not contain, an application user or Secret `backend` you need to (re)create after `--include-system-collections` restored the source's `_users`, or the loader path in [deploy guide §4.3](../../arangodb-deploy.md#43-alternative-loaders), where the databases must exist before the loaders write into them. Safe to run against databases that already exist.
+Use `create-databases` only when a logical database is missing or for the loader path in [deploy guide §4.3](../../arangodb-deploy.md#43-alternative-loaders). After a successful import, use [Finalize Import](bootstrap.md#finalize-import) to rotate the imported app user's password and update Secret `backend`; it reapplies grants without creating databases. `create-databases` remains safe against databases that already exist.
 
 ## What It Does
 
 `create-arangodb-databases/Pulumi.dcr-kube1.yaml` creates:
 - Secret `backend` (keys `user`, `password`)
-- One-shot Job `backend-create-databases` (label `app=arangodb-create-databases`)
+- One-shot Job `backend-create-databases-<run-id>` (label `app=arangodb-create-databases`)
+
+`configure-app-credentials` uses the same Pulumi project and owns the same Secret `backend`; its `backend-configure-app-credentials-<run-id>` Job rotates the existing app user's password and reapplies grants without creating databases. It sets `createDatabases=false`; the `create-databases` recipe explicitly enables database creation again.
 
 ### Job Structure
 
@@ -34,9 +36,9 @@ just arangodb create-databases --app-user '<app-user>' --app-password '<app-pass
 ## Behavior
 
 1. Runs `ensure-stack`
-2. Single `pulumi config set-all --path` writes `properties.arangodbSecret.user` and `.pass` as encrypted secrets
+2. `pulumi config set-all --path` writes `properties.arangodbSecret.user` and `.pass` as encrypted secrets, enables database creation, and sets a unique run ID
 3. Runs `preview` → `create-resource`
-4. Waits for Job, prints Secret `backend`
+4. Waits for the unique Job, prints Secret `backend`
 
 ## Flags
 
@@ -49,9 +51,10 @@ Both required — `Pulumi.dcr-kube1.yaml` ships `name`/`userkey`/`passkey` but n
 
 ## Job Lifecycle
 
-- Name derived from `properties.arangodbSecret.name` (`backend` in prod), matching `main.go`'s `"<name>-create-databases"`
-- `ttlSecondsAfterFinished: 900` — vanishes 15 minutes after finishing
-- Recipe treats a Job it observed as done if it disappears mid-wait
+- Each run uses a unique Job name with run ID; previous Jobs remain available for logs until next run
+- No TTL — Job remains available for logs and Pulumi state reconciliation
+- Before the next run, recipe removes prior Jobs with no running containers and refreshes Pulumi state (including older TTL-deleted Jobs)
+- Refuses to replace a matching Job while a container is running
 - Default budget: `--retries 60 --interval 10`
 
 ## Scope

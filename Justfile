@@ -173,13 +173,21 @@ test-tool-versions:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-tool-versions.sh"
 
+# Test ArangoDB post-import orchestration with mocked Kubernetes/Pulumi calls.
+[group('dev-tools')]
+[no-cd]
+test-arangodb-finalization:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-arangodb-finalization.sh"
+
 # Run every mechanical gate: recipe lint, docs lint, contract tests, go build.
 # One gate for humans and agents; CI runs the same command.
 # No cloud credentials, Docker daemon, or asdf needed.
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint

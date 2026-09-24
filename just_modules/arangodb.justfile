@@ -100,9 +100,66 @@ _wait-ready namespace selector count="1" retries="90" interval="10":
     kubectl get pods -n "$NS" -l "$SEL" -o wide || true
     exit 1
 
+# Read-only guard: allow replacing queued/terminated Jobs, but never interrupt
+# a pod with a running container.
+[arg("namespace", long="namespace", short="n", help="Namespace containing Jobs")]
+[arg("selector", long="selector", short="l", help="Job label selector")]
+[group('arangodb')]
+[private]
+[no-cd]
+_assert-no-running-jobs namespace selector:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SELECTOR={{ quote(selector) }}
+    jobs=$(kubectl get jobs -n "$NS" -l "$SELECTOR" -o json | jq -r '.items[]?.metadata.name')
+    while IFS= read -r job; do
+        [[ -z "$job" ]] && continue
+        pods=$(kubectl get pods -n "$NS" -l "job-name=$job" -o json)
+        running=$(printf '%s\n' "$pods" | jq '[.items[] | .status.initContainerStatuses[]?.state.running, .status.containerStatuses[]?.state.running] | map(select(. != null)) | length > 0')
+        if [[ "$running" == "true" ]]; then
+            echo "Error: Job '$job' in '$NS' still has a running container; wait before replacing it." >&2
+            exit 1
+        fi
+    done <<< "$jobs"
+
+# Reconcile prior Pulumi Job state, remove only Jobs with no running containers,
+# then let the next update create unique per-run Job resource.
+[arg("folder", long="folder", short="f", help="Pulumi project folder owning the Job")]
+[arg("namespace", long="namespace", short="n", help="Namespace containing matching Jobs")]
+[arg("selector", long="selector", short="l", help="Label selector for the Job family")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name")]
+[group('arangodb')]
+[private]
+[no-cd]
+_refresh-before-job folder namespace selector stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER={{ quote(folder) }}
+    NS={{ quote(namespace) }}
+    SELECTOR={{ quote(selector) }}
+    STACK={{ quote(stack) }}
+
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
+    just arangodb _assert-no-running-jobs --namespace "$NS" --selector "$SELECTOR"
+    jobs=$(kubectl get jobs -n "$NS" -l "$SELECTOR" -o json | jq -r '.items[]?.metadata.name')
+    while IFS= read -r job; do
+        [[ -z "$job" ]] && continue
+        kubectl delete job -n "$NS" "$job" --wait=true
+    done <<< "$jobs"
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" refresh --stack "$STACK" --yes
+
 # Wait for a Job to succeed. Fails fast (and tails logs) if the Job fails.
-# A Job that disappears after we have already seen it counts as done — these
-# Jobs set ttlSecondsAfterFinished and the GC can win the race.
+# A Job that disappears after we have already seen it counts as done —
+# `reset-root-password` and `create-arangodb-databases` Jobs retain state until
+# the next run; restore Jobs retain their TTL cleanup.
 # Usage: just arangodb _wait-job --namespace <ns> --job <name> [--retries <n>] [--interval <s>]
 [arg("namespace", long="namespace", short="n", help="Kubernetes namespace holding the Job")]
 [arg("job", long="job", short="j", help="Job name")]
@@ -689,10 +746,10 @@ _remove-pvcs namespace:
 # Usage: just arangodb _report-clean --namespace <ns> [--delete-pvcs yes] [--operator-namespace <ns>]
 [arg("namespace", long="namespace", short="n", help="Namespace that held the ArangoDeployment")]
 [arg("delete_pvcs", long="delete-pvcs", pattern="yes|no", help="Whether leftover PVCs are a failure")]
-[arg("operator_namespace", long="operator-namespace", help="Namespace that held the operator")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace that held the operator (default prod)")]
 [group('arangodb')]
 [no-cd]
-_report-clean namespace delete_pvcs="no" operator_namespace="operators":
+_report-clean namespace delete_pvcs="no" operator_namespace="prod":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -764,10 +821,10 @@ _report-clean namespace delete_pvcs="no" operator_namespace="operators":
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("retries", long="retries", short="r", help="Probe attempts per wait (default 36)")]
 [arg("interval", long="interval", short="i", help="Seconds between probes (default 5)")]
-[arg("operator_namespace", long="operator-namespace", help="Namespace that holds the operator")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace that holds the operator (default prod)")]
 [group('arangodb')]
 [no-cd]
-teardown namespace delete_pvcs="no" stack="" retries="36" interval="5" operator_namespace="operators":
+teardown namespace delete_pvcs="no" stack="" retries="36" interval="5" operator_namespace="prod":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -916,7 +973,7 @@ create-databases app_user app_password namespace="prod" stack="" retries="60" in
     set -euo pipefail
 
     FOLDER="create-arangodb-databases"
-    NS="{{ namespace }}"
+    NS={{ quote(namespace) }}
     APP_USER={{ quote(app_user) }}
     APP_PASSWORD={{ quote(app_password) }}
 
@@ -924,25 +981,192 @@ create-databases app_user app_password namespace="prod" stack="" retries="60" in
         echo "Error: --app-user and --app-password are both required." >&2
         exit 1
     fi
+    if [[ "$APP_USER" == "root" ]]; then
+        echo "Error: --app-user must not be the root administrator." >&2
+        exit 1
+    fi
 
-    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    STACK_CONFIG="$FOLDER/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$STACK_CONFIG" ]]; then
+        echo "Error: stack config '$STACK_CONFIG' is missing." >&2
+        exit 1
+    fi
+    SECRET_NAME=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.name // "backend"' "$STACK_CONFIG")
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: target namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+    if ! kubectl get secret arangodb-pass -n "$NS" -o json | jq -e '.data.password != null' >/dev/null; then
+        echo "Error: admin Secret arangodb-pass is missing its password key in '$NS'." >&2
+        exit 1
+    fi
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
 
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just arangodb _refresh-before-job --folder "$FOLDER" --namespace "$NS" \
+        --selector app=arangodb-create-databases --stack "$STACK"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$"
     pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "$FOLDER:properties.createDatabases=true" \
+        --plaintext "$FOLDER:properties.runId=$RUN_ID" \
         --secret "$FOLDER:properties.arangodbSecret.user=$APP_USER" \
         --secret "$FOLDER:properties.arangodbSecret.pass=$APP_PASSWORD"
 
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
-    # Job name is "<arangodbSecret.name>-create-databases" (main.go createJob).
-    SECRET_NAME=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.arangodbSecret.name 2>/dev/null || echo "backend")
-    just arangodb _wait-job --namespace "$NS" --job "${SECRET_NAME}-create-databases" \
+    JOB="${SECRET_NAME}-create-databases-${RUN_ID}"
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
         --retries "{{ retries }}" --interval "{{ interval }}"
 
     echo
     kubectl get secret -n "$NS" "$SECRET_NAME"
+    echo "Job '$JOB' retained for logs; next run replaces it."
+
+# Rotate the imported application user's password and update Secret `backend`.
+# Re-applies rw grants but does not create databases; Pulumi-owned backend Secret
+# stays in the existing create-arangodb-databases stack.
+# Usage: just arangodb configure-app-credentials --app-user <user> --app-password <new-destination-password> [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("app_user", long="app-user", short="u", help="Imported application username to keep")]
+[arg("app_password", long="app-password", short="p", help="New destination-only application password (stored encrypted)")]
+[arg("namespace", long="namespace", short="n", help="Namespace the Job runs in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 60)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+configure-app-credentials app_user app_password namespace="prod" stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="create-arangodb-databases"
+    NS={{ quote(namespace) }}
+    APP_USER={{ quote(app_user) }}
+    APP_PASSWORD={{ quote(app_password) }}
+
+    if [[ -z "$APP_USER" || -z "$APP_PASSWORD" ]]; then
+        echo "Error: --app-user and --app-password are both required." >&2
+        exit 1
+    fi
+    if [[ "$APP_USER" == "root" ]]; then
+        echo "Error: --app-user must not be the root administrator." >&2
+        exit 1
+    fi
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: target namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+    if ! kubectl get secret arangodb-pass -n "$NS" -o json | jq -e '.data.password != null' >/dev/null; then
+        echo "Error: admin Secret arangodb-pass is missing its password key in '$NS'." >&2
+        exit 1
+    fi
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
+    ROOT_PASSWORD=$(kubectl get secret arangodb-pass -n "$NS" -o jsonpath='{.data.password}' | base64 -d)
+    if [[ -z "$ROOT_PASSWORD" || "$APP_PASSWORD" == "$ROOT_PASSWORD" ]]; then
+        echo "Error: app password must be non-empty and different from the root password." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    STACK_CONFIG="$FOLDER/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$STACK_CONFIG" ]]; then
+        echo "Error: stack config '$STACK_CONFIG' is missing." >&2
+        exit 1
+    fi
+    SECRET_NAME=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.name // "backend"' "$STACK_CONFIG")
+    if [[ -z "$SECRET_NAME" ]]; then
+        echo "Error: app Secret name is missing from '$STACK_CONFIG'." >&2
+        exit 1
+    fi
+    DATABASES=$(yq -r '.config."create-arangodb-databases:properties".databases[]' "$STACK_CONFIG")
+    if [[ -z "$DATABASES" ]]; then
+        echo "Error: no app databases are configured in '$STACK_CONFIG'." >&2
+        exit 1
+    fi
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just arangodb _refresh-before-job --folder "$FOLDER" --namespace "$NS" \
+        --selector app=arangodb-create-databases --stack "$STACK"
+
+    RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "$FOLDER:properties.createDatabases=false" \
+        --plaintext "$FOLDER:properties.runId=$RUN_ID" \
+        --secret "$FOLDER:properties.arangodbSecret.user=$APP_USER" \
+        --secret "$FOLDER:properties.arangodbSecret.pass=$APP_PASSWORD"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    JOB="${SECRET_NAME}-configure-app-credentials-${RUN_ID}"
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo
+    kubectl get secret -n "$NS" "$SECRET_NAME"
+    echo "Application password updated; database creation disabled, grants re-applied."
+    echo "Job '$JOB' retained for logs; next run replaces it."
+
+# Verify destination application credentials can connect to every configured DB.
+# Runs short-lived `arangosh` pods with values read from Secret `backend`.
+# Usage: just arangodb verify-app-credentials [--namespace <ns>] [--stack <name>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB and Secret backend")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[no-cd]
+verify-app-credentials namespace="prod" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    CONFIG="create-arangodb-databases/Pulumi.${STACK}.yaml"
+    CLUSTER_CONFIG="arangodb-cluster/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$CONFIG" || ! -f "$CLUSTER_CONFIG" ]]; then
+        echo "Error: stack config is missing for '$STACK'." >&2
+        exit 1
+    fi
+    SECRET_NAME=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.name' "$CONFIG")
+    USER_KEY=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.userkey' "$CONFIG")
+    PASS_KEY=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.passkey' "$CONFIG")
+    ARANGO_VERSION=$(yq -r '.config."arangodb-cluster:properties".version' "$CLUSTER_CONFIG")
+    DATABASES=$(yq -r '.config."create-arangodb-databases:properties".databases[]' "$CONFIG")
+    if [[ -z "$SECRET_NAME" || -z "$USER_KEY" || -z "$PASS_KEY" || -z "$ARANGO_VERSION" || -z "$DATABASES" ]]; then
+        echo "Error: app Secret keys, ArangoDB version, or database list missing from stack config." >&2
+        exit 1
+    fi
+    kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -e --arg user "$USER_KEY" --arg pass "$PASS_KEY" '.data[$user] != null and .data[$pass] != null' >/dev/null
+
+    while IFS= read -r DB; do
+        [[ -z "$DB" ]] && continue
+        POD_DB="${DB//_/-}"
+        POD="arango-app-check-${POD_DB}-$(date -u +%s)-$$"
+        OVERRIDES=$(jq -nc \
+            --arg name "$POD" --arg image "arangodb:${ARANGO_VERSION}" \
+            --arg secret "$SECRET_NAME" --arg user_key "$USER_KEY" \
+            --arg pass_key "$PASS_KEY" --arg db "$DB" \
+            '{spec:{containers:[{name:$name,image:$image,command:["arangosh"],
+              args:["--server.endpoint","http+tcp://arangodb:8529",
+                    "--server.username","$(APP_USER)",
+                    "--server.password","$(APP_PASSWORD)",
+                    "--server.database",$db,
+                    "--javascript.execute-string","db._query(\"RETURN 1\").toArray(); print(\"application access verified\");"],
+              env:[{name:"APP_USER",valueFrom:{secretKeyRef:{name:$secret,key:$user_key}}},
+                   {name:"APP_PASSWORD",valueFrom:{secretKeyRef:{name:$secret,key:$pass_key}}}]}],
+              restartPolicy:"Never"}}')
+        echo "Verifying app access to database '$DB'..."
+        kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
+            --image "arangodb:${ARANGO_VERSION}" --overrides="$OVERRIDES"
+    done <<< "$DATABASES"
+    echo "Application credentials verified on all configured databases."
 
 # Reset the ArangoDB root password to the value in the destination cluster's
 # 'arangodb-pass' secret. Required after a cross-project bootstrap restores
@@ -959,22 +1183,154 @@ reset-root-password namespace="prod" stack="" retries="60" interval="10":
     set -euo pipefail
 
     FOLDER="reset-root-password"
-    NS="{{ namespace }}"
-    JOB="arangodb-reset-root-password"
+    NS={{ quote(namespace) }}
 
-    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: target namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+    if ! kubectl get secret arangodb-pass -n "$NS" -o json | jq -e '.data.password != null' >/dev/null || \
+       ! kubectl get secret arangodb-jwt -n "$NS" -o json | jq -e '.data.token != null' >/dev/null; then
+        echo "Error: arangodb-pass.password or arangodb-jwt.token is missing in '$NS'." >&2
+        exit 1
+    fi
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
 
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just arangodb _refresh-before-job --folder "$FOLDER" --namespace "$NS" \
+        --selector app=arangodb-reset-root-password --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "$FOLDER:properties.runId=$RUN_ID"
+
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
+    JOB="arangodb-reset-root-password-${RUN_ID}"
     just arangodb _wait-job --namespace "$NS" --job "$JOB" \
         --retries "{{ retries }}" --interval "{{ interval }}"
 
     echo
     echo "Root password reset log:"
     kubectl logs -n "$NS" "job/$JOB" --tail=20 || \
-        echo "Job already removed by TTL — check for successful login."
+        echo "Job logs unavailable — check root login before proceeding."
+    echo "Job '$JOB' retained for logs; next run replaces it."
+
+# Complete the required post-import setup in one rerunnable action:
+# reset restore config, reset root, rotate the imported app user's password,
+# then verify app access against every configured database.
+# Usage: just arangodb finalize-bootstrap --app-user <existing-user> --app-password <new-destination-password> [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("app_user", long="app-user", short="u", help="Imported application username to keep")]
+[arg("app_password", long="app-password", short="p", help="New destination-only application password (stored encrypted)")]
+[arg("namespace", long="namespace", short="n", help="Production destination namespace (currently prod)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 60)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+finalize-bootstrap app_user app_password namespace="prod" stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    APP_USER={{ quote(app_user) }}
+    APP_PASSWORD={{ quote(app_password) }}
+    NS={{ quote(namespace) }}
+
+    # Preflight the entire workflow before the first Pulumi config mutation.
+    if [[ -z "$APP_USER" || -z "$APP_PASSWORD" ]]; then
+        echo "Error: --app-user and --app-password are both required." >&2
+        exit 1
+    fi
+    if [[ "$APP_USER" == "root" ]]; then
+        echo "Error: --app-user must not be the root administrator." >&2
+        exit 1
+    fi
+    if [[ "$NS" != "prod" ]]; then
+        echo "Error: finalize-bootstrap currently supports the prod destination only." >&2
+        exit 1
+    fi
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    if [[ ! -r "${PULUMI_GCP_CREDENTIALS:-}" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "Error: yq is required to validate stack configuration." >&2
+        exit 1
+    fi
+    for folder in arangodb-restore reset-root-password create-arangodb-databases arangodb-cluster; do
+        if [[ ! -f "$folder/Pulumi.${STACK}.yaml" ]]; then
+            echo "Error: missing stack config $folder/Pulumi.${STACK}.yaml." >&2
+            exit 1
+        fi
+    done
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: destination namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+    kubectl get secret arangodb-pass -n "$NS" -o json | jq -e '.data.username and .data.password' >/dev/null
+    ROOT_USER=$(kubectl get secret arangodb-pass -n "$NS" -o jsonpath='{.data.username}' | base64 -d)
+    ROOT_PASSWORD=$(kubectl get secret arangodb-pass -n "$NS" -o jsonpath='{.data.password}' | base64 -d)
+    if [[ "$ROOT_USER" != "root" || -z "$ROOT_PASSWORD" ]]; then
+        echo "Error: arangodb-pass must contain username=root and a non-empty password." >&2
+        exit 1
+    fi
+    if [[ "$APP_PASSWORD" == "$ROOT_PASSWORD" ]]; then
+        echo "Error: application password must differ from destination root password." >&2
+        exit 1
+    fi
+    kubectl get secret arangodb-jwt -n "$NS" -o json | jq -e '.data.token | length > 0' >/dev/null
+    kubectl get secret dictycr -n "$NS" >/dev/null
+    restore_active=$(kubectl get jobs -n "$NS" -l app=arangodb-restore -o json | jq '[.items[]? | select((.status.active // 0) > 0)] | length')
+    if (( restore_active > 0 )); then
+        echo "Error: a bootstrap restore Job is still active in '$NS'; wait for import to finish before finalizing." >&2
+        exit 1
+    fi
+    APP_CONFIG="create-arangodb-databases/Pulumi.${STACK}.yaml"
+    DATABASES=$(yq -r '.config."create-arangodb-databases:properties".databases[]' "$APP_CONFIG")
+    if [[ -z "$DATABASES" ]]; then
+        echo "Error: no application databases configured in '$APP_CONFIG'." >&2
+        exit 1
+    fi
+    for selector in app=arangodb-restore app=arangodb-reset-root-password app=arangodb-create-databases; do
+        just arangodb _assert-no-running-jobs --namespace "$NS" --selector "$selector"
+    done
+
+    echo "1/4 Resetting restore stack to this cluster's own backup config..."
+    just arangodb reset-restore-config --stack "$STACK"
+    RESTORE_CONFIG="arangodb-restore/Pulumi.${STACK}.yaml"
+    RESTORE_BUCKET=$(yq -r '.config."arangodb-restore:properties".bucket' "$RESTORE_CONFIG")
+    RESTORE_SECRET=$(yq -r '.config."arangodb-restore:properties".resticSecret.name' "$RESTORE_CONFIG")
+    RESTORE_BUCKET_SECRET=$(yq -r '.config."arangodb-restore:properties".bucketSecret.name' "$RESTORE_CONFIG")
+    RESTORE_PROJECT_SECRET=$(yq -r '.config."arangodb-restore:properties".projectSecret.name' "$RESTORE_CONFIG")
+    RESTORE_NO_LOCK=$(yq -r '.config."arangodb-restore:properties".noLock' "$RESTORE_CONFIG")
+    if [[ "$RESTORE_BUCKET" != "restic-arangodb-backup-prod" || \
+          "$RESTORE_SECRET" != "dictycr" || \
+          "$RESTORE_BUCKET_SECRET" != "dictycr" || \
+          "$RESTORE_PROJECT_SECRET" != "dictycr" || \
+          "$RESTORE_NO_LOCK" != "false" ]]; then
+        echo "Error: restore stack did not reset to destination bucket/Secret/locking defaults." >&2
+        exit 1
+    fi
+
+    echo "2/4 Resetting root password to destination arangodb-pass..."
+    just arangodb reset-root-password --namespace "$NS" --stack "$STACK" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo "3/4 Rotating app password and refreshing backend Secret..."
+    just arangodb configure-app-credentials \
+        --app-user "$APP_USER" --app-password "$APP_PASSWORD" \
+        --namespace "$NS" --stack "$STACK" \
+        --retries "{{ retries }}" --interval "{{ interval }}"
+
+    echo "4/4 Verifying app login and database access..."
+    just arangodb verify-app-credentials --namespace "$NS" --stack "$STACK"
+    echo "Post-import setup complete. Next: just arangodb deploy-backup, then just arangodb verify."
 
 # Create the backup writer service account in THIS cluster's GCP project and
 # mint credentials/<project-id>/backup-gcs-sa.json — the key file
@@ -1170,6 +1526,46 @@ configure-backup-secrets restic_password setup_sa="true" gcs_project="" gcs_key_
 # Create Secret `dictycr-source`: the READ-ONLY identity for the cross-project
 # first load (docs/arangodb-deploy.md §4). Creates no namespaces — `prod` must
 # already exist from namespace-bootstrap (just gcp-pulumi apply-namespaces).
+# Print source app username from Secret `backend`, without revealing password.
+# Run inside the SOURCE cluster's active `just cluster-env` shell.
+# Usage: just arangodb source-app-user --namespace <ns> [--secret backend]
+[arg("namespace", long="namespace", short="n", help="Namespace containing the source application Secret")]
+[arg("secret", long="secret", short="s", help="Secret name (default backend)")]
+[group('arangodb')]
+[no-cd]
+source-app-user namespace secret="backend":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SECRET={{ quote(secret) }}
+    if [[ -z "$NS" || -z "$SECRET" ]]; then
+        echo "Error: --namespace and --secret must be non-empty." >&2
+        exit 1
+    fi
+    if [[ -z "${CLUSTER_ENV:-}" || -z "${CLUSTER_NAME:-}" || \
+          -z "${KUBECONFIG:-}" || ! -r "$KUBECONFIG" ]]; then
+        echo "Error: enter the source cluster with 'just cluster-env' before reading its app username." >&2
+        exit 1
+    fi
+    if ! secret_json=$(kubectl get secret "$SECRET" -n "$NS" -o json 2>&1); then
+        echo "Error: unable to read Secret '$SECRET' in namespace '$NS': $secret_json" >&2
+        exit 1
+    fi
+    if ! user_b64=$(printf '%s\n' "$secret_json" | jq -er '.data.user | strings' 2>/dev/null); then
+        echo "Error: Secret '$SECRET' in '$NS' is missing a valid 'user' key." >&2
+        exit 1
+    fi
+    if [[ -z "$user_b64" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' has an empty 'user' value." >&2
+        exit 1
+    fi
+    if ! app_user=$(printf '%s' "$user_b64" | base64 -d 2>/dev/null) || [[ -z "$app_user" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' has an invalid or empty 'user' value." >&2
+        exit 1
+    fi
+    printf '%s\n' "$app_user"
+
 # Usage: just arangodb configure-source-secrets --restic-password <pw> --gcs-project <source-id> --gcs-key-file <path> [--key-name <k>] [--secret-name <n>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="SOURCE restic repository password (required; may differ from the dictycr one)")]
 [arg("gcs_project", long="gcs-project", short="g", help="SOURCE GCP project id that owns the source bucket (required; NOT this cluster's project)")]
@@ -1727,10 +2123,8 @@ bootstrap-from-snapshot namespace bucket snapshot="" server="" restore_id="" sec
     echo
     echo "Bootstrap restore finished. Next steps:"
     echo "  1. Spot-check a restored database has documents."
-    echo "  2. just arangodb reset-root-password (returns root to destination's arangodb-pass)"
-    echo "  3. just arangodb create-databases --app-user '<user>' --app-password '<password>'"
-    echo "     (creates app user if missing, requires working root first)."
-    echo "  4. Continue with just arangodb deploy-backup (uses dictycr, never dictycr-source)."
+    echo "  2. just arangodb finalize-bootstrap --app-user '<existing-user>' --app-password '<new-destination-password>'"
+    echo "  3. just arangodb deploy-backup (uses dictycr, never dictycr-source)."
 
 # Internal: run `restic snapshots --json` against <bucket> as a throwaway pod
 # in <namespace>, using resticPass/gcsProject/gcsCredentials from <secret>.
@@ -1931,13 +2325,13 @@ check-pool pool="database" node_count="3":
 # Prints one line per check and exits non-zero if a required check fails.
 # Usage: just arangodb verify [--namespace <ns>] [--operator-namespace <ns>] [--members <n>] [--pool <label>] [--node-count <n>]
 [arg("namespace", long="namespace", short="n", help="Namespace holding the ArangoDeployment")]
-[arg("operator_namespace", long="operator-namespace", help="Namespace holding the operator")]
+[arg("operator_namespace", long="operator-namespace", help="Namespace holding the operator (default prod; override for custom installs)")]
 [arg("members", long="members", short="m", help="Expected member pod count (default 9)")]
 [arg("pool", long="pool", short="p", help="Value of the node label 'pool' (default database)")]
 [arg("node_count", long="node-count", short="c", help="Expected node count in that pool (default 3)")]
 [group('arangodb')]
 [no-cd]
-verify namespace="prod" operator_namespace="operators" members="9" pool="database" node_count="3":
+verify namespace="prod" operator_namespace="prod" members="9" pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -2027,11 +2421,11 @@ verify namespace="prod" operator_namespace="operators" members="9" pool="databas
     total_dbjobs=$(kubectl get jobs -n "$NS" -l app=arangodb-create-databases -o json 2>/dev/null \
         | jq '.items | length' || echo 0)
     if [[ "$dbjobs" -ge 1 ]]; then
-        ok "create-databases Job succeeded"
+        ok "application credential/database setup Job succeeded"
     elif [[ "$total_dbjobs" -eq 0 ]]; then
-        warn "no create-databases Job found — it has a 15-minute TTL, check Secret 'backend' instead"
+        warn "no application setup Job found — confirm import and Secret 'backend' state"
     else
-        bad "create-databases Job present but not succeeded"
+        bad "application setup Job present but not succeeded"
     fi
 
     if kubectl get cronjob -n "$NS" arangodb-backup-cronjob >/dev/null 2>&1; then

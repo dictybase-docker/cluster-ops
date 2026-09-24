@@ -18,7 +18,7 @@ just arangodb verify
 |---|-------|-------------|---------|
 | 1 | Pool size | 3 nodes labelled `pool=database` | FAIL |
 | 2 | Pool taint | every pool node carries `dedicated=database:NoSchedule` | FAIL |
-| 3 | Operator | at least one Running pod `app.kubernetes.io/name=kube-arangodb` in `operators` | FAIL |
+| 3 | Operator | at least one Running pod `app.kubernetes.io/name=kube-arangodb` in operator namespace (default `prod`) | FAIL |
 | 4 | StorageClasses | both `dictycr-balanced` and `dictycr-ssd` exist | FAIL |
 | 5 | Cluster CR | `ArangoDeployment/arangodb` exists in `prod` | FAIL |
 | 6 | Members | 9 pods `arango_deployment=arangodb` Running with all containers ready | FAIL |
@@ -43,7 +43,7 @@ Checks 7 and 8 assert the [resource shape](pool-requirements.md#arangodb-resourc
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
 | `--namespace` | No | `prod` | Namespace holding the ArangoDeployment, member pods, PVCs, Service and Jobs |
-| `--operator-namespace` | No | `operators` | Namespace holding the kube-arangodb pod |
+| `--operator-namespace` | No | `prod` | Namespace holding the kube-arangodb pod; override for custom installs |
 | `--members` | No | `9` | Expected ready member pods (3 agents + 3 dbservers + 3 coordinators) |
 | `--pool` | No | `database` | Value of the node label `pool` and of the `dedicated` taint |
 | `--node-count` | No | `3` | Expected nodes in that pool |

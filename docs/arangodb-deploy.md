@@ -14,7 +14,7 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
   - [3.2 Cluster](#32-cluster)
 - [4. Import Data](#4-import-data)
   - [4.1 Bootstrap from Snapshot](#41-bootstrap-from-snapshot)
-  - [4.2 Fix Authentication](#42-fix-authentication)
+  - [4.2 Finalize Import](#42-finalize-import)
   - [4.3 Alternative: Loaders](#43-alternative-loaders)
 - [5. Backup & Restore](#5-backup--restore)
   - [5.1 Deploy Backup](#51-deploy-backup)
@@ -49,6 +49,7 @@ just arangodb deploy-cluster --root-password '<root-password>'
 # pass it explicitly to skip stack lookup)
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
+just arangodb source-app-user --namespace <source-namespace>
 
 # 4b. First load — back in this cluster's environment
 just cluster-env --env prod --cluster <prod-cluster>
@@ -59,6 +60,8 @@ just arangodb configure-source-secrets \
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
 # --snapshot omitted: uses the newest snapshot; pin an id for an auditable RPO
 just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
+# Rotate root + app credentials; choose new destination-only app password
+just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 
 # 5. Deploy backup (immediate job + cronjob)
 just arangodb deploy-backup
@@ -69,7 +72,7 @@ just arangodb verify
 
 Optional steps:
 ```bash
-# Databases / application user by hand — the first load already creates them
+# Create missing databases only — import already brings data and users
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 # Loaders — reserved for a future revision, no production stack config yet
@@ -118,7 +121,7 @@ just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 
 ### 3.1 Operator
 
-Installs `kube-arangodb` Helm chart into `operators` namespace.
+Installs `kube-arangodb` Helm chart into `prod` app namespace.
 → [Operator details](reference/arangodb/operator.md)
 
 ```bash
@@ -145,11 +148,12 @@ Sections 1–3 give you a running, **empty** cluster — no application database
 Production first load is a cross-project restic bootstrap: the in-cluster restore Job (restic → arangorestore) reads a snapshot straight out of a GCS bucket owned by a **different GCP project**.
 → [Bootstrap details](reference/arangodb/bootstrap.md)
 
-**In the SOURCE cluster's environment:**
+**In the SOURCE cluster's environment** — grant reader and capture app username for finalization:
 
 ```bash
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
+just arangodb source-app-user --namespace <source-namespace>
 ```
 
 `--bucket` may be omitted — it defaults to `properties.bucket` from the
@@ -174,13 +178,13 @@ just arangodb bootstrap-from-snapshot \
 # to fix the recovery point at a chosen moment)
 ```
 
-### 4.2 Fix Authentication
+### 4.2 Finalize Import
 
-The restore brings the source's `_users`, so `root` now carries the **source's** password. Reset it to this cluster's `arangodb-pass`.
-→ [Fix authentication](reference/arangodb/bootstrap.md#fix-authentication)
+One required setup after import: reset root, rotate imported app password to a new destination-only value, update Secret `backend`, and verify database access. Use username printed in source environment above.
+→ [Post-import details](reference/arangodb/bootstrap.md#finalize-import)
 
 ```bash
-just arangodb reset-root-password
+just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 ```
 
 ### 4.3 Alternative: Loaders
@@ -247,7 +251,7 @@ just arangodb verify
 
 ## 9. Optional: Databases by Hand
 
-**Not part of the normal flow — skip on a first install.** Run only when a database, the application user, or Secret `backend` is missing after the import.
+**Not part of the normal flow — skip on a first install.** Run only when a logical database is missing or using the loader path. Post-import user-password rotation and Secret `backend` updates belong to [Finalize Import](reference/arangodb/bootstrap.md#finalize-import).
 → [Databases details](reference/arangodb/databases.md)
 
 ```bash
