@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	A "github.com/IBM/fp-go/v2/array"
+	F "github.com/IBM/fp-go/v2/function"
 	batchv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/batch/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -12,8 +14,10 @@ import (
 )
 
 type ArangoDBConfig struct {
-	Namespace      string
-	ArangodbSecret struct {
+	Namespace       string
+	CreateDatabases *bool
+	RunID           string
+	ArangodbSecret  struct {
 		Name    string
 		User    string
 		Pass    string
@@ -32,6 +36,16 @@ type ArangoDBConfig struct {
 	}
 }
 
+func (cfg *ArangoDBConfig) applyDefaults() {
+	if cfg.CreateDatabases == nil {
+		createDatabases := true
+		cfg.CreateDatabases = &createDatabases
+	}
+	if cfg.RunID == "" {
+		cfg.RunID = "manual"
+	}
+}
+
 type ArangoDB struct {
 	Config *ArangoDBConfig
 }
@@ -45,10 +59,12 @@ func ReadConfig(ctx *pulumi.Context) (*ArangoDBConfig, error) {
 			err,
 		)
 	}
+	arangoConfig.applyDefaults()
 	return arangoConfig, nil
 }
 
 func NewArangoDB(config *ArangoDBConfig) *ArangoDB {
+	config.applyDefaults()
 	return &ArangoDB{
 		Config: config,
 	}
@@ -91,10 +107,7 @@ func (adb *ArangoDB) createSecret(ctx *pulumi.Context) (*corev1.Secret, error) {
 }
 
 func (adb *ArangoDB) createJob(ctx *pulumi.Context, secret *corev1.Secret) error {
-	jobName := fmt.Sprintf(
-		"%s-create-databases",
-		adb.Config.ArangodbSecret.Name,
-	)
+	jobName := adb.jobName()
 
 	_, err := batchv1.NewJob(ctx, jobName, &batchv1.JobArgs{
 		Metadata: adb.createMetadata(jobName),
@@ -107,13 +120,27 @@ func (adb *ArangoDB) createJob(ctx *pulumi.Context, secret *corev1.Secret) error
 	return nil
 }
 
+func (adb *ArangoDB) createsDatabases() bool {
+	return adb.Config.CreateDatabases == nil || *adb.Config.CreateDatabases
+}
+
+func (adb *ArangoDB) jobName() string {
+	operation := "configure-app-credentials"
+	if adb.createsDatabases() {
+		operation = "create-databases"
+	}
+	return fmt.Sprintf("%s-%s-%s", adb.Config.ArangodbSecret.Name, operation, adb.Config.RunID)
+}
+
 func (adb *ArangoDB) createJobSpec() *batchv1.JobSpecArgs {
+	// Keep completed Jobs until the next Pulumi run replaces them. A TTL can
+	// delete a Job while Pulumi still tracks it, making the next preview fail
+	// with a missing-resource error before it can recreate the Job.
 	return &batchv1.JobSpecArgs{
 		BackoffLimit: pulumi.Int(0),
 		Template: &corev1.PodTemplateSpecArgs{
 			Spec: adb.createPodSpec(),
 		},
-		TtlSecondsAfterFinished: pulumi.Int(900),
 	}
 }
 
@@ -121,22 +148,33 @@ func (adb *ArangoDB) createPodSpec() *corev1.PodSpecArgs {
 	initContainers := corev1.ContainerArray{
 		adb.createContainer("ensure-user", adb.ensureUserArgs()),
 	}
-	for _, db := range adb.Config.Databases {
-		initContainers = append(initContainers,
-			adb.createContainer(containerName("ensure-database", db), adb.ensureDatabaseArgs(db)))
+	if adb.createsDatabases() {
+		databaseContainers := F.Pipe1(
+			adb.Config.Databases,
+			A.Map(adb.ensureDatabaseContainer),
+		)
+		initContainers = append(initContainers, databaseContainers...)
 	}
-
-	grantContainers := make(corev1.ContainerArray, 0, len(adb.Config.Databases))
-	for _, db := range adb.Config.Databases {
-		grantContainers = append(grantContainers,
-			adb.createContainer(containerName("ensure-grant", db), adb.ensureGrantArgs(db)))
-	}
+	grantContainers := corev1.ContainerArray(F.Pipe1(
+		adb.Config.Databases,
+		A.Map(adb.ensureGrantContainer),
+	))
 
 	return &corev1.PodSpecArgs{
 		RestartPolicy:  pulumi.String("Never"),
 		InitContainers: initContainers,
 		Containers:     grantContainers,
 	}
+}
+
+func (adb *ArangoDB) ensureDatabaseContainer(dbName string) corev1.ContainerInput {
+	args := adb.ensureDatabaseArgs(dbName)
+	return adb.createContainer(containerName("ensure-database", dbName), args)
+}
+
+func (adb *ArangoDB) ensureGrantContainer(dbName string) corev1.ContainerInput {
+	args := adb.ensureGrantArgs(dbName)
+	return adb.createContainer(containerName("ensure-grant", dbName), args)
 }
 
 func containerName(prefix, dbName string) string {
@@ -153,17 +191,26 @@ func (adb *ArangoDB) createContainer(name string, args pulumi.StringArray) *core
 }
 
 func (adb *ArangoDB) ensureUserArgs() pulumi.StringArray {
-	return pulumi.StringArray{
-		pulumi.String("ensure-user"),
-		pulumi.String("--user"),
-		pulumi.String(adb.Config.ArangodbSecret.User),
-		pulumi.String("--password"),
-		pulumi.String(adb.Config.ArangodbSecret.Pass),
-		pulumi.String("--admin-password"),
-		pulumi.String("$(ARANGODB_PASSWORD)"),
-		pulumi.String("--password-policy"),
-		pulumi.String("always"),
-	}
+	// Kubernetes expands these env references at container start; keeping the
+	// password out of Args avoids copying it into the Pod spec and Job state.
+	return F.Pipe1(
+		[]string{
+			"ensure-user",
+			"--user",
+			"$(ARANGODB_USER)",
+			"--password",
+			"$(ARANGODB_APP_PASSWORD)",
+			"--admin-password",
+			"$(ARANGODB_PASSWORD)",
+			"--password-policy",
+			"always",
+		},
+		A.Map(toPulumiString),
+	)
+}
+
+func toPulumiString(value string) pulumi.StringInput {
+	return pulumi.String(value)
 }
 
 func (adb *ArangoDB) ensureDatabaseArgs(dbName string) pulumi.StringArray {
@@ -180,7 +227,7 @@ func (adb *ArangoDB) ensureGrantArgs(dbName string) pulumi.StringArray {
 	return pulumi.StringArray{
 		pulumi.String("ensure-grant"),
 		pulumi.String("--user"),
-		pulumi.String(adb.Config.ArangodbSecret.User),
+		pulumi.String("$(ARANGODB_USER)"),
 		pulumi.String("--database"),
 		pulumi.String(dbName),
 		pulumi.String("--grant"),
@@ -195,6 +242,12 @@ func (adb *ArangoDB) createEnvironmentVariables() corev1.EnvVarArray {
 		adb.createSecretEnvVar("ARANGODB_PASSWORD",
 			adb.Config.ArangodbCredentials.Name,
 			adb.Config.ArangodbCredentials.PassKey),
+		adb.createSecretEnvVar("ARANGODB_USER",
+			adb.Config.ArangodbSecret.Name,
+			adb.Config.ArangodbSecret.UserKey),
+		adb.createSecretEnvVar("ARANGODB_APP_PASSWORD",
+			adb.Config.ArangodbSecret.Name,
+			adb.Config.ArangodbSecret.PassKey),
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 type ResetRootConfig struct {
 	Namespace           string
+	RunID               string
 	Server              string
 	Port                int
 	ArangodbCredentials struct {
@@ -29,6 +30,9 @@ type ResetRootConfig struct {
 }
 
 func (c *ResetRootConfig) applyDefaults() {
+	if c.RunID == "" {
+		c.RunID = "manual"
+	}
 	if c.Server == "" {
 		c.Server = "arangodb"
 	}
@@ -70,6 +74,7 @@ func ReadConfig(ctx *pulumi.Context) (*ResetRootConfig, error) {
 }
 
 func NewResetRoot(config *ResetRootConfig) *ResetRoot {
+	config.applyDefaults()
 	return &ResetRoot{
 		Config: config,
 	}
@@ -83,7 +88,7 @@ func (rr *ResetRoot) Install(ctx *pulumi.Context) error {
 }
 
 func (rr *ResetRoot) createJob(ctx *pulumi.Context) error {
-	jobName := "arangodb-reset-root-password"
+	jobName := fmt.Sprintf("arangodb-reset-root-password-%s", rr.Config.RunID)
 
 	_, err := batchv1.NewJob(ctx, jobName, &batchv1.JobArgs{
 		Metadata: rr.createMetadata(jobName),
@@ -97,12 +102,14 @@ func (rr *ResetRoot) createJob(ctx *pulumi.Context) error {
 }
 
 func (rr *ResetRoot) createJobSpec() *batchv1.JobSpecArgs {
+	// Keep the completed Job for Pulumi state reconciliation. The next run
+	// changes RunID, so Pulumi can replace this resource before creating the
+	// next reset Job.
 	return &batchv1.JobSpecArgs{
 		BackoffLimit: pulumi.Int(0),
 		Template: &corev1.PodTemplateSpecArgs{
 			Spec: rr.createPodSpec(),
 		},
-		TtlSecondsAfterFinished: pulumi.Int(900), // 15 minutes
 	}
 }
 
