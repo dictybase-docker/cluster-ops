@@ -23,7 +23,7 @@ build-args go_ver arango_ver restic_ver:
 [arg("restic_ver", long="restic-ver", short="r", help="Restic version")]
 [group('docker')]
 [no-cd]
-build-backup tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
+build-backup tag="latest" go_ver="1.25" arango_ver="3.12.11" restic_ver="0.17.0":
     docker buildx build --platform {{ platform }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
         -f build/package/Dockerfile -t {{ image }}:{{ tag }} .
@@ -36,7 +36,7 @@ build-backup tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
 [arg("restic_ver", long="restic-ver", short="r", help="Restic version")]
 [group('docker')]
 [no-cd]
-build-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
+build-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.12.11" restic_ver="0.17.0":
     docker buildx build --platform {{ platform }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
         -f build/package/Dockerfile -t {{ ghcr_image }}:{{ tag }} .
@@ -49,7 +49,7 @@ build-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.1
 [arg("restic_ver", long="restic-ver", short="r", help="Restic version")]
 [group('docker')]
 [no-cd]
-push-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
+push-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.12.11" restic_ver="0.17.0":
     echo $GITHUB_REGISTRY_TOKEN | docker login ghcr.io -u {{ github_user }} --password-stdin
     docker buildx build --platform {{ platform }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
@@ -63,7 +63,7 @@ push-backup-ghcr tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17
 [arg("restic_ver", long="restic-ver", short="r", help="Restic version")]
 [group('docker')]
 [no-cd]
-push-backup-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
+push-backup-multi tag="latest" go_ver="1.25" arango_ver="3.12.11" restic_ver="0.17.0":
     docker buildx build --platform {{ platform_multi }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
         -f build/package/Dockerfile -t {{ image }}:{{ tag }} --push .
@@ -76,7 +76,7 @@ push-backup-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.1
 [arg("restic_ver", long="restic-ver", short="r", help="Restic version")]
 [group('docker')]
 [no-cd]
-push-backup-ghcr-multi tag="latest" go_ver="1.25" arango_ver="3.11.6" restic_ver="0.17.0":
+push-backup-ghcr-multi tag="latest" go_ver="1.25" arango_ver="3.12.11" restic_ver="0.17.0":
     echo $GITHUB_REGISTRY_TOKEN | docker login ghcr.io -u {{ github_user }} --password-stdin
     docker buildx build --platform {{ platform_multi }} \
         --build-arg GO_VERSION={{ go_ver }} --build-arg ARANGO_VERSION={{ arango_ver }} --build-arg RESTIC_VERSION={{ restic_ver }} \
