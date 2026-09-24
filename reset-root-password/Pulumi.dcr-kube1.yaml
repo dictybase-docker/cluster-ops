@@ -11,5 +11,7 @@ config:
       name: arangodb-jwt
       tokenKey: token
     image:
-      name: arangodb/arangodb
-      tag: 3.12.10.1
+      name: arangodb
+      tag: 3.12.11
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WINSjUi/meQ0bV6DtUkuibRJVIkfzbVK+MIHBoabWBtASSQDjx5R/jJecUokesyzgdqFlfi4nV1ksByRRaFqDq5qY+szUbhCvQrJtLnFwk92niP0/swvO0deSXxjETGW6zbca+qcTVJIwUTQ=

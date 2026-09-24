@@ -31,3 +31,14 @@ config:
     namespace: prod
     secret:
       name: dictycr-source
+      gcsProject:
+        secure: v1:0wFpDdeGFvsJ5w5b:ev66pd60j++tqTFrOc7JMXe9RuTgtmAXi5jYgBGOAw==
+      resticPass:
+        secure: v1:S/nQeo6M/po8bbWS:YqYhNPuXv+D7wAdSWLJShV06Hl2AWQa1Bha8XlZQ4SaBiCcLSyg=
+      serviceAccount:
+        filepath:
+          secure: v1:3I+6U+mZM/3XR9rI:dqMqpLhpbTiPKwJN9ii/scf0Hh3/ZSW7q1aQl0x+VLjTW6UMgppShpEqoTlFzzPPB1Q8ghboB8b76VaYqVPcQUY+b31gF2daFOJaBY7FkvJCYL9DbvQvG7ntMgucS/CtD6pkFuS3hl5YG1MoH0az77UKyqC4NWIG
+        keyname:
+          secure: v1:0B7BRcEYIePbT9pv:jDtV3JkXzqEPPSDp/mP73WKqG6Y922BwMfECv9BW
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIOjIjiKhiRijGSFPSyfdl3w3hfsAU/pdmZKZ/WN7AcsSSQDjx5R/HF/Ri4qBZGwNFAZxmGNEw0z5g95at1NYEl9SilXhaJdcpJpBhOJDVpCinwObva3DmuTcEDmj+n+AEqOd6dpUmuB/zec=
