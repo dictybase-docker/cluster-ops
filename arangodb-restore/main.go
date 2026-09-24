@@ -73,7 +73,19 @@ func (ar *ArangoRestore) createRestoreJob(
 }
 
 func (ar *ArangoRestore) createPodTemplateSpec() *corev1.PodTemplateSpecArgs {
+	// Labels MUST live on the pod template: the Job controller only copies
+	// job-name/controller-uid onto pods, not Job metadata labels. The wait
+	// loops in apply-restore select pods with -l restore-id=... — without
+	// template labels that selector matches nothing and the recipe waits
+	// forever on a finished Job.
+	cfg := ar.Config
 	return &corev1.PodTemplateSpecArgs{
+		Metadata: &metav1.ObjectMetaArgs{
+			Labels: pulumi.StringMap{
+				"app":        pulumi.String("arangodb-restore"),
+				"restore-id": pulumi.String(cfg.RestoreID),
+			},
+		},
 		Spec: &corev1.PodSpecArgs{
 			RestartPolicy: pulumi.String("Never"),
 			InitContainers: corev1.ContainerArray{
@@ -185,7 +197,7 @@ func (ar *ArangoRestore) createResticContainer() *corev1.ContainerArgs {
 
 // createArangorestoreContainer runs after the restic init container
 // completes. Command is overridden to "arangorestore" because the
-// arangodb/arangodb image's default entrypoint starts an arangod server, not
+// arangodb image's default entrypoint starts an arangod server, not
 // a restore client.
 func (ar *ArangoRestore) createArangorestoreContainer() *corev1.ContainerArgs {
 	cfg := ar.Config
@@ -209,7 +221,13 @@ func (ar *ArangoRestore) createArangorestoreContainer() *corev1.ContainerArgs {
 			&corev1.VolumeMountArgs{
 				Name:      pulumi.String(cfg.Storage.Name),
 				MountPath: pulumi.String(scratchMountPath),
-				ReadOnly:  pulumi.Bool(true),
+				// Must stay read-write: arangorestore probes the dump directory
+				// for an ENCRYPTION file and CREATES one when the open fails
+				// (it walks ext4's lost+found too). Read-only here is exactly
+				// how the Job dies with "failed to create file
+				// '/restore/arangodump/lost+found/ENCRYPTION': Read-only file
+				// system".
+				ReadOnly: pulumi.Bool(false),
 			},
 		},
 	}
