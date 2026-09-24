@@ -1566,6 +1566,50 @@ source-app-user namespace secret="backend":
     fi
     printf '%s\n' "$app_user"
 
+# Print a Secret value from the active (source) cluster environment.
+# Defaults to the restic repository password in Secret `dictycr` — the value
+# `configure-source-secrets` needs when importing from this cluster.
+# Prints the plain value; never logs or echoes it elsewhere.
+# Usage: just arangodb source-secret-value --namespace <ns> [--secret dictycr] [--key resticPass]
+[arg("namespace", long="namespace", short="n", help="Namespace containing the Secret")]
+[arg("secret", long="secret", short="s", help="Secret name (default dictycr)")]
+[arg("key", long="key", short="k", help="Secret data key (default resticPass)")]
+[group('arangodb')]
+[no-cd]
+source-secret-value namespace secret="dictycr" key="resticPass":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SECRET={{ quote(secret) }}
+    KEY={{ quote(key) }}
+    if [[ -z "$NS" || -z "$SECRET" || -z "$KEY" ]]; then
+        echo "Error: --namespace, --secret and --key must be non-empty." >&2
+        exit 1
+    fi
+    if [[ -z "${CLUSTER_ENV:-}" || -z "${CLUSTER_NAME:-}" || \
+          -z "${KUBECONFIG:-}" || ! -r "$KUBECONFIG" ]]; then
+        echo "Error: enter the source cluster with 'just cluster-env' before reading its Secret." >&2
+        exit 1
+    fi
+    if ! secret_json=$(kubectl get secret "$SECRET" -n "$NS" -o json 2>&1); then
+        echo "Error: unable to read Secret '$SECRET' in namespace '$NS': $secret_json" >&2
+        exit 1
+    fi
+    if ! value_b64=$(printf '%s\n' "$secret_json" | jq -er --arg key "$KEY" '.data[$key] | strings' 2>/dev/null); then
+        echo "Error: Secret '$SECRET' in '$NS' is missing a valid '$KEY' key." >&2
+        exit 1
+    fi
+    if [[ -z "$value_b64" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' has an empty '$KEY' value." >&2
+        exit 1
+    fi
+    if ! value=$(printf '%s' "$value_b64" | base64 -d 2>/dev/null) || [[ -z "$value" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' has an invalid or empty '$KEY' value." >&2
+        exit 1
+    fi
+    printf '%s\n' "$value"
+
 # Usage: just arangodb configure-source-secrets --restic-password <pw> --gcs-project <source-id> --gcs-key-file <path> [--key-name <k>] [--secret-name <n>] [--namespace <ns>] [--stack <name>]
 [arg("restic_password", long="restic-password", short="p", help="SOURCE restic repository password (required; may differ from the dictycr one)")]
 [arg("gcs_project", long="gcs-project", short="g", help="SOURCE GCP project id that owns the source bucket (required; NOT this cluster's project)")]

@@ -44,19 +44,14 @@ just arangodb deploy-operator
 # 3. Deploy cluster
 just arangodb deploy-cluster --root-password '<root-password>'
 
-# 4a. Source bucket reader — runs in the SOURCE cluster's environment
-# (--bucket optional: inferred from the arangodb-backup stack config;
-# pass it explicitly to skip stack lookup)
+# 4a. Grant reader + capture app username in the SOURCE cluster's environment
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
 just arangodb source-app-user --namespace <source-namespace>
 
 # 4b. First load — back in this cluster's environment
 just cluster-env --env prod --cluster <prod-cluster>
-just arangodb configure-source-secrets \
-  --restic-password '<source-restic-pass>' \
-  --gcs-project '<source-project-id>' \
-  --gcs-key-file credentials/<source-project-id>/arangodb-restic-reader.json
+just arangodb configure-source-secrets --restic-password '<source-restic-pass>'
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
 # --snapshot omitted: uses the newest snapshot; pin an id for an auditable RPO
 just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
@@ -154,11 +149,14 @@ Production first load is a cross-project restic bootstrap: the in-cluster restor
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
 just arangodb source-app-user --namespace <source-namespace>
+# Print source restic password (needed by configure-source-secrets below)
+just arangodb source-secret-value --namespace <source-namespace>
 ```
 
 `--bucket` may be omitted — it defaults to `properties.bucket` from the
 arangodb-backup stack in the active cluster env; the bucket's existence is
-verified before any IAM change.
+verified before any IAM change. `source-app-user` prints only the username
+(read-only), to reuse as `--app-user` in [Finalize Import](#42-finalize-import).
 
 ---
 
@@ -166,16 +164,16 @@ verified before any IAM change.
 
 ```bash
 just cluster-env --env prod --cluster <prod-cluster>
-just arangodb configure-source-secrets \
-  --restic-password '<SOURCE-restic-password>' \
-  --gcs-project '<SOURCE-project-id>' \
-  --gcs-key-file credentials/<source-project-id>/arangodb-restic-reader.json
+# --gcs-project/--gcs-key-file default to $PROJECT_ID and
+# credentials/$PROJECT_ID/backup-gcs-sa.json inside cluster-env
+just arangodb configure-source-secrets --restic-password '<SOURCE-restic-password>'
+# --bucket required; pass explicitly or note it differs per source
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
+# --snapshot optional: defaults to the newest snapshot; pin an id explicitly
+# to fix the recovery point at a chosen moment
 just arangodb bootstrap-from-snapshot \
   --namespace prod \
   --bucket <source-bucket>
-# (--snapshot optional: defaults to the newest snapshot; pin an id explicitly
-# to fix the recovery point at a chosen moment)
 ```
 
 ### 4.2 Finalize Import

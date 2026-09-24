@@ -46,7 +46,10 @@ just arangodb grant-source-bucket-reader --bucket <source-bucket>
 # 3. Read app username only (save output for finalize-bootstrap)
 just arangodb source-app-user --namespace <source-namespace>
 
-# 4. Return to this cluster's environment for the rest of the guide
+# 4. Print source restic repository password (save for configure-source-secrets)
+just arangodb source-secret-value --namespace <source-namespace>
+
+# 5. Return to this cluster's environment for the rest of the guide
 just cluster-env --env prod --cluster <prod-cluster>
 ```
 
@@ -54,7 +57,7 @@ just cluster-env --env prod --cluster <prod-cluster>
 arangodb-backup stack in the active cluster env; the bucket's existence is
 verified before any IAM change.
 
-If you do not hold IAM admin on the source project, send these three commands to whoever does:
+If you do not hold IAM admin on the source project, send these three gcloud commands to whoever does:
 
 ```bash
 gcloud iam service-accounts create arangodb-restic-reader \

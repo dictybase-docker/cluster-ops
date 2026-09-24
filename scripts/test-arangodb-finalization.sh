@@ -82,6 +82,8 @@ if [[ "${1:-}" == "get" && "${2:-}" == "secret" ]]; then
         printf '{"data":{"username":"cm9vdA==","password":"cm9vdC1wYXNzd29yZA=="}}\n'
     elif [[ "$secret" == "arangodb-jwt" ]]; then
         printf '{"data":{"token":"dG9rZW4="}}\n'
+    elif [[ "$secret" == "dictycr" && "$args" == *"-o json"* ]]; then
+        printf '{"data":{"resticPass":"dGVzdC1zb3VyY2UtcmVzdGljLXBhc3N3b3Jk","gcsProject":"cHJq"}}\n'
     elif [[ "$secret" == "dictycr" ]]; then
         printf '{"metadata":{"name":"dictycr"}}\n'
     elif [[ "$secret" == "backend" && "$args" == *"-o json"* ]]; then
@@ -125,6 +127,23 @@ if "$just_bin" arangodb source-app-user --namespace dev --secret backend-no-user
     exit 1
 fi
 grep -q "missing a valid 'user' key" "$tmp/missing-user.out"
+source_value=$("$just_bin" arangodb source-secret-value --namespace dev)
+[[ "$source_value" == "test-source-restic-password" ]]
+if "$just_bin" arangodb source-secret-value --namespace dev --secret dictycr --key missingKey > "$tmp/missing-key.out" 2>&1; then
+    echo "ERROR: source-secret-value accepted missing key" >&2
+    exit 1
+fi
+grep -q "missing a valid 'missingKey' key" "$tmp/missing-key.out"
+if "$just_bin" arangodb source-secret-value --namespace dev --secret backend-empty-user --key user > "$tmp/secret-empty.out" 2>&1; then
+    echo "ERROR: source-secret-value accepted empty value" >&2
+    exit 1
+fi
+grep -q "empty 'user' value" "$tmp/secret-empty.out"
+if env -u KUBECONFIG -u CLUSTER_ENV -u CLUSTER_NAME "$just_bin" arangodb source-secret-value --namespace dev > "$tmp/secret-no-env.out" 2>&1; then
+    echo "ERROR: source-secret-value ran without active cluster-env" >&2
+    exit 1
+fi
+grep -q 'just cluster-env' "$tmp/secret-no-env.out"
 if "$just_bin" arangodb source-app-user --namespace dev --secret backend-empty-user > "$tmp/empty-user.out" 2>&1; then
     echo "ERROR: source-app-user accepted empty user value" >&2
     exit 1
