@@ -15,7 +15,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 ### Backup Container
 
-Image: `dictybase/database-backup:sha-9c3b8ea`
+Image: `dictybase/database-backup:develop-9d716a5` (contains `arangodump` 3.12.11, matching the cluster server version)
 
 Runs `arangodb-backup --user root --password $(PASSWORD) --output arangodump --repository gs:restic-arangodb-backup-prod:/`:
 1. `arangodump --all-databases --include-system-collections` against `arangodb:8529`
