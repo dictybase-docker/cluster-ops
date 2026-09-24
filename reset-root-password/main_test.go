@@ -12,8 +12,8 @@ func TestApplyDefaults(t *testing.T) {
 
 	assert.Equal(t, "arangodb", cfg.Server)
 	assert.Equal(t, 8529, cfg.Port)
-	assert.Equal(t, "arangodb/arangodb", cfg.Image.Name)
-	assert.Equal(t, "3.12.10.1", cfg.Image.Tag)
+	assert.Equal(t, "arangodb", cfg.Image.Name)
+	assert.Equal(t, "3.12.11", cfg.Image.Tag)
 	assert.Equal(t, "arangodb-jwt", cfg.JwtSecret.Name)
 	assert.Equal(t, "token", cfg.JwtSecret.TokenKey)
 }

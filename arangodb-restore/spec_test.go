@@ -322,7 +322,7 @@ func TestImageRefs(t *testing.T) {
 	cfg := newSampleRestoreConfig()
 
 	assert.Equal(t, "restic/restic:0.17.0", resticImageRef(cfg))
-	assert.Equal(t, "arangodb/arangodb:3.12.10.1", arangoImageRef(cfg))
+	assert.Equal(t, "arangodb:3.12.11", arangoImageRef(cfg))
 }
 
 func TestImageRefs_ExplicitOverride(t *testing.T) {

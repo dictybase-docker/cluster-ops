@@ -36,10 +36,13 @@ func (c *ResetRootConfig) applyDefaults() {
 		c.Port = 8529
 	}
 	if c.Image.Name == "" {
-		c.Image.Name = "arangodb/arangodb"
+		// The official Docker Hub image lives at library/arangodb (not
+		// arangodb/arangodb, which does not exist). Keep the tag in sync with
+		// arangodb-cluster's defaultVersion.
+		c.Image.Name = "arangodb"
 	}
 	if c.Image.Tag == "" {
-		c.Image.Tag = "3.12.10.1"
+		c.Image.Tag = "3.12.11"
 	}
 	if c.JwtSecret.Name == "" {
 		c.JwtSecret.Name = "arangodb-jwt"

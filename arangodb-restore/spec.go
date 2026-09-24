@@ -45,7 +45,7 @@ func buildResticRestoreArgs(cfg *RestoreConfig) []string {
 }
 
 // buildArangorestoreArgs is passed to an explicit "arangorestore" Command
-// override on the arangodb/arangodb image, whose default entrypoint starts
+// override on the arangodb image, whose default entrypoint starts
 // an arangod server rather than a restore client.
 func buildArangorestoreArgs(cfg *RestoreConfig) []string {
 	return []string{

@@ -11,8 +11,12 @@ const (
 	defaultSnapshot       = "latest"
 	defaultResticImage    = "restic/restic"
 	defaultResticImageTag = "0.17.0"
-	defaultArangoImage    = "arangodb/arangodb"
-	defaultArangoImageTag = "3.12.10.1"
+	// The official Docker Hub image lives at library/arangodb (not
+	// arangodb/arangodb, which does not exist). Keep the tag in sync with
+	// arangodb-cluster's defaultVersion — arangorestore and the server must
+	// be the same minor version.
+	defaultArangoImage    = "arangodb"
+	defaultArangoImageTag = "3.12.11"
 	defaultStorageName    = "arangodb-restore-scratch"
 
 	scratchMountPath  = "/restore"
@@ -76,8 +80,8 @@ type RestoreConfig struct {
 	ResticSecret   SecretKeyPair `json:"resticSecret"`
 	BucketSecret   SecretKeyPair `json:"bucketSecret"`
 	ProjectSecret  SecretKeyPair `json:"projectSecret"`
-	ResticImage    ImageConfig   `json:"resticImage,omitempty"`
-	ArangoImage    ImageConfig   `json:"arangoImage,omitempty"`
+	ResticImage    ImageConfig   `json:"resticImage"`
+	ArangoImage    ImageConfig   `json:"arangoImage"`
 }
 
 // applyDefaults fills optional fields. Required fields (Namespace, Bucket,
