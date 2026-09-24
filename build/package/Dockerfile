@@ -41,7 +41,7 @@ ARG RESTIC_VERSION
 
 # Install dependencies and dynamically fetch restic based on architecture
 RUN apk update && \
-    apk add --no-cache postgresql14 curl bzip2 redis && \
+    apk add --no-cache postgresql16-client curl bzip2 redis && \
     RESTIC_ARCH=${TARGETARCH:-amd64} && \
     curl -L "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${RESTIC_ARCH}.bz2" -o "/tmp/restic.bz2" && \
     bunzip2 /tmp/restic.bz2 && \
