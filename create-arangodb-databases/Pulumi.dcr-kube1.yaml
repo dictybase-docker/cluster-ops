@@ -10,6 +10,10 @@ config:
       name: backend
       passkey: password
       userkey: user
+      pass:
+        secure: v1:DHL1vXoPW1FHGguF:Avd45SEJ+hclPL94UOmeeJk6xPIireH2ZGk4n7Mg6nM=
+      user:
+        secure: v1:Yt32uZOq3njaIk0p:G8eW/3XJ2SB8CW/LCKtcwpiudSgL+Ho=
     databases:
       - annotation
       - order
@@ -23,3 +27,7 @@ config:
       name: ghcr.io/dictybase-docker/arangoadmin
       tag: fec50dd
     namespace: prod
+    createDatabases: false
+    runId: 20260924211444-46288
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIP3Ys31L49xuASdNEDpkP0RAsN/RUij02dTPXf9l5SESSQDjx5R/nyQPrK7yN8dUE3qzCosptqrTh44AhEvVw2xrfrb471w7mJsZ3pDn+pyndx4ymgBRcxSl5y4n/cJC3t+aQcoEunEyE5E=

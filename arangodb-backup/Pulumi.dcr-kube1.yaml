@@ -22,3 +22,6 @@ config:
       class: dictycr-balanced
       name: arangodb-backup-ephemeral
       size: 150Gi
+  gcp:project: dcr-kube1
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIEB/FSVbfLHq9bkf27ScATXgzWTYrvmy21LYn87mjAUSSQDjx5R/Nx1cLtzjQSB8jNEX/tPp+9+JsIUw5szzN22p7yppZftQ/e1Z6GInYrFdf6Ik6ZaDOBRHctHjCTzJ8hB2XaWl8aQTR1Q=
