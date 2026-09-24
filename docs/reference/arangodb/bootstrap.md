@@ -47,6 +47,10 @@ just arangodb grant-source-bucket-reader --bucket <source-bucket>
 just cluster-env --env prod --cluster <prod-cluster>
 ```
 
+`--bucket` may be omitted — it defaults to `properties.bucket` from the
+arangodb-backup stack in the active cluster env; the bucket's existence is
+verified before any IAM change.
+
 If you do not hold IAM admin on the source project, send these three commands to whoever does:
 
 ```bash
@@ -98,15 +102,15 @@ This runs restic inside the cluster with the source credentials, so a successful
 
 Pick one snapshot id from the output and write down its timestamp: **that timestamp is this cluster's recovery point.** Everything the source wrote after it is not in this load.
 
-`--snapshot latest` is rejected by the next step on purpose. `latest` can mean a different snapshot between the moment you list and the moment you restore, which would make the restore unreproducible and the recovery point unknowable.
+`--snapshot` is optional. If omitted (or given as `latest`), the bootstrap resolves the newest snapshot in the source repository with a read-only restic pod run, echoes the resolved id, and records it in the `arangodb-restore` stack config — the recovery point stays auditable after the fact. Pinning an explicit id is still recommended: it fixes the recovery point at the moment you choose it, not at the moment the restore starts.
 
 ## 5. Run the Bootstrap
 
 ```bash
 just arangodb bootstrap-from-snapshot \
   --namespace prod \
-  --bucket <source-bucket> \
-  --snapshot <pinned-snapshot-id>
+  --bucket <source-bucket>
+# or pin an explicit id: --snapshot <snapshot-id>
 ```
 
 One command, four phases:

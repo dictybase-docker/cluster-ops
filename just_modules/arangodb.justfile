@@ -227,7 +227,7 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     echo "Running arangodump in Docker container..."
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${PWD}/${DUMP_DIR}:/dump" \
-        arangodb/arangodb:{{ quote(image_tag) }} \
+        arangodb:{{ quote(image_tag) }} \
         arangodump \
         --server.endpoint "$ENDPOINT" \
         --server.username "$DB_USER" \
@@ -404,7 +404,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${DUMP_DIR}:/dump" \
         -v "${JWT_FILE}:/jwt.secret:ro" \
-        arangodb/arangodb:{{ quote(image_tag) }} \
+        arangodb:{{ quote(image_tag) }} \
         arangorestore \
         --server.endpoint "$ENDPOINT" \
         --server.jwt-secret-keyfile /jwt.secret \
@@ -419,7 +419,7 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     docker run --rm $DOCKER_NET_FLAGS \
         -v "${JWT_FILE}:/jwt.secret:ro" \
         -e "ARANGO_NEW_PASS=${NEW_ROOT_PASS}" \
-        arangodb/arangodb:{{ quote(image_tag) }} \
+        arangodb:{{ quote(image_tag) }} \
         arangosh \
         --server.endpoint "$ENDPOINT" \
         --server.jwt-secret-keyfile /jwt.secret \
@@ -1237,14 +1237,18 @@ configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsC
 # Create a read-only service account in the SOURCE GCP project and grant it
 # objectViewer on the source restic bucket. Only usable if you hold IAM admin
 # on that project — otherwise ask its owner to run these three gcloud calls.
-# Usage: just arangodb grant-source-bucket-reader --bucket <name> [--source-project <id>] [--sa-name <n>] [--key-file <path>]
-[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+# --bucket defaults to the arangodb-backup stack's properties.bucket (source
+# cluster env). --source-project defaults to PROJECT_ID. The bucket is
+# verified to exist before any IAM change.
+# Usage: just arangodb grant-source-bucket-reader [--bucket <name>] [--source-project <id>] [--sa-name <n>] [--key-file <path>] [--stack <name>]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (optional; inferred from the arangodb-backup stack config when omitted)")]
 [arg("source_project", long="source-project", short="p", help="SOURCE GCP project id (defaults to PROJECT_ID env var)")]
 [arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
 [arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<source-project>/<sa-name>.json)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack for bucket inference (defaults to PULUMI_STACK; only needed when --bucket is omitted)")]
 [group('arangodb')]
 [no-cd]
-grant-source-bucket-reader bucket source_project="" sa_name="arangodb-restic-reader" key_file="":
+grant-source-bucket-reader bucket="" source_project="" sa_name="arangodb-restic-reader" key_file="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1254,8 +1258,39 @@ grant-source-bucket-reader bucket source_project="" sa_name="arangodb-restic-rea
     SA_NAME="{{ sa_name }}"
     KEY_FILE="{{ key_file }}"
 
-    if [[ -z "$SOURCE_PROJECT" || -z "$SOURCE_BUCKET" ]]; then
-        echo "Error: --source-project (or PROJECT_ID) and --bucket are required." >&2
+    if [[ -z "$SOURCE_PROJECT" ]]; then
+        echo "Error: --source-project (or PROJECT_ID) is required." >&2
+        exit 1
+    fi
+
+    # Inference fallback: the source bucket name is owned by this cluster's
+    # arangodb-backup stack, so read it from that stack's config. Read the
+    # local Pulumi.<stack>.yaml directly (no backend login needed); `pulumi
+    # config get` is only a fallback because it insists on resolving the
+    # cloud URL even for a purely local read. Explicit --bucket skips this
+    # entirely (no cluster env required).
+    if [[ -z "$SOURCE_BUCKET" ]]; then
+        STACK=$(just arangodb _require-stack --stack "{{ stack }}") || exit 1
+        STACK_YAML="arangodb-backup/Pulumi.${STACK}.yaml"
+        if [[ -f "$STACK_YAML" ]]; then
+            SOURCE_BUCKET=$(yq -r '.config."arangodb-backup:properties".bucket' "$STACK_YAML" 2>/dev/null || true)
+        fi
+        if [[ -z "$SOURCE_BUCKET" ]] && command -v pulumi >/dev/null 2>&1; then
+            SOURCE_BUCKET=$(pulumi -C arangodb-backup config get --stack "$STACK" --path properties.bucket 2>&1 || true)
+            [[ "$SOURCE_BUCKET" == *"error:"* ]] && SOURCE_BUCKET=""
+        fi
+        if [[ -z "$SOURCE_BUCKET" ]]; then
+            echo "Error: could not infer the source bucket from ${STACK_YAML} — pass --bucket explicitly, or deploy the backup first (just arangodb deploy-backup)." >&2
+            exit 1
+        fi
+        echo "Inferred source bucket from arangodb-backup stack '$STACK': $SOURCE_BUCKET"
+    fi
+
+    # Preflight: verify the bucket exists BEFORE any IAM mutation, so a typo
+    # cannot grant objectViewer on the wrong project's namespace.
+    if ! gcloud storage buckets describe "gs://${SOURCE_BUCKET}" \
+            --project "${SOURCE_PROJECT}" --format="value(name)" >/dev/null 2>&1; then
+        echo "Error: bucket 'gs://${SOURCE_BUCKET}' not found in project '${SOURCE_PROJECT}' (or you lack access to it)." >&2
         exit 1
     fi
 
@@ -1486,19 +1521,20 @@ apply-restore stack="" retries="180" interval="10":
 
 # Point the arangodb-restore stack at the SOURCE project's restic repository
 # for a cross-project first load (docs/arangodb-deploy.md §4). Separate from
-# configure-restore on purpose: that one is the DR-drill path and tolerates
-# `latest`, this one demands an explicit pinned snapshot id.
-# Usage: just arangodb configure-bootstrap --namespace <ns> --bucket <source-bucket> --snapshot <id> [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>]
+# configure-restore on purpose: this one targets the FOREIGN source bucket with
+# the read-only identity and `noLock: true`. `--snapshot` is optional on both —
+# omitted or `latest` resolves to the newest snapshot and echoes the resolved id.
+# Usage: just arangodb configure-bootstrap --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>]
 [arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
 [arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
-[arg("snapshot", long="snapshot", short="p", help="Explicit restic snapshot id (required; 'latest' is rejected)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id (optional; omit or 'latest' resolves to the newest snapshot in the source repo)")]
 [arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
 [arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: bootstrap-<UTC timestamp>)")]
 [arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
 [arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [group('arangodb')]
 [no-cd]
-configure-bootstrap namespace bucket snapshot server="" restore_id="" secret="dictycr-source" stack="":
+configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret="dictycr-source" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1522,21 +1558,24 @@ configure-bootstrap namespace bucket snapshot server="" restore_id="" secret="di
         exit 1
     fi
 
-    # A first load must be reproducible and auditable: 'latest' would silently
-    # change meaning between the snapshot you listed and the one you restore,
-    # and it is what defines this cluster's RPO. Pin it.
-    if [[ -z "$SNAPSHOT" ]]; then
-        echo "Error: --snapshot is required and must be an explicit restic snapshot id." >&2
-        echo "List them first: just arangodb list-source-snapshots --namespace $NAMESPACE --bucket $BUCKET" >&2
-        exit 1
-    fi
-    if [[ "$SNAPSHOT" == "latest" ]]; then
-        echo "Error: --snapshot latest is rejected for bootstrap; pass an explicit restic snapshot id." >&2
-        echo "The pinned id is the recorded RPO for this first load." >&2
-        exit 1
-    fi
-    if [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{8,64}$ ]]; then
-        echo "Error: snapshot '$SNAPSHOT' is not a restic snapshot id (expected 8-64 lowercase hex chars)." >&2
+    # Snapshot is optional: omitted (or the literal "latest") resolves to the
+    # newest snapshot in the SOURCE repository via a read-only restic pod run.
+    # The resolved id is echoed and later recorded in the arangodb-restore
+    # stack config, so the effective RPO stays auditable. An explicit id pins
+    # the restore exactly as before.
+    if [[ -z "$SNAPSHOT" || "$SNAPSHOT" == "latest" ]]; then
+        SNAPSHOT=$(just arangodb _restic-snapshots-json \
+            --namespace "$NAMESPACE" \
+            --bucket "$BUCKET" \
+            --secret "$SECRET" \
+            | jq -r 'sort_by(.time) | last | .id')
+        if [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: could not resolve the latest snapshot id — pass --snapshot explicitly." >&2
+            exit 1
+        fi
+        echo "Resolved latest snapshot: $SNAPSHOT"
+    elif [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{8,64}$ ]]; then
+        echo "Error: snapshot '$SNAPSHOT' is not a restic snapshot id (expected 8-64 lowercase hex chars, or omit / 'latest' for the newest)." >&2
         exit 1
     fi
 
@@ -1648,10 +1687,10 @@ reset-restore-config stack="":
 # One command for the cross-project first load: configure-bootstrap, then the
 # existing apply-restore, then reset-restore-config via trap (so the stack is
 # never left pointing at the foreign bucket, even if the restore fails).
-# Usage: just arangodb bootstrap-from-snapshot --namespace <ns> --bucket <source-bucket> --snapshot <id> [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>] [--retries <n>] [--interval <s>]
+# Usage: just arangodb bootstrap-from-snapshot --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>] [--retries <n>] [--interval <s>]
 [arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
 [arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
-[arg("snapshot", long="snapshot", short="p", help="Explicit restic snapshot id (required; 'latest' is rejected)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id (optional; defaults to the newest snapshot in the repo)")]
 [arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
 [arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: bootstrap-<UTC timestamp>)")]
 [arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
@@ -1660,7 +1699,7 @@ reset-restore-config stack="":
 [arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
 [group('arangodb')]
 [no-cd]
-bootstrap-from-snapshot namespace bucket snapshot server="" restore_id="" secret="dictycr-source" stack="" retries="180" interval="10":
+bootstrap-from-snapshot namespace bucket snapshot="" server="" restore_id="" secret="dictycr-source" stack="" retries="180" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1693,16 +1732,21 @@ bootstrap-from-snapshot namespace bucket snapshot server="" restore_id="" secret
     echo "     (creates app user if missing, requires working root first)."
     echo "  4. Continue with just arangodb deploy-backup (uses dictycr, never dictycr-source)."
 
-# List restic snapshots from inside the cluster, using the same `dictycr`
-# secret wiring the restore Job uses. No local restic, no kops state store.
-# Usage: just arangodb list-snapshots-in-cluster --namespace <ns> [--bucket <b>] [--secret <name>] [--image <ref>]
-[arg("namespace", long="namespace", short="n", help="Namespace holding the dictycr secret (required)")]
+# Internal: run `restic snapshots --json` against <bucket> as a throwaway pod
+# in <namespace>, using resticPass/gcsProject/gcsCredentials from <secret>.
+# Emits ONLY the restic JSON array on stdout. Used by list-snapshots-in-cluster
+# and bootstrap-from-snapshot (--snapshot inference).
+# --no-lock is required for the SOURCE repository: its reader SA is read-only
+# (roles/storage.objectViewer) and cannot create restic lock objects. Listing
+# never mutates the repo, so --no-lock is safe for the own-bucket case too.
+# Usage: JSON=$(just arangodb _restic-snapshots-json --namespace <ns> --bucket <b> --secret <name> [--image <ref>])
+[arg("namespace", long="namespace", short="n", help="Namespace holding the restic secret")]
 [arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
 [arg("secret", long="secret", short="c", help="Secret holding resticPass/gcsProject/gcsCredentials")]
 [arg("image", long="image", short="m", help="restic image reference")]
 [group('arangodb')]
 [no-cd]
-list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret="dictycr" image="restic/restic:0.17.0":
+_restic-snapshots-json namespace bucket secret image="restic/restic:0.17.0":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1710,34 +1754,86 @@ list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret=
     BUCKET="{{ bucket }}"
     SECRET="{{ secret }}"
     IMAGE="{{ image }}"
-    POD="restic-list-$(date -u +%s)"
+    POD="restic-json-$(date -u +%s)"
 
     # restic's GCS backend needs GOOGLE_APPLICATION_CREDENTIALS to be a file
     # path, so the key is mounted from the secret rather than passed inline.
+    RESTIC_ARGS=("-r" "gs:${BUCKET}:/" "--no-lock" "snapshots" "--json")
+    ARGS_JSON=$(printf '%s\n' "${RESTIC_ARGS[@]}" | jq -R . | jq -sc .)
     OVERRIDES=$(jq -nc \
-        --arg name "$POD" --arg image "$IMAGE" --arg repo "gs:${BUCKET}:/" --arg secret "$SECRET" \
-        '{spec:{containers:[{name:$name,image:$image,args:["-r",$repo,"snapshots"],
+        --arg name "$POD" --arg image "$IMAGE" --arg secret "$SECRET" \
+        --argjson args_array "$ARGS_JSON" \
+        '{spec:{containers:[{name:$name,image:$image,args:$args_array,
           env:[{name:"RESTIC_PASSWORD",valueFrom:{secretKeyRef:{name:$secret,key:"resticPass"}}},
                {name:"GOOGLE_PROJECT_ID",valueFrom:{secretKeyRef:{name:$secret,key:"gcsProject"}}},
                {name:"GOOGLE_APPLICATION_CREDENTIALS",value:"/var/secret/gcs-credentials"}],
           volumeMounts:[{name:"gcs-credentials",mountPath:"/var/secret",readOnly:true}]}],
           volumes:[{name:"gcs-credentials",secret:{secretName:$secret,items:[{key:"gcsCredentials",path:"gcs-credentials"}]}}]}}')
 
-    kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
-        --image "$IMAGE" --overrides="$OVERRIDES"
+    RAW=$(kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
+        --image "$IMAGE" --overrides="$OVERRIDES")
+
+    # kubectl mixes banner/trailer lines ("pod ... deleted") into stdout; keep
+    # only the restic --json array block.
+    RAW=$(printf '%s\n' "$RAW" | awk '/^\[/{f=1} f{print} f&&/\]$/{exit}')
+    if [[ -z "$RAW" ]]; then
+        echo "Error: no snapshot JSON returned — check the Secret and bucket." >&2
+        exit 1
+    fi
+    printf '%s\n' "$RAW"
+
+# List restic snapshots from inside the cluster, using the same `dictycr`
+# secret wiring the restore Job uses. No local restic, no kops state store.
+# Usage: just arangodb list-snapshots-in-cluster --namespace <ns> [--bucket <b>] [--secret <name>] [--image <ref>] [--latest <n>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the dictycr secret (required)")]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
+[arg("secret", long="secret", short="c", help="Secret holding resticPass/gcsProject/gcsCredentials")]
+[arg("image", long="image", short="m", help="restic image reference")]
+[arg("latest", long="latest", short="l", help="Print only the newest <n> snapshots (default 4; 0 = full list)")]
+[group('arangodb')]
+[no-cd]
+list-snapshots-in-cluster namespace bucket="restic-arangodb-backup-prod" secret="dictycr" image="restic/restic:0.17.0" latest="4":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS="{{ namespace }}"
+    LATEST="{{ latest }}"
+
+    # restic --latest is NOT used for limiting: restic filters it per host+path
+    # and every backup job has a unique pod hostname, so it would return nothing
+    # less than the full list. Instead we fetch --json and sort locally.
+    RAW=$(just arangodb _restic-snapshots-json \
+        --namespace "$NS" \
+        --bucket "{{ bucket }}" \
+        --secret "{{ secret }}" \
+        --image "{{ image }}")
+
+    # restic snapshots --json emits one JSON array. Sort by time, keep the
+    # newest <LATEST>, print a fixed-width table. 0 = full list.
+    if [[ "$LATEST" != "0" ]]; then
+        FILTER="sort_by(.time) | .[-${LATEST}:] | reverse"
+    else
+        FILTER="sort_by(.time) | reverse"
+    fi
+    {
+        printf 'ID\tTIME\tHOST\tPATH\n'
+        printf '%s\n' "$RAW" | jq -r "$FILTER | .[] | [.id[0:8], .time, .hostname, (.paths | first)] | @tsv"
+    } | column -t -s "$(printf '\t')"
+    printf '%s\n' "$RAW" | jq 'length' | awk '{print "\n" $1 " snapshots in repository"}'
 
 # List snapshots in the SOURCE project's restic repository. Thin wrapper over
 # list-snapshots-in-cluster that makes --bucket mandatory and defaults the
 # secret to `dictycr-source`, so a forgotten flag cannot silently list this
 # cluster's own repository and hand you a snapshot id from the wrong repo.
-# Usage: just arangodb list-source-snapshots --namespace <ns> --bucket <source-bucket> [--secret <name>] [--image <ref>]
+# Usage: just arangodb list-source-snapshots --namespace <ns> --bucket <source-bucket> [--secret <name>] [--image <ref>] [--latest <n>]
 [arg("namespace", long="namespace", short="n", help="Namespace holding the dictycr-source secret (required)")]
 [arg("bucket", long="bucket", short="b", help="SOURCE GCS restic bucket (required; never defaulted)")]
 [arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
 [arg("image", long="image", short="m", help="restic image reference")]
+[arg("latest", long="latest", short="l", help="Print only the newest <n> snapshots (default 4; 0 = full list)")]
 [group('arangodb')]
 [no-cd]
-list-source-snapshots namespace bucket secret="dictycr-source" image="restic/restic:0.17.0":
+list-source-snapshots namespace bucket secret="dictycr-source" image="restic/restic:0.17.0" latest="4":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1747,14 +1843,19 @@ list-source-snapshots namespace bucket secret="dictycr-source" image="restic/res
     fi
 
     echo "Listing snapshots in gs://{{ bucket }} using secret '{{ secret }}' (source repository)."
-    echo "Pin one id from this list — 'latest' is rejected by configure-bootstrap."
+    if [[ "{{ latest }}" == "0" ]]; then
+        echo "Showing the full list — pin an explicit id for an auditable restore, or omit --snapshot in bootstrap-from-snapshot to use the newest."
+    else
+        echo "Showing newest {{ latest }} — omit --snapshot in bootstrap-from-snapshot to use the newest, or pin an explicit id."
+    fi
     echo
 
     just arangodb list-snapshots-in-cluster \
         --namespace "{{ namespace }}" \
         --bucket "{{ bucket }}" \
         --secret "{{ secret }}" \
-        --image "{{ image }}"
+        --image "{{ image }}" \
+        --latest "{{ latest }}"
 
 # Verify stateful-db pool prerequisites before ArangoDB installation.
 # Checks node count, architecture, taint, and zones. Exits non-zero if any check fails.

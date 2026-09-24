@@ -45,6 +45,8 @@ just arangodb deploy-operator
 just arangodb deploy-cluster --root-password '<root-password>'
 
 # 4a. Source bucket reader — runs in the SOURCE cluster's environment
+# (--bucket optional: inferred from the arangodb-backup stack config;
+# pass it explicitly to skip stack lookup)
 just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
 
@@ -55,7 +57,8 @@ just arangodb configure-source-secrets \
   --gcs-project '<source-project-id>' \
   --gcs-key-file credentials/<source-project-id>/arangodb-restic-reader.json
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
-just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket> --snapshot <id>
+# --snapshot omitted: uses the newest snapshot; pin an id for an auditable RPO
+just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
 
 # 5. Deploy backup (immediate job + cronjob)
 just arangodb deploy-backup
@@ -149,6 +152,10 @@ just cluster-env --env <source-env> --cluster <source-cluster>
 just arangodb grant-source-bucket-reader --bucket <source-bucket>
 ```
 
+`--bucket` may be omitted — it defaults to `properties.bucket` from the
+arangodb-backup stack in the active cluster env; the bucket's existence is
+verified before any IAM change.
+
 ---
 
 **Back in THIS cluster's environment** — everything below runs here:
@@ -162,8 +169,9 @@ just arangodb configure-source-secrets \
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
 just arangodb bootstrap-from-snapshot \
   --namespace prod \
-  --bucket <source-bucket> \
-  --snapshot <pinned-snapshot-id>
+  --bucket <source-bucket>
+# (--snapshot optional: defaults to the newest snapshot; pin an id explicitly
+# to fix the recovery point at a chosen moment)
 ```
 
 ### 4.2 Fix Authentication
