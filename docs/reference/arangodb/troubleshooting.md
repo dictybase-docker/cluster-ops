@@ -15,6 +15,7 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 | App cannot connect | Wrong host or secret | [Cluster details](cluster.md) DNS + Secret `backend` |
 | `deploy-operator` fails `namespaces "operators" not found` | `namespace-bootstrap` stack never applied | `just gcp-pulumi apply-namespaces` ([pulumi setup §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces)) |
 | DB Job 401 | Root password mismatch | Secret `arangodb-pass` vs stack config |
+| Bootstrap 401 `cannot create server connection: forbidden` from the start | Operator never set root — Secret `arangodb-pass` lacks the `username` key (kube-arangodb requires `username` + `password`); operator log shows `invalid secret format in secret arangodb-pass` | Add `username: root` to the Secret, poke the operator (any spec change), then check `POST /_open/auth` returns 200. Fixed at source in `arangodb-cluster/main.go` (Secret now carries both keys) |
 | Backup permission error | Missing bucket or `dictycr` | [Backup details](backup.md) |
 | Recipe exits with "no stack name" | Not inside `just cluster-env`, so `$PULUMI_STACK` unset | Enter cluster shell, or pass `--stack <name>`. Deliberate: prod recipes never fall back to `dev` |
 | `arangodb-restore` apply fails, "confirmTarget must exactly equal" | Hand-edited config, or stale `restoreId`/`namespace`/`server` | Re-run `just arangodb configure-restore --namespace <ns>` ([restore details](restore.md)). Do not weaken check |

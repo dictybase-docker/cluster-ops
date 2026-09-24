@@ -37,6 +37,13 @@ func CreateResources(ctx *pulumi.Context, cfg *ArangoClusterConfig) error {
 		},
 		StringData: pulumi.StringMap{
 			"password": pulumi.String(cfg.Secret.Password),
+			// kube-arangodb's bootstrap.passwordSecretNames reader requires the
+			// `username` key alongside `password`; without it the operator's
+			// BootstrapSetPassword action fails with "invalid secret format" and
+			// root ends up with an EMPTY password (action_bootstrap_set_password.go
+			// → k8sutil.GetSecretAuthCredentials). The restore Job then dies with
+			// "cannot create server connection: forbidden".
+			"username": pulumi.String("root"),
 		},
 	})
 	if err != nil {
