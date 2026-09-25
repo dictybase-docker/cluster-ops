@@ -149,7 +149,7 @@ Do not change `Pulumi.dev.yaml` / `experiments` / `local`.
 - `go test` / `golangci-lint` on new packages.
 - `pulumi preview` on **prod** stack only — must not require opening lab stacks.
 - Preview of **unchanged** `arangodb-single` `dev` stack must show **no** resource replacements (prove freeze).
-- kubectl checks in [deploy guide §7](../arangodb-deploy.md#7-verify).
+- kubectl checks in [deploy guide §6](../arangodb-deploy.md#6-verify).
 
 ## Suggested file layout
 

@@ -19,8 +19,8 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [5. Backup & Restore](#5-backup--restore)
   - [5.1 Deploy Backup](#51-deploy-backup)
   - [5.2 Restore Drill](#52-restore-drill)
-- [6. Teardown](#6-teardown)
-- [7. Verify](#7-verify)
+- [6. Verify](#6-verify)
+- [7. Teardown](#7-teardown)
 - [8. Troubleshooting](#8-troubleshooting)
 - [9. Optional: Databases by Hand](#9-optional-databases-by-hand)
 - [10. Related Documents](#10-related-documents)
@@ -32,52 +32,62 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 For experienced users. Full details in sections below.
 
 ```bash
-# Enter cluster environment first
+# 0. Enter this cluster's environment first
 just cluster-env --env prod --cluster <prod-cluster>
 
-# 1. Backup secrets — backup SA + key, then Secret dictycr
+# 1. Pool check — must pass before anything is installed
+just arangodb check-pool
+
+# 2. Backup secrets — backup SA + key, then Secret dictycr
 just arangodb configure-backup-secrets --restic-password '<restic-pass>'
 
-# 2. Deploy operator
+# 3.1 Deploy operator
 just arangodb deploy-operator
 
-# 3. Deploy cluster
+# 3.2 Deploy cluster
 just arangodb deploy-cluster --root-password '<root-password>'
 
-# 4a. Grant reader + capture app username in the SOURCE cluster's environment
+# 4.1a In the SOURCE cluster's environment: grant reader
+exit   # leave this cluster's sub-shell first
 just cluster-env --env <source-env> --cluster <source-cluster>
-just arangodb grant-source-bucket-reader --bucket <source-bucket>
+just arangodb grant-source-bucket-reader
+
+# -> prints --restic-password for configure-source-secrets
+just arangodb source-secret-value --namespace <source-namespace>
+
+# -> prints --app-user for finalize-bootstrap
 just arangodb source-app-user --namespace <source-namespace>
 
-# 4b. First load — back in this cluster's environment
+# 4.1b Back in THIS cluster's environment: first load
+exit   # leave the source sub-shell
 just cluster-env --env prod --cluster <prod-cluster>
-just arangodb configure-source-secrets --restic-password '<source-restic-pass>'
-just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
-# --snapshot omitted: uses the newest snapshot; pin an id for an auditable RPO
+just arangodb configure-source-secrets --restic-password '<source-restic-pass>' --gcs-project <source-project-id> --gcs-key-file <source-key.json>
+just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>   # pick an id to pin
 just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
-# Rotate root + app credentials; choose new destination-only app password
+
+# 4.2 Finalize — rotate root + imported app password (also verifies app login)
 just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 
-# 5. Deploy backup (immediate job + cronjob)
+# 5. Deploy backup (immediate job + cronjob), then confirm a snapshot landed
 just arangodb deploy-backup
+just arangodb list-snapshots-in-cluster --namespace prod
 
 # 6. Verify installation
 just arangodb verify
 ```
 
-Optional steps:
+Optional paths, each in its own run order:
+
 ```bash
-# Create missing databases only — import already brings data and users
+# Alternative loader path, instead of §4 (§4.3 — reserved for a future revision)
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
-
-# Loaders — reserved for a future revision, no production stack config yet
 just arangodb deploy-loader --folder arangodb-dataloader
+```
 
-# Restore drill (on clone cluster)
+```bash
+# Clone cluster only: restore drill, then dispose of the clone (destructive)
 just arangodb configure-restore --namespace <ns>
 just arangodb apply-restore
-
-# Teardown (clone only, destructive)
 just arangodb teardown --namespace prod --delete-pvcs yes
 ```
 
@@ -143,42 +153,42 @@ Sections 1–3 give you a running, **empty** cluster — no application database
 Production first load is a cross-project restic bootstrap: the in-cluster restore Job (restic → arangorestore) reads a snapshot straight out of a GCS bucket owned by a **different GCP project**.
 → [Bootstrap details](reference/arangodb/bootstrap.md)
 
-**In the SOURCE cluster's environment** — grant reader and capture app username for finalization:
+**In the SOURCE cluster's environment** — grant the read-only identity, then print the two values the destination consumes. `grant-source-bucket-reader` prints the source project id and key-file path; both feed `configure-source-secrets` in the next block.
 
 ```bash
 just cluster-env --env <source-env> --cluster <source-cluster>
-just arangodb grant-source-bucket-reader --bucket <source-bucket>
-just arangodb source-app-user --namespace <source-namespace>
-# Print source restic password (needed by configure-source-secrets below)
+just arangodb grant-source-bucket-reader
+```
+
+Prints the SOURCE restic password — use as `--restic-password` for `configure-source-secrets`:
+
+```bash
 just arangodb source-secret-value --namespace <source-namespace>
 ```
 
-`--bucket` may be omitted — it defaults to `properties.bucket` from the
-arangodb-backup stack in the active cluster env; the bucket's existence is
-verified before any IAM change. `source-app-user` prints only the username
-(read-only), to reuse as `--app-user` in [Finalize Import](#42-finalize-import).
+Prints the imported application username — use as `--app-user` for `finalize-bootstrap` in [4.2](#42-finalize-import):
+
+```bash
+just arangodb source-app-user --namespace <source-namespace>
+```
 
 ---
 
-**Back in THIS cluster's environment** — everything below runs here:
+**Back in THIS cluster's environment** — everything below runs here. `list-source-snapshots` is the read-only companion of `bootstrap-from-snapshot`: run it first to pick an id; omitting `--snapshot` takes the newest.
 
 ```bash
 just cluster-env --env prod --cluster <prod-cluster>
-# --gcs-project/--gcs-key-file default to $PROJECT_ID and
-# credentials/$PROJECT_ID/backup-gcs-sa.json inside cluster-env
-just arangodb configure-source-secrets --restic-password '<SOURCE-restic-password>'
-# --bucket required; pass explicitly or note it differs per source
+just arangodb configure-source-secrets \
+  --restic-password '<SOURCE-restic-password>' \
+  --gcs-project <source-project-id> \
+  --gcs-key-file <path-to-source-key.json>
 just arangodb list-source-snapshots --namespace prod --bucket <source-bucket>
-# --snapshot optional: defaults to the newest snapshot; pin an id explicitly
-# to fix the recovery point at a chosen moment
-just arangodb bootstrap-from-snapshot \
-  --namespace prod \
-  --bucket <source-bucket>
+just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
 ```
 
 ### 4.2 Finalize Import
 
-One required setup after import: reset root, rotate imported app password to a new destination-only value, update Secret `backend`, and verify database access. Use username printed in source environment above.
+One required setup after import: reset root, rotate imported app password to a new destination-only value, update Secret `backend`, and verify app database access (it runs `verify-app-credentials` itself). `--app-user` is the username `source-app-user` printed in [4.1](#41-bootstrap-from-snapshot).
 → [Post-import details](reference/arangodb/bootstrap.md#finalize-import)
 
 ```bash
@@ -200,11 +210,12 @@ just arangodb deploy-loader --folder arangodb-dataloader
 
 ### 5.1 Deploy Backup
 
-Creates GCS bucket, immediate Job, and daily CronJob.
+Creates GCS bucket, immediate Job, and daily CronJob. `list-snapshots-in-cluster` is the read-only check that the immediate Job actually wrote a snapshot.
 → [Backup details](reference/arangodb/backup.md)
 
 ```bash
 just arangodb deploy-backup
+just arangodb list-snapshots-in-cluster --namespace prod
 ```
 
 ### 5.2 Restore Drill
@@ -219,24 +230,24 @@ just arangodb apply-restore
 
 ---
 
-## 6. Teardown
-
-**Destructive. Clone only.**
-→ [Teardown details](reference/arangodb/teardown.md)
-
-```bash
-just arangodb teardown --namespace prod --delete-pvcs yes
-```
-
----
-
-## 7. Verify
+## 6. Verify
 
 Read-only audit of pool, operator, storage, members, Service and Jobs. Exits non-zero if any required check fails.
 → [Verify details](reference/arangodb/verify.md)
 
 ```bash
 just arangodb verify
+```
+
+---
+
+## 7. Teardown
+
+**Destructive. Clone only.**
+→ [Teardown details](reference/arangodb/teardown.md)
+
+```bash
+just arangodb teardown --namespace prod --delete-pvcs yes
 ```
 
 ---
