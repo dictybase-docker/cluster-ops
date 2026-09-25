@@ -547,6 +547,79 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
     echo "Deploying arangodb-single..."
     just local-pulumi create-resource --folder arangodb-single --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
 
+# Internal: read-only preflight for a single-database restore. Validates the
+# name, proves the snapshot holds /arangodump/<db>, and fails closed on an
+# already-existing target database unless overwrite is yes. Callers run this
+# BEFORE their first mutation, so a typo or a surprising target database
+# aborts before any stack config or Job exists.
+# Usage: just arangodb _preflight-database-restore --namespace <ns> --server <svc> --database <db> --bucket <b> --secret <name> --snapshot <id|latest> --stack <name> [--overwrite <yes|no>]
+[arg("namespace", long="namespace", short="n", help="Target namespace (required)")]
+[arg("server", long="server", short="v", help="Coordinator Service name")]
+[arg("database", long="database", short="d", help="Database the restore will target")]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket holding the snapshot")]
+[arg("secret", long="secret", short="c", help="Secret holding resticPass/gcsProject/gcsCredentials")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id, or 'latest'")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("overwrite", long="overwrite", short="w", help="Allow replacing an existing database: yes|no (default no)")]
+[group('arangodb')]
+[private]
+[no-cd]
+_preflight-database-restore namespace server database bucket secret snapshot stack overwrite="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SERVER={{ quote(server) }}
+    DB={{ quote(database) }}
+    BUCKET={{ quote(bucket) }}
+    SECRET={{ quote(secret) }}
+    SNAPSHOT={{ quote(snapshot) }}
+    OVERWRITE={{ quote(overwrite) }}
+
+    if [[ ! "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: --database '$DB' must be a valid ArangoDB database name: an ASCII letter or" >&2
+        echo "       underscore, then letters, digits, underscores or hyphens, at most 64 chars." >&2
+        exit 1
+    fi
+    case "$OVERWRITE" in
+        yes|true|no|false|"") ;;
+        *)
+            echo "Error: --overwrite takes yes or no; got '$OVERWRITE'." >&2
+            exit 1
+            ;;
+    esac
+
+    echo "Preflight: does snapshot '$SNAPSHOT' in gs://$BUCKET hold /arangodump/$DB?"
+    ENTRIES=$(just arangodb _restic-ls \
+        --namespace "$NS" --bucket "$BUCKET" --secret "$SECRET" \
+        --snapshot "$SNAPSHOT" --path "/arangodump/$DB" | grep -c .)
+    echo "  yes: $ENTRIES entries under /arangodump/$DB"
+
+    probe_rc=0
+    just arangodb _database-exists \
+        --namespace "$NS" --server "$SERVER" \
+        --database "$DB" --stack {{ quote(stack) }} || probe_rc=$?
+    if [[ "$probe_rc" -ne 0 && "$probe_rc" -ne 3 ]]; then
+        echo "Error: could not determine whether database '$DB' exists on '$SERVER' (probe exit $probe_rc)." >&2
+        exit 1
+    fi
+    if [[ "$probe_rc" -eq 0 && "$OVERWRITE" != "yes" && "$OVERWRITE" != "true" ]]; then
+        echo "Error: database '$DB' already exists on '$SERVER' in namespace '$NS'." >&2
+        echo "       A single-database restore replaces its collections. Nothing was changed." >&2
+        echo "       Re-run the same recipe with --overwrite yes to do that deliberately." >&2
+        echo "       Users and grants live in _system and are NOT part of a database restore." >&2
+        exit 1
+    fi
+    if [[ "$probe_rc" -eq 3 ]]; then
+        echo "  target database '$DB' does not exist yet; arangorestore --create-database true creates it"
+    else
+        echo "  target database '$DB' exists and --overwrite yes was given: its collections are replaced"
+    fi
+    if [[ "$DB" == "_system" ]]; then
+        echo "Warning: restoring _system also restores the source's users and root password." >&2
+        echo "         Run 'just arangodb reset-root-password' after the restore." >&2
+    fi
+
 # Configure the arangodb-restore stack in one non-interactive command.
 # Resolves every value the restore Job needs, then runs ensure-stack plus one
 # pulumi config set-all against the arangodb-restore project.
@@ -556,17 +629,27 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
 #                 falls back to "arangodb" with a warning if nothing is found.
 #   --restore-id  omitted: "drill-<UTC YYYYMMDD-HHMMSS>" (DNS-1123 safe, unique per run).
 #   --snapshot    "latest" or a specific restic snapshot id.
+#   --database    optional: restore ONLY that database. Adds a read-only preflight
+#                 proving the snapshot holds /arangodump/<database> and refusing to
+#                 touch an existing target database without --overwrite yes.
+#   --overwrite   yes|no (default no). Requires --database: a whole-instance DR
+#                 drill must never overwrite unconditionally.
+# Without --database the stack keeps its whole-instance DR behavior, and any
+# database/overwrite keys left by an earlier single-database run are removed
+# in the same step.
 # confirmTarget is always computed as "<namespace>/<server>/<restoreId>" — the
 # safety gate in arangodb-restore is unchanged, only the retyping is gone.
-# Usage: just arangodb configure-restore --namespace <ns> [--server <svc>] [--restore-id <id>] [--snapshot <snap>] [--stack <name>]
+# Usage: just arangodb configure-restore --namespace <ns> [--server <svc>] [--restore-id <id>] [--snapshot <snap>] [--database <db>] [--overwrite yes|no] [--stack <name>]
 [arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
 [arg("server", long="server", short="s", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
 [arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: drill-<UTC timestamp>)")]
 [arg("snapshot", long="snapshot", short="p", help="restic snapshot id or 'latest'")]
+[arg("database", long="database", short="d", help="Restore only this database (default: whole instance)")]
+[arg("overwrite", long="overwrite", short="w", help="Replace an existing target database: yes|no (default no)")]
 [arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [group('arangodb')]
 [no-cd]
-configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
+configure-restore namespace server="" restore_id="" snapshot="latest" database="" overwrite="no" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -575,6 +658,8 @@ configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
     SERVER="{{ server }}"
     RESTORE_ID="{{ restore_id }}"
     SNAPSHOT="{{ snapshot }}"
+    DATABASE="{{ database }}"
+    OVERWRITE="{{ overwrite }}"
     STACK="{{ stack }}"
 
     # Job name is "arangodb-restore-<restoreId>" and must stay a <=63 char
@@ -590,6 +675,32 @@ configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
         echo "Error: --snapshot cannot be empty; use 'latest' or a restic snapshot id." >&2
         exit 1
     fi
+
+    # Same rules arangodb-restore/types.go enforces, checked here so a bad flag
+    # fails before anything is mutated. yes/no are the operator spellings;
+    # true/false are accepted because that is what stack config stores.
+    case "$OVERWRITE" in
+        yes|true) OVERWRITE_VALUE="true" ;;
+        no|false|"") OVERWRITE_VALUE="false" ;;
+        *)
+            echo "Error: --overwrite takes yes or no; got '$OVERWRITE'." >&2
+            exit 1
+            ;;
+    esac
+    if [[ "$OVERWRITE_VALUE" == "true" && -z "$DATABASE" ]]; then
+        echo "Error: --overwrite needs --database — overwriting only applies to a single-database restore." >&2
+        exit 1
+    fi
+    if [[ -n "$DATABASE" && ! "$DATABASE" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: --database '$DATABASE' must be a valid ArangoDB database name: an ASCII letter or" >&2
+        echo "       underscore, then letters, digits, underscores or hyphens, at most 64 chars." >&2
+        exit 1
+    fi
+
+    # Resolved before the preflight, not at the set-all below: the
+    # single-database preflight reads this stack's own bucket/secret from its
+    # config file, and that must happen before ensure-stack creates anything.
+    STACK="${STACK:-${PULUMI_STACK:-dev}}"
 
     if [[ -z "$SERVER" ]]; then
         echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
@@ -622,6 +733,32 @@ configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
 
     CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
 
+    # --- single-database preflight (read-only, before any mutation) --------
+    if [[ -n "$DATABASE" ]]; then
+        CONFIG="arangodb-restore/Pulumi.${STACK}.yaml"
+        if [[ ! -f "$CONFIG" ]]; then
+            echo "Error: $CONFIG is missing; initialize the stack first:" >&2
+            echo "       just gcp-pulumi ensure-stack --folder arangodb-restore --stack $STACK" >&2
+            exit 1
+        fi
+        STACK_BUCKET=$(yq -r '.config."arangodb-restore:properties".bucket // ""' "$CONFIG")
+        STACK_SECRET=$(yq -r '.config."arangodb-restore:properties".resticSecret.name // ""' "$CONFIG")
+        if [[ -z "$STACK_BUCKET" || "$STACK_BUCKET" == "null" || -z "$STACK_SECRET" || "$STACK_SECRET" == "null" ]]; then
+            echo "Error: could not read bucket/resticSecret.name from $CONFIG." >&2
+            echo "       Run 'just arangodb reset-restore-config --stack $STACK' to restore the DR defaults." >&2
+            exit 1
+        fi
+        just arangodb _preflight-database-restore \
+            --namespace "$NAMESPACE" \
+            --server "$SERVER" \
+            --database "$DATABASE" \
+            --bucket "$STACK_BUCKET" \
+            --secret "$STACK_SECRET" \
+            --snapshot "$SNAPSHOT" \
+            --stack "$STACK" \
+            --overwrite "$OVERWRITE"
+    fi
+
     echo
     echo "arangodb-restore configuration"
     echo "  namespace     : ${NAMESPACE}"
@@ -630,17 +767,41 @@ configure-restore namespace server="" restore_id="" snapshot="latest" stack="":
     echo "  snapshot      : ${SNAPSHOT}"
     echo "  confirmTarget : ${CONFIRM_TARGET}"
     echo "  job name      : arangodb-restore-${RESTORE_ID}"
+    if [[ -n "$DATABASE" ]]; then
+        echo "  database      : ${DATABASE} (single-database restore)"
+        echo "  overwrite     : ${OVERWRITE_VALUE}"
+    else
+        echo "  scope         : whole instance (all databases)"
+    fi
     echo
 
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    STACK="${STACK:-${PULUMI_STACK:-dev}}"
-    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
-        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE" \
-        --plaintext "arangodb-restore:properties.server=$SERVER" \
-        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID" \
-        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT" \
+
+    SET_ARGS=(
+        --path
+        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE"
+        --plaintext "arangodb-restore:properties.server=$SERVER"
+        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID"
+        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT"
         --plaintext "arangodb-restore:properties.confirmTarget=$CONFIRM_TARGET"
+    )
+    if [[ -n "$DATABASE" ]]; then
+        SET_ARGS+=(
+            --plaintext "arangodb-restore:properties.database=$DATABASE"
+            --plaintext "arangodb-restore:properties.overwrite=$OVERWRITE_VALUE"
+        )
+    fi
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" "${SET_ARGS[@]}"
+
+    # Stale-value guard: a whole-instance run must never inherit an earlier
+    # single-database filter, or the next DR drill silently restores one
+    # database and reports success.
+    if [[ -z "$DATABASE" ]]; then
+        for key in database overwrite; do
+            pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
+        done
+    fi
 
     echo
     echo "Config written. Next:"
@@ -1167,6 +1328,163 @@ verify-app-credentials namespace="prod" stack="":
             --image "arangodb:${ARANGO_VERSION}" --overrides="$OVERRIDES"
     done <<< "$DATABASES"
     echo "Application credentials verified on all configured databases."
+
+# Internal: run one arangosh expression against the coordinator in a
+# short-lived pod and print its stdout. Root credentials come from Secret
+# `arangodb-pass` (same wiring as reset-root-password), and the image tag is
+# derived from the destination cluster's stack config so the probe always
+# speaks this cluster's ArangoDB version. Callers interpret the printed
+# DATABASE_* sentinel; this recipe only guarantees the probe itself ran.
+# Usage: just arangodb _arangosh-probe --namespace <ns> --server <svc> --connect-database <db> --stack <name> --javascript <expr>
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB and Secret arangodb-pass")]
+[arg("server", long="server", short="v", help="Coordinator Service name")]
+[arg("connect_database", long="connect-database", short="d", help="Database to log into (usually _system)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("javascript", long="javascript", short="j", help="arangosh --javascript.execute-string expression")]
+[group('arangodb')]
+[private]
+[no-cd]
+_arangosh-probe namespace server connect_database stack javascript:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SERVER={{ quote(server) }}
+    CONNECT_DB={{ quote(connect_database) }}
+    JAVASCRIPT={{ quote(javascript) }}
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+
+    if [[ ! "$CONNECT_DB" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: connect database '$CONNECT_DB' is not a valid ArangoDB database name." >&2
+        exit 1
+    fi
+
+    CLUSTER_CONFIG="arangodb-cluster/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$CLUSTER_CONFIG" ]]; then
+        echo "Error: $CLUSTER_CONFIG is missing; cannot resolve the destination ArangoDB version." >&2
+        exit 1
+    fi
+    ARANGO_VERSION=$(yq -r '.config."arangodb-cluster:properties".version' "$CLUSTER_CONFIG")
+    if [[ -z "$ARANGO_VERSION" || "$ARANGO_VERSION" == "null" ]]; then
+        echo "Error: arangodb-cluster:properties.version is not set in $CLUSTER_CONFIG." >&2
+        exit 1
+    fi
+
+    kubectl get secret arangodb-pass -n "$NS" -o json | jq -e '.data.password' >/dev/null
+
+    POD="arangosh-probe-$(date -u +%s)-$$"
+    # $(ARANGO_PASSWORD) is expanded by Kubernetes from the pod's own env,
+    # exactly as verify-app-credentials does it.
+    OVERRIDES=$(jq -nc \
+        --arg name "$POD" --arg image "arangodb:${ARANGO_VERSION}" \
+        --arg endpoint "http+tcp://${SERVER}:8529" --arg db "$CONNECT_DB" \
+        --arg js "$JAVASCRIPT" \
+        '{spec:{containers:[{name:$name,image:$image,command:["arangosh"],
+          args:["--server.endpoint",$endpoint,
+                "--server.username","root",
+                "--server.password","$(ARANGO_PASSWORD)",
+                "--server.database",$db,
+                "--javascript.execute-string",$js],
+          env:[{name:"ARANGO_PASSWORD",valueFrom:{secretKeyRef:{name:"arangodb-pass",key:"password"}}}]}],
+          restartPolicy:"Never"}}')
+
+    kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
+        --image "arangodb:${ARANGO_VERSION}" --overrides="$OVERRIDES"
+
+# Internal: does one database exist on the target coordinator? The exit status
+# is the contract callers rely on: 0 = exists, 3 = definitively absent,
+# anything else = the probe itself failed (callers must abort rather than
+# treat an unreachable cluster as "absent").
+# Usage: just arangodb _database-exists --namespace <ns> --server <svc> --database <db> --stack <name>
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB and Secret arangodb-pass")]
+[arg("server", long="server", short="v", help="Coordinator Service name")]
+[arg("database", long="database", short="d", help="Database to look for")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[private]
+[no-cd]
+_database-exists namespace server database stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SERVER={{ quote(server) }}
+    DB={{ quote(database) }}
+
+    if [[ ! "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: database '$DB' is not a valid ArangoDB database name." >&2
+        exit 1
+    fi
+
+    JS="const dbs = db._databases(); print(dbs.indexOf(\"${DB}\") === -1 ? \"DATABASE_MISSING\" : \"DATABASE_PRESENT\");"
+    probe_rc=0
+    OUT=$(just arangodb _arangosh-probe \
+        --namespace "$NS" --server "$SERVER" \
+        --connect-database _system --stack {{ quote(stack) }} \
+        --javascript "$JS") || probe_rc=$?
+    if [[ "$probe_rc" -ne 0 ]]; then
+        echo "Error: arangosh probe failed (exit $probe_rc) while checking whether '$DB' exists on '$SERVER'." >&2
+        exit 1
+    fi
+    if grep -q "DATABASE_PRESENT" <<<"$OUT"; then
+        echo "Database '$DB' exists on $SERVER."
+        exit 0
+    fi
+    if grep -q "DATABASE_MISSING" <<<"$OUT"; then
+        echo "Database '$DB' does not exist on $SERVER."
+        exit 3
+    fi
+    echo "Error: arangosh probe did not report database presence. Raw output:" >&2
+    printf '%s\n' "$OUT" >&2
+    exit 1
+
+# Internal: post-restore assertion that one database exists and holds at
+# least one non-system collection, so a restore that produced an empty
+# database fails loudly instead of being reported as success.
+# Exit status: 0 = verified, 4 = database exists but has no non-system
+# collection, anything else = the probe itself failed.
+# Usage: just arangodb _database-has-collections --namespace <ns> --server <svc> --database <db> --stack <name>
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB and Secret arangodb-pass")]
+[arg("server", long="server", short="v", help="Coordinator Service name")]
+[arg("database", long="database", short="d", help="Database to verify")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[private]
+[no-cd]
+_database-has-collections namespace server database stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SERVER={{ quote(server) }}
+    DB={{ quote(database) }}
+
+    if [[ ! "$DB" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: database '$DB' is not a valid ArangoDB database name." >&2
+        exit 1
+    fi
+
+    JS="const cols = db._collections().filter(function (c) { return c.name().charAt(0) !== \"_\"; }); print(cols.length === 0 ? \"DATABASE_EMPTY\" : \"DATABASE_OK \" + cols.length);"
+    probe_rc=0
+    OUT=$(just arangodb _arangosh-probe \
+        --namespace "$NS" --server "$SERVER" \
+        --connect-database "$DB" --stack {{ quote(stack) }} \
+        --javascript "$JS") || probe_rc=$?
+    if [[ "$probe_rc" -ne 0 ]]; then
+        echo "Error: could not open database '$DB' on '$SERVER' (arangosh exit $probe_rc) — the restore may not have created it." >&2
+        exit 1
+    fi
+    if grep -q "DATABASE_EMPTY" <<<"$OUT"; then
+        echo "Error: database '$DB' exists but has no non-system collection — the restore brought no data." >&2
+        exit 4
+    fi
+    COUNT=$(grep -o "DATABASE_OK [0-9]*" <<<"$OUT" | head -n1 | awk '{print $2}')
+    if [[ -z "$COUNT" ]]; then
+        echo "Error: arangosh probe did not report a collection count. Raw output:" >&2
+        printf '%s\n' "$OUT" >&2
+        exit 1
+    fi
+    echo "Verified: database '$DB' exists on $SERVER with $COUNT non-system collection(s)."
 
 # Reset the ArangoDB root password to the value in the destination cluster's
 # 'arangodb-pass' secret. Required after a cross-project bootstrap restores
@@ -1964,17 +2282,22 @@ apply-restore stack="" retries="180" interval="10":
 # configure-restore on purpose: this one targets the FOREIGN source bucket with
 # the read-only identity and `noLock: true`. `--snapshot` is optional on both —
 # omitted or `latest` resolves to the newest snapshot and echoes the resolved id.
-# Usage: just arangodb configure-bootstrap --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>]
+# `--database` narrows the run to one database exactly like configure-restore:
+# same read-only preflight, same refusal to touch an existing target database
+# without `--overwrite yes`, same foreign-bucket teardown via reset-restore-config.
+# Usage: just arangodb configure-bootstrap --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--database <db>] [--overwrite yes|no] [--stack <name>]
 [arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
 [arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
 [arg("snapshot", long="snapshot", short="p", help="Restic snapshot id (optional; omit or 'latest' resolves to the newest snapshot in the source repo)")]
 [arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
 [arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: bootstrap-<UTC timestamp>)")]
 [arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("database", long="database", short="d", help="Import only this database (default: whole instance)")]
+[arg("overwrite", long="overwrite", short="w", help="Replace an existing target database: yes|no (default no)")]
 [arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [group('arangodb')]
 [no-cd]
-configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret="dictycr-source" stack="":
+configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret="dictycr-source" stack="" database="" overwrite="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -1985,6 +2308,8 @@ configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret=
     SERVER="{{ server }}"
     RESTORE_ID="{{ restore_id }}"
     SECRET="{{ secret }}"
+    DATABASE="{{ database }}"
+    OVERWRITE="{{ overwrite }}"
 
     # Same 63-char Job-name budget arangodb-restore/types.go enforces.
     MAX_RESTORE_ID_LEN=46
@@ -2019,6 +2344,28 @@ configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret=
         exit 1
     fi
 
+    # Same single-database rules configure-restore and arangodb-restore/types.go
+    # enforce: yes/no with true/false accepted, overwrite only with --database.
+    case "$OVERWRITE" in
+        yes|true) OVERWRITE_VALUE="true" ;;
+        no|false|"") OVERWRITE_VALUE="false" ;;
+        *)
+            echo "Error: --overwrite takes yes or no; got '$OVERWRITE'." >&2
+            exit 1
+            ;;
+    esac
+    if [[ "$OVERWRITE_VALUE" == "true" && -z "$DATABASE" ]]; then
+        echo "Error: --overwrite needs --database — overwriting only applies to a single-database import." >&2
+        exit 1
+    fi
+    if [[ -n "$DATABASE" && ! "$DATABASE" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$ ]]; then
+        echo "Error: --database '$DATABASE' must be a valid ArangoDB database name: an ASCII letter or" >&2
+        echo "       underscore, then letters, digits, underscores or hyphens, at most 64 chars." >&2
+        exit 1
+    fi
+
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+
     if [[ -z "$SERVER" ]]; then
         echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
         SERVER=$(kubectl get svc -n "$NAMESPACE" -l arango_deployment=arangodb \
@@ -2048,6 +2395,19 @@ configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret=
 
     CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
 
+    # --- single-database preflight (read-only, before any mutation) --------
+    if [[ -n "$DATABASE" ]]; then
+        just arangodb _preflight-database-restore \
+            --namespace "$NAMESPACE" \
+            --server "$SERVER" \
+            --database "$DATABASE" \
+            --bucket "$BUCKET" \
+            --secret "$SECRET" \
+            --snapshot "$SNAPSHOT" \
+            --stack "$STACK" \
+            --overwrite "$OVERWRITE"
+    fi
+
     echo
     echo "arangodb-restore BOOTSTRAP configuration (cross-project first load)"
     echo "  namespace     : ${NAMESPACE}"
@@ -2059,28 +2419,51 @@ configure-bootstrap namespace bucket snapshot="" server="" restore_id="" secret=
     echo "  noLock        : true (read-only SA cannot write a restic lock)"
     echo "  confirmTarget : ${CONFIRM_TARGET}"
     echo "  job name      : arangodb-restore-${RESTORE_ID}"
+    if [[ -n "$DATABASE" ]]; then
+        echo "  database      : ${DATABASE} (single-database import)"
+        echo "  overwrite     : ${OVERWRITE_VALUE}"
+    else
+        echo "  scope         : whole instance (all databases)"
+    fi
     echo
 
-    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 
     # Overlay on the DR template: target identity, the SOURCE bucket, the three
-    # SOURCE secret NAMES (keys keep their dictycr-compatible names), noLock.
-    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
-        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE" \
-        --plaintext "arangodb-restore:properties.server=$SERVER" \
-        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID" \
-        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT" \
-        --plaintext "arangodb-restore:properties.confirmTarget=$CONFIRM_TARGET" \
-        --plaintext "arangodb-restore:properties.bucket=$BUCKET" \
-        --plaintext "arangodb-restore:properties.resticSecret.name=$SECRET" \
-        --plaintext "arangodb-restore:properties.resticSecret.key=resticPass" \
-        --plaintext "arangodb-restore:properties.bucketSecret.name=$SECRET" \
-        --plaintext "arangodb-restore:properties.bucketSecret.key=gcsCredentials" \
-        --plaintext "arangodb-restore:properties.projectSecret.name=$SECRET" \
-        --plaintext "arangodb-restore:properties.projectSecret.key=gcsProject" \
+    # SOURCE secret NAMES (keys keep their dictycr-compatible names), noLock,
+    # and — for a single-database import — the database/overwrite pair.
+    SET_ARGS=(
+        --path
+        --plaintext "arangodb-restore:properties.namespace=$NAMESPACE"
+        --plaintext "arangodb-restore:properties.server=$SERVER"
+        --plaintext "arangodb-restore:properties.restoreId=$RESTORE_ID"
+        --plaintext "arangodb-restore:properties.snapshot=$SNAPSHOT"
+        --plaintext "arangodb-restore:properties.confirmTarget=$CONFIRM_TARGET"
+        --plaintext "arangodb-restore:properties.bucket=$BUCKET"
+        --plaintext "arangodb-restore:properties.resticSecret.name=$SECRET"
+        --plaintext "arangodb-restore:properties.resticSecret.key=resticPass"
+        --plaintext "arangodb-restore:properties.bucketSecret.name=$SECRET"
+        --plaintext "arangodb-restore:properties.bucketSecret.key=gcsCredentials"
+        --plaintext "arangodb-restore:properties.projectSecret.name=$SECRET"
+        --plaintext "arangodb-restore:properties.projectSecret.key=gcsProject"
         --plaintext "arangodb-restore:properties.noLock=true"
+    )
+    if [[ -n "$DATABASE" ]]; then
+        SET_ARGS+=(
+            --plaintext "arangodb-restore:properties.database=$DATABASE"
+            --plaintext "arangodb-restore:properties.overwrite=$OVERWRITE_VALUE"
+        )
+    fi
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" "${SET_ARGS[@]}"
+
+    # Stale-value guard: a whole-instance first load must never inherit an
+    # earlier single-database filter.
+    if [[ -z "$DATABASE" ]]; then
+        for key in database overwrite; do
+            pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
+        done
+    fi
 
     echo
     echo "Bootstrap config written. Run 'just arangodb reset-restore-config' when done"
@@ -2113,7 +2496,7 @@ reset-restore-config stack="":
 
     # Clearing these forces a fresh configure-restore / configure-bootstrap
     # next time instead of reusing a stale target identity.
-    for key in snapshot restoreId confirmTarget; do
+    for key in snapshot restoreId confirmTarget database overwrite; do
         pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
     done
 
@@ -2122,7 +2505,29 @@ reset-restore-config stack="":
     echo "  bucket  : $PROD_BUCKET"
     echo "  secrets : $PROD_SECRET (restic/bucket/project)"
     echo "  noLock  : false"
-    echo "  snapshot/restoreId/confirmTarget cleared"
+    echo "  snapshot/restoreId/confirmTarget/database/overwrite cleared"
+
+# Internal: narrow cleanup used by restore-database's EXIT trap — clears only
+# the single-database keys and leaves bucket/secrets/noLock alone (that run
+# never touched them). It runs from a trap, so it must stay best-effort: a
+# failed config rm must not turn a completed restore into a failed one.
+# Usage: just arangodb _reset-single-database-config --stack <name>
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[group('arangodb')]
+[private]
+[no-cd]
+_reset-single-database-config stack:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-restore"
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    for key in database overwrite; do
+        pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
+    done
+    echo "Cleared properties.database and properties.overwrite on the $FOLDER stack '$STACK'."
 
 # One command for the cross-project first load: configure-bootstrap, then the
 # existing apply-restore, then reset-restore-config via trap (so the stack is
@@ -2169,6 +2574,248 @@ bootstrap-from-snapshot namespace bucket snapshot="" server="" restore_id="" sec
     echo "  1. Spot-check a restored database has documents."
     echo "  2. just arangodb finalize-bootstrap --app-user '<existing-user>' --app-password '<new-destination-password>'"
     echo "  3. just arangodb deploy-backup (uses dictycr, never dictycr-source)."
+
+# Restore ONE database into this cluster from its own backup bucket, at the
+# snapshot's point in time. Wraps `configure-restore --database` (same
+# read-only preflights, same confirmTarget gate) plus apply-restore, and clears
+# the single-database keys from the stack on EVERY exit path — so a failed run
+# cannot leave a later whole-instance DR drill quietly narrowed to one database.
+# Usage: just arangodb restore-database --namespace <ns> --database <db> [--snapshot <id|latest>] [--overwrite yes|no] [--server <svc>] [--restore-id <id>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
+[arg("database", long="database", short="d", help="Database to restore (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id, or 'latest' (default latest)")]
+[arg("overwrite", long="overwrite", short="w", help="Replace an existing target database: yes|no (default no)")]
+[arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: dbrestore-<UTC timestamp>)")]
+[arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 180)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+restore-database namespace database snapshot="latest" overwrite="no" server="" restore_id="" stack="" retries="180" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NAMESPACE="{{ namespace }}"
+    DATABASE="{{ database }}"
+    SNAPSHOT="{{ snapshot }}"
+    OVERWRITE="{{ overwrite }}"
+    SERVER="{{ server }}"
+    RESTORE_ID="{{ restore_id }}"
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    if [[ -z "$NAMESPACE" ]]; then
+        echo "Error: --namespace is required; there is no safe default restore target." >&2
+        exit 1
+    fi
+    if [[ -z "$DATABASE" ]]; then
+        echo "Error: --database is required; use configure-restore + apply-restore for a whole-instance restore." >&2
+        exit 1
+    fi
+    if [[ -z "$SNAPSHOT" ]]; then
+        SNAPSHOT="latest"
+    fi
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="dbrestore-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+    if [[ -z "$SERVER" ]]; then
+        echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
+        SERVER=$(kubectl get svc -n "$NAMESPACE" -l arango_deployment=arangodb \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+            | grep -v -E -- '-(int|ea)$' \
+            | grep -v -E -- '-(agnt|crdn|prmr|sngl)-' \
+            | head -n1 || true)
+        if [[ -z "$SERVER" ]]; then
+            SERVER="arangodb"
+            echo "Warning: no coordinator Service found (or kubectl unreachable) — falling back to '$SERVER'. Override with --server." >&2
+        else
+            echo "Discovered coordinator Service: $SERVER"
+        fi
+    fi
+
+    # This run reads THIS cluster's own bucket: the DR defaults in
+    # arangodb-restore/Pulumi.<stack>.yaml (bucket + `dictycr`). A stack left
+    # pointing at a foreign source bucket is a bug — configure-bootstrap's own
+    # trap resets it, so seeing one here means reset-restore-config was skipped.
+    CONFIG="arangodb-restore/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$CONFIG" ]]; then
+        echo "Error: $CONFIG is missing; initialize the stack with 'just arangodb configure-restore --namespace <ns>'." >&2
+        exit 1
+    fi
+    BUCKET=$(yq -r '.config."arangodb-restore:properties".bucket // ""' "$CONFIG")
+    SECRET=$(yq -r '.config."arangodb-restore:properties".resticSecret.name // ""' "$CONFIG")
+    if [[ -z "$BUCKET" || "$BUCKET" == "null" || -z "$SECRET" || "$SECRET" == "null" ]]; then
+        echo "Error: could not read bucket/resticSecret.name from $CONFIG." >&2
+        echo "       Run 'just arangodb reset-restore-config --stack $STACK' to restore the DR defaults." >&2
+        exit 1
+    fi
+
+    # --- preflight, read-only, before the first mutation -------------------
+    just arangodb _assert-no-running-jobs --namespace "$NAMESPACE" --selector app=arangodb-restore
+    just arangodb _preflight-database-restore \
+        --namespace "$NAMESPACE" \
+        --server "$SERVER" \
+        --database "$DATABASE" \
+        --bucket "$BUCKET" \
+        --secret "$SECRET" \
+        --snapshot "$SNAPSHOT" \
+        --stack "$STACK" \
+        --overwrite "$OVERWRITE"
+
+    # Whole-instance DR posture on EVERY exit path, failed restore included.
+    trap 'just arangodb _reset-single-database-config --stack "$STACK" || true' EXIT
+
+    OVERWRITE_FLAG=""
+    if [[ "$OVERWRITE" == "yes" || "$OVERWRITE" == "true" ]]; then
+        OVERWRITE_FLAG="--overwrite yes"
+    fi
+
+    # ${OVERWRITE_FLAG} stays unquoted on purpose: it is either an empty string
+    # or the two-word flag pair, and quoting would pass it as one argument.
+    just arangodb configure-restore \
+        --namespace "$NAMESPACE" \
+        --database "$DATABASE" \
+        --snapshot "$SNAPSHOT" \
+        --server "$SERVER" \
+        --restore-id "$RESTORE_ID" \
+        --stack "$STACK" \
+        ${OVERWRITE_FLAG}
+
+    just arangodb apply-restore \
+        --stack "$STACK" \
+        --retries "{{ retries }}" \
+        --interval "{{ interval }}"
+
+    echo
+    echo "Verifying database '$DATABASE' on $SERVER..."
+    just arangodb _database-has-collections \
+        --namespace "$NAMESPACE" \
+        --server "$SERVER" \
+        --database "$DATABASE" \
+        --stack "$STACK"
+
+    echo
+    echo "Single-database restore of '$DATABASE' finished."
+    echo "  point in time : snapshot '$SNAPSHOT' in gs://$BUCKET"
+    echo "  users/grants are NOT restored (they live in _system) — run 'just arangodb create-databases' and 'just arangodb configure-app-credentials' if the app user is missing."
+    echo "  single-database keys are cleared from the arangodb-restore stack on exit; 'just arangodb reset-restore-config' also restores the DR defaults."
+
+# Import ONE database from ANOTHER project's restic bucket (the cross-cluster
+# case). Same shape as restore-database, but the config overlay points this
+# cluster's arangodb-restore stack at the SOURCE bucket with the read-only
+# `dictycr-source` identity, so the EXIT trap is the broader
+# reset-restore-config: bucket, secrets, noLock and every single-database key.
+# Usage: just arangodb import-database --namespace <ns> --bucket <source-bucket> --database <db> [--snapshot <id|latest>] [--overwrite yes|no] [--secret <name>] [--server <svc>] [--restore-id <id>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Target namespace to restore into (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("database", long="database", short="d", help="Database to import (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id, or 'latest' (default latest)")]
+[arg("overwrite", long="overwrite", short="w", help="Replace an existing target database: yes|no (default no)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("server", long="server", short="v", help="Coordinator Service name (default: auto-discover, else 'arangodb')")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default: import-<UTC timestamp>)")]
+[arg("stack", long="stack", short="k", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 180)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+import-database namespace bucket database snapshot="" overwrite="no" secret="dictycr-source" server="" restore_id="" stack="" retries="180" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NAMESPACE="{{ namespace }}"
+    BUCKET="{{ bucket }}"
+    DATABASE="{{ database }}"
+    SNAPSHOT="{{ snapshot }}"
+    OVERWRITE="{{ overwrite }}"
+    SECRET="{{ secret }}"
+    SERVER="{{ server }}"
+    RESTORE_ID="{{ restore_id }}"
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    if [[ -z "$NAMESPACE" ]]; then
+        echo "Error: --namespace is required; there is no safe default restore target." >&2
+        exit 1
+    fi
+    if [[ -z "$BUCKET" ]]; then
+        echo "Error: --bucket is required; pass the SOURCE project's restic bucket." >&2
+        exit 1
+    fi
+    if [[ -z "$DATABASE" ]]; then
+        echo "Error: --database is required; use bootstrap-from-snapshot for a whole-instance first load." >&2
+        exit 1
+    fi
+    if [[ -z "$SNAPSHOT" ]]; then
+        SNAPSHOT="latest"
+    fi
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="import-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+    if [[ -z "$SERVER" ]]; then
+        echo "Discovering coordinator Service in namespace '$NAMESPACE' (label arango_deployment=arangodb)..."
+        SERVER=$(kubectl get svc -n "$NAMESPACE" -l arango_deployment=arangodb \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+            | grep -v -E -- '-(int|ea)$' \
+            | grep -v -E -- '-(agnt|crdn|prmr|sngl)-' \
+            | head -n1 || true)
+        if [[ -z "$SERVER" ]]; then
+            SERVER="arangodb"
+            echo "Warning: no coordinator Service found (or kubectl unreachable) — falling back to '$SERVER'. Override with --server." >&2
+        else
+            echo "Discovered coordinator Service: $SERVER"
+        fi
+    fi
+
+    # --- preflight, read-only, before the first mutation -------------------
+    just arangodb _assert-no-running-jobs --namespace "$NAMESPACE" --selector app=arangodb-restore
+    just arangodb _preflight-database-restore \
+        --namespace "$NAMESPACE" \
+        --server "$SERVER" \
+        --database "$DATABASE" \
+        --bucket "$BUCKET" \
+        --secret "$SECRET" \
+        --snapshot "$SNAPSHOT" \
+        --stack "$STACK" \
+        --overwrite "$OVERWRITE"
+
+    # The foreign-bucket overlay must never outlive this command, even on
+    # failure — reset-restore-config also clears the single-database keys.
+    trap 'just arangodb reset-restore-config --stack "$STACK" || true' EXIT
+
+    OVERWRITE_FLAG=""
+    if [[ "$OVERWRITE" == "yes" || "$OVERWRITE" == "true" ]]; then
+        OVERWRITE_FLAG="--overwrite yes"
+    fi
+
+    just arangodb configure-bootstrap \
+        --namespace "$NAMESPACE" \
+        --bucket "$BUCKET" \
+        --database "$DATABASE" \
+        --snapshot "$SNAPSHOT" \
+        --server "$SERVER" \
+        --restore-id "$RESTORE_ID" \
+        --secret "$SECRET" \
+        --stack "$STACK" \
+        ${OVERWRITE_FLAG}
+
+    just arangodb apply-restore \
+        --stack "$STACK" \
+        --retries "{{ retries }}" \
+        --interval "{{ interval }}"
+
+    echo
+    echo "Verifying database '$DATABASE' on $SERVER..."
+    just arangodb _database-has-collections \
+        --namespace "$NAMESPACE" \
+        --server "$SERVER" \
+        --database "$DATABASE" \
+        --stack "$STACK"
+
+    echo
+    echo "Single-database import of '$DATABASE' finished."
+    echo "  point in time : snapshot '$SNAPSHOT' in gs://$BUCKET"
+    echo "  users/grants are NOT restored (they live in _system) — run 'just arangodb finalize-bootstrap --app-user <user> --app-password <password>' to rotate root and the app password, then verify."
+    echo "  the arangodb-restore stack is reset to its DR defaults on exit (bucket, secrets, noLock, database, overwrite)."
 
 # Internal: run `restic snapshots --json` against <bucket> as a throwaway pod
 # in <namespace>, using resticPass/gcsProject/gcsCredentials from <secret>.
@@ -2219,6 +2866,70 @@ _restic-snapshots-json namespace bucket secret image="restic/restic:0.17.0":
         exit 1
     fi
     printf '%s\n' "$RAW"
+
+# Internal: assert that a restic snapshot contains a path, printing the
+# matching entries. This is how a single-database restore proves
+# /arangodump/<db> exists BEFORE it writes any stack config: without the
+# check a typo'd --database matches nothing, restic restores an empty tree,
+# and the failure only shows up after the restore Job exists.
+# Wired exactly like _restic-snapshots-json (same secret/credential
+# handling). --no-lock is always passed: the SOURCE repository's reader
+# identity cannot create a restic lock object, and listing never mutates.
+# Usage: just arangodb _restic-ls --namespace <ns> --bucket <b> --secret <name> --snapshot <id|latest> --path <p> [--image <ref>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the restic secret")]
+[arg("bucket", long="bucket", short="b", help="GCS restic bucket")]
+[arg("secret", long="secret", short="c", help="Secret holding resticPass/gcsProject/gcsCredentials")]
+[arg("snapshot", long="snapshot", short="s", help="Restic snapshot id, or 'latest'")]
+[arg("path", long="path", short="p", help="Absolute path inside the snapshot, e.g. /arangodump/mydb")]
+[arg("image", long="image", short="m", help="restic image reference")]
+[group('arangodb')]
+[private]
+[no-cd]
+_restic-ls namespace bucket secret snapshot path image="restic/restic:0.17.0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    BUCKET={{ quote(bucket) }}
+    SECRET={{ quote(secret) }}
+    SNAPSHOT={{ quote(snapshot) }}
+    PATH_IN_SNAPSHOT={{ quote(path) }}
+    IMAGE={{ quote(image) }}
+    POD="restic-ls-$(date -u +%s)"
+
+    if [[ ! "$PATH_IN_SNAPSHOT" =~ ^/[a-zA-Z0-9_/-]+$ ]]; then
+        echo "Error: path '$PATH_IN_SNAPSHOT' must be absolute and hold only letters, digits, underscore, hyphen and slash." >&2
+        exit 1
+    fi
+
+    # restic's GCS backend needs GOOGLE_APPLICATION_CREDENTIALS to be a file
+    # path, so the key is mounted from the secret rather than passed inline.
+    RESTIC_ARGS=("-r" "gs:${BUCKET}:/" "--no-lock" "ls" "$SNAPSHOT" "$PATH_IN_SNAPSHOT")
+    ARGS_JSON=$(printf '%s\n' "${RESTIC_ARGS[@]}" | jq -R . | jq -sc .)
+    OVERRIDES=$(jq -nc \
+        --arg name "$POD" --arg image "$IMAGE" --arg secret "$SECRET" \
+        --argjson args_array "$ARGS_JSON" \
+        '{spec:{containers:[{name:$name,image:$image,args:$args_array,
+          env:[{name:"RESTIC_PASSWORD",valueFrom:{secretKeyRef:{name:$secret,key:"resticPass"}}},
+               {name:"GOOGLE_PROJECT_ID",valueFrom:{secretKeyRef:{name:$secret,key:"gcsProject"}}},
+               {name:"GOOGLE_APPLICATION_CREDENTIALS",value:"/var/secret/gcs-credentials"}],
+          volumeMounts:[{name:"gcs-credentials",mountPath:"/var/secret",readOnly:true}]}],
+          volumes:[{name:"gcs-credentials",secret:{secretName:$secret,items:[{key:"gcsCredentials",path:"gcs-credentials"}]}}]}}')
+
+    RAW=$(kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
+        --image "$IMAGE" --overrides="$OVERRIDES")
+
+    # restic ls prints a "snapshot <id> of [...]" header first and kubectl
+    # mixes banner/trailer lines into stdout; keeping only lines that start
+    # with the requested path leaves exactly the snapshot's own entries.
+    MATCHES=$(printf '%s\n' "$RAW" | grep -E -- "^${PATH_IN_SNAPSHOT}(/|\$)" || true)
+    if [[ -z "$MATCHES" ]]; then
+        echo "Error: snapshot '$SNAPSHOT' in gs://$BUCKET contains no '$PATH_IN_SNAPSHOT'." >&2
+        echo "       Check the database name spelling, and pick a snapshot that holds it:" >&2
+        echo "       just arangodb list-snapshots-in-cluster --namespace $NS --bucket $BUCKET --secret $SECRET" >&2
+        exit 1
+    fi
+    printf '%s\n' "$MATCHES"
 
 # List restic snapshots from inside the cluster, using the same `dictycr`
 # secret wiring the restore Job uses. No local restic, no kops state store.

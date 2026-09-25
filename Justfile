@@ -181,13 +181,22 @@ test-arangodb-finalization:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-arangodb-finalization.sh"
 
+# Test the single-database restore path (restore-database, import-database,
+# configure-restore --database) with mocked Kubernetes/Pulumi calls.
+[group('dev-tools')]
+[no-cd]
+test-arangodb-single-db-restore:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-arangodb-single-db-restore.sh"
+
 # Run every mechanical gate: recipe lint, docs lint, contract tests, go build.
 # One gate for humans and agents; CI runs the same command.
 # No cloud credentials, Docker daemon, or asdf needed.
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint
