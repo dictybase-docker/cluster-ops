@@ -128,7 +128,7 @@ One command, four phases:
 
 > **Why `--no-lock`:** restic normally takes an exclusive lock, which means writing a lock file into the repository. A read-only `objectViewer` identity cannot write it and the restore dies with HTTP 403. `--no-lock` is set only for this bootstrap path; DR drills keep locking because they use the full-access `dictycr` identity.
 
-To run the two halves separately — for instance to review the config before applying — use `just arangodb configure-bootstrap ...` then `just arangodb apply-restore`, and run `just arangodb reset-restore-config` yourself afterwards.
+To run the two halves separately — for instance to review the config before applying — use `just arangodb configure-bootstrap ...` then `just arangodb apply-restore`, and run `just arangodb reset-restore-config` yourself afterwards. Add `--database <name>` to load one database instead of the whole instance (see [single-database restore](restore-database.md)); `import-database` is the composite that pairs that overlay with the reset trap.
 
 ## 6. After the Restore
 

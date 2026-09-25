@@ -21,6 +21,10 @@ Runs `arangodb-backup --user root --password $(PASSWORD) --output arangodump --r
 1. `arangodump --all-databases --include-system-collections` against `arangodb:8529`
 2. `restic backup` uploads to GCS (initializes repo on first run)
 
+The dump keeps one subdirectory per database (`/arangodump/<db>`), which is what
+lets a single database be restored on its own — see
+[single-database restore](restore-database.md).
+
 ## Secrets Required
 
 Creates none — reads existing secrets:

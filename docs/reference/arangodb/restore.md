@@ -34,12 +34,16 @@ just arangodb configure-restore --namespace <target-namespace>
 | `restoreId` | `drill-<UTC YYYYMMDD-HHMMSS>` (DNS-1123-safe) | `--restore-id <id>` |
 | `snapshot` | `latest` | `--snapshot <restic-snapshot-id>` |
 | `confirmTarget` | Computed `<namespace>/<server>/<restoreId>` | Never typed by hand |
+| `database` | Whole instance — key absent | `--database <name>` ([single-database restore](restore-database.md)) |
+| `overwrite` | `false` | `--overwrite yes`, only meaningful with `database` |
 
 ### Why the Ceremony
 
 `arangodb-restore` refuses to build the Job unless `confirmTarget` equals `<namespace>/<server>/<restoreId>` exactly (`types.go`, `validateConfirmTarget`). Stale or copy-pasted config cannot silently restore into wrong target.
 
 Recipe also rejects `--restore-id` that isn't DNS-1123 or over 46 chars (keeps Job name under 63 chars). Reusing an id updates same Job; new id creates fresh one.
+
+`--database <name>` narrows the same run to one database: restic restores only `/arangodump/<name>` and arangorestore writes into `--server.database <name>`. It adds a read-only preflight (the snapshot must hold that subdirectory, and an existing target database is refused without `--overwrite yes`). Prefer the [single-database restore](restore-database.md) composites — they run the same preflight and clear both keys on exit.
 
 ## Step 2: Apply
 

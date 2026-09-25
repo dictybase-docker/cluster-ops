@@ -19,6 +19,7 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [5. Backup & Restore](#5-backup--restore)
   - [5.1 Deploy Backup](#51-deploy-backup)
   - [5.2 Restore Drill](#52-restore-drill)
+  - [5.3 Single Database](#53-single-database)
 - [6. Verify](#6-verify)
 - [7. Teardown](#7-teardown)
 - [8. Troubleshooting](#8-troubleshooting)
@@ -89,6 +90,12 @@ just arangodb deploy-loader --folder arangodb-dataloader
 just arangodb configure-restore --namespace <ns>
 just arangodb apply-restore
 just arangodb teardown --namespace prod --delete-pvcs yes
+```
+
+```bash
+# One database only: point-in-time from own bucket, or cross-cluster import
+just arangodb restore-database --namespace <ns> --database <db>
+just arangodb import-database --namespace <ns> --bucket <source-bucket> --database <db>
 ```
 
 ---
@@ -226,6 +233,16 @@ Run on **clone cluster only**. In-cluster Job: restic restore → arangorestore.
 ```bash
 just arangodb configure-restore --namespace <target-namespace>
 just arangodb apply-restore
+```
+
+### 5.3 Single Database
+
+Restores one database instead of the whole instance: `restore-database` from this cluster's own bucket, `import-database` from another project's bucket. Both are fail-closed and clear the stack's single-database keys when they exit.
+→ [Single-database restore details](reference/arangodb/restore-database.md)
+
+```bash
+just arangodb restore-database --namespace <target-namespace> --database <db>
+just arangodb import-database --namespace <target-namespace> --bucket <source-bucket> --database <db>
 ```
 
 ---
