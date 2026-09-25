@@ -41,6 +41,22 @@
 # reset-restore-config` MUST run afterwards (bootstrap-from-snapshot calls it
 # from a trap) to put bucket/secrets/noLock back to the values above, so a
 # later DR drill cannot silently read the foreign source bucket.
+#
+# PER-DATABASE RESTORE (recipe-managed, deliberately absent here):
+# `just arangodb restore-database` / `import-database` temporarily set two
+# further keys on this stack and remove them again on exit (trap):
+#
+#   properties.database   -> one ArangoDB database name; restic restores only
+#                            /arangodump/<database> and arangorestore targets
+#                            --server.database <database>
+#   properties.overwrite  -> true only when the recipe was given --overwrite;
+#                            lets arangorestore replace existing collections
+#
+# They are NEVER committed to this template: with both absent the stack's
+# behavior is the whole-instance disaster-recovery restore documented above.
+# Leaving them behind would silently narrow a later DR drill to one database,
+# which is why the recipes clear them on every exit path (including failure)
+# and `reset-restore-config` clears them too.
 config:
   arangodb-restore:properties:
     namespace: prod

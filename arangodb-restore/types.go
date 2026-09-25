@@ -35,6 +35,14 @@ const (
 // the Job's metadata.name.
 var restoreIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
+// databasePattern enforces ArangoDB's traditional database-name scheme: an
+// ASCII letter or an underscore first (underscore is reserved for system
+// databases — _system is a legitimate restore target), then letters, digits,
+// underscore, hyphen, up to 64 chars. The server is stricter about extended
+// naming (--database.extended-names-databases), but a name this pattern
+// rejects is never one arangorestore can address.
+var databasePattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`)
+
 // SecretKeyPair names a Kubernetes Secret and the data key inside it.
 type SecretKeyPair struct {
 	Name string `json:"name"`
@@ -72,7 +80,17 @@ type RestoreConfig struct {
 	// bucket, as used by the cross-project bootstrap) cannot write it and the
 	// restore fails with HTTP 403. Left false for DR drills, which use a
 	// full-write identity and should keep locking.
-	NoLock         bool          `json:"noLock,omitempty"`
+	NoLock bool `json:"noLock,omitempty"`
+	// Database, when set, narrows the restore to one database: restic
+	// restores only that database's dump subdirectory and arangorestore
+	// restores it into --server.database. Empty keeps the whole-instance
+	// disaster-recovery behavior, so existing stack configs are unaffected.
+	Database string `json:"database,omitempty"`
+	// Overwrite lets arangorestore replace collections/documents that already
+	// exist in the target database (arangorestore --overwrite true). Only
+	// meaningful together with Database: whole-instance restores must never
+	// silently overwrite, so Validate rejects the combination.
+	Overwrite      bool          `json:"overwrite,omitempty"`
 	RestoreID      string        `json:"restoreId"`
 	ConfirmTarget  string        `json:"confirmTarget"`
 	Storage        StorageConfig `json:"storage"`
@@ -135,6 +153,9 @@ func (cfg *RestoreConfig) Validate() error {
 	if err := cfg.validateRestoreID(); err != nil {
 		return err
 	}
+	if err := cfg.validateDatabase(); err != nil {
+		return err
+	}
 	if err := cfg.validateStorage(); err != nil {
 		return err
 	}
@@ -170,6 +191,32 @@ func (cfg *RestoreConfig) validateRestoreID() error {
 			"restoreId %q must be a valid DNS-1123 label: lowercase "+
 				"alphanumeric and hyphens, not starting or ending with a hyphen",
 			cfg.RestoreID,
+		)
+	}
+	return nil
+}
+
+// validateDatabase accepts an empty Database (whole-instance restore) or a
+// single ArangoDB database name, and refuses Overwrite on its own: overwriting
+// only makes sense when the restore is scoped to one database, so a stray
+// `overwrite: true` in a DR stack config fails loudly instead of silently
+// replacing collections across the whole instance.
+func (cfg *RestoreConfig) validateDatabase() error {
+	if cfg.Database == "" {
+		if cfg.Overwrite {
+			return fmt.Errorf(
+				"overwrite: true requires properties.database — overwrite only " +
+					"applies to a single-database restore, and whole-instance " +
+					"restores must never overwrite unconditionally",
+			)
+		}
+		return nil
+	}
+	if !databasePattern.MatchString(cfg.Database) {
+		return fmt.Errorf(
+			"database %q must match %s: an ASCII letter or underscore, then "+
+				"letters, digits, underscores or hyphens, at most 64 chars",
+			cfg.Database, databasePattern.String(),
 		)
 	}
 	return nil

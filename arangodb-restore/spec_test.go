@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,12 +9,22 @@ import (
 )
 
 const (
-	testSecretName     = "dictycr"
-	testSourceIdentity = "dictycr-source"
-	testSourceBucket   = "source-restic-bucket"
-	testBootstrapID    = "bootstrap-20260827-120000"
-	testBootstrapSnap  = "a1b2c3"
-	wantDNSErr         = "DNS-1123 label"
+	testSecretName      = "dictycr"
+	testSourceIdentity  = "dictycr-source"
+	testSourceBucket    = "source-restic-bucket"
+	testBootstrapID     = "bootstrap-20260827-120000"
+	testBootstrapSnap   = "a1b2c3"
+	testDatabaseName    = "mydb"
+	testProdRepository  = "gs:restic-arangodb-backup-prod:/"
+	testEndpoint        = "http+tcp://arangodb:8529"
+	testScratchRoot     = "/restore"
+	testDumpDirectory   = "/restore/arangodump"
+	testDumpDatabaseDir = "/restore/arangodump/mydb"
+	testSnapshotInclude = "/arangodump/mydb"
+
+	wantDNSErr       = "DNS-1123 label"
+	wantDatabaseErr  = "database"
+	wantOverwriteErr = "overwrite"
 )
 
 func newSampleRestoreConfig() *RestoreConfig {
@@ -226,14 +237,69 @@ func TestValidate_Errors_ConfirmTarget(t *testing.T) {
 	})
 }
 
+func TestValidate_Success_DatabaseFilter(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = testDatabaseName
+
+	require.NoError(t, cfg.Validate())
+}
+
+func TestValidate_Success_SystemDatabase(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = "_system"
+
+	require.NoError(t, cfg.Validate())
+}
+
+func TestValidate_Success_LongestDatabaseName(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = "a" + strings.Repeat("b", 63)
+
+	require.NoError(t, cfg.Validate())
+}
+
+func TestValidate_Errors_DatabaseName(t *testing.T) {
+	runValidateErrCases(t, []validateErrCase{
+		{
+			name:    "starts with a digit",
+			mutate:  func(c *RestoreConfig) { c.Database = "1db" },
+			wantErr: wantDatabaseErr,
+		},
+		{
+			name:    "contains a space",
+			mutate:  func(c *RestoreConfig) { c.Database = "db name" },
+			wantErr: wantDatabaseErr,
+		},
+		{
+			name:    "contains a slash",
+			mutate:  func(c *RestoreConfig) { c.Database = "db/name" },
+			wantErr: wantDatabaseErr,
+		},
+		{
+			name: "65 chars",
+			mutate: func(c *RestoreConfig) {
+				c.Database = "a" + strings.Repeat("b", 64)
+			},
+			wantErr: wantDatabaseErr,
+		},
+	})
+}
+
+func TestValidate_Errors_OverwriteWithoutDatabase(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Overwrite = true
+
+	assert.ErrorContains(t, cfg.Validate(), wantOverwriteErr)
+}
+
 func TestBuildResticRestoreArgs(t *testing.T) {
 	cfg := newSampleRestoreConfig()
 	args := buildResticRestoreArgs(cfg)
 
 	assert.Equal(t, []string{
-		"-r", "gs:restic-arangodb-backup-prod:/",
-		"restore", "latest",
-		"--target", "/restore",
+		argRepository, testProdRepository,
+		argRestore, defaultSnapshot,
+		argTarget, testScratchRoot,
 	}, args)
 }
 
@@ -274,10 +340,10 @@ func TestBuildResticRestoreArgs_Bootstrap_NoLock(t *testing.T) {
 	args := buildResticRestoreArgs(cfg)
 
 	assert.Equal(t, []string{
-		"--no-lock",
-		"-r", "gs:source-restic-bucket:/",
-		"restore", testBootstrapSnap,
-		"--target", "/restore",
+		argNoLock,
+		argRepository, "gs:source-restic-bucket:/",
+		argRestore, testBootstrapSnap,
+		argTarget, testScratchRoot,
 	}, args)
 }
 
@@ -285,12 +351,69 @@ func TestBuildResticRestoreArgs_DefaultOmitsNoLock(t *testing.T) {
 	cfg := newSampleRestoreConfig()
 	args := buildResticRestoreArgs(cfg)
 
-	assert.NotContains(t, args, "--no-lock")
-	assert.Equal(t, "-r", args[0])
+	assert.NotContains(t, args, argNoLock)
+	assert.Equal(t, argRepository, args[0])
 }
 
 func TestScratchInputDirectory(t *testing.T) {
-	assert.Equal(t, "/restore/arangodump", scratchInputDirectory())
+	cfg := newSampleRestoreConfig()
+
+	assert.Equal(t, testDumpDirectory, scratchInputDirectory(cfg))
+}
+
+func TestScratchInputDirectory_DatabaseFilter(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = testDatabaseName
+
+	assert.Equal(t, testDumpDatabaseDir, scratchInputDirectory(cfg))
+}
+
+func TestBuildResticRestoreArgs_DatabaseFilter(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = testDatabaseName
+	args := buildResticRestoreArgs(cfg)
+
+	assert.Equal(t, []string{
+		argRepository, testProdRepository,
+		argRestore, defaultSnapshot,
+		argTarget, testScratchRoot,
+		argInclude, testSnapshotInclude,
+	}, args)
+}
+
+func TestBuildArangorestoreArgs_DatabaseFilter(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = testDatabaseName
+	args := buildArangorestoreArgs(cfg)
+
+	assert.Equal(t, []string{
+		argServerEndpoint, testEndpoint,
+		argServerUsername, argRootUser,
+		argServerPassword, argPasswordFromEnv,
+		argInputDirectory, testDumpDatabaseDir,
+		argServerDatabase, testDatabaseName,
+		argSystemColls,
+		argCreateDatabase, boolTrue,
+	}, args)
+	assert.NotContains(t, args, argAllDatabases)
+}
+
+func TestBuildArangorestoreArgs_DatabaseFilterOverwrite(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	cfg.Database = testDatabaseName
+	cfg.Overwrite = true
+	args := buildArangorestoreArgs(cfg)
+
+	assert.Equal(t, []string{
+		argServerEndpoint, testEndpoint,
+		argServerUsername, argRootUser,
+		argServerPassword, argPasswordFromEnv,
+		argInputDirectory, testDumpDatabaseDir,
+		argServerDatabase, testDatabaseName,
+		argSystemColls,
+		argCreateDatabase, boolTrue,
+		argOverwrite, boolTrue,
+	}, args)
 }
 
 func TestBuildArangorestoreArgs(t *testing.T) {
@@ -298,13 +421,13 @@ func TestBuildArangorestoreArgs(t *testing.T) {
 	args := buildArangorestoreArgs(cfg)
 
 	assert.Equal(t, []string{
-		"--server.endpoint", "http+tcp://arangodb:8529",
-		"--server.username", "root",
-		"--server.password", "$(ARANGO_PASSWORD)",
-		"--input-directory", "/restore/arangodump",
-		"--all-databases", boolTrue,
-		"--include-system-collections",
-		"--create-database", boolTrue,
+		argServerEndpoint, testEndpoint,
+		argServerUsername, argRootUser,
+		argServerPassword, argPasswordFromEnv,
+		argInputDirectory, testDumpDirectory,
+		argAllDatabases, boolTrue,
+		argSystemColls,
+		argCreateDatabase, boolTrue,
 	}, args)
 }
 
@@ -314,8 +437,32 @@ func TestBuildArangorestoreArgs_CustomServerAndPort(t *testing.T) {
 	cfg.Port = 9529
 	args := buildArangorestoreArgs(cfg)
 
-	assert.Equal(t, "--server.endpoint", args[0])
+	assert.Equal(t, argServerEndpoint, args[0])
 	assert.Equal(t, "http+tcp://arangodb-clone:9529", args[1])
+}
+
+// Whole-instance restores must stay byte-identical to the pre-database-filter
+// behavior: an empty Database/Overwrite may never leak --include,
+// --server.database, or --overwrite into the DR drill's argument lists.
+func TestBuildArgs_WholeInstanceRegression(t *testing.T) {
+	cfg := newSampleRestoreConfig()
+	assert.Empty(t, cfg.Database)
+	assert.False(t, cfg.Overwrite)
+
+	assert.Equal(t, []string{
+		argRepository, testProdRepository,
+		argRestore, defaultSnapshot,
+		argTarget, testScratchRoot,
+	}, buildResticRestoreArgs(cfg))
+	assert.Equal(t, []string{
+		argServerEndpoint, testEndpoint,
+		argServerUsername, argRootUser,
+		argServerPassword, argPasswordFromEnv,
+		argInputDirectory, testDumpDirectory,
+		argAllDatabases, boolTrue,
+		argSystemColls,
+		argCreateDatabase, boolTrue,
+	}, buildArangorestoreArgs(cfg))
 }
 
 func TestImageRefs(t *testing.T) {
