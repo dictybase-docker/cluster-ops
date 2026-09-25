@@ -2612,9 +2612,8 @@ restore-database namespace database snapshot="latest" overwrite="no" server="" r
         echo "Error: --database is required; use configure-restore + apply-restore for a whole-instance restore." >&2
         exit 1
     fi
-    if [[ -z "$SNAPSHOT" ]]; then
-        SNAPSHOT="latest"
-    fi
+    # An empty or `latest` --snapshot is pinned below, once the stack's own
+    # bucket is known, and always BEFORE the preflight.
     if [[ -z "$RESTORE_ID" ]]; then
         RESTORE_ID="dbrestore-$(date -u +%Y%m%d-%H%M%S)"
     fi
@@ -2648,6 +2647,36 @@ restore-database namespace database snapshot="latest" overwrite="no" server="" r
         echo "Error: could not read bucket/resticSecret.name from $CONFIG." >&2
         echo "       Run 'just arangodb reset-restore-config --stack $STACK' to restore the DR defaults." >&2
         exit 1
+    fi
+
+    # Assert the DR identity instead of assuming it. import-database's trap runs
+    # reset-restore-config with `|| true`, so a failed reset can leave the
+    # foreign source overlay on disk — and this recipe would then read another
+    # project's bucket while claiming to be a same-cluster restore.
+    STACK_NOLOCK=$(yq -r '.config."arangodb-restore:properties".noLock // "false"' "$CONFIG")
+    if [[ "$SECRET" == "dictycr-source" || "$STACK_NOLOCK" == "true" ]]; then
+        echo "Error: the arangodb-restore stack still carries a cross-project bootstrap overlay (resticSecret.name '$SECRET', noLock '$STACK_NOLOCK')." >&2
+        echo "       Run 'just arangodb reset-restore-config --stack $STACK' before a same-cluster restore," >&2
+        echo "       or use 'just arangodb import-database' for a cross-cluster one." >&2
+        exit 1
+    fi
+
+    # Pin an omitted / `latest` --snapshot to a concrete id BEFORE the preflight:
+    # the preflight proves one snapshot holds this database, and the Job must
+    # restore exactly that snapshot. Left as `latest`, a CronJob backup landing
+    # between the check and the Job would restore a point in time nobody
+    # inspected, and the run would report no auditable recovery point at all.
+    if [[ -z "$SNAPSHOT" || "$SNAPSHOT" == "latest" ]]; then
+        SNAPSHOT=$(just arangodb _restic-snapshots-json \
+            --namespace "$NAMESPACE" \
+            --bucket "$BUCKET" \
+            --secret "$SECRET" \
+            | jq -r 'sort_by(.time) | last | .id')
+        if [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: could not resolve the newest snapshot in gs://$BUCKET — pass --snapshot explicitly." >&2
+            exit 1
+        fi
+        echo "Pinned newest snapshot: $SNAPSHOT"
     fi
 
     # --- preflight, read-only, before the first mutation -------------------
@@ -2745,8 +2774,22 @@ import-database namespace bucket database snapshot="" overwrite="no" secret="dic
         echo "Error: --database is required; use bootstrap-from-snapshot for a whole-instance first load." >&2
         exit 1
     fi
-    if [[ -z "$SNAPSHOT" ]]; then
-        SNAPSHOT="latest"
+
+    # Pin an omitted / `latest` --snapshot to a concrete id BEFORE the preflight,
+    # so the snapshot the preflight proves is the snapshot the Job restores and
+    # the closing summary names an auditable recovery point. configure-bootstrap
+    # resolves the same value; pinning here keeps both halves on one id.
+    if [[ -z "$SNAPSHOT" || "$SNAPSHOT" == "latest" ]]; then
+        SNAPSHOT=$(just arangodb _restic-snapshots-json \
+            --namespace "$NAMESPACE" \
+            --bucket "$BUCKET" \
+            --secret "$SECRET" \
+            | jq -r 'sort_by(.time) | last | .id')
+        if [[ ! "$SNAPSHOT" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: could not resolve the newest snapshot in gs://$BUCKET — pass --snapshot explicitly." >&2
+            exit 1
+        fi
+        echo "Pinned newest source snapshot: $SNAPSHOT"
     fi
     if [[ -z "$RESTORE_ID" ]]; then
         RESTORE_ID="import-$(date -u +%Y%m%d-%H%M%S)"

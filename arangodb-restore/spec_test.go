@@ -465,6 +465,40 @@ func TestBuildArgs_WholeInstanceRegression(t *testing.T) {
 	}, buildArangorestoreArgs(cfg))
 }
 
+// Every flag the two argument builders emit comes from a named constant, so a
+// typo in one is invisible to the arg-list tests above — they assert the same
+// constants. This is the single place that pins each constant to the spelling
+// restic and arangorestore actually accept, and that `boolTrue` stays the
+// string form their boolean flags expect.
+func TestArgConstantSpellings(t *testing.T) {
+	cases := []struct {
+		what string
+		want string
+		got  string
+	}{
+		{"repository", "-r", argRepository},
+		{"no-lock", "--no-lock", argNoLock},
+		{"restore subcommand", "restore", argRestore},
+		{"target", "--target", argTarget},
+		{"include", "--include", argInclude},
+		{"server.endpoint", "--server.endpoint", argServerEndpoint},
+		{"server.username", "--server.username", argServerUsername},
+		{"server.password", "--server.password", argServerPassword},
+		{"server.database", "--server.database", argServerDatabase},
+		{"input-directory", "--input-directory", argInputDirectory},
+		{"all-databases", "--all-databases", argAllDatabases},
+		{"include-system-collections", "--include-system-collections", argSystemColls},
+		{"create-database", "--create-database", argCreateDatabase},
+		{"overwrite", "--overwrite", argOverwrite},
+		{"root user", "root", argRootUser},
+		{"password from env", "$(ARANGO_PASSWORD)", argPasswordFromEnv},
+		{"boolean true", "true", boolTrue},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.got, "%s spelling drifted from what the binary accepts", tc.what)
+	}
+}
+
 func TestImageRefs(t *testing.T) {
 	cfg := newSampleRestoreConfig()
 

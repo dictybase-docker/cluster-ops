@@ -21,6 +21,11 @@ mkdir -p "$tmp/bin"
 export MOCK_CALLS="$tmp/calls.log"
 export MOCK_BIN="$tmp/bin"
 export REAL_JUST="$just_bin"
+export REAL_YQ
+REAL_YQ="$(command -v yq)"
+# The id the mocked _restic-snapshots-json returns; both composites must pin
+# it before the preflight so the Job restores the snapshot that was checked.
+pinned_id=$(printf 'a%.0s' $(seq 1 64))
 : > "$MOCK_CALLS"
 
 fail() {
@@ -144,6 +149,34 @@ exit 0
 MOCK_PULUMI
 chmod +x "$MOCK_BIN/pulumi"
 
+cat > "$MOCK_BIN/yq" <<'MOCK_YQ'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'yq %s\n' "$*" >> "$MOCK_CALLS"
+args=" $* "
+# MOCK_STACK_OVERLAY simulates a stack left carrying the cross-project
+# bootstrap overlay: import-database's trap is best-effort, so this state is
+# reachable and restore-database must refuse it.
+if [[ "${MOCK_STACK_OVERLAY:-none}" != "none" && "$args" == *"arangodb-restore/"* ]]; then
+    case "$args" in
+        *resticSecret.name*)
+            printf '%s\n' dictycr-source
+            exit 0
+            ;;
+        *noLock*)
+            printf '%s\n' true
+            exit 0
+            ;;
+        *bucket*)
+            printf '%s\n' restic-arangodb-backup-prod
+            exit 0
+            ;;
+    esac
+fi
+exec "$REAL_YQ" "$@"
+MOCK_YQ
+chmod +x "$MOCK_BIN/yq"
+
 export PATH="$MOCK_BIN:$PATH"
 export PULUMI_GCP_CREDENTIALS="$tmp/credentials.json"
 : > "$PULUMI_GCP_CREDENTIALS"
@@ -239,6 +272,10 @@ grep -q -- 'arangodb configure-restore --namespace dev --database mydb' "$MOCK_C
 grep -q -- '--overwrite yes' "$MOCK_CALLS" || fail "overwrite not propagated to configure-restore"
 grep -q -- '_preflight-database-restore --namespace dev --server arangodb --database mydb --bucket restic-arangodb-backup-prod --secret dictycr' "$MOCK_CALLS" || fail "preflight did not read the stack's own bucket/secret"
 grep -q 'users/grants are NOT restored' "$tmp/restore-db.out" || fail "missing users/grants caveat"
+grep -q -- "arangodb _preflight-database-restore .*--snapshot $pinned_id" "$MOCK_CALLS" || fail "preflight did not get the pinned snapshot id"
+grep -q -- "arangodb configure-restore .*--snapshot $pinned_id" "$MOCK_CALLS" || fail "configure-restore did not get the pinned snapshot id"
+grep -q -- "--snapshot latest" "$MOCK_CALLS" && fail "latest must not survive into the stack config or the Job"
+grep -q "snapshot '$pinned_id'" "$tmp/restore-db.out" || fail "summary did not print the pinned snapshot id"
 
 echo "=== 7. restore-database: a failed apply-restore still clears the keys ==="
 : > "$MOCK_CALLS"
@@ -261,6 +298,8 @@ assert_order 'arangodb apply-restore' 'arangodb _database-has-collections'
 assert_order 'arangodb _database-has-collections' 'arangodb reset-restore-config'
 grep -q -- '--bucket source-restic-bucket --secret dictycr-source' "$MOCK_CALLS" || fail "import preflight did not use the source bucket/secret"
 grep -q -- 'arangodb configure-bootstrap --namespace prod --bucket source-restic-bucket --database mydb' "$MOCK_CALLS" || fail "configure-bootstrap not called with the source bucket"
+grep -q -- "arangodb _preflight-database-restore .*--snapshot $pinned_id" "$MOCK_CALLS" || fail "import preflight did not get the pinned snapshot id"
+grep -q -- "--snapshot latest" "$MOCK_CALLS" && fail "latest must not reach the import preflight or the Job"
 
 echo "=== 9. reset-restore-config also clears the single-database keys ==="
 : > "$MOCK_CALLS"
@@ -269,5 +308,25 @@ for key in database overwrite snapshot restoreId confirmTarget; do
     grep -q -- "config rm --stack dcr-kube1 --path properties.$key" "$MOCK_CALLS" \
         || fail "reset-restore-config does not clear properties.$key"
 done
+
+echo "=== 10. restore-database refuses a stack carrying the bootstrap overlay ==="
+: > "$MOCK_CALLS"
+set +e
+out=$(MOCK_STACK_OVERLAY=source "$just_bin" arangodb restore-database --namespace dev \
+    --database mydb --restore-id dbrestore-overlay --stack dcr-kube1 2>&1)
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "restore-database accepted a stack still pointing at the source bucket"
+grep -q 'cross-project bootstrap overlay' <<<"$out" || fail "no explanation for the foreign overlay: $out"
+grep -q 'reset-restore-config' <<<"$out" || fail "no remedy offered: $out"
+! grep -q '^pulumi ' "$MOCK_CALLS" || fail "overlay guard must abort before any Pulumi write"
+
+set +e
+out=$(MOCK_STACK_OVERLAY=nolock "$just_bin" arangodb restore-database --namespace dev \
+    --database mydb --restore-id dbrestore-overlay --stack dcr-kube1 2>&1)
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "restore-database accepted a stack with noLock left on"
+grep -q 'cross-project bootstrap overlay' <<<"$out" || fail "noLock overlay not explained: $out"
 
 echo "ArangoDB single-database restore contract tests PASSED"
