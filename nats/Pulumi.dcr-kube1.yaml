@@ -20,3 +20,5 @@ config:
     image:
       tag: 2.15.0-alpine
     namespace: prod
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIIbYbPuQRgavUxbFbcAOIo3lvDArpN3VgLrnJKZet/sSSQDjx5R/OjUIkghxDfU57lgulhHjGDpsJ0xce2FZYyLkfpbrPLSoHxKWk/hBH2YoMM389MoeTRuNO7ulHWFHLcbq7LELT3RxhcE=
