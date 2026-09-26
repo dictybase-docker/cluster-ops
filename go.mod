@@ -10,7 +10,7 @@ require (
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.34.2
-	github.com/pulumi/pulumi/sdk/v3 v3.263.0
+	github.com/pulumi/pulumi/sdk/v3 v3.264.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	github.com/urfave/cli/v2 v2.27.7
@@ -115,12 +115,12 @@ require (
 	github.com/opentracing/basictracer-go v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pgavlin/fx v0.1.6 // indirect
-	github.com/pgavlin/fx/v2 v2.0.12 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
+	github.com/pulumi/pulumi-cloud-sdk/go v1.20260918.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
