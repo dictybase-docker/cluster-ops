@@ -9,7 +9,6 @@ config:
           cc: eventMessenger.email.cc
           domain: eventMessenger.email.domain
           mailgunApiKey: eventMessenger.email.apiKey
-          publcationApiEndpoint: endpoints.publication
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
         name: email-event
@@ -20,7 +19,6 @@ config:
             secure: v1:Lejvh3p1Hru59+NB:WTrhVz3DzX+i2WCuqQWkZ7KSY284FpuY3+wWeyrZtunmLw==
           mailgunApiKey:
             secure: v1:1873LLNBSUZaDLOF:JifXmxwMRTOKXMbqYjgd40S2HJ7sWUkzHjaiRky/tUrdqVws0HCcFkVRmstUUrkwbAbylHemoQm3KOgnRIVUAZOT
-          publicationApiEndpoint: https://www.ebi.ac.uk/europepmc/webservices/rest/search
           sender:
             secure: v1:O3JURdaiWmT+KieY:N9mxX697W/N7m3GE+4DGfDtyZGexoqF/IPbX5YqCEIWBiOpWJhey3gRw
           senderName:

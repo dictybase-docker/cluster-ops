@@ -14,21 +14,19 @@ type EmailSecrets struct {
 }
 
 type EmailSecretKeys struct {
-	Cc                     string
-	Domain                 string
-	MailgunAPIKey          string
-	PublicationAPIEndpoint string
-	Sender                 string
-	SenderName             string
+	Cc            string
+	Domain        string
+	MailgunAPIKey string
+	Sender        string
+	SenderName    string
 }
 
 type EmailSecretValues struct {
-	Cc                     string
-	Domain                 string
-	MailgunAPIKey          string
-	PublicationAPIEndpoint string
-	Sender                 string
-	SenderName             string
+	Cc            string
+	Domain        string
+	MailgunAPIKey string
+	Sender        string
+	SenderName    string
 }
 
 type IssueDeployment struct {

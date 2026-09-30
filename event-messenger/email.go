@@ -20,9 +20,6 @@ func (emn *EventMessenger) CreateEmailSecret(
 		config.Keys.MailgunAPIKey: pulumi.String(
 			config.Values.MailgunAPIKey,
 		),
-		config.Keys.PublicationAPIEndpoint: pulumi.String(
-			config.Values.PublicationAPIEndpoint,
-		),
 		config.Keys.Sender: pulumi.String(config.Values.Sender),
 		config.Keys.SenderName: pulumi.String(
 			config.Values.SenderName,
@@ -55,7 +52,6 @@ func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 		{"EMAIL_SENDER_NAME", secrets.Keys.SenderName},
 		{"EMAIL_SENDER", secrets.Keys.Sender},
 		{"EMAIL_CC", secrets.Keys.Cc},
-		{"PUBLICATION_API_ENDPOINT", secrets.Keys.PublicationAPIEndpoint},
 		{"MAILGUN_API_KEY", secrets.Keys.MailgunAPIKey},
 	}
 
@@ -90,8 +86,6 @@ func (emn *EventMessenger) EmailContainerArgs() pulumi.StringArray {
 		"$(EMAIL_SENDER)",
 		"--cc",
 		"$(EMAIL_CC)",
-		"--pub",
-		"$(PUBLICATION_API_ENDPOINT)",
 	}
 	return pulumi.ToStringArray(args)
 }
