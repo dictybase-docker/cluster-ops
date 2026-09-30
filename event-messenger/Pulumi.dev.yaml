@@ -9,6 +9,9 @@ config:
           cc: eventMessenger.email.cc
           domain: eventMessenger.email.domain
           mailgunApiKey: eventMessenger.email.apiKey
+          ncbiApiKey: eventMessenger.email.ncbiApiKey
+          ncbiEmail: eventMessenger.email.ncbiEmail
+          ncbiTool: eventMessenger.email.ncbiTool
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
         name: email-event

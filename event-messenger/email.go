@@ -20,7 +20,10 @@ func (emn *EventMessenger) CreateEmailSecret(
 		config.Keys.MailgunAPIKey: pulumi.String(
 			config.Values.MailgunAPIKey,
 		),
-		config.Keys.Sender: pulumi.String(config.Values.Sender),
+		config.Keys.NcbiAPIKey: pulumi.String(config.Values.NcbiAPIKey),
+		config.Keys.NcbiTool:   pulumi.String(config.Values.NcbiTool),
+		config.Keys.NcbiEmail:  pulumi.String(config.Values.NcbiEmail),
+		config.Keys.Sender:     pulumi.String(config.Values.Sender),
 		config.Keys.SenderName: pulumi.String(
 			config.Values.SenderName,
 		),
@@ -45,14 +48,18 @@ func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 	var envVarArray corev1.EnvVarArray
 
 	secretEnvVars := []struct {
-		name string
-		key  string
+		name     string
+		key      string
+		optional bool
 	}{
-		{"EMAIL_DOMAIN", secrets.Keys.Domain},
-		{"EMAIL_SENDER_NAME", secrets.Keys.SenderName},
-		{"EMAIL_SENDER", secrets.Keys.Sender},
-		{"EMAIL_CC", secrets.Keys.Cc},
-		{"MAILGUN_API_KEY", secrets.Keys.MailgunAPIKey},
+		{"EMAIL_DOMAIN", secrets.Keys.Domain, false},
+		{"EMAIL_SENDER_NAME", secrets.Keys.SenderName, false},
+		{"EMAIL_SENDER", secrets.Keys.Sender, false},
+		{"EMAIL_CC", secrets.Keys.Cc, false},
+		{"MAILGUN_API_KEY", secrets.Keys.MailgunAPIKey, false},
+		{"NCBI_API_KEY", secrets.Keys.NcbiAPIKey, true},
+		{"NCBI_TOOL", secrets.Keys.NcbiTool, true},
+		{"NCBI_EMAIL", secrets.Keys.NcbiEmail, true},
 	}
 
 	for _, envVar := range secretEnvVars {
@@ -60,8 +67,9 @@ func (emn *EventMessenger) EmailContainerEnvArgsArray() corev1.EnvVarArray {
 			Name: pulumi.String(envVar.name),
 			ValueFrom: &corev1.EnvVarSourceArgs{
 				SecretKeyRef: &corev1.SecretKeySelectorArgs{
-					Name: pulumi.String(secrets.Name),
-					Key:  pulumi.String(envVar.key),
+					Name:     pulumi.String(secrets.Name),
+					Key:      pulumi.String(envVar.key),
+					Optional: pulumi.BoolPtr(envVar.optional),
 				},
 			},
 		})

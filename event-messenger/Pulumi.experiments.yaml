@@ -9,6 +9,9 @@ config:
           cc: eventMessenger.email.cc
           domain: eventMessenger.email.domain
           mailgunApiKey: eventMessenger.email.apiKey
+          ncbiApiKey: eventMessenger.email.ncbiApiKey
+          ncbiEmail: eventMessenger.email.ncbiEmail
+          ncbiTool: eventMessenger.email.ncbiTool
           sender: eventMessenger.email.sender
           senderName: eventMessenger.email.senderName
         name: emailevent
@@ -19,6 +22,10 @@ config:
             secure: v1:fbQMHz4hDBx8efCc:y9V7SFE4LEJqoF3pBTDSlZkE3nuhlmgsnDiwh8zwH8rzcw==
           mailgunApiKey:
             secure: v1:alw/5CPPDpL7fSfn:ZRhPeUhWSvVi4/QjYezIdmWjnBLk6HcOzTTUe88vIW4yW7ygELP2xtVuIU3ihiK9rk40TUzlJXxnIdf7zALRQHtf
+          ncbiApiKey:
+            secure: v1:EtRFM9z8FwAXzh+6:wFUy/TNMZJKXZvz0SpBuLNt8RQMuR1grJX0U7oxanUP3ooKV3rmOGWoInTM4AdtYbSWBBA==
+          ncbiEmail: siddhartha-basu@northwestern.edu
+          ncbiTool: eventmessenger
           sender:
             secure: v1:zhss74IUkM+ROGqB:4ncul6PkwoIHWBVFEheYkl4JlpL5mWUv18dx0g+AqqGGzeQJU8+l5vcT
           senderName:

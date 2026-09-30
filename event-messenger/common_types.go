@@ -17,6 +17,9 @@ type EmailSecretKeys struct {
 	Cc            string
 	Domain        string
 	MailgunAPIKey string
+	NcbiAPIKey    string
+	NcbiTool      string
+	NcbiEmail     string
 	Sender        string
 	SenderName    string
 }
@@ -25,6 +28,9 @@ type EmailSecretValues struct {
 	Cc            string
 	Domain        string
 	MailgunAPIKey string
+	NcbiAPIKey    string
+	NcbiTool      string
+	NcbiEmail     string
 	Sender        string
 	SenderName    string
 }
