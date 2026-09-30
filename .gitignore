@@ -60,3 +60,4 @@ pulumi-files/local-state/.pulumi
 
 # Isolated worktrees (used by task worktrees)
 worktrees/
+/.tool-versions.dev.dcr-experiments
