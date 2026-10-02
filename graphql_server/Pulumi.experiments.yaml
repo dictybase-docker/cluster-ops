@@ -2,6 +2,7 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnJ561SXJBe6ErGk/P2nNnNY6CZgUdnbGiJCGF30CkWUSSAB2302FVMIf8aOlKfO0sZoJxdHbXCSUoTbOlM/5BES/sq9O3Qd8z2TjL/JtflHuaUw1ctyQNIW8pBIdhdaZW5qr63pQnUd7FA==
 config:
   graphql_server:properties:
+    authEnabled: true
     allowedOrigins:
       - http://localhost:*
       - http://*.dictybase.dev

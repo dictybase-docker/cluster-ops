@@ -66,10 +66,29 @@ func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
 		pulumi.String(config.Endpoints.Publication),
 		pulumi.String("--s3-storage-api"),
 		pulumi.String(config.Endpoints.Store),
-		pulumi.String("--auth-api-endpoint"),
-		pulumi.String(config.Endpoints.Auth),
 		pulumi.String("--organism-api"),
 		pulumi.String(config.Endpoints.Organism),
+	}
+	args = append(args, gs.authFlags()...)
+	return append(args, gs.allowedOriginsFlags()...)
+}
+
+// authFlags emits the logto authentication arguments. The boolean is passed
+// as a single --auth-enabled=<value> argument (urfave/cli v1 treats a
+// space-separated value as a positional argument). Passing it explicitly in
+// both modes means an older image without the flag fails loudly on startup
+// instead of silently booting with the wrong auth state.
+func (gs *GraphqlServer) authFlags() pulumi.StringArray {
+	config := gs.Config
+	if !config.AuthEnabled {
+		return pulumi.StringArray{
+			pulumi.String("--auth-enabled=false"),
+		}
+	}
+	return pulumi.StringArray{
+		pulumi.String("--auth-enabled=true"),
+		pulumi.String("--auth-api-endpoint"),
+		pulumi.String(config.Endpoints.Auth),
 		pulumi.String("--app-id"),
 		pulumi.String(config.Secrets.Auth.AppId),
 		pulumi.String("--app-secret"),
@@ -81,7 +100,6 @@ func (gs *GraphqlServer) ContainerArgs() pulumi.StringArray {
 		pulumi.String("--jwt-audience"),
 		pulumi.String(config.Secrets.Auth.JwtAudience),
 	}
-	return append(args, gs.allowedOriginsFlags()...)
 }
 
 func (gs *GraphqlServer) ContainerArray() corev1.ContainerArray {

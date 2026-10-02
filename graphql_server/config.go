@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -9,6 +10,7 @@ import (
 
 type GraphqlServerConfig struct {
 	AllowedOrigins []string
+	AuthEnabled    bool
 	Endpoints      EndpointsConfig
 	Image          ImageConfig
 	Ingress        IngressConfig
@@ -76,5 +78,35 @@ func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 	if err := conf.TryObject("properties", graphqlConfig); err != nil {
 		return nil, fmt.Errorf("failed to read graphql config: %w", err)
 	}
+	if err := graphqlConfig.validate(); err != nil {
+		return nil, err
+	}
 	return graphqlConfig, nil
+}
+
+// validate fails closed when auth is enabled without its logto secrets; a
+// half-configured stack would otherwise deploy a container that cannot boot.
+func (c *GraphqlServerConfig) validate() error {
+	if !c.AuthEnabled {
+		return nil
+	}
+	missing := []string{}
+	for name, val := range map[string]string{
+		"appId":       c.Secrets.Auth.AppId,
+		"appSecret":   c.Secrets.Auth.AppSecret,
+		"jwksURI":     c.Secrets.Auth.JwksURI,
+		"jwtIssuer":   c.Secrets.Auth.JwtIssuer,
+		"jwtAudience": c.Secrets.Auth.JwtAudience,
+	} {
+		if val == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf(
+			"authEnabled=true but secrets.auth is missing %s",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
 }
