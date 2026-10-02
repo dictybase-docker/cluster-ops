@@ -71,7 +71,7 @@ just minio check-pool
 
 ## 2. Install MinIO
 
-Creates the root-credentials Secret `minio-root` and installs the Bitnami MinIO chart **17.0.23** (image `bitnamilegacy/minio:2025.7.23-debian-12-r3`) in standalone mode with a 150Gi `dictycr-balanced` PVC.
+Creates the root-credentials Secret `minio-root` and installs the Bitnami MinIO chart **17.0.21** from `oci://registry-1.docker.io/bitnamicharts` (Bitnami's legacy HTTPS chart repo is gone) — image `bitnamilegacy/minio:2025.7.23-debian-12-r3` — in standalone mode with a 150Gi `dictycr-balanced` PVC.
 Standalone means **no node-level HA** — one pod, one PVC, no erasure coding across nodes.
 → [Install details](reference/minio/install.md) · [address and credentials](reference/minio/install.md#service-and-credentials) · [no HA](reference/minio/install.md#no-ha)
 

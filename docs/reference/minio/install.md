@@ -7,7 +7,7 @@ Back to: [MinIO Deploy Guide](../../minio-deploy.md)
 Applies the `minio` stack (`Pulumi.dcr-kube1.yaml`) which creates:
 
 1. Secret `minio-root` — keys `rootUser` / `rootPassword`
-2. Helm release `minio` (chart **17.0.23**, standalone mode) — StatefulSet pod, 150Gi PVC on `dictycr-balanced`, Service `minio` on 9000
+2. Helm release `minio` (chart **17.0.21** from `oci://registry-1.docker.io/bitnamicharts`, standalone mode) — StatefulSet pod, 150Gi PVC on `dictycr-balanced`, Service `minio` on 9000
 
 ## Command
 

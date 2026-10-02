@@ -3,6 +3,9 @@
 # by `just minio deploy --root-user .. --root-password ..`.
 #
 # Chart 17.0.x notes:
+#   - chart source: Bitnami removed https://charts.bitnami.com/bitnami;
+#     charts are OCI artifacts now (oci://registry-1.docker.io/bitnamicharts).
+#     17.0.21 is the last published 17.0.x.
 #   - image lives under `bitnamilegacy/minio` (Bitnami Secure Images moved
 #     the free catalog to `latest`-only; the legacy repo keeps dated tags).
 #   - `disableWebUI` was removed; the Console is a separate deployment
@@ -14,8 +17,10 @@ config:
   minio:properties:
     chart:
       name: minio
-      repository: https://charts.bitnami.com/bitnami
-      version: 17.0.23
+      # Bitnami removed the legacy HTTPS chart repo; charts now ship as
+      # OCI artifacts from Docker Hub (bitnamicharts). Last published 17.0.x.
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: 17.0.21
     image:
       repository: bitnamilegacy/minio
       tag: 2025.7.23-debian-12-r3
@@ -25,6 +30,11 @@ config:
       userKey: rootUser
       passKey: rootPassword
       # userName / password: set by `just minio deploy`
+
+      userName:
+        secure: v1:eI5OYJ75zma/NnQK:OU2IU/s9YDFBwQNAySX7SxFeWgCFtrJUujk=
+      password:
+        secure: v1:7JrAm0BQEu6yS7KU:b8lbCVC31eA7JL8+xoEWPynaDpH4p8VjP2wDZc2+/4VeGrM=
     storage:
       class: dictycr-balanced
       size: 150Gi
@@ -33,3 +43,5 @@ config:
     webui: false
     apiIngress:
       enabled: false
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIGBq2xtAyG4ILFbxszqxSQL0ExGWHOi7hFcydhOyCboSSQDjx5R/GADTqh3fyI7MCNl1a2JrDkpbjqNm1aYQGYp7UIC3I0VLbFiJE2kkqPWJW/VpKUQpQH/Lfdkt9BqaiyEu/CsCKpuaMq0=

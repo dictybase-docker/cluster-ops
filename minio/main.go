@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/helm/v3"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -15,6 +16,25 @@ type ChartConfig struct {
 	Name       string
 	Repository string
 	Version    string
+}
+
+// isOCIChart reports whether the configured chart repository uses the OCI
+// registry protocol (oci:// scheme). Bitnami removed its legacy HTTPS chart
+// repository, so current charts resolve from an OCI registry instead.
+func isOCIChart(repo string) bool {
+	return strings.HasPrefix(repo, "oci://")
+}
+
+// chartSource resolves the chart reference and repository for the Helm
+// release. OCI charts cannot use RepositoryOpts — the full registry path
+// ("oci://<registry>/<org>/<chart>") is the chart reference and the repo
+// must be omitted.
+func (c ChartConfig) chartSource() (chart string, repo string) {
+	if isOCIChart(c.Repository) {
+		chart = strings.TrimSuffix(c.Repository, "/") + "/" + c.Name
+		return chart, ""
+	}
+	return c.Name, c.Repository
 }
 
 type ImageConfig struct {
@@ -159,15 +179,18 @@ func (mno *Minio) installHelmChart(
 	ctx *pulumi.Context,
 	secret *corev1.Secret,
 ) error {
+	chartRef, repo := mno.Config.Chart.chartSource()
+	var repoOpts *helm.RepositoryOptsArgs
+	if repo != "" {
+		repoOpts = &helm.RepositoryOptsArgs{Repo: pulumi.String(repo)}
+	}
 	_, err := helm.NewRelease(ctx, "minio", &helm.ReleaseArgs{
-		Name:      pulumi.String(mno.Config.Chart.Name),
-		Chart:     pulumi.String(mno.Config.Chart.Name),
-		Version:   pulumi.String(mno.Config.Chart.Version),
-		Namespace: pulumi.String(mno.Config.Namespace),
-		RepositoryOpts: helm.RepositoryOptsArgs{
-			Repo: pulumi.String(mno.Config.Chart.Repository),
-		},
-		Values: mno.getHelmValues(),
+		Name:           pulumi.String(mno.Config.Chart.Name),
+		Chart:          pulumi.String(chartRef),
+		Version:        pulumi.String(mno.Config.Chart.Version),
+		Namespace:      pulumi.String(mno.Config.Namespace),
+		RepositoryOpts: repoOpts,
+		Values:         mno.getHelmValues(),
 	}, pulumi.DependsOn([]pulumi.Resource{secret}))
 	if err != nil {
 		return fmt.Errorf("failed to install Helm chart: %w", err)
