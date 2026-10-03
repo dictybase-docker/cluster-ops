@@ -22,7 +22,8 @@ just minio import-bucket \
 2. Opens a port-forward `localhost:19000 → svc/minio:9000` (killed on exit)
 3. Registers `mc` aliases `minio-src` (explicit source credentials) and `minio-dst` (Secret-derived)
 4. Creates the bucket on the target if missing (`mc mb --ignore-existing`)
-5. Runs `mc mirror --preserve --overwrite`; `--remove` only when the flag is passed
+5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed
+6. Retries the mirror up to `--retries` times (default 5), re-probing the port-forward before each retry — each attempt resumes, skipping objects already copied
 
 ## Flags
 
@@ -34,6 +35,7 @@ just minio import-bucket \
 | `--namespace` | No | `prod` | |
 | `--secret` | No | `minio-root` | Target credentials Secret |
 | `--remove` | No | off | Deletes target objects missing at the source — dangerous, opt-in |
+| `--retries` | No | `5` | Mirror attempts before giving up; each attempt resumes where the last stopped |
 
 ## Idempotence
 
@@ -55,3 +57,5 @@ The recipe guards the direction: source → target, one bucket. To seed multiple
 ## Large Imports
 
 The mirror streams through the operator machine over the port-forward — throughput is bounded by the local uplink, not the cluster. For multi-TiB buckets, run from a VM with good bandwidth to both endpoints.
+
+The recipe already mitigates the two laptop-path failure modes: HTTPS load balancers that reset long-lived HTTP/2 streams (HTTP/1.1 is forced for source reads) and transient per-object failures (`mc mirror --retry` retries objects in place, and the outer `--retries` loop resumes the whole mirror). If it is still slow, that is the port-forward uplink ceiling — run from a VM with good bandwidth to both endpoints. See [troubleshooting](troubleshooting.md).

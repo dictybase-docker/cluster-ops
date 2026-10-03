@@ -10,6 +10,8 @@ Back to: [MinIO Deploy Guide](../../minio-deploy.md)
 | Helm values rejected on apply | Lab-era values leaked in (`disableWebUI`) | Chart 17 removed `disableWebUI`; this program no longer emits it — confirm the stack is on the chart 17 program and `Pulumi.dcr-kube1.yaml` |
 | App cannot connect | Wrong Service or Secret | API is `minio.prod.svc.cluster.local:9000`; credentials in Secret `minio-root` (`kubectl get secret minio-root -n prod -o jsonpath='{.data.rootPassword}' \| base64 -d`) |
 | Import stalls at start | Port-forward to `svc/minio` not up (port 19000 busy) | Free the local port (`lsof -i :19000`) and re-run `import-bucket` |
+| Import slow | Mirror streams through the operator machine: downlink + one port-forward stream carry every byte | Expected on the laptop path — for big buckets run from a VM with good bandwidth to both endpoints |
+| `mc: Failed to copy ... connection reset by peer` on many files | Source HTTPS load balancer (e.g. GCP classic LB) resets long-lived HTTP/2 streams; `mc` negotiates HTTP/2 by default | Recipe forces HTTP/1.1 (`GODEBUG=http2client=0`) plus `mc mirror --retry` per-object retries and an outer `--retries` loop — re-run `import-bucket`; still failing, check the source endpoint directly (`curl --http1.1 -I <object-url>`) |
 | Import fails auth on target | Secret keys not `rootUser`/`rootPassword` | The recipe reads those exact keys from `minio-root` — check the Secret with `kubectl get secret minio-root -n prod -o yaml` |
 | Import fails auth on source | Source credentials rejected | Verify with `mc alias set test <url> <user> <pass> && mc ls test` outside the recipe |
 | Console/UI missing | Intentional | Prod sets `webui: false`; use `mc` — see [install](install.md#chart-17-changes-vs-the-lab-stacks) |

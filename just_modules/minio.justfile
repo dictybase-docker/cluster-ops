@@ -143,9 +143,10 @@ deploy root_user root_password namespace="prod" stack="" retries="60" interval="
 [arg("namespace", long="namespace", short="n", help="Namespace MinIO runs in")]
 [arg("secret", long="secret", short="e", help="Secret holding this MinIO's root credentials")]
 [arg("remove", long="remove", help="Pass --remove to mc mirror (deletes target objects missing at source; default OFF)")]
+[arg("retries", long="retries", short="r", help="Mirror attempts before giving up (default 5); each attempt resumes where the last stopped")]
 [group('minio')]
 [no-cd]
-import-bucket bucket source_url source_user source_password namespace="prod" secret="minio-root" remove="no":
+import-bucket bucket source_url source_user source_password namespace="prod" secret="minio-root" remove="no" retries="5":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -188,8 +189,34 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
     REMOVE_FLAG=""
     [[ "{{ remove }}" == "yes" ]] && REMOVE_FLAG="--remove"
 
-    echo "Mirroring minio-src/$BUCKET -> minio-dst/$BUCKET ..."
-    mc mirror --preserve --overwrite $REMOVE_FLAG "minio-src/$BUCKET" "minio-dst/$BUCKET"
+    # HTTPS load balancers (GCP classic LB among them) reset long-lived
+    # HTTP/2 streams mid-transfer; mc is a Go client and negotiates HTTP/2
+    # by default. Force HTTP/1.1 for the source reads — the reset storms
+    # disappear. Harmless for plain-http endpoints.
+    export GODEBUG=http2client=0
+
+    ATTEMPTS="{{ retries }}"
+    [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
+
+    echo "Mirroring minio-src/$BUCKET -> minio-dst/$BUCKET (up to $ATTEMPTS attempts)..."
+    ok=0
+    for attempt in $(seq 1 "$ATTEMPTS"); do
+        # --retry retries failed objects in place (transient resets);
+        # --summary prints copied/failed counts per attempt.
+        if mc mirror --preserve --overwrite --retry --summary $REMOVE_FLAG \
+            "minio-src/$BUCKET" "minio-dst/$BUCKET"; then
+            ok=1
+            break
+        fi
+        echo "Mirror attempt $attempt/$ATTEMPTS failed — retrying (resume skips objects already copied)..." >&2
+        # Re-probe the port-forward before reusing it.
+        for i in $(seq 1 10); do
+            nc -z localhost 19000 2>/dev/null && break
+            sleep 1
+        done
+        sleep $((attempt * 5))
+    done
+    [[ "$ok" == "1" ]] || { echo "Error: mirror still failing after $ATTEMPTS attempts." >&2; exit 1; }
 
     echo
     echo "Done. Object counts:"
