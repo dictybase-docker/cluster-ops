@@ -39,8 +39,8 @@ case "$*" in
     "get ns prod") echo "prod Active" ;;
     "get secret order -n prod") echo "order" ;;
     "get secret order -n prod -o"*) echo -n "dXNlcg==" ;;
-    "get pods -n prod -l app=arangodb"*) echo -n "arangodb-0" ;;
-    "exec -n prod arangodb-0"*) exit 0 ;;
+    "get pods -n prod -l app=arangodb,role=coordinator"*) echo -n "arangodb-crdn-0" ;;
+    "exec -n prod arangodb-crdn-0"*) exit 0 ;;
     "auth can-i update deployments -n prod") echo "yes" ;;
 esac
 exit 0

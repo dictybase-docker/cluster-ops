@@ -633,10 +633,10 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="":
 # Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-label <selector>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder (stack config source)")]
-[arg("arango_label", long="arango-label", short="a", help="Label selector for a ready ArangoDB pod (default app=arangodb)")]
+[arg("arango_label", long="arango-label", short="a", help="Label selector for a coordinator ArangoDB pod (default app=arangodb,role=coordinator)")]
 [group('pulumi-management')]
 [no-cd]
-check-backend-prereqs folder stack="" arango_label="app=arangodb":
+check-backend-prereqs folder stack="" arango_label="app=arangodb,role=coordinator":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -705,7 +705,7 @@ check-backend-prereqs folder stack="" arango_label="app=arangodb":
         dbpass=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${passkey}}" | base64 -d)
         arango_pod=$(kubectl get pods -n "${namespace}" -l "{{ arango_label }}" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
         if [ -z "${arango_pod}" ]; then
-            echo "MISSING: no Running pod matches selector '{{ arango_label }}' in ${namespace} — pass --arango-label with the right selector." >&2
+            echo "MISSING: no Running pod matches selector '{{ arango_label }}' in ${namespace} — pass --arango-label with the right selector (must select a coordinator, not an agent)." >&2
             missing=1
         elif ! kubectl exec -n "${namespace}" "${arango_pod}" -- arangosh \
             --server.endpoint "tcp://127.0.0.1:8529" \
