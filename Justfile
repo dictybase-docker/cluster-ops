@@ -149,6 +149,14 @@ test-cluster-registry:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-cluster-registry.sh"
 
+# Run register-cluster contract tests (registry entry from bootstrap artifacts)
+[group('dev-tools')]
+[no-cd]
+test-register-cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-register-cluster.sh"
+
 # Run backend scaffold contract tests (scaffold-backend-stack guard behavior)
 [group('dev-tools')]
 [no-cd]
@@ -245,7 +253,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-ci-recipes test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-ci-recipes test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint

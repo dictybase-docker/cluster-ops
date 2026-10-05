@@ -7,12 +7,38 @@ Back to: [Backend Service Deploy Guide](../../backend-service-deploy.md)
 The registry is one YAML file per cluster — `config/clusters/<cluster>.yaml` —
 holding every value the backend deploy recipes and the `just ci` helpers need.
 It is the single source of truth: no downstream recipe re-derives or hardcodes
-these values. Adding a cluster is adding this file; there is deliberately no
-generator recipe (a single file with eleven keys — a generator would be longer
-than the file).
+these values.
 
-`just gcp-cluster registry-show` is the read path. It is read-only and fails
-closed on every malformed entry.
+`just gcp-cluster register-cluster --env <env> --cluster <name>` creates the
+entry from the cluster's own bootstrap artifacts (see below); it is the write
+path. `just gcp-cluster registry-show` is the read path. Both fail closed on
+malformed input.
+
+## Creating an Entry (register-cluster)
+
+Run after `create-cluster-env` (and `just gcp-pulumi bootstrap-backend`, which
+fills the Pulumi lines in the env file) — the recipe only reads files:
+
+```bash
+just gcp-cluster register-cluster --env prod --cluster dcr-kube2
+```
+
+Behavior:
+
+1. Reads `.env.<env>.<cluster>` for `PROJECT_ID`, `PULUMI_SECRET_PROVIDER`,
+   `PULUMI_BACKEND_URL`, `PULUMI_STACK`, and the asdf tool manifest name.
+   A missing file fails with the `create-cluster-env` command to run; a missing
+   Pulumi line fails with the `bootstrap-backend` hint.
+2. Reads `kops` / `kubectl` / `pulumi` versions from the tool manifest
+   (`.tool-versions.<env>.<cluster>`), stripping any `v` prefix. A missing tool
+   fails naming it.
+3. Derives `kops_state` from the `gs://kops-state-<cluster>` convention,
+   `namespace` from the env name, `ci_env` from the uppercased env name —
+   each overridable.
+4. Writes the entry describe-then-create — an existing file is never
+   overwritten.
+5. Runs `registry-show` over the new entry, so it is validated the moment it
+   exists, and prints the next steps.
 
 ## Behavior
 
@@ -51,6 +77,18 @@ read them through `<CI_ENV>_KOPS_VERSION` / `<CI_ENV>_KUBECTL_VERSION` /
 are only a fallback for clusters that pass no version.
 
 ## Flags
+
+### register-cluster
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--env` / `-e` | Yes | — | Environment name; selects `.env.<env>.<cluster>` |
+| `--cluster` / `-c` | Yes | — | Cluster name |
+| `--namespace` / `-n` | No | env name | Namespace backend services deploy into |
+| `--ci-env` | No | env uppercased | GitHub variable prefix |
+| `--kops-state` / `-s` | No | `gs://kops-state-<cluster>` | kOps state bucket URI |
+
+### registry-show
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
