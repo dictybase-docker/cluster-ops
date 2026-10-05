@@ -19,6 +19,7 @@ mod minio 'just_modules/minio.justfile'
 mod redis 'just_modules/redis.justfile'
 mod nats 'just_modules/nats.justfile'
 mod docker 'just_modules/docker.justfile'
+mod ci 'just_modules/ci.justfile'
 
 # Variables
 
@@ -140,6 +141,54 @@ test:
 test-bootstrap:
     ./scripts/test-bootstrap-bundle.sh
 
+# Run cluster registry contract tests (registry-show fail-closed behavior)
+[group('dev-tools')]
+[no-cd]
+test-cluster-registry:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-cluster-registry.sh"
+
+# Run backend scaffold contract tests (scaffold-backend-stack guard behavior)
+[group('dev-tools')]
+[no-cd]
+test-backend-scaffold:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-backend-scaffold.sh"
+
+# Run backend prerequisite contract tests (check-backend-prereqs, verify-deployer-access)
+[group('dev-tools')]
+[no-cd]
+test-backend-prereqs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-backend-prereqs.sh"
+
+# Run backend bootstrap-service contract tests (preflight ordering, mutation abort)
+[group('dev-tools')]
+[no-cd]
+test-backend-bootstrap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-backend-bootstrap.sh"
+
+# Run ci recipe contract tests (deploy credentials, secret publish, variables)
+[group('dev-tools')]
+[no-cd]
+test-ci-recipes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-ci-recipes.sh"
+
+# Run tag workflow render contract tests (shape, ref pin, input-drift guard)
+[group('dev-tools')]
+[no-cd]
+test-render-tag-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-render-tag-deploy.sh"
+
 # Run lint-recipes mechanical checks on all just recipes
 [group('dev-tools')]
 [no-cd]
@@ -196,7 +245,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-ci-recipes test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint

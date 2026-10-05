@@ -1,0 +1,17 @@
+# Template for a backend service stack config.
+# Rendered by `just gcp-pulumi scaffold-backend-stack` — the config block is
+# appended to Pulumi.<stack>.yaml AFTER `pulumi stack init --secrets-provider`
+# has written the secretsprovider + encryptedkey lines. Never copy by hand.
+config:
+  __PROJECT__:properties:
+    appName: __APP__
+    arangodbSecret:
+      name: __SECRET_NAME__
+      passkey: password
+      userkey: user
+    command: start-server
+    image:
+      name: dictybase/__IMAGE_REPO__
+      tag: bootstrap
+    namespace: __NAMESPACE__
+    port: __PORT__

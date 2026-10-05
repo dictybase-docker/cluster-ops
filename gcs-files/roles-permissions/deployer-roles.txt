@@ -1,0 +1,3 @@
+roles/storage.objectViewer
+roles/cloudkms.cryptoKeyEncrypterDecrypter
+roles/iam.serviceAccountUser

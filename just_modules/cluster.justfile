@@ -1982,3 +1982,160 @@ create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_ke
 
     echo
     echo "Cluster created and validated."
+
+# Show the registry entry for a cluster (config/clusters/<name>.yaml).
+# Read-only. Prints every key, fails closed on a missing file, a missing or
+# empty key, a non-GCS state URI, a non-gcpkms secrets provider, or a
+# lowercase ci_env prefix. The registry is the single source of truth for
+# the backend deploy recipes and the `just ci` helpers — nothing downstream
+# re-derives these values.
+# Usage: just gcp-cluster registry-show --cluster <name>
+[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[group('cluster-management')]
+[no-cd]
+registry-show cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    name="{{ cluster }}"
+    f="config/clusters/${name}.yaml"
+    if [ ! -f "${f}" ]; then
+        echo "ERROR: no registry entry for cluster '${name}' — expected ${f}." >&2
+        echo "       Add the file (see docs/reference/backend/cluster-registry.md)." >&2
+        exit 1
+    fi
+
+    required=(
+        cluster stack kops_state gcp_project kms_secrets_provider
+        pulumi_state namespace ci_env kops_version kubectl_version pulumi_version
+    )
+    missing=()
+    values=()
+    for key in "${required[@]}"; do
+        val=$(yq -r ".${key} // \"\"" "${f}")
+        if [ -z "${val}" ]; then
+            missing+=("${key}")
+        else
+            values+=("${key}=${val}")
+        fi
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "ERROR: registry entry ${f} is missing or empty keys:" >&2
+        printf '       %s\n' "${missing[@]}" >&2
+        exit 1
+    fi
+
+    # State URIs must be concrete GCS buckets — an env-var reference here
+    # would make the registry non-self-contained.
+    for key in kops_state pulumi_state; do
+        val=$(yq -r ".${key}" "${f}")
+        if [ "${val}" = "\${PULUMI_STATE_STORAGE}" ] || [ "${val}" = "\${KOPS_STATE_STORE}" ]; then
+            echo "ERROR: ${key} must be a gs:// URI, not an env reference: ${val}" >&2
+            exit 1
+        fi
+        if [ "${val:0:5}" != "gs://" ]; then
+            echo "ERROR: ${key} must be a gs:// URI, got: ${val}" >&2
+            exit 1
+        fi
+    done
+
+    kms=$(yq -r ".kms_secrets_provider" "${f}")
+    if [ "${kms:0:9}" != "gcpkms://" ]; then
+        echo "ERROR: kms_secrets_provider must be a gcpkms:// URI, got: ${kms}" >&2
+        exit 1
+    fi
+
+    ci_env=$(yq -r ".ci_env" "${f}")
+    if [ "${ci_env}" != "$(printf '%s' "${ci_env}" | tr '[:lower:]' '[:upper:]')" ]; then
+        echo "ERROR: ci_env must be uppercase (GitHub var prefix), got: ${ci_env}" >&2
+        exit 1
+    fi
+
+    echo "Registry entry: ${f}"
+    for entry in "${values[@]}"; do
+        echo "  ${entry}"
+    done
+    echo "Next: just gcp-pulumi scaffold-backend-stack --stack ${name}"
+
+# Verify the deployer service account can act on a cluster the way CI will.
+# Read-only. Exports a kubeconfig from the registry's kops state bucket — the
+# same kops export the deploy pipeline runs — then probes the exact permission
+# tag deploys need (update deployments in the registry namespace) and a KMS
+# encrypt/decrypt round-trip on the registry's secrets key. Fails closed
+# naming the missing permission; never prints key material.
+# Usage: just gcp-cluster verify-deployer-access --cluster <name> --sa-key <path>
+[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
+[group('cluster-management')]
+[no-cd]
+verify-deployer-access cluster sa_key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    name="{{ cluster }}"
+    key="{{ sa_key }}"
+    if [ ! -f "${key}" ]; then
+        echo "ERROR: SA key file not found: ${key}" >&2
+        exit 1
+    fi
+    project_id=$(jq -r '.project_id // empty' "${key}")
+    if [ -z "${project_id}" ]; then
+        echo "ERROR: ${key} is not a GCP service account key JSON." >&2
+        exit 1
+    fi
+
+    entry="config/clusters/${name}.yaml"
+    if [ ! -f "${entry}" ]; then
+        echo "ERROR: no registry entry for cluster '${name}' — expected ${entry}." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    reg_project=$(yq -r '.gcp_project' "${entry}")
+    kops_state=$(yq -r '.kops_state' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+    kms_project=$(yq -r '.gcp_project' "${entry}")
+
+    if [ "${project_id}" != "${reg_project}" ]; then
+        echo "ERROR: key project '${project_id}' does not match registry gcp_project '${reg_project}'." >&2
+        echo "       A key from one project cannot deploy to another cluster's project." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="$(realpath "${key}")"
+
+    kubectl_file=$(mktemp)
+    trap 'rm -f "${kubectl_file}"' EXIT
+
+    echo "=== 1/3: kubeconfig export from ${kops_state} ==="
+    kops export kubeconfig --admin --name "${name}-k8s.local" --state "${kops_state}" --kubeconfig "${kubectl_file}"
+
+    echo "=== 2/3: deployments permission in namespace ${namespace} ==="
+    export KUBECONFIG="${kubectl_file}"
+    if ! kubectl auth can-i update deployments -n "${namespace}" >/dev/null 2>&1; then
+        echo "ERROR: deployer SA cannot 'update deployments' in namespace '${namespace}'." >&2
+        echo "       Grant the role from gcs-files/roles-permissions/deployer-roles.txt to this SA." >&2
+        exit 1
+    fi
+
+    echo "=== 3/3: KMS encrypt/decrypt round-trip on ${kms} ==="
+    ring_and_key="${kms#gcpkms://projects/${kms_project}/locations/us-central1/keyRings/}"
+    ring="${ring_and_key%%/*}"
+    ckey="${ring_and_key##*/}"
+    pt="probe-$(date +%s)"
+    ct=$(echo -n "${pt}" | gcloud kms encrypt --project "${kms_project}" --location us-central1 \
+        --keyring "${ring}" --key "${ckey}" --ciphertext-file - --plaintext-file - 2>/dev/null | base64)
+    if [ -z "${ct}" ]; then
+        echo "ERROR: KMS encrypt failed on key '${ckey}' (ring '${ring}', project '${kms_project}')." >&2
+        echo "       The deployer SA needs roles/cloudkms.cryptoKeyEncrypterDecrypter on the registry key." >&2
+        exit 1
+    fi
+    got=$(printf '%s' "${ct}" | base64 -d | gcloud kms decrypt --project "${kms_project}" --location us-central1 \
+        --keyring "${ring}" --key "${ckey}" --ciphertext-file - --plaintext-file - 2>/dev/null)
+    if [ "${got}" != "${pt}" ]; then
+        echo "ERROR: KMS decrypt round-trip mismatch — secrets provider unusable." >&2
+        exit 1
+    fi
+
+    echo "Deployer access verified for ${name}: kubeconfig, deployments in ${namespace}, KMS round-trip."
+    echo "Next: just ci check-deploy-credentials --cluster ${name} --sa-key ${key}"

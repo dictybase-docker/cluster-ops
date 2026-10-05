@@ -524,3 +524,270 @@ apply-namespaces stack="":
         printf '\033[31m%d check(s) failed.\033[0m See docs/reference/pulumi/namespaces.md\n' "$failures"
         exit 1
     fi
+
+# Scaffold a backend service stack config from the registry + template.
+# Derives appName (folder minus any 'modware-' prefix), image name
+# (dictybase/<folder>), config key prefix, and the default ArangoDB Secret
+# name (appName) from --folder; namespace and KMS secrets provider come from
+# the cluster registry entry whose 'stack' matches. Runs `pulumi stack init
+# --secrets-provider` to register the stack, then appends the config block
+# from config/templates/backend-stack.yaml.tmpl. Describe-then-create: fails
+# when Pulumi.<stack>.yaml already exists — never overwrites tuned config.
+# The template's image tag is a 'bootstrap' placeholder; CI overwrites the
+# tag at deploy time, and the manual first deploy (bootstrap-service) takes
+# --image-tag.
+# Usage: just gcp-pulumi scaffold-backend-stack --folder <dir> [--stack <name>] [--port <n>] [--secret-name <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("folder", long="folder", short="f", help="Service project folder (e.g. modware-order)")]
+[arg("port", long="port", short="p", help="gRPC server port")]
+[arg("secret_name", long="secret-name", help="ArangoDB credentials Secret name (default: appName — one Secret per service)")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-backend-stack folder stack="" port="9250" secret_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    folder="{{ folder }}"
+    folder="${folder%/}"
+    if [ ! -d "${folder}" ]; then
+        echo "ERROR: folder '${folder}' does not exist." >&2
+        exit 1
+    fi
+    project="$(basename "${folder}")"
+    app="${project#modware-}"
+
+    # Registry lookup by stack key — data-driven, no stack->namespace table here.
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+
+    sec_name="{{ secret_name }}"
+    [ -z "${sec_name}" ] && sec_name="${app}"
+
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ]; then
+        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+
+    tmp=$(mktemp)
+    trap 'rm -f "${tmp}"' EXIT
+    sed \
+        -e "s|__PROJECT__|${project}|g" \
+        -e "s|__APP__|${app}|g" \
+        -e "s|__IMAGE_REPO__|${project}|g" \
+        -e "s|__SECRET_NAME__|${sec_name}|g" \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        -e "s|__PORT__|{{ port }}|g" \
+        config/templates/backend-stack.yaml.tmpl > "${tmp}"
+    cat "${tmp}" >> "${cfg}"
+
+    # Validation: parses, required keys present, no mutable :latest tag.
+    yq -r '.config' "${cfg}" >/dev/null
+    got_app=$(yq -r ".config.\"${project}:properties\".appName" "${cfg}")
+    got_ns=$(yq -r ".config.\"${project}:properties\".namespace" "${cfg}")
+    if [ "${got_app}" != "${app}" ] || [ "${got_ns}" != "${namespace}" ]; then
+        echo "ERROR: rendered config failed validation (appName=${got_app}, namespace=${got_ns})." >&2
+        exit 1
+    fi
+    if grep -q ':latest' "${cfg}"; then
+        echo "ERROR: rendered config contains :latest — prod stacks must never carry a mutable tag." >&2
+        exit 1
+    fi
+
+    echo "Scaffolded ${cfg}"
+    echo "  appName=${app} image=dictybase/${project}:bootstrap namespace=${namespace} secret=${sec_name} port={{ port }}"
+    echo "Next: just gcp-pulumi check-backend-prereqs --stack ${stack_name} --folder ${folder}"
+
+# Composite read-only prerequisite gate for a backend service deploy.
+# Checks, in order: registry entry (by stack), namespace exists, ArangoDB
+# credentials Secret exists with the configured keys, the application
+# database exists and the credentials work, and the port is in range.
+# Zero mutations; exits non-zero listing every missing prerequisite; never
+# prints Secret values. bootstrap-service runs this first and aborts before
+# any mutation on failure.
+# Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-label <selector>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("folder", long="folder", short="f", help="Service project folder (stack config source)")]
+[arg("arango_label", long="arango-label", short="a", help="Label selector for a ready ArangoDB pod (default app=arangodb)")]
+[group('pulumi-management')]
+[no-cd]
+check-backend-prereqs folder stack="" arango_label="app=arangodb":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+    folder="{{ folder }}"
+    folder="${folder%/}"
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ ! -f "${cfg}" ]; then
+        echo "MISSING: ${cfg} — scaffold it first (scaffold-backend-stack)." >&2
+        exit 1
+    fi
+
+    # Registry lookup by stack key.
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "MISSING: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    project="$(basename "${folder}")"
+    props=".config.\"${project}:properties\""
+
+    secret_name=$(yq -r "${props}.arangodbSecret.name" "${cfg}")
+    userkey=$(yq -r "${props}.arangodbSecret.userkey" "${cfg}")
+    passkey=$(yq -r "${props}.arangodbSecret.passkey" "${cfg}")
+    port=$(yq -r "${props}.port" "${cfg}")
+    app=$(yq -r "${props}.appName" "${cfg}")
+
+    missing=0
+
+    echo "=== namespace ${namespace} ==="
+    if ! kubectl get ns "${namespace}" >/dev/null 2>&1; then
+        echo "MISSING: namespace ${namespace} — run namespace-bootstrap for this cluster." >&2
+        missing=1
+    fi
+
+    echo "=== credentials Secret ${secret_name} (keys ${userkey}/${passkey}) ==="
+    if ! kubectl get secret "${secret_name}" -n "${namespace}" >/dev/null 2>&1; then
+        echo "MISSING: secret ${secret_name} in namespace ${namespace} — create it with the ArangoDB credentials." >&2
+        missing=1
+    else
+        for k in "${userkey}" "${passkey}"; do
+            if [ -z "$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${k}}" 2>/dev/null)" ]; then
+                echo "MISSING: secret ${secret_name} key '${k}' — key names must match the stack config." >&2
+                missing=1
+            fi
+        done
+    fi
+
+    echo "=== ArangoDB database ${app} ==="
+    if [ "${missing}" -eq 0 ]; then
+        dbuser=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${userkey}}" | base64 -d)
+        dbpass=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${passkey}}" | base64 -d)
+        arango_pod=$(kubectl get pods -n "${namespace}" -l "{{ arango_label }}" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -z "${arango_pod}" ]; then
+            echo "MISSING: no Running pod matches selector '{{ arango_label }}' in ${namespace} — pass --arango-label with the right selector." >&2
+            missing=1
+        elif ! kubectl exec -n "${namespace}" "${arango_pod}" -- arangosh \
+            --server.endpoint "tcp://127.0.0.1:8529" \
+            --server.database "${app}" \
+            --server.username "${dbuser}" \
+            --server.password "${dbpass}" \
+            --javascript.execute-string "db._version();" >/dev/null 2>&1; then
+            echo "MISSING: database ${app} absent or credentials rejected — apply the create-arangodb-databases stack." >&2
+            missing=1
+        fi
+        unset dbuser dbpass
+    fi
+
+    echo "=== port ${port} ==="
+    if ! [[ "${port}" =~ ^[0-9]+$ ]] || [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
+        echo "MISSING: port '${port}' is not in the 1024-65535 range." >&2
+        missing=1
+    fi
+
+    if [ "${missing}" -ne 0 ]; then
+        echo "ERROR: prerequisite gate failed — fix the MISSING lines above, then re-run." >&2
+        exit 1
+    fi
+    echo "All prerequisites green for ${project}/${stack_name}."
+    echo "Next: just gcp-pulumi bootstrap-service --stack ${stack_name} --folder ${folder} --image-tag <published-tag>"
+
+# Run the first deploy of a scaffolded backend stack, preflight-gated.
+# Fixed order (the contract test asserts it): check-backend-prereqs →
+# ensure-stack → preview → update → rollout wait + image check. Aborts before
+# any mutation when prerequisites fail. The stack file commit and push stay
+# manual — CI deploys clone cluster-ops develop, so an unpushed stack file
+# deploys nothing. Named bootstrap-service because bootstrap-backend already
+# means the Pulumi state backend.
+# Usage: just gcp-pulumi bootstrap-service --folder <dir> [--stack <name>] --image-tag <tag> [--arango-label <selector>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("folder", long="folder", short="f", help="Service project folder")]
+[arg("image_tag", long="image-tag", short="t", help="Published image tag for the manual first deploy — CI overwrites the tag on every later deploy")]
+[arg("arango_label", long="arango-label", short="a", help="Label selector for a ready ArangoDB pod (passed to the prereq gate)")]
+[group('pulumi-management')]
+[no-cd]
+bootstrap-service folder image_tag stack="" arango_label="app=arangodb":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+    folder="{{ folder }}"
+    folder="${folder%/}"
+    tag="{{ image_tag }}"
+    project="$(basename "${folder}")"
+    app=$(yq -r ".config.\"${project}:properties\".appName" "${folder}/Pulumi.${stack_name}.yaml")
+    namespace=$(yq -r ".config.\"${project}:properties\".namespace" "${folder}/Pulumi.${stack_name}.yaml")
+    deploy="${app}-api-server"
+
+    gate_args=(--stack "${stack_name}" --folder "${folder}")
+    [ -n "{{ arango_label }}" ] && gate_args+=(--arango-label "{{ arango_label }}")
+
+    echo "=== 1/5: prerequisite gate (read-only) ==="
+    just gcp-pulumi check-backend-prereqs "${gate_args[@]}"
+
+    echo "=== 2/5: ensure stack (select or init — fails when the stack file is absent) ==="
+    just gcp-pulumi ensure-stack --stack "${stack_name}" --folder "${folder}"
+
+    echo "=== 3/5: set image tag ${tag} + preview ==="
+    just gcp-pulumi set-config --stack "${stack_name}" --folder "${folder}" \
+        --key properties.image.tag --value "${tag}" --plaintext yes
+    just gcp-pulumi preview --stack "${stack_name}" --folder "${folder}"
+
+    echo "=== 4/5: update (pulumi up) ==="
+    just gcp-pulumi create-resource --stack "${stack_name}" --folder "${folder}"
+
+    echo "=== 5/5: rollout + image check ==="
+    kubectl -n "${namespace}" rollout status "deploy/${deploy}"
+    running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
+    if [ "${running}" != "dictybase/${project}:${tag}" ]; then
+        echo "ERROR: running image '${running}' does not match the requested tag '${tag}'." >&2
+        exit 1
+    fi
+    echo "Deployed ${deploy} in ${namespace} with image ${running}."
+    echo "Next: commit ${folder}/Pulumi.${stack_name}.yaml, push cluster-ops develop, then just ci check-deploy-credentials."

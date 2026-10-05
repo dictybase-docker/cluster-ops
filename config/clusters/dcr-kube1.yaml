@@ -1,0 +1,14 @@
+# Cluster registry entry for dcr-kube1 (production).
+# Single source of truth for the deploy recipes and the `just ci` helpers.
+# Key reference: docs/reference/backend/cluster-registry.md
+cluster: dcr-kube1
+stack: dcr-kube1
+kops_state: gs://kops-state-dcr-kube1
+gcp_project: dcr-kube1
+kms_secrets_provider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+pulumi_state: gs://pulumi-state-dcr-kube1
+namespace: prod
+ci_env: PROD
+kops_version: 1.36.1
+kubectl_version: 1.35.8
+pulumi_version: 3.255.0
