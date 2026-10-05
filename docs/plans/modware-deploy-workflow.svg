@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="812" viewBox="0 0 1280 812" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-em" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-in" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4f46e5"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="812" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="40" y="46" font-size="26" font-weight="700" fill="#0f172a">Modware service deployment pipeline</text>
+  <text x="40" y="72" font-size="14" fill="#64748b">Git push &#8594; reusable workflows &#8594; dagger image build &#8594; Pulumi &#8594; cluster</text>
+
+  <!-- ===== Band A: git events ===== -->
+  <rect x="40" y="92" width="1200" height="86" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="114" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94a3b8">GIT EVENTS &#183; ANY modware-* REPO</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="124" width="300" height="40" rx="20" fill="#1e293b"/>
+  </g>
+  <rect x="56" y="124" width="5" height="40" rx="2.5" fill="#059669"/>
+  <text x="80" y="149" font-size="14" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" fill="#f8fafc">push: develop</text>
+
+  <g filter="url(#shadow)">
+    <rect x="644" y="124" width="330" height="40" rx="20" fill="#1e293b"/>
+  </g>
+  <rect x="644" y="124" width="5" height="40" rx="2.5" fill="#4f46e5"/>
+  <text x="668" y="149" font-size="14" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" fill="#f8fafc">push: tag 1.2.0</text>
+
+  <text x="1010" y="149" font-size="12.5" fill="#64748b">Same file set in every service repo:</text>
+  <text x="1010" y="167" font-size="12.5" fill="#64748b">order, stock, annotation, content &#8230;</text>
+
+  <!-- ===== Band B: repo workflows ===== -->
+  <rect x="40" y="200" width="1200" height="122" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="222" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94a3b8">REPOSITORY WORKFLOWS &#183; .github/workflows/</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="232" width="300" height="74" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <rect x="56" y="232" width="5" height="74" rx="2.5" fill="#059669"/>
+  <text x="76" y="258" font-size="14.5" font-weight="600" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" fill="#0f172a">ci.yml</text>
+  <text x="76" y="280" font-size="12.5" fill="#64748b">unit tests &#8594; call-build-deploy</text>
+
+  <g filter="url(#shadow)">
+    <rect x="644" y="232" width="330" height="74" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <rect x="644" y="232" width="5" height="74" rx="2.5" fill="#4f46e5"/>
+  <text x="664" y="258" font-size="14.5" font-weight="600" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" fill="#0f172a">tag-build.yaml</text>
+  <text x="664" y="280" font-size="12.5" fill="#64748b">test + lint &#8594; call-build-deploy <tspan fill="#4f46e5" font-weight="600">(new)</tspan></text>
+
+  <!-- ===== Band C: reusable workflows ===== -->
+  <rect x="40" y="342" width="1200" height="112" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="364" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94a3b8">REUSABLE WORKFLOWS &#183; dictyBase/workflows</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="374" width="1084" height="64" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <text x="76" y="399" font-size="14.5" font-weight="600" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" fill="#0f172a">composite-deploy.yaml</text>
+  <text x="76" y="421" font-size="12.5" fill="#64748b">checkout dagger-of-dcr &#183; GCP auth: DEPLOY_SA_KEY (develop) / PROD_DEPLOY_SA_KEY (tag) &#183; just deploy-backend &#8230;</text>
+
+
+  <!-- ===== Band D: dagger-of-dcr ===== -->
+  <rect x="40" y="474" width="1200" height="132" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="496" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94a3b8">DAGGER-OF-DCR &#183; just deploy-backend &lt;cluster&gt; &lt;kops-state&gt; &lt;pulumi-state&gt; &lt;ref&gt;</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="506" width="262" height="76" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <circle cx="84" cy="530" r="12" fill="#0f172a"/>
+  <text x="84" y="535" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="104" y="526" font-size="13.5" font-weight="600" fill="#0f172a">dagger build</text>
+  <text x="104" y="546" font-size="12" fill="#64748b">image from checked-out $REF</text>
+
+  <g filter="url(#shadow)">
+    <rect x="348" y="506" width="262" height="76" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <circle cx="376" cy="530" r="12" fill="#0f172a"/>
+  <text x="376" y="535" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="396" y="526" font-size="13.5" font-weight="600" fill="#0f172a">push to Docker Hub</text>
+  <text x="396" y="546" font-size="12" fill="#64748b">dictybase/modware-&lt;app&gt;:&lt;ref|tag&gt;</text>
+
+  <g filter="url(#shadow)">
+    <rect x="640" y="506" width="262" height="76" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <circle cx="668" cy="530" r="12" fill="#0f172a"/>
+  <text x="668" y="535" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="688" y="526" font-size="13.5" font-weight="600" fill="#0f172a">clone cluster-ops</text>
+  <text x="688" y="546" font-size="12" fill="#64748b">@develop &#183; reads Pulumi.&lt;stack&gt;.yaml</text>
+
+  <g filter="url(#shadow)">
+    <rect x="932" y="506" width="280" height="76" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+  <circle cx="960" cy="530" r="12" fill="#0f172a"/>
+  <text x="960" y="535" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="980" y="526" font-size="13.5" font-weight="600" fill="#0f172a">pulumi up</text>
+  <text x="980" y="546" font-size="12" fill="#64748b">stack &#183; kubeconfig from kops state</text>
+
+  <!-- step chevrons -->
+  <path d="M 326 544 l 12 0" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 618 544 l 12 0" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 910 544 l 12 0" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ===== Band E: clusters ===== -->
+  <rect x="40" y="628" width="1200" height="128" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="650" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94a3b8">CLUSTERS</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="662" width="520" height="76" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.5" stroke-dasharray="6 4"/>
+  </g>
+  <text x="76" y="688" font-size="14.5" font-weight="600" fill="#0f172a">dcr-experiments</text>
+  <text x="76" y="708" font-size="12" fill="#64748b">ns <tspan font-family="ui-monospace,'SF Mono',Menlo,monospace">dev</tspan> &#183; image tag <tspan font-family="ui-monospace,'SF Mono',Menlo,monospace">develop-&lt;sha&gt;</tspan></text>
+
+  <g filter="url(#shadow)">
+    <rect x="616" y="662" width="596" height="76" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5" stroke-dasharray="6 4"/>
+  </g>
+  <text x="636" y="688" font-size="14.5" font-weight="600" fill="#0f172a">dcr-kube1 <tspan font-size="11.5" font-weight="600" fill="#4f46e5">PRODUCTION</tspan></text>
+  <text x="636" y="708" font-size="12" fill="#64748b">ns <tspan font-family="ui-monospace,'SF Mono',Menlo,monospace">prod</tspan> &#183; image tag <tspan font-family="ui-monospace,'SF Mono',Menlo,monospace">&lt;semver&gt;</tspan> injected at deploy time</text>
+
+  <!-- ===== Arrows: A -> B ===== -->
+  <path d="M 206 164 L 206 226" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-em)"/>
+  <path d="M 809 164 L 809 226" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#arrow-in)"/>
+
+  <!-- ===== Arrows: B -> C ===== -->
+  <path d="M 206 306 L 206 368" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-em)"/>
+  <path d="M 809 306 L 809 368" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#arrow-in)"/>
+
+  <!-- B -> C: both workflows converge on the composite -->
+
+  <!-- C1 -> D1 -->
+  <path d="M 450 438 L 210 500" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ===== Arrows: D -> E ===== -->
+  <path d="M 980 582 L 980 606 L 226 606 L 226 656" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-em)"/>
+  <text x="600" y="598" font-size="11" fill="#059669" text-anchor="middle">develop</text>
+  <path d="M 1060 582 L 1060 656" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#arrow-in)"/>
+  <text x="1072" y="622" font-size="11" fill="#4f46e5">tag</text>
+
+  <!-- footer -->
+  <text x="40" y="788" font-size="12" fill="#94a3b8">Secrets: DEPLOY_SA_KEY (develop deploys) &#183; PROD_DEPLOY_SA_KEY (tag deploys) &#183; GH_DEPLOY_TOKEN &#183; DOCKERHUB_USER / DOCKER_PASS</text>
+</svg>
