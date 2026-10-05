@@ -11,21 +11,80 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
+type ResourceValues struct {
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
+}
+
+type ResourceSpec struct {
+	Requests ResourceValues `json:"requests"`
+	Limits   ResourceValues `json:"limits"`
+}
+
 type BackendConfig struct {
-	AppName        string
-	Namespace      string
-	Port           int
-	LogLevel       string
-	Command        string
+	AppName        string `json:"appName"`
+	Namespace      string `json:"namespace"`
+	Port           int    `json:"port"`
+	LogLevel       string `json:"logLevel"`
+	Command        string `json:"command"`
 	ArangodbSecret struct {
-		Name    string
-		PassKey string
-		UserKey string
-	}
+		Name    string `json:"name"`
+		PassKey string `json:"passkey"`
+		UserKey string `json:"userkey"`
+	} `json:"arangodbSecret"`
 	Image struct {
-		Name string
-		Tag  string
+		Name string `json:"name"`
+		Tag  string `json:"tag"`
+	} `json:"image"`
+	// Production fields — optional; nil keeps the historical lab behavior
+	// (1 replica, no resource requests/limits, no probes).
+	Replicas        *int          `json:"replicas"`
+	Resources       *ResourceSpec `json:"resources"`
+	GRPCHealthProbe *bool         `json:"grpcHealthProbe"`
+}
+
+// replicasValue returns the configured replica count, 1 when unset — the
+// historical behavior every lab stack relies on.
+func (bck *Backend) replicasValue() int {
+	if bck.Config.Replicas == nil {
+		return 1
 	}
+	return *bck.Config.Replicas
+}
+
+// containerResources returns the resource requirements when configured,
+// nil otherwise.
+func (bck *Backend) containerResources() *corev1.ResourceRequirementsArgs {
+	if bck.Config.Resources == nil {
+		return nil
+	}
+	return &corev1.ResourceRequirementsArgs{
+		Requests: bck.resourceQuantityMap(bck.Config.Resources.Requests),
+		Limits:   bck.resourceQuantityMap(bck.Config.Resources.Limits),
+	}
+}
+
+func (bck *Backend) resourceQuantityMap(
+	vals ResourceValues,
+) pulumi.StringMap {
+	return pulumi.StringMap{
+		"cpu":    pulumi.String(vals.CPU),
+		"memory": pulumi.String(vals.Memory),
+	}
+}
+
+// grpcProbes returns readiness and liveness gRPC health probes when enabled,
+// nil otherwise.
+func (bck *Backend) grpcProbes() (*corev1.ProbeArgs, *corev1.ProbeArgs) {
+	if bck.Config.GRPCHealthProbe == nil || !*bck.Config.GRPCHealthProbe {
+		return nil, nil
+	}
+	probe := &corev1.ProbeArgs{
+		Grpc: &corev1.GRPCActionArgs{
+			Port: pulumi.Int(bck.Config.Port),
+		},
+	}
+	return probe, probe
 }
 
 type Backend struct {
@@ -108,7 +167,7 @@ func (bck *Backend) createDeploymentSpec(
 		Selector: &metav1.LabelSelectorArgs{
 			MatchLabels: labels,
 		},
-		Replicas: pulumi.Int(1),
+		Replicas: pulumi.Int(bck.replicasValue()),
 		Template: bck.createPodTemplateSpec(labels),
 	}
 }
@@ -131,15 +190,24 @@ func (bck *Backend) createPodSpec() *corev1.PodSpecArgs {
 }
 
 func (bck *Backend) createContainers() corev1.ContainerArray {
-	return corev1.ContainerArray{
-		&corev1.ContainerArgs{
-			Name:  pulumi.String(bck.Config.AppName),
-			Image: bck.createImageName(),
-			Env:   bck.containerEnvSpec(),
-			Ports: bck.createContainerPorts(),
-			Args:  bck.containerArgs(),
-		},
+	readiness, liveness := bck.grpcProbes()
+	container := &corev1.ContainerArgs{
+		Name:  pulumi.String(bck.Config.AppName),
+		Image: bck.createImageName(),
+		Env:   bck.containerEnvSpec(),
+		Ports: bck.createContainerPorts(),
+		Args:  bck.containerArgs(),
 	}
+	if res := bck.containerResources(); res != nil {
+		container.Resources = res
+	}
+	if readiness != nil {
+		container.ReadinessProbe = readiness
+	}
+	if liveness != nil {
+		container.LivenessProbe = liveness
+	}
+	return corev1.ContainerArray{container}
 }
 
 func (bck *Backend) containerEnvSpec() corev1.EnvVarArray {
