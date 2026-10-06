@@ -21,6 +21,19 @@ import (
 
 const deployerRolesFile = "gcs-files/roles-permissions/deployer-roles.txt"
 
+const (
+	flagPool         = "pool"
+	flagCount        = "count"
+	flagNodeCount    = "node-count"
+	flagNamespace    = "namespace"
+	flagOperatorNS   = "operator-namespace"
+	flagMembers      = "members"
+	flagInstances    = "instances"
+	flagRequireAmd64 = "require-amd64"
+	usageNodePool    = "Node label pool=<pool>"
+	usageNodeCount   = "Expected pool node count"
+)
+
 var (
 	errNoCluster = errors.New("no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)")
 	errNoStack   = errors.New("no stack name — pass --stack or set PULUMI_STACK (via cluster env)")
@@ -351,9 +364,9 @@ func kubeconfigOnlyFlags() []cli.Flag {
 
 func poolFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
-		&cli.IntFlag{Name: "count", Value: 3, Usage: "Expected node count"},
-		&cli.BoolFlag{Name: "require-amd64", Usage: "Fail when a pool node is not amd64 (ArangoDB)"},
+		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.IntFlag{Name: flagCount, Value: 3, Usage: "Expected node count"},
+		&cli.BoolFlag{Name: flagRequireAmd64, Usage: "Fail when a pool node is not amd64 (ArangoDB)"},
 	)
 }
 
@@ -468,31 +481,31 @@ func natsVerifyAction(cltx *cli.Context) error {
 func arangodbFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
 		&cli.StringFlag{
-			Name: "namespace", Aliases: []string{"n"}, Required: true,
+			Name: flagNamespace, Aliases: []string{"n"}, Required: true,
 			Usage: "Namespace holding the ArangoDeployment",
 		},
-		&cli.StringFlag{Name: "operator-namespace", Value: "prod", Usage: "Namespace holding the kube-arangodb operator"},
-		&cli.IntFlag{Name: "members", Value: 9, Usage: "Expected member pod count"},
-		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
-		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+		&cli.StringFlag{Name: flagOperatorNS, Value: "prod", Usage: "Namespace holding the kube-arangodb operator"},
+		&cli.IntFlag{Name: flagMembers, Value: 9, Usage: "Expected member pod count"},
+		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
 
 func postgresFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace holding the Cluster"},
-		&cli.StringFlag{Name: "operator-namespace", Value: "operators", Usage: "Namespace holding the CNPG operator"},
+		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace holding the Cluster"},
+		&cli.StringFlag{Name: flagOperatorNS, Value: "operators", Usage: "Namespace holding the CNPG operator"},
 		&cli.StringFlag{Name: "cluster", Value: "logto", Usage: "Cluster name"},
-		&cli.IntFlag{Name: "instances", Value: 1, Usage: "Expected instance pod count"},
-		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
-		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+		&cli.IntFlag{Name: flagInstances, Value: 1, Usage: "Expected instance pod count"},
+		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
 
 func arangoAppCredentialsFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
 		&cli.StringFlag{
-			Name: "namespace", Aliases: []string{"n"}, Required: true,
+			Name: flagNamespace, Aliases: []string{"n"}, Required: true,
 			Usage: "Namespace holding the Secret and ArangoDB",
 		},
 		&cli.StringFlag{Name: "secret-name", Required: true, Usage: "Application credentials Secret"},
@@ -505,24 +518,24 @@ func arangoAppCredentialsFlags() []cli.Flag {
 
 func redisPreflightFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace Redis runs in"},
+		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace Redis runs in"},
 		&cli.StringFlag{Name: "name", Value: "redis", Usage: "Deployment/Service name"},
-		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
-		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
 
 func minioPreflightFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace MinIO runs in"},
+		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace MinIO runs in"},
 		&cli.StringFlag{Name: "secret", Value: "minio-root", Usage: "Root credentials Secret"},
-		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
-		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
 
 func natsPreflightFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace NATS runs in"},
+		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace NATS runs in"},
 	)
 }
