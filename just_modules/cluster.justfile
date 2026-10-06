@@ -2078,7 +2078,7 @@ verify-deployer-access cluster="" sa_key:
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
-    name="{{ cluster }}"
+    name={{ quote(cluster) }}
     [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
 
     go run ./cmd/cluster-ops preflight deployer-access \

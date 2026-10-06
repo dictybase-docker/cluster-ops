@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	Arr "github.com/IBM/fp-go/v2/array"
+	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IO "github.com/IBM/fp-go/v2/io"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
@@ -106,9 +107,15 @@ func ParseRoles(content string) []string {
 }
 
 func readRolesFile(path string) IOE.IOEither[error, []string] {
-	return F.Pipe1(
+	return F.Pipe2(
 		IOE.TryCatchError(func() ([]byte, error) { return os.ReadFile(path) }),
 		IOE.Map[error](func(b []byte) []string { return ParseRoles(string(b)) }),
+		// An empty or comment-only file would test nothing and pass — a
+		// fail-open IAM gate.
+		IOE.ChainEitherK(E.FromPredicate(
+			Arr.IsNonEmpty[string],
+			func([]string) error { return fmt.Errorf("no roles in %s — add the deployer roles first", path) },
+		)),
 	)
 }
 

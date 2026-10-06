@@ -98,3 +98,16 @@ func TestIAMMissingRolesFile(t *testing.T) {
 	require.Equal(t, preflight.StatusFail, result.Status)
 	require.Empty(t, sizes, "no API call without a roles file")
 }
+
+// Regression: an empty or comment-only roles file tested nothing and passed
+// the gate ("0 permissions held") — a fail-open IAM gate.
+func TestIAMRejectsEmptyRolesFile(t *testing.T) {
+	var sizes []int
+	cfg := rolesFile(t, "\n# nothing yet\n")
+
+	result := backend.CheckIAMPermissionsWith(cfg, expandTo(1), holdAllBut(&sizes))()
+
+	require.Equal(t, preflight.StatusFail, result.Status)
+	require.Contains(t, result.Detail, "no roles")
+	require.Empty(t, sizes, "no API call without roles")
+}
