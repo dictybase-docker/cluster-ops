@@ -25,6 +25,20 @@ var (
 	errNoStack   = errors.New("no stack name — pass --stack or set PULUMI_STACK (via cluster env)")
 )
 
+const (
+	flagKubeconfig = "kubeconfig"
+	envKubeconfig  = "KUBECONFIG"
+)
+
+// kubeconfigFlag is the shared kubeconfig flag (defaults to KUBECONFIG env).
+func kubeconfigFlag() cli.Flag {
+	return &cli.StringFlag{
+		Name:    flagKubeconfig,
+		EnvVars: []string{envKubeconfig},
+		Usage:   "Kubeconfig path (defaults to KUBECONFIG)",
+	}
+}
+
 func registryDirFlag() cli.Flag {
 	return &cli.StringFlag{
 		Name:  "registry-dir",

@@ -25,6 +25,7 @@ func main() {
 			kopsCommand(),
 			validateCommand(),
 			preflightCommand(),
+			forwardCommand(),
 			bucketCommand(),
 			envCommand(),
 			apiCommand(),
@@ -119,8 +120,8 @@ func validateCommand() *cli.Command {
 				Action: validateHAAction,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name: "kubeconfig", Aliases: []string{"k"},
-						EnvVars: []string{"KUBECONFIG"},
+						Name: flagKubeconfig, Aliases: []string{"k"},
+						EnvVars: []string{envKubeconfig},
 					},
 				},
 			},
@@ -129,7 +130,7 @@ func validateCommand() *cli.Command {
 }
 
 func validateHAAction(cltx *cli.Context) error {
-	checks, err := custodian.ValidateHA(cltx.String("kubeconfig"))
+	checks, err := custodian.ValidateHA(cltx.String(flagKubeconfig))
 	if err != nil {
 		return err
 	}
