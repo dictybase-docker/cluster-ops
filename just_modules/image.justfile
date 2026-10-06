@@ -31,22 +31,8 @@ create-machine-image project="" instance backup_for="k8s-node":
         --source-instance-zone=$source_zone
 
     echo "Machine image creation initiated. Waiting for completion..."
-    gcloud compute machine-images describe $image_name \
-        --project=${project_id} \
-        --format="value(status)" \
-        --verbosity=none | \
-    while read status; do
-        if [ "$status" = "READY" ]; then
-            echo "Machine image $image_name created successfully."
-            break
-        elif [ "$status" = "FAILED" ]; then
-            echo "Machine image creation failed."
-            exit 1
-        else
-            echo "Current status: $status"
-            sleep 10
-        fi
-    done
+    go run ./cmd/cluster-ops wait machine-image \
+        --project "${project_id}" --name "$image_name" --timeout 600 --interval 10
 
     echo "Machine image details:"
     gcloud compute machine-images describe $image_name \

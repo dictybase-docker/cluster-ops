@@ -396,17 +396,8 @@ apply-storageclass stack="":
     fi
 
     echo "==> Verifying ${classes} (provisioner ${provisioner})"
-    attempt=0
-    until just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner" >/dev/null 2>&1; do
-        attempt=$((attempt + 1))
-        if [ "$attempt" -ge 12 ]; then
-            echo "StorageClass still not visible after ${attempt} attempts:" >&2
-            just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner"
-            exit 1
-        fi
-        echo "    not visible yet (attempt ${attempt}/12) — waiting 5s"
-        sleep 5
-    done
+    go run ./cmd/cluster-ops wait storage-classes \
+        --classes "$classes" --provisioner "$provisioner" --timeout 60 --interval 5
     just gcp-pulumi check-storageclass --classes "$classes" --provisioner "$provisioner"
     echo "StorageClass ready."
 
