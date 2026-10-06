@@ -13,6 +13,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/backend"
+	"github.com/dictybase-docker/cluster-ops/internal/preflight/datastore"
 	"github.com/dictybase-docker/cluster-ops/internal/registry"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
@@ -119,6 +120,48 @@ func preflightCommand() *cli.Command {
 				Name:   "pulumi-backend",
 				Usage:  "PULUMI_* wiring: env, manager key, state bucket, KMS key, active login",
 				Action: pulumiBackendAction,
+			},
+			{
+				Name:   "pool",
+				Usage:  "stateful-db pool prerequisites: node count, arch, taint, zones, Ready",
+				Action: poolAction,
+				Flags:  poolFlags(),
+			},
+			{
+				Name:   "arangodb",
+				Usage:  "Full ArangoDB post-install check: pool, operator, CR state, members, PVCs, Service, Job",
+				Flags:  arangodbFlags(),
+				Action: arangodbVerifyAction,
+			},
+			{
+				Name:   "arango-app-credentials",
+				Usage:  "Run an ephemeral arangosh probe per database with the app Secret (env-only credentials)",
+				Flags:  arangoAppCredentialsFlags(),
+				Action: arangoAppCredentialsAction,
+			},
+			{
+				Name:   "postgres",
+				Usage:  "Full CNPG post-install check: pool, operator, CR phase, instances, PVCs, Services, backup",
+				Flags:  postgresFlags(),
+				Action: postgresVerifyAction,
+			},
+			{
+				Name:   "redis",
+				Usage:  "Redis post-install check: pool, pod, data PVC, Service, PING handshake",
+				Flags:  redisPreflightFlags(),
+				Action: redisVerifyAction,
+			},
+			{
+				Name:   "minio",
+				Usage:  "MinIO post-install check: pool, pod, PVCs, Service, root Secret",
+				Flags:  minioPreflightFlags(),
+				Action: minioVerifyAction,
+			},
+			{
+				Name:   "nats",
+				Usage:  "NATS post-install check: StatefulSet readiness, Service port, nats-box rtt",
+				Flags:  natsPreflightFlags(),
+				Action: natsVerifyAction,
 			},
 		},
 	}
@@ -294,5 +337,192 @@ func pulumiBackendAction(_ *cli.Context) error {
 		})),
 		"Pulumi backend check failed (docs/reference/pulumi/backend-bootstrap.md)",
 		"\nBackend wiring looks correct.",
+	)
+}
+
+// ---------- datastore verify subcommands ----------
+
+func kubeconfigOnlyFlags() []cli.Flag {
+	return []cli.Flag{
+		kubeconfigFlag(),
+		&cli.StringFlag{Name: "context", Usage: "Kubeconfig context (defaults to current-context)"},
+	}
+}
+
+func poolFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
+		&cli.IntFlag{Name: "count", Value: 3, Usage: "Expected node count"},
+		&cli.BoolFlag{Name: "require-amd64", Usage: "Fail when a pool node is not amd64 (ArangoDB)"},
+	)
+}
+
+func poolAction(cltx *cli.Context) error {
+	clients, err := newClientsValue(cltx)
+	if err != nil {
+		return err
+	}
+	return reportGate(
+		runGate(datastore.CheckPool(datastore.PoolConfig{
+			Clients: clients, Pool: cltx.String("pool"), WantCount: cltx.Int("count"),
+			RequireAmd64: cltx.Bool("require-amd64"),
+		})),
+		"pool prerequisite check failed",
+	)
+}
+
+func newClientsValue(cltx *cli.Context) (kube.Clients, error) {
+	res := newClientsIOE(cltx)()
+	err := E.Fold(F.Identity[error], func(kube.Clients) error { return nil })(res)
+	clients := E.GetOrElse(func(_ error) kube.Clients { return kube.Clients{} })(res)
+	return clients, err
+}
+
+func datastoreAction(
+	build func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result],
+	failMsg string,
+) cli.ActionFunc {
+	return func(cltx *cli.Context) error {
+		clients, err := newClientsValue(cltx)
+		if err != nil {
+			return err
+		}
+		return reportGate(runGate(build(cltx, clients)), failMsg)
+	}
+}
+
+func arangodbVerifyAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyArangoDB(datastore.ArangoConfig{
+			Clients:           clients,
+			Namespace:         cltx.String("namespace"),
+			OperatorNamespace: cltx.String("operator-namespace"),
+			Members:           cltx.Int("members"),
+			Pool:              cltx.String("pool"),
+			WantNodes:         cltx.Int("node-count"),
+		})
+	}, "ArangoDB verification failed")(cltx)
+}
+
+func arangoAppCredentialsAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyArangoAppCredentials(datastore.ArangoAppCredentialsConfig{
+			Clients:    clients,
+			Namespace:  cltx.String("namespace"),
+			SecretName: cltx.String("secret-name"),
+			UserKey:    cltx.String("user-key"),
+			PassKey:    cltx.String("pass-key"),
+			Image:      cltx.String("image"),
+			Databases:  cltx.StringSlice("database"),
+		})
+	}, "application credential verification failed")(cltx)
+}
+
+func postgresVerifyAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyPostgres(datastore.PostgresConfig{
+			Clients:           clients,
+			Namespace:         cltx.String("namespace"),
+			OperatorNamespace: cltx.String("operator-namespace"),
+			Cluster:           cltx.String("cluster"),
+			Instances:         cltx.Int("instances"),
+			Pool:              cltx.String("pool"),
+			WantNodes:         cltx.Int("node-count"),
+		})
+	}, "postgres verification failed")(cltx)
+}
+
+func redisVerifyAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyRedis(datastore.RedisConfig{
+			Clients:   clients,
+			Namespace: cltx.String("namespace"),
+			Name:      cltx.String("name"),
+			Pool:      cltx.String("pool"),
+			WantNodes: cltx.Int("node-count"),
+		})
+	}, "redis verification failed")(cltx)
+}
+
+func minioVerifyAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyMinio(datastore.MinioConfig{
+			Clients:   clients,
+			Namespace: cltx.String("namespace"),
+			Secret:    cltx.String("secret"),
+			Pool:      cltx.String("pool"),
+			WantNodes: cltx.Int("node-count"),
+		})
+	}, "minio verification failed")(cltx)
+}
+
+func natsVerifyAction(cltx *cli.Context) error {
+	return datastoreAction(func(cltx *cli.Context, clients kube.Clients) []IO.IO[preflight.Result] {
+		return datastore.VerifyNats(datastore.NatsConfig{
+			Clients:   clients,
+			Namespace: cltx.String("namespace"),
+		})
+	}, "nats verification failed")(cltx)
+}
+
+func arangodbFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{
+			Name: "namespace", Aliases: []string{"n"}, Required: true,
+			Usage: "Namespace holding the ArangoDeployment",
+		},
+		&cli.StringFlag{Name: "operator-namespace", Value: "prod", Usage: "Namespace holding the kube-arangodb operator"},
+		&cli.IntFlag{Name: "members", Value: 9, Usage: "Expected member pod count"},
+		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
+		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+	)
+}
+
+func postgresFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace holding the Cluster"},
+		&cli.StringFlag{Name: "operator-namespace", Value: "operators", Usage: "Namespace holding the CNPG operator"},
+		&cli.StringFlag{Name: "cluster", Value: "logto", Usage: "Cluster name"},
+		&cli.IntFlag{Name: "instances", Value: 1, Usage: "Expected instance pod count"},
+		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
+		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+	)
+}
+
+func arangoAppCredentialsFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{
+			Name: "namespace", Aliases: []string{"n"}, Required: true,
+			Usage: "Namespace holding the Secret and ArangoDB",
+		},
+		&cli.StringFlag{Name: "secret-name", Required: true, Usage: "Application credentials Secret"},
+		&cli.StringFlag{Name: "user-key", Required: true, Usage: "Secret key for the username"},
+		&cli.StringFlag{Name: "pass-key", Required: true, Usage: "Secret key for the password"},
+		&cli.StringFlag{Name: "image", Required: true, Usage: "arangodb image tag (from the cluster stack config)"},
+		&cli.StringSliceFlag{Name: "database", Required: true, Usage: "Database to verify (repeatable)"},
+	)
+}
+
+func redisPreflightFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace Redis runs in"},
+		&cli.StringFlag{Name: "name", Value: "redis", Usage: "Deployment/Service name"},
+		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
+		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+	)
+}
+
+func minioPreflightFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace MinIO runs in"},
+		&cli.StringFlag{Name: "secret", Value: "minio-root", Usage: "Root credentials Secret"},
+		&cli.StringFlag{Name: "pool", Value: "database", Usage: "Node label pool=<pool>"},
+		&cli.IntFlag{Name: "node-count", Value: 3, Usage: "Expected pool node count"},
+	)
+}
+
+func natsPreflightFlags() []cli.Flag {
+	return append(kubeconfigOnlyFlags(),
+		&cli.StringFlag{Name: "namespace", Aliases: []string{"n"}, Required: true, Usage: "Namespace NATS runs in"},
 	)
 }

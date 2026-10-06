@@ -68,3 +68,25 @@ func TestPulumiBackendUnsetEnvExitsOne(t *testing.T) {
 	require.True(t, errors.As(err, &exit), "gate failure must be a cli.ExitCoder")
 	require.Equal(t, 1, exit.ExitCode())
 }
+
+func TestPreflightDatastoreSubcommands(t *testing.T) {
+	cmd := preflightCommand()
+	names := map[string]bool{}
+	for _, sub := range cmd.Subcommands {
+		names[sub.Name] = true
+	}
+	for _, want := range []string{"pool", "arangodb", "arango-app-credentials", "postgres", "redis", "minio", "nats"} {
+		require.True(t, names[want], "missing preflight subcommand %s", want)
+	}
+}
+
+func TestPoolRequiresKubeconfigContext(t *testing.T) {
+	// kube.NewClients with no cluster fails: API-error exit, not a flag error.
+	err := runPreflight(t, "pool", "--pool", "database", "--count", "3")
+	require.Error(t, err)
+}
+
+func TestArangodbVerifyFlagsRequired(t *testing.T) {
+	require.Error(t, runPreflight(t, "arangodb"), "arangodb needs --namespace")
+	require.Error(t, runPreflight(t, "arangodb", "--namespace", "prod"), "arangodb needs --members etc.")
+}
