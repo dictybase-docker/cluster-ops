@@ -171,56 +171,49 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
         exit 1
     fi
 
-    # Reach the cluster-internal API through a port-forward.
-    kubectl port-forward -n "$NS" svc/minio 19000:9000 >/dev/null 2>&1 &
-    PF_PID=$!
-    trap 'kill $PF_PID 2>/dev/null || true' EXIT
-    for i in $(seq 1 30); do
-        nc -z localhost 19000 2>/dev/null && break
-        sleep 1
-    done
-
+    # Reach the cluster-internal API through a forward-held child: the Go
+    # parent picks a free local port, exports FORWARD_PORT, and reconnects
+    # across pod restarts. Target credentials ride in MC_HOST_MINIO_DST env —
+    # never argv. (Source credentials come from the caller's own flags.)
+    # Source credentials stay in one alias-set call (they come from the
+    # caller's own flags); the target alias rides in MC_HOST_MINIO_DST env.
     mc alias set minio-src "$SRC_URL" "$SRC_USER" "$SRC_PASSWORD" --quiet
-    mc alias set minio-dst "http://localhost:19000" "$USER_KEY" "$PASS_KEY" --quiet
+    RETRIES="{{ retries }}"
+    [[ "$RETRIES" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
 
-    echo "Ensuring bucket '$BUCKET' exists on the target..."
-    mc mb --ignore-existing "minio-dst/$BUCKET"
-
-    REMOVE_FLAG=""
+    export MC_HOST_MINIO_DST="http://${USER_KEY}:${PASS_KEY}@localhost:\${FORWARD_PORT}"
+    export BUCKET REMOVE_FLAG=""
     [[ "{{ remove }}" == "yes" ]] && REMOVE_FLAG="--remove"
+    echo "Ensuring bucket '$BUCKET' exists on the target..."
+    go run ./cmd/cluster-ops forward run --ns "$NS" --svc minio --remote-port 9000 -- \
+        bash -c '
+            mc mb --ignore-existing "minio_dst/$BUCKET"
 
-    # HTTPS load balancers (GCP classic LB among them) reset long-lived
-    # HTTP/2 streams mid-transfer; mc is a Go client and negotiates HTTP/2
-    # by default. Force HTTP/1.1 for the source reads — the reset storms
-    # disappear. Harmless for plain-http endpoints.
-    export GODEBUG=http2client=0
+            # HTTPS load balancers (GCP classic LB among them) reset long-lived
+            # HTTP/2 streams mid-transfer; mc is a Go client and negotiates
+            # HTTP/2 by default. Force HTTP/1.1 for the source reads — the
+            # reset storms disappear. Harmless for plain-http endpoints.
+            export GODEBUG=http2client=0
 
-    ATTEMPTS="{{ retries }}"
-    [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
+            ok=0
+            for attempt in $(seq 1 "$RETRIES"); do
+                # --retry retries failed objects in place (transient resets);
+                # --summary prints copied/failed counts per attempt.
+                if mc mirror --preserve --overwrite --retry --summary $REMOVE_FLAG \
+                    "minio-src/$BUCKET" "minio_dst/$BUCKET"; then
+                    ok=1
+                    break
+                fi
+                echo "Mirror attempt $attempt/$RETRIES failed — retrying (resume skips objects already copied)..." >&2
+                sleep $((attempt * 5))
+            done
+            [[ "$ok" == "1" ]] || { echo "Error: mirror still failing after $RETRIES attempts." >&2; exit 1; }
 
-    echo "Mirroring minio-src/$BUCKET -> minio-dst/$BUCKET (up to $ATTEMPTS attempts)..."
-    ok=0
-    for attempt in $(seq 1 "$ATTEMPTS"); do
-        # --retry retries failed objects in place (transient resets);
-        # --summary prints copied/failed counts per attempt.
-        if mc mirror --preserve --overwrite --retry --summary $REMOVE_FLAG \
-            "minio-src/$BUCKET" "minio-dst/$BUCKET"; then
-            ok=1
-            break
-        fi
-        echo "Mirror attempt $attempt/$ATTEMPTS failed — retrying (resume skips objects already copied)..." >&2
-        # Re-probe the port-forward before reusing it.
-        for i in $(seq 1 10); do
-            nc -z localhost 19000 2>/dev/null && break
-            sleep 1
-        done
-        sleep $((attempt * 5))
-    done
-    [[ "$ok" == "1" ]] || { echo "Error: mirror still failing after $ATTEMPTS attempts." >&2; exit 1; }
-
-    echo
-    echo "Done. Object counts:"
-    mc ls --recursive "minio-dst/$BUCKET" | wc -l
+            echo
+            echo "Done. Object counts:"
+            mc ls --recursive "minio_dst/$BUCKET" | wc -l
+        '
+    unset MC_HOST_MINIO_DST BUCKET REMOVE_FLAG RETRIES
 
 # Post-install check: pool, pod, PVC, Service, Secret. Exits non-zero on failure.
 # Usage: just minio verify [--namespace <ns>] [--secret <name>] [--pool <label>] [--node-count <n>]

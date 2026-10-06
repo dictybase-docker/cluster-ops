@@ -58,13 +58,14 @@ export-kubeconfig name=cluster_name output='k3d-dev-cluster.yaml':
     k3d kubeconfig get {{ name }} > {{ output }}
     @echo "Kubeconfig for '{{ name }}' exported to {{ output }}"
 
-# Port-forward the MinIO S3 API (port 9000) to localhost.
-# mc alias k3d-minio is pre-configured to use this endpoint.
-# Run in a separate terminal; Ctrl-C to stop.
+# Port-forward the MinIO S3 API (port 9000) to localhost via the Go forward
+# (reconnects on pod restart; free local port unless --local-port is given).
+# mc alias k3d-minio is pre-configured to use port 9000 — keep --local-port 9000
+# for that alias. Run in a separate terminal; Ctrl-C to stop.
 # Usage: just k3d minio-forward [--name <name>] [--namespace <ns>] [--local-port <port>]
 [arg("name", long="name", short="n", help="Cluster name")]
 [arg("namespace", long="namespace", short="s", help="Kubernetes namespace")]
-[arg("local_port", long="local-port", short="p", help="Local port to forward")]
+[arg("local_port", long="local-port", short="p", help="Local port to forward (0 = free port)")]
 [group('k3d')]
 minio-forward name=cluster_name namespace='dev' local_port='9000':
     #!/usr/bin/env bash
@@ -72,5 +73,7 @@ minio-forward name=cluster_name namespace='dev' local_port='9000':
     f=$(mktemp /tmp/k3d-kubeconfig-XXXX.yaml)
     trap 'rm -f "$f"' EXIT
     k3d kubeconfig get {{ quote(name) }} > "$f"
-    echo "Port-forwarding MinIO → localhost:{{ local_port }} (press Ctrl-C to stop)"
-    KUBECONFIG="$f" kubectl port-forward svc/minio {{ quote(local_port) }}:9000 -n {{ quote(namespace) }}
+    echo "Forwarding MinIO → localhost:{{ local_port }} (press Ctrl-C to stop)"
+    KUBECONFIG="$f" go run ./cmd/cluster-ops forward hold \
+        --kubeconfig "$f" --ns {{ quote(namespace) }} --svc minio \
+        --remote-port 9000 --local-port {{ quote(local_port) }}
