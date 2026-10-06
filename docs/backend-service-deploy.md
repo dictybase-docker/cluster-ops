@@ -1,10 +1,11 @@
 # Backend Service Deploy
 
 Production procedure for a modware gRPC service on any cluster in this repo.
-Inside a `cluster-env` shell of the target cluster; all recipes default their
-identity from it (`CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`).
+Run the recipes in a `cluster-env` shell of the target cluster. The recipes
+read the cluster identity from the shell (`CLUSTER_NAME`, `CLUSTER_ENV`,
+`PULUMI_STACK`).
 
-The flow is two composite recipes. The individual recipes behind them stay
+The flow is two composite recipes. The individual recipes behind them are
 available for single-service runs and diagnostics — [section 4](#4-individual-recipes).
 
 ## Table of Contents
@@ -42,9 +43,9 @@ just ci deploy-backend-services --services order   # one service only
 
 ## 1. Create the deployer key
 
-Mints the deployer service account and its key at
-`credentials/<cluster>/deployer.json`. Reuses an existing key file — never
-re-mints.
+The recipe creates the deployer service account and its key at the standard
+path `credentials/<cluster>/deployer.json`. An existing key file stays in use —
+the recipe does not create a second key.
 → [Deploy credential details](reference/backend/ci-credentials.md)
 
 ```bash
@@ -53,11 +54,12 @@ just ci create-deploy-key
 
 ## 2. Deploy all backend services
 
-**Push cluster-ops `develop` before any service tag** — CI deploys clone
-`develop`, so an unpushed stack file deploys nothing.
+**WARNING: Push cluster-ops `develop` before any service tag.** CI deploys
+read cluster-ops from `develop`. An unpushed stack file deploys nothing.
 
-Runs the full chain per service from `config/services.yaml`. Idempotent —
-re-running converges.
+The recipe runs the full chain per service. The services come from
+`config/services.yaml`. The recipe is idempotent — a re-run completes the
+missing steps only.
 → [Aggregate deploy details](reference/backend/deploy-services.md)
 
 ```bash
@@ -66,8 +68,8 @@ just ci deploy-backend-services
 
 ## 3. Push the stack files
 
-Records every scaffolded stack config on cluster-ops `develop` — CI deploys
-read them from there at deploy time.
+The stack configs must live on cluster-ops `develop` — CI deploys read them
+from there at deploy time.
 → [First deploy details](reference/backend/bootstrap-service.md)
 
 ```bash
@@ -76,11 +78,13 @@ git add modware-*/Pulumi.dcr-kube1.yaml && git commit -m "stacks for <cluster>" 
 
 ## 4. Individual recipes
 
-Fallback and diagnostic surface — each recipe also runs standalone.
+Use these recipes for single-service runs and for diagnostics. Each recipe
+also runs alone.
 
 ### 4.1 Verify the cluster registry
 
-Every later step reads the registry entry; `register-cluster` creates entries from bootstrap artifacts.
+Later steps read the registry entry. The `register-cluster` recipe creates
+entries from bootstrap artifacts.
 → [Registry details](reference/backend/cluster-registry.md)
 
 ```bash
@@ -89,7 +93,9 @@ just gcp-cluster registry-show
 
 ### 4.2 Scaffold the stack config
 
-Creates `modware-order/Pulumi.<stack>.yaml` from the template and initializes the stack in the Pulumi backend. Fails when the file already exists.
+The recipe creates `<folder>/Pulumi.<stack>.yaml` from the template and
+initializes the stack in the Pulumi backend. The recipe stops with an error
+when the file already exists.
 → [Scaffold details](reference/backend/scaffold-backend-stack.md)
 
 ```bash
@@ -98,7 +104,10 @@ just gcp-pulumi scaffold-backend-stack --folder modware-order
 
 ### 4.3 Check cluster prerequisites
 
-One composite read-only probe: namespace, ArangoDB credentials Secret, and the application database — through the Service the app connects to. It exits non-zero listing every missing prerequisite.
+The recipe does a read-only probe of these items: the namespace, the ArangoDB
+credentials Secret, and the application database. The database probe goes
+through the Service that the app connects to. The recipe exits non-zero and
+lists each missing prerequisite.
 → [Prerequisites details](reference/backend/prerequisites.md)
 
 ```bash
@@ -107,7 +116,10 @@ just gcp-pulumi check-backend-prereqs --folder modware-order
 
 ### 4.4 First deploy
 
-**Preflight-gated composite:** prereqs → ensure-stack → preview → update → rollout + image check. The stack file commit and push stay manual — CI deploys clone cluster-ops `develop`, so an unpushed stack file deploys nothing. Idempotent: verify-only when the tag already runs.
+The recipe runs these steps in a fixed order: prereq gate → ensure-stack →
+preview → update → rollout wait + image check. Prerequisites come first — the
+recipe touches nothing when a prerequisite fails. The recipe is idempotent —
+when the deployment runs the wanted tag, it checks the rollout only.
 → [First deploy details](reference/backend/bootstrap-service.md)
 
 ```bash
@@ -116,7 +128,8 @@ just gcp-pulumi bootstrap-service --folder modware-order
 
 ### 4.5 Publish CI credentials and variables
 
-Key preflight, org-secret publish, then the `<PROD>_*` repo variables.
+The recipes do these steps: key preflight, org-secret publish, and the
+`<PROD>_*` repo variables.
 → [CI credentials details](reference/backend/ci-credentials.md)
 → [CI variables details](reference/backend/ci-variables.md)
 
@@ -126,7 +139,8 @@ just ci check-deploy-credentials --sa-key credentials/dcr-kube1/deployer.json
 
 ### 4.6 Render the tag workflow
 
-Renders the complete `tag-build.yaml` — test, lint, then the composite deploy — plus the deletion of the dead `staging-build.yaml`.
+The recipe makes the complete `tag-build.yaml` — test, lint, then the
+composite deploy — and removes the dead `staging-build.yaml` in the same PR.
 → [Workflow render details](reference/backend/render-deploy-workflows.md)
 
 ```bash
@@ -135,7 +149,8 @@ just ci render-tag-deploy --app order --project modware-order --out tag-build.ya
 
 ## 5. Verify
 
-After the first tag deploy: running image matches the tag, and the service answers inside the cluster.
+After the first tag deploy, the running image must match the tag. The service
+must answer inside the cluster.
 → [Verification details](reference/backend/bootstrap-service.md#verification)
 
 ```bash
