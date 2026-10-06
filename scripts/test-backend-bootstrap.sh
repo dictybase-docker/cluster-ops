@@ -39,11 +39,17 @@ fi
 exit 0
 EOF
 # --- mock kubectl ----------------------------------------------------------
+# The rollout wait runs through the Go CLI; record and succeed.
+cat > "${mock_bin}/go" <<'EOF'
+#!/usr/bin/env bash
+echo "go $*" >> "${MOCK_CALLS_LOG}"
+exit "${MOCK_GO_EXIT:-0}"
+EOF
 cat > "${mock_bin}/kubectl" <<'EOF'
 #!/usr/bin/env bash
 echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
 case "$*" in
-    "rollout status deploy/order-api-server") echo "deployment successfully rolled out" ;;
+    # rollout wait now runs through the Go CLI (mocked below)
     *"get deploy/order-api-server -o"*) echo -n "dictybase/modware-order:${MOCK_IMAGE_TAG:-v1.0.0}" ;;
     *"get deploy/order-api-server"*)
         # existence probe: deployment absent in the fresh-deploy scenario
@@ -51,7 +57,7 @@ case "$*" in
 esac
 exit 0
 EOF
-chmod +x "${mock_bin}/just" "${mock_bin}/kubectl"
+chmod +x "${mock_bin}/just" "${mock_bin}/kubectl" "${mock_bin}/go"
 export MOCK_CALLS_LOG="${calls}"
 # Resolve the real just BEFORE the mock shadows it on PATH.
 REAL_JUST="$(command -v just)"
@@ -88,7 +94,7 @@ if out=$("${REAL_JUST}" gcp-pulumi bootstrap-service --stack dcr-kube1 --folder 
 fi
 printf '%s' "${out}" | grep -q "MISSING: namespace prod" || fail "prereq cause missing:\n${out}"
 # Only the gate may have run: no ensure-stack/set-config/preview/create-resource
-for forbidden in "ensure-stack" "set-config" "preview" "create-resource" "rollout status"; do
+for forbidden in "ensure-stack" "set-config" "preview" "create-resource"; do
     if grep -q "${forbidden}" "${calls}"; then
         fail "mutation-path call '${forbidden}' ran after a prereq failure:\n$(cat "${calls}")"
     fi
@@ -109,7 +115,7 @@ ensure=$(line_of "ensure-stack")              || fail "ensure-stack did not run"
 settag=$(line_of "set-config")                || fail "set-config did not run"
 preview=$(line_of "gcp-pulumi preview")       || fail "preview did not run"
 up=$(line_of "create-resource")               || fail "create-resource did not run"
-rollout=$(line_of "rollout status")          || fail "rollout did not run"
+rollout=$(line_of "wait deployment-rollout") || fail "rollout did not run"
 image_check=$(line_of "get deploy/order-api-server -o") || fail "image check did not run"
 [ "${gate}" -lt "${ensure}" ] || fail "gate ran after ensure-stack"
 [ "${ensure}" -lt "${settag}" ] || fail "ensure-stack ran after set-config"

@@ -26,6 +26,7 @@ func main() {
 			validateCommand(),
 			preflightCommand(),
 			forwardCommand(),
+			waitCommand(),
 			bucketCommand(),
 			envCommand(),
 			apiCommand(),

@@ -82,7 +82,13 @@ case "$*" in
 esac
 exit 0
 EOF
-chmod +x "${mock_bin}/just" "${mock_bin}/gh" "${mock_bin}/kubectl"
+# The rollout wait runs through the Go CLI; record and succeed.
+cat > "${mock_bin}/go" <<'EOF'
+#!/usr/bin/env bash
+echo "go $*" >> "${MOCK_CALLS_LOG}"
+exit "${MOCK_GO_EXIT:-0}"
+EOF
+chmod +x "${mock_bin}/just" "${mock_bin}/gh" "${mock_bin}/kubectl" "${mock_bin}/go"
 export MOCK_CALLS_LOG="${calls}"
 REAL_JUST="$(command -v just)"
 export PATH="${mock_bin}:${PATH}"
@@ -212,7 +218,7 @@ printf '%s' "${out}" | grep -q "verifying rollout only" || fail "skip message mi
 if grep -q "create-resource\|set-config\|preview" "${calls}"; then
     fail "skip path mutated: $(cat "${calls}")"
 fi
-grep -q "rollout status deploy/order-api-server" "${calls}" || fail "skip path did not verify rollout"
+grep -q "wait deployment-rollout --namespace prod --name order-api-server" "${calls}" || fail "skip path did not verify rollout"
 echo "  skip path: PASS (verify only, zero deploy calls)"
 
 echo "=== 6. latest-tag: highest semver, mixed prefixes ==="

@@ -141,8 +141,13 @@ install stack="" namespace="prod" retries="60" interval="10":
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
-    timeout_seconds=$((RETRIES * INTERVAL))
-    kubectl rollout status deployment/logto -n "$NS" --timeout="${timeout_seconds}s"
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    # observedGeneration-checked rollout; exit 1 on timeout, 2 on
+    # ProgressDeadlineExceeded.
+    go run ./cmd/cluster-ops wait deployment-rollout \
+        --namespace "$NS" --name logto \
+        --timeout $(( RETRIES * INTERVAL )) --interval "$INTERVAL"
     just logto verify --stack "$STACK" --namespace "$NS"
 
 # Verify Logto Deployment, Pod, PVC, Services and Ingress.
