@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	E "github.com/IBM/fp-go/v2/either"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextensionsv1client "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -14,9 +16,10 @@ import (
 
 // Clients holds Kubernetes clients and configuration.
 type Clients struct {
-	Kube    kubernetes.Interface
-	Dynamic dynamic.Interface
-	Rest    *rest.Config
+	Kube          kubernetes.Interface
+	Dynamic       dynamic.Interface
+	APIExtensions apiextensionsv1client.ApiextensionsV1Interface
+	Rest          *rest.Config
 }
 
 // Reason represents classified Kubernetes error reasons.
@@ -64,10 +67,16 @@ func NewClients(kubeconfig, context string) E.Either[error, Clients] {
 		return E.Left[Clients](fmt.Errorf("failed to create dynamic client: %w", err))
 	}
 
+	apiextClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return E.Left[Clients](fmt.Errorf("failed to create apiextensions client: %w", err))
+	}
+
 	return E.Right[error](Clients{
-		Kube:    clientset,
-		Dynamic: dynamicClient,
-		Rest:    config,
+		Kube:          clientset,
+		Dynamic:       dynamicClient,
+		APIExtensions: apiextClient.ApiextensionsV1(),
+		Rest:          config,
 	})
 }
 

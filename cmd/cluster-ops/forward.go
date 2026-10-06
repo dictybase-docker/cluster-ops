@@ -39,7 +39,7 @@ func forwardCommand() *cli.Command {
 				Name:  cmdForwardRun,
 				Usage: "Forward to a Service, run a command with FORWARD_PORT exported, tear down on exit",
 				Flags: append(kubeFlags(),
-					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
+					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: usageNamespace},
 					&cli.StringFlag{Name: flagSVC, Aliases: []string{"s"}, Required: true, Usage: "Service name"},
 					&cli.IntFlag{Name: flagRemotePort, Required: true, Usage: "Remote port on the pod"},
 					&cli.IntFlag{
@@ -54,7 +54,7 @@ func forwardCommand() *cli.Command {
 				Name:  cmdForwardHold,
 				Usage: "Hold a foreground forward (Ctrl-C to stop); reconnects on pod restart",
 				Flags: append(kubeFlags(),
-					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
+					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: usageNamespace},
 					&cli.StringFlag{Name: flagSVC, Aliases: []string{"s"}, Required: true, Usage: "Service name"},
 					&cli.IntFlag{Name: flagRemotePort, Required: true, Usage: "Remote port on the pod"},
 					&cli.IntFlag{

@@ -46,6 +46,8 @@ func testClients(objs ...runtime.Object) (kube.Clients, *k8sfake.Clientset) {
 
 // podNamed builds a pod with a phase, container readiness, and optional
 // waiting reasons per container (empty reason = ready container).
+//
+//nolint:unparam // readability over fixture dedup
 func podNamed(name, phase string, ready bool, waitingReasons ...string) *corev1.Pod {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Labels: map[string]string{"app": "test"}},
@@ -122,7 +124,7 @@ func TestPodsReady(t *testing.T) {
 
 func TestJobComplete(t *testing.T) {
 	t.Run("succeeded job passes", func(t *testing.T) {
-		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: testJobName},
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: testJobName},
 			Status: batchv1.JobStatus{Succeeded: 1}}
 		clients, _ := testClients(job)
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
@@ -130,7 +132,7 @@ func TestJobComplete(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("failed job is terminal", func(t *testing.T) {
-		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: testJobName},
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: testJobName},
 			Status: batchv1.JobStatus{Failed: 1}}
 		clients, _ := testClients(job)
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
@@ -144,18 +146,18 @@ func TestJobComplete(t *testing.T) {
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			_, _ = fakeCS.BatchV1().Jobs("dev").Create(context.Background(),
-				&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: "late"},
+				&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: "late"},
 					Status: batchv1.JobStatus{Succeeded: 1}},
 				metav1.CreateOptions{})
 		}()
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
-			waitfor.JobCondition{Namespace: "dev", Name: "late"}))
+			waitfor.JobCondition{Namespace: testNS, Name: "late"}))
 		require.NoError(t, err)
 	})
 	t.Run("job gone after seen passes (TTL cleanup)", func(t *testing.T) {
 		clients, fakeCS := testClients()
 		_, _ = fakeCS.BatchV1().Jobs("dev").Create(context.Background(),
-			&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: "ephemeral"}},
+			&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: "ephemeral"}},
 			metav1.CreateOptions{})
 		go func() {
 			time.Sleep(300 * time.Millisecond)
