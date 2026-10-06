@@ -21,10 +21,12 @@ in order:
    `arangodbSecret` exists in the namespace and carries the configured
    `userkey`/`passkey`. Key names only — never Secret values.
 4. **Application database** — the service's database exists in ArangoDB and
-   the credentials work. Created by the `create-arangodb-databases` stack
-   ([ArangoDB deploy](../../arangodb-deploy.md)); a Secret without its
-   database yields a green probe here but a CrashLoop at runtime — this check
-   closes that gap.
+   the credentials work, **through the same Service the app connects to** (the
+   `arangodb` Service behind the `ARANGODB_SERVICE_HOST`/`ARANGODB_SERVICE_PORT`
+   env vars modware services read). The probe port-forwards the Service, then
+   calls the ArangoDB REST API with the Secret credentials: 200 = green,
+   401 = credentials, 404 = database missing (apply the
+   `create-arangodb-databases` stack, [ArangoDB deploy](../../arangodb-deploy.md)).
 5. **Port** — the stack config's port value is in range.
 
 `just gcp-cluster verify-deployer-access --cluster <name> --sa-key <path>`
@@ -44,7 +46,7 @@ checks the deployer identity the CI pipeline will use:
 | Registry | `registry-show` | `no registry entry for cluster …` |
 | Namespace | `check-backend-prereqs` | `namespace prod missing — run namespace-bootstrap` |
 | K8s Secret | `check-backend-prereqs` | `secret order missing keys user/password` |
-| ArangoDB database | `check-backend-prereqs` | `database order absent or credentials rejected` |
+| ArangoDB database | `check-backend-prereqs` | `database order not found (404)` or `credentials rejected (401)` via `svc/arangodb` |
 | Deployer identity | `verify-deployer-access` | `cannot update deployments in prod` |
 
 ## Flags
@@ -55,6 +57,8 @@ checks the deployer identity the CI pipeline will use:
 |------|----------|---------|-------|
 | `--stack` / `-s` | Yes* | `$PULUMI_STACK` | Resolves the cluster through the registry |
 | `--folder` / `-f` | Yes | — | Service project folder (stack config source) |
+| `--arango-service` / `-a` | No | `arangodb` | Service the app connects to (`ARANGODB_SERVICE_HOST` source) |
+| `--arango-port` / `-p` | No | `18529` | Local port for the port-forward probe |
 
 ### verify-deployer-access
 

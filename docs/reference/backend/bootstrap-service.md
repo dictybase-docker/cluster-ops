@@ -54,6 +54,7 @@ kubectl run --rm -i grpcurl-probe --image=fullstorydev/grpcurl -- \
 | `--stack` / `-s` | Yes* | `$PULUMI_STACK` | Registry stack name |
 | `--folder` / `-f` | Yes | — | Service project folder |
 | `--image-tag` / `-t` | Yes | — | Published image tag for the manual first deploy (CI overwrites the tag on every later deploy) |
+| `--arango-service` / `-a` | No | `arangodb` | Passed to the prereq gate |
 
 *Or `$PULUMI_STACK` set inside `cluster-env`.
 

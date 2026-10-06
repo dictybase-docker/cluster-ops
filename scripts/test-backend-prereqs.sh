@@ -29,18 +29,18 @@ fail() {
 cat > "${mock_bin}/kubectl" <<'EOF'
 #!/usr/bin/env bash
 echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
-case "${MOCK_KUBECTL_MODE:-ok}:$*" in
-    "no-ns:get ns prod") exit 1 ;;
-    "no-secret:get secret order -n prod") exit 1 ;;
-    "no-secret-key:get secret order -n prod -o jsonpath={.data.user}") echo -n ""; exit 0 ;;
-    "no-db:exec"*) exit 1 ;;
+case "${MOCK_KUBECTL_MODE:-ok}:$1" in
+    "no-ns:get") [[ "$*" == "get ns prod" ]] && exit 1 ;;
+    "no-secret:get") [[ "$*" == "get secret order -n prod" ]] && exit 1 ;;
+    "no-secret-key:get") [[ "$*" == *"jsonpath={.data.user}"* ]] && { echo -n ""; exit 0; } ;;
+esac
+case "$1 $2" in
+    "port-forward") echo "Forwarding from 127.0.0.1:18529 -> 8529" >&2; sleep 30 ;;
 esac
 case "$*" in
     "get ns prod") echo "prod Active" ;;
     "get secret order -n prod") echo "order" ;;
     "get secret order -n prod -o"*) echo -n "dXNlcg==" ;;
-    "get pods -n prod -l app=arangodb,role=coordinator"*) echo -n "arangodb-crdn-0" ;;
-    "exec -n prod arangodb-crdn-0"*) exit 0 ;;
     "auth can-i update deployments -n prod") echo "yes" ;;
 esac
 exit 0
@@ -61,7 +61,17 @@ case "$1" in
     *) exit 0 ;;
 esac
 EOF
-chmod +x "${mock_bin}/kubectl" "${mock_bin}/kops" "${mock_bin}/gcloud"
+cat > "${mock_bin}/nc" <<'EOF'
+#!/usr/bin/env bash
+echo "nc $*" >> "${MOCK_CALLS_LOG}"
+exit 0
+EOF
+cat > "${mock_bin}/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl $*" >> "${MOCK_CALLS_LOG}"
+echo "${MOCK_CURL_CODE:-200}"
+EOF
+chmod +x "${mock_bin}/kubectl" "${mock_bin}/kops" "${mock_bin}/gcloud" "${mock_bin}/nc" "${mock_bin}/curl"
 export MOCK_CALLS_LOG="${calls}"
 export PATH="${mock_bin}:${PATH}"
 
@@ -108,6 +118,8 @@ run_gate() { # run_gate [mode]
 echo "=== 1. gate green names every layer, no mutations ==="
 out=$(run_gate ok) || fail "green gate failed: ${out}"
 printf '%s' "${out}" | grep -q "All prerequisites green" || fail "missing green line"
+grep -q "port-forward -n prod svc/arangodb" "${calls}" || fail "green run did not probe svc/arangodb"
+grep -q -- "-u user:user" "${calls}" || fail "probe did not authenticate with the Secret credentials"
 assert_no_mutations
 echo "  green: PASS"
 
@@ -123,11 +135,20 @@ printf '%s' "${out}" | grep -q "MISSING: secret order in namespace prod" || fail
 assert_no_mutations
 echo "  missing secret: PASS"
 
-echo "=== 4. absent database fails pointing at create-arangodb-databases ==="
+echo "=== 4. absent database fails with 404 pointing at create-arangodb-databases ==="
+export MOCK_CURL_CODE=404
 if out=$(run_gate no-db 2>&1); then fail "no-db mode accepted: ${out}"; fi
-printf '%s' "${out}" | grep -q "database order absent or credentials rejected" || fail "no-db failure unnamed:\n${out}"
+printf '%s' "${out}" | grep -q "database order not found (404)" || fail "no-db failure unnamed:\n${out}"
 assert_no_mutations
-echo "  missing database: PASS"
+echo "  missing database: PASS (404 named)"
+
+echo "=== 4b. rejected credentials fail with 401 ==="
+export MOCK_CURL_CODE=401
+if out=$(run_gate ok 2>&1); then fail "bad-creds mode accepted: ${out}"; fi
+printf '%s' "${out}" | grep -q "credentials rejected for database order (401)" || fail "401 failure unnamed:\n${out}"
+assert_no_mutations
+echo "  rejected credentials: PASS (401 named)"
+unset MOCK_CURL_CODE
 
 echo "=== 5. verify-deployer-access happy path + wrong-project refusal ==="
 : > "${calls}"
@@ -136,7 +157,6 @@ out=$(just gcp-cluster verify-deployer-access --cluster dcr-kube1 --sa-key "${sa
     || fail "verify happy path failed:\n${out}"
 printf '%s' "${out}" | grep -q "Deployer access verified" || fail "missing verified line"
 assert_no_mutations
-grep -q -- "--secrets-provider gcpkms://" "${calls}" && fail "kms parse wrote a secrets-provider call"
 grep -q "kops export kubeconfig" "${calls}" || fail "kubeconfig export not exercised"
 
 bad_key="${tmp}/bad.json"

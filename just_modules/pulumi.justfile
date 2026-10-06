@@ -626,17 +626,19 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="":
 # Composite read-only prerequisite gate for a backend service deploy.
 # Checks, in order: registry entry (by stack), namespace exists, ArangoDB
 # credentials Secret exists with the configured keys, the application
-# database exists and the credentials work, and the port is in range.
-# Zero mutations; exits non-zero listing every missing prerequisite; never
-# prints Secret values. bootstrap-service runs this first and aborts before
-# any mutation on failure.
-# Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-label <selector>]
+# database exists and the credentials work **through the same Service the app
+# connects to** (port-forward svc/arangodb, then ArangoDB REST API), and the
+# port is in range. Zero mutations; exits non-zero listing every missing
+# prerequisite; never prints Secret values. bootstrap-service runs this first
+# and aborts before any mutation on failure.
+# Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-service <name>] [--arango-port <n>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder (stack config source)")]
-[arg("arango_label", long="arango-label", short="a", help="Label selector for a coordinator ArangoDB pod (default app=arangodb,role=coordinator)")]
+[arg("arango_service", long="arango-service", short="a", help="ArangoDB Service name the app connects to (default arangodb — the source of ARANGODB_SERVICE_HOST)")]
+[arg("arango_port", long="arango-port", short="p", help="Local port for the port-forward probe (default 18529)")]
 [group('pulumi-management')]
 [no-cd]
-check-backend-prereqs folder stack="" arango_label="app=arangodb,role=coordinator":
+check-backend-prereqs folder stack="" arango_service="arangodb" arango_port="18529":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -699,32 +701,47 @@ check-backend-prereqs folder stack="" arango_label="app=arangodb,role=coordinato
         done
     fi
 
-    echo "=== ArangoDB database ${app} ==="
+    echo "=== ArangoDB database ${app} via svc/{{ arango_service }} ==="
     if [ "${missing}" -eq 0 ]; then
         dbuser=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${userkey}}" | base64 -d)
         dbpass=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${passkey}}" | base64 -d)
-        arango_pod=$(kubectl get pods -n "${namespace}" -l "{{ arango_label }}" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -z "${arango_pod}" ]; then
-            echo "MISSING: no Running pod matches selector '{{ arango_label }}' in ${namespace} — pass --arango-label with the right selector (must select a coordinator, not an agent)." >&2
+        local_port="{{ arango_port }}"
+        pf_log=$(mktemp)
+        kubectl port-forward -n "${namespace}" "svc/{{ arango_service }}" "${local_port}:8529" > "${pf_log}" 2>&1 &
+        pf_pid=$!
+        cleanup_pf() { kill "${pf_pid}" 2>/dev/null || true; rm -f "${pf_log}"; }
+        trap cleanup_pf EXIT
+        pf_up=0
+        for _ in $(seq 1 15); do
+            nc -z localhost "${local_port}" 2>/dev/null && { pf_up=1; break; }
+            sleep 1
+        done
+        if [ "${pf_up}" -ne 1 ]; then
+            echo "MISSING: could not reach svc/{{ arango_service }} in ${namespace} — port-forward never came up. Check the Service exists and its pods are ready." >&2
+            sed 's/^/         /' "${pf_log}" >&2
             missing=1
         else
-            arango_out=$(kubectl exec -n "${namespace}" "${arango_pod}" -- arangosh \
-                --server.endpoint "tcp://127.0.0.1:8529" \
-                --server.database "${app}" \
-                --server.username "${dbuser}" \
-                --server.password "${dbpass}" \
-                --javascript.execute-string "db._version();" 2>&1) && arango_rc=0 || arango_rc=1
-            if [ "${arango_rc}" -ne 0 ]; then
-                echo "MISSING: database ${app} absent or credentials rejected (probe pod: ${arango_pod})." >&2
-                echo "       arangosh said (last 5 lines):" >&2
-                printf '%s\n' "${arango_out}" | grep -v '^Defaulted container' | tail -n 5 | sed 's/^/         /' >&2
-                echo "       If the pod above is not a coordinator, pass --arango-label 'app=arangodb,role=coordinator'." >&2
-                echo "       If 'not connected': credentials — check the Secret against create-arangodb-databases." >&2
-                echo "       If 'database not found': apply the create-arangodb-databases stack." >&2
-                missing=1
-            fi
-            unset arango_out arango_rc
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+                -u "${dbuser}:${dbpass}" \
+                "http://localhost:${local_port}/_db/${app}/_api/database/current")
+            case "${code}" in
+                200) : ;;
+                401)
+                    echo "MISSING: credentials rejected for database ${app} (401) — the Secret does not match the ArangoDB user; check create-arangodb-databases." >&2
+                    missing=1
+                    ;;
+                404)
+                    echo "MISSING: database ${app} not found (404) via svc/{{ arango_service }} — apply the create-arangodb-databases stack." >&2
+                    missing=1
+                    ;;
+                *)
+                    echo "MISSING: unexpected HTTP ${code} from /_db/${app}/_api/database/current via svc/{{ arango_service }}." >&2
+                    missing=1
+                    ;;
+            esac
         fi
+        cleanup_pf
+        trap - EXIT
         unset dbuser dbpass
     fi
 
@@ -748,14 +765,14 @@ check-backend-prereqs folder stack="" arango_label="app=arangodb,role=coordinato
 # manual — CI deploys clone cluster-ops develop, so an unpushed stack file
 # deploys nothing. Named bootstrap-service because bootstrap-backend already
 # means the Pulumi state backend.
-# Usage: just gcp-pulumi bootstrap-service --folder <dir> [--stack <name>] --image-tag <tag> [--arango-label <selector>]
+# Usage: just gcp-pulumi bootstrap-service --folder <dir> [--stack <name>] --image-tag <tag> [--arango-service <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder")]
 [arg("image_tag", long="image-tag", short="t", help="Published image tag for the manual first deploy — CI overwrites the tag on every later deploy")]
-[arg("arango_label", long="arango-label", short="a", help="Label selector for a ready ArangoDB pod (passed to the prereq gate)")]
+[arg("arango_service", long="arango-service", short="a", help="ArangoDB Service name the app connects to (passed to the prereq gate)")]
 [group('pulumi-management')]
 [no-cd]
-bootstrap-service folder image_tag stack="" arango_label="app=arangodb":
+bootstrap-service folder image_tag stack="" arango_service="arangodb":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -775,7 +792,7 @@ bootstrap-service folder image_tag stack="" arango_label="app=arangodb":
     deploy="${app}-api-server"
 
     gate_args=(--stack "${stack_name}" --folder "${folder}")
-    [ -n "{{ arango_label }}" ] && gate_args+=(--arango-label "{{ arango_label }}")
+    [ -n "{{ arango_service }}" ] && gate_args+=(--arango-service "{{ arango_service }}")
 
     echo "=== 1/5: prerequisite gate (read-only) ==="
     just gcp-pulumi check-backend-prereqs "${gate_args[@]}"
