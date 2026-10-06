@@ -2080,75 +2080,10 @@ verify-deployer-access cluster="" sa_key:
 
     name="{{ cluster }}"
     [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
-    if [ -z "${name}" ]; then
-        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
-        exit 1
-    fi
-    key="{{ sa_key }}"
-    if [ ! -f "${key}" ]; then
-        echo "ERROR: SA key file not found: ${key}" >&2
-        exit 1
-    fi
-    project_id=$(jq -r '.project_id // empty' "${key}")
-    if [ -z "${project_id}" ]; then
-        echo "ERROR: ${key} is not a GCP service account key JSON." >&2
-        exit 1
-    fi
 
-    entry="config/clusters/${name}.yaml"
-    if [ ! -f "${entry}" ]; then
-        echo "ERROR: no registry entry for cluster '${name}' — expected ${entry}." >&2
-        exit 1
-    fi
-    namespace=$(yq -r '.namespace' "${entry}")
-    reg_project=$(yq -r '.gcp_project' "${entry}")
-    kops_state=$(yq -r '.kops_state' "${entry}")
-    kms=$(yq -r '.kms_secrets_provider' "${entry}")
-    kms_project=$(yq -r '.gcp_project' "${entry}")
-
-    if [ "${project_id}" != "${reg_project}" ]; then
-        echo "ERROR: key project '${project_id}' does not match registry gcp_project '${reg_project}'." >&2
-        echo "       A key from one project cannot deploy to another cluster's project." >&2
-        exit 1
-    fi
-
-    export GOOGLE_APPLICATION_CREDENTIALS="$(realpath "${key}")"
-
-    kubectl_file=$(mktemp)
-    trap 'rm -f "${kubectl_file}"' EXIT
-
-    echo "=== 1/3: kubeconfig export from ${kops_state} ==="
-    kops export kubeconfig --admin --name "${name}-k8s.local" --state "${kops_state}" --kubeconfig "${kubectl_file}"
-
-    echo "=== 2/3: deployments permission in namespace ${namespace} ==="
-    export KUBECONFIG="${kubectl_file}"
-    if ! kubectl auth can-i update deployments -n "${namespace}" >/dev/null 2>&1; then
-        echo "ERROR: deployer SA cannot 'update deployments' in namespace '${namespace}'." >&2
-        echo "       Grant the role from gcs-files/roles-permissions/deployer-roles.txt to this SA." >&2
-        exit 1
-    fi
-
-    echo "=== 3/3: KMS encrypt/decrypt round-trip on ${kms} ==="
-    ring_and_key="${kms#gcpkms://projects/${kms_project}/locations/us-central1/keyRings/}"
-    ring="${ring_and_key%%/*}"
-    ckey="${ring_and_key##*/}"
-    pt="probe-$(date +%s)"
-    ct=$(echo -n "${pt}" | gcloud kms encrypt --project "${kms_project}" --location us-central1 \
-        --keyring "${ring}" --key "${ckey}" --ciphertext-file - --plaintext-file - 2>/dev/null | base64)
-    if [ -z "${ct}" ]; then
-        echo "ERROR: KMS encrypt failed on key '${ckey}' (ring '${ring}', project '${kms_project}')." >&2
-        echo "       The deployer SA needs roles/cloudkms.cryptoKeyEncrypterDecrypter on the registry key." >&2
-        exit 1
-    fi
-    got=$(printf '%s' "${ct}" | base64 -d | gcloud kms decrypt --project "${kms_project}" --location us-central1 \
-        --keyring "${ring}" --key "${ckey}" --ciphertext-file - --plaintext-file - 2>/dev/null)
-    if [ "${got}" != "${pt}" ]; then
-        echo "ERROR: KMS decrypt round-trip mismatch — secrets provider unusable." >&2
-        exit 1
-    fi
-
-    echo "Deployer access verified for ${name}: kubeconfig, deployments in ${namespace}, KMS round-trip."
-    echo "Next: just ci check-deploy-credentials --cluster ${name} --sa-key ${key}"
+    go run ./cmd/cluster-ops preflight deployer-access \
+        --cluster "${name}" \
+        --sa-key {{ quote(sa_key) }}
 
 # Create the registry entry for a cluster from its bootstrap artifacts.
 # Reads the per-cluster env file (.env.<env>.<cluster>, created by
