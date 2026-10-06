@@ -707,14 +707,23 @@ check-backend-prereqs folder stack="" arango_label="app=arangodb,role=coordinato
         if [ -z "${arango_pod}" ]; then
             echo "MISSING: no Running pod matches selector '{{ arango_label }}' in ${namespace} — pass --arango-label with the right selector (must select a coordinator, not an agent)." >&2
             missing=1
-        elif ! kubectl exec -n "${namespace}" "${arango_pod}" -- arangosh \
-            --server.endpoint "tcp://127.0.0.1:8529" \
-            --server.database "${app}" \
-            --server.username "${dbuser}" \
-            --server.password "${dbpass}" \
-            --javascript.execute-string "db._version();" >/dev/null 2>&1; then
-            echo "MISSING: database ${app} absent or credentials rejected — apply the create-arangodb-databases stack." >&2
-            missing=1
+        else
+            arango_out=$(kubectl exec -n "${namespace}" "${arango_pod}" -- arangosh \
+                --server.endpoint "tcp://127.0.0.1:8529" \
+                --server.database "${app}" \
+                --server.username "${dbuser}" \
+                --server.password "${dbpass}" \
+                --javascript.execute-string "db._version();" 2>&1) && arango_rc=0 || arango_rc=1
+            if [ "${arango_rc}" -ne 0 ]; then
+                echo "MISSING: database ${app} absent or credentials rejected (probe pod: ${arango_pod})." >&2
+                echo "       arangosh said (last 5 lines):" >&2
+                printf '%s\n' "${arango_out}" | grep -v '^Defaulted container' | tail -n 5 | sed 's/^/         /' >&2
+                echo "       If the pod above is not a coordinator, pass --arango-label 'app=arangodb,role=coordinator'." >&2
+                echo "       If 'not connected': credentials — check the Secret against create-arangodb-databases." >&2
+                echo "       If 'database not found': apply the create-arangodb-databases stack." >&2
+                missing=1
+            fi
+            unset arango_out arango_rc
         fi
         unset dbuser dbpass
     fi
