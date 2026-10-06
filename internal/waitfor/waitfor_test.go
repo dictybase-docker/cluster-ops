@@ -24,7 +24,7 @@ import (
 
 const (
 	testNS      = "dev"
-	testSel     = testSel
+	testSel     = "app=test"
 	testJobName = "build"
 	testDepName = "api"
 )
