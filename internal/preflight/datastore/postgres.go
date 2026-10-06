@@ -108,7 +108,9 @@ func pvcsBoundCount(
 		if count >= want {
 			return preflight.Result{Name: name, Detail: detail, Status: preflight.StatusPass}
 		}
-		return preflight.Result{Name: name, Detail: fmt.Sprintf("%s, expected %d", detail, want), Status: preflight.StatusFail}
+		return preflight.Result{
+			Name: name, Detail: fmt.Sprintf("%s, expected %d", detail, want), Status: preflight.StatusFail,
+		}
 	}
 }
 

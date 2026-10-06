@@ -37,42 +37,50 @@ func readyPod(ns, name string, labels map[string]string) *corev1.Pod {
 }
 
 const (
-	fixNS = "prod"
+	fixNS         = "prod"
+	arangoCRName  = "arangodb"
+	fixSelector   = "arango_deployment"
+	cnpgSelector  = "cnpg.io/cluster"
+	fixPGCluster  = "logto"
+	fixMinioName  = "minio"
+	fixRedisName  = "redis"
+	fixNatsName   = "nats"
+	fixNatsBox    = "nats-box"
+	fixSecretName = "backend"
 )
 
 var (
-	arangoGVR      = schema.GroupVersionResource{Group: "database.arangodb.com", Version: "v1", Resource: "arangodeployments"}
+	arangoGVR = schema.GroupVersionResource{
+		Group: "database.arangodb.com", Version: "v1", Resource: "arangodeployments",
+	}
 	cnpgGVR        = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "clusters"}
 	schedBackupGVR = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "scheduledbackups"}
 )
 
-func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
+//nolint:goconst,lll,unparam // fixture literals
+func arangoCR(ns string, state string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "database.arangodb.com/v1",
-		"kind":       "ArangoDeployment", //nolint:goconst // fixture literal
-		"metadata":   map[string]any{"namespace": ns, "name": "arangodb"},
-		"status":     map[string]any{"state": state},
+		"metadata": map[string]any{"namespace": ns, "name": arangoCRName},
+		"status":   map[string]any{"state": state},
 	}}
 	obj.SetGroupVersionKind(arangoGVR.GroupVersion().WithKind("ArangoDeployment"))
 	return obj
 }
 
-func scheduledBackupCR(ns, name string) *unstructured.Unstructured { //nolint:goconst,lll,unparam // fixture literals
+//nolint:goconst,lll,unparam // fixture literals
+func scheduledBackupCR(ns, name string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "postgresql.cnpg.io/v1",
-		"kind":       "ScheduledBackup",
-		"metadata":   map[string]any{"namespace": ns, "name": name},
+		"metadata": map[string]any{"namespace": ns, "name": name},
 	}}
 	obj.SetGroupVersionKind(schedBackupGVR.GroupVersion().WithKind("ScheduledBackup"))
 	return obj
 }
 
-func cnpgCluster(ns, name, phase string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
+//nolint:goconst,lll,unparam // fixture literals
+func cnpgCluster(ns, name, phase string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "postgresql.cnpg.io/v1",
-		"kind":       "Cluster", //nolint:goconst // fixture literal
-		"metadata":   map[string]any{"namespace": ns, "name": name},
-		"status":     map[string]any{"phase": phase},
+		"metadata": map[string]any{"namespace": ns, "name": name},
+		"status":   map[string]any{"phase": phase},
 	}}
 	obj.SetGroupVersionKind(cnpgGVR.GroupVersion().WithKind("Cluster"))
 	return obj

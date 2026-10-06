@@ -68,7 +68,9 @@ func natsService(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 		}
 		for _, p := range svc.Spec.Ports {
 			if p.Name == "nats" && p.Port == natsClientPort {
-				return preflight.Result{Name: label, Detail: fmt.Sprintf("exposes %d", natsClientPort), Status: preflight.StatusPass}
+				return preflight.Result{
+					Name: label, Detail: fmt.Sprintf("exposes %d", natsClientPort), Status: preflight.StatusPass,
+				}
 			}
 		}
 		return preflight.Result{Name: label, Detail: "missing or client port not 4222", Status: preflight.StatusFail}
