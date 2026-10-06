@@ -278,15 +278,18 @@ check-tools:
     set -uo pipefail
     "{{ justfile_directory() }}/scripts/pulumi/check-tools.sh"
 
-# Verify the Pulumi backend wiring for the active cluster shell.
-# Checks PULUMI_* variables, the GCS state bucket, the KMS key and the active login.
+# Verify Pulumi backend wiring (env vars, state bucket, KMS key, active login).
+# Read-only. Reads PULUMI_* env vars from the cluster shell; fails naming the
+# missing layer. Zero mutations.
 # Usage: just gcp-pulumi check-backend
 [group('pulumi-management')]
 [no-cd]
 check-backend:
     #!/usr/bin/env bash
-    set -uo pipefail
-    "{{ justfile_directory() }}/scripts/pulumi/check-backend.sh"
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    go run ./cmd/cluster-ops preflight pulumi-backend
 
 # Verify the StorageClasses this repo's database stacks depend on.
 # Prints the provisioner for each class and exits non-zero if one is missing or wrong.
