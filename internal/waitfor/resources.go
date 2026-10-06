@@ -77,7 +77,7 @@ func countDynamic(
 	clients kube.Clients,
 	namespace, kind, selector string,
 ) (int, error) {
-	gvr, err := resolveGVR(ctx, clients, kind)
+	gvr, err := resolveGVR(clients, kind)
 	if err != nil || gvr.Empty() {
 		return 0, nil // unknown API type: gone (missing CRD counts as gone)
 	}
@@ -94,7 +94,7 @@ func countDynamic(
 }
 
 // resolveGVR maps a user kind to a GroupVersionResource via discovery.
-func resolveGVR(ctx context.Context, clients kube.Clients, kind string) (schema.GroupVersionResource, error) {
+func resolveGVR(clients kube.Clients, kind string) (schema.GroupVersionResource, error) {
 	if clients.Dynamic == nil {
 		return schema.GroupVersionResource{}, fmt.Errorf("no dynamic client")
 	}

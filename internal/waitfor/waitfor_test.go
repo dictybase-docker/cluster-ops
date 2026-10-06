@@ -22,6 +22,13 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
+const (
+	testNS      = "dev"
+	testSel     = testSel
+	testJobName = "build"
+	testDepName = "api"
+)
+
 // shortCfg keeps tests fast.
 // waitResult evaluates an IOEither wait into a plain error for assertions.
 func waitResult(res IOE.IOEither[error, struct{}]) error {
@@ -39,9 +46,9 @@ func testClients(objs ...runtime.Object) (kube.Clients, *k8sfake.Clientset) {
 
 // podNamed builds a pod with a phase, container readiness, and optional
 // waiting reasons per container (empty reason = ready container).
-func podNamed(ns, name, phase string, ready bool, waitingReasons ...string) *corev1.Pod {
+func podNamed(name, phase string, ready bool, waitingReasons ...string) *corev1.Pod {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, Labels: map[string]string{"app": "test"}},
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: name, Labels: map[string]string{"app": "test"}},
 		Status:     corev1.PodStatus{Phase: corev1.PodPhase(phase)},
 	}
 	if len(waitingReasons) > 0 {
@@ -59,46 +66,46 @@ func podNamed(ns, name, phase string, ready bool, waitingReasons ...string) *cor
 
 func TestPodsReady(t *testing.T) {
 	t.Run("ready pods satisfy the count", func(t *testing.T) {
-		clients, _ := testClients(podNamed("dev", "a-1", "Running", true))
+		clients, _ := testClients(podNamed("a-1", "Running", true))
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=test", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: testSel, Count: 1}))
 		require.NoError(t, err)
 	})
 	t.Run("crash loop is terminal and fast", func(t *testing.T) {
-		pod := podNamed("dev", "a-1", "Running", false, "CrashLoopBackOff")
+		pod := podNamed("a-1", "Running", false, "CrashLoopBackOff")
 		pod.Status.ContainerStatuses[0].RestartCount = 3 // repeated crashes: unambiguous
 		clients, _ := testClients(pod)
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=test", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: testSel, Count: 1}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTerminal, we.Kind)
 		require.Contains(t, err.Error(), "CrashLoopBackOff")
 	})
 	t.Run("image pull error is terminal", func(t *testing.T) {
-		pod := podNamed("dev", "a-1", "Pending", false, "ErrImagePull")
+		pod := podNamed("a-1", "Pending", false, "ErrImagePull")
 		pod.Status.ContainerStatuses[0].RestartCount = 3
 		clients, _ := testClients(pod)
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=test", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: testSel, Count: 1}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTerminal, we.Kind)
 	})
 	t.Run("early crash-loop restart is NOT terminal (restartCount guard)", func(t *testing.T) {
-		pod := podNamed("dev", "a-1", "Running", false, "CrashLoopBackOff")
+		pod := podNamed("a-1", "Running", false, "CrashLoopBackOff")
 		pod.Status.ContainerStatuses[0].RestartCount = 1
 		clients, _ := testClients(pod)
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=test", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: testSel, Count: 1}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTimeout, we.Kind, "low restartCount keeps waiting")
 	})
 	t.Run("unready pods time out", func(t *testing.T) {
-		clients, _ := testClients(podNamed("dev", "a-1", "Running", false))
+		clients, _ := testClients(podNamed("a-1", "Running", false))
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=test", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: testSel, Count: 1}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTimeout, we.Kind)
@@ -106,7 +113,7 @@ func TestPodsReady(t *testing.T) {
 	t.Run("no matching pods times out", func(t *testing.T) {
 		clients, _ := testClients()
 		err := waitResult(waitfor.PodsReady(context.Background(), clients, shortCfg(),
-			waitfor.PodReadyCondition{Namespace: "dev", Selector: "app=absent", Count: 1}))
+			waitfor.PodReadyCondition{Namespace: testNS, Selector: "app=absent", Count: 1}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTimeout, we.Kind)
@@ -115,19 +122,19 @@ func TestPodsReady(t *testing.T) {
 
 func TestJobComplete(t *testing.T) {
 	t.Run("succeeded job passes", func(t *testing.T) {
-		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: "build"},
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: testJobName},
 			Status: batchv1.JobStatus{Succeeded: 1}}
 		clients, _ := testClients(job)
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
-			waitfor.JobCondition{Namespace: "dev", Name: "build"}))
+			waitfor.JobCondition{Namespace: testNS, Name: testJobName}))
 		require.NoError(t, err)
 	})
 	t.Run("failed job is terminal", func(t *testing.T) {
-		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: "build"},
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: testJobName},
 			Status: batchv1.JobStatus{Failed: 1}}
 		clients, _ := testClients(job)
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
-			waitfor.JobCondition{Namespace: "dev", Name: "build"}))
+			waitfor.JobCondition{Namespace: testNS, Name: testJobName}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTerminal, we.Kind)
@@ -172,24 +179,24 @@ func TestResourcesGone(t *testing.T) {
 	t.Run("no pods: gone", func(t *testing.T) {
 		clients, _ := testClients()
 		err := waitResult(waitfor.ResourcesGone(context.Background(), clients, shortCfg(),
-			"dev", "pods", "app=test"))
+			"dev", "pods", testSel))
 		require.NoError(t, err)
 	})
 	t.Run("pods present then deleted", func(t *testing.T) {
-		pod := podNamed("dev", "a-1", "Running", true)
+		pod := podNamed("a-1", "Running", true)
 		clients, fakeCS := testClients(pod)
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			_ = fakeCS.CoreV1().Pods("dev").Delete(context.Background(), "a-1", metav1.DeleteOptions{})
 		}()
 		err := waitResult(waitfor.ResourcesGone(context.Background(), clients, shortCfg(),
-			"dev", "pods", "app=test"))
+			"dev", "pods", testSel))
 		require.NoError(t, err)
 	})
 	t.Run("still present: timeout", func(t *testing.T) {
-		clients, _ := testClients(podNamed("dev", "a-1", "Running", true))
+		clients, _ := testClients(podNamed("a-1", "Running", true))
 		err := waitResult(waitfor.ResourcesGone(context.Background(), clients, shortCfg(),
-			"dev", "pods", "app=test"))
+			"dev", "pods", testSel))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTimeout, we.Kind)
@@ -203,9 +210,10 @@ func TestResourcesGone(t *testing.T) {
 }
 
 func TestDeploymentRollout(t *testing.T) {
-	dep := func(gen int64, observed int64, updated, available, specReplicas int32, deadlineExceeded bool) *appsv1.Deployment {
+	//nolint:lll // table-builder closure
+	dep := func(gen, observed int64, updated, available, specReplicas int32, deadlineExceeded bool) *appsv1.Deployment {
 		d := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: "api", Generation: gen},
+			ObjectMeta: metav1.ObjectMeta{Namespace: "dev", Name: testDepName, Generation: gen},
 			Spec:       appsv1.DeploymentSpec{Replicas: &specReplicas},
 			Status: appsv1.DeploymentStatus{
 				ObservedGeneration: observed, UpdatedReplicas: updated, AvailableReplicas: available,
@@ -222,13 +230,13 @@ func TestDeploymentRollout(t *testing.T) {
 	t.Run("fully rolled out", func(t *testing.T) {
 		clients, _ := testClients(dep(2, 2, 3, 3, 3, false))
 		err := waitResult(waitfor.DeploymentRollout(context.Background(), clients, shortCfg(),
-			waitfor.DeploymentRolloutCondition{Namespace: "dev", Name: "api"}))
+			waitfor.DeploymentRolloutCondition{Namespace: testNS, Name: testDepName}))
 		require.NoError(t, err)
 	})
 	t.Run("stale observedGeneration does not pass", func(t *testing.T) {
 		clients, _ := testClients(dep(2, 1, 3, 3, 3, false))
 		err := waitResult(waitfor.DeploymentRollout(context.Background(), clients, shortCfg(),
-			waitfor.DeploymentRolloutCondition{Namespace: "dev", Name: "api"}))
+			waitfor.DeploymentRolloutCondition{Namespace: testNS, Name: testDepName}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTimeout, we.Kind)
@@ -236,7 +244,7 @@ func TestDeploymentRollout(t *testing.T) {
 	t.Run("progress deadline exceeded is terminal", func(t *testing.T) {
 		clients, _ := testClients(dep(2, 2, 1, 1, 3, true))
 		err := waitResult(waitfor.DeploymentRollout(context.Background(), clients, shortCfg(),
-			waitfor.DeploymentRolloutCondition{Namespace: "dev", Name: "api"}))
+			waitfor.DeploymentRolloutCondition{Namespace: testNS, Name: testDepName}))
 		var we *waitfor.Error
 		require.True(t, errors.As(err, &we))
 		require.Equal(t, waitfor.KindTerminal, we.Kind)

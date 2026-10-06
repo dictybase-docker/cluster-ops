@@ -90,7 +90,13 @@ var terminalWaiting = map[string]bool{
 // poll runs cond every cfg.Interval until it reports done, errors, or the
 // budget expires. Condition errors must be *Error (Terminal/API) to survive;
 // anything else is reported as an API error.
-func poll(ctx context.Context, cfg WaitConfig, cond func(ctx context.Context, elapsed time.Duration) (bool, error)) error {
+//
+//nolint:lll // single-line condition signature
+func poll(
+	ctx context.Context,
+	cfg WaitConfig,
+	cond func(ctx context.Context, elapsed time.Duration) (bool, error),
+) error {
 	interval := cfg.Interval
 	if interval <= 0 {
 		interval = 5 * time.Second
@@ -106,6 +112,7 @@ func poll(ctx context.Context, cfg WaitConfig, cond func(ctx context.Context, el
 	if we, ok := errors.AsType[*Error](err); ok {
 		return we
 	}
+	//nolint:staticcheck // SA1019: ErrWaitTimeout still returned by this apimachinery version
 	if errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Kind: KindTimeout, Msg: fmt.Sprintf("timed out after %s", cfg.Timeout)}
 	}
@@ -338,7 +345,7 @@ func deploymentRollout(
 					cond.Namespace, cond.Name, c.Message)
 			}
 		}
-		if dep.Status.ObservedGeneration >= dep.ObjectMeta.Generation &&
+		if dep.Status.ObservedGeneration >= dep.Generation &&
 			dep.Status.UpdatedReplicas >= want &&
 			dep.Status.AvailableReplicas >= want {
 			logf(cfg, "deployment %s/%s rolled out after %s.", cond.Namespace, cond.Name, elapsed)
@@ -347,7 +354,7 @@ func deploymentRollout(
 		logf(cfg, "Waiting for deployment %s/%s: %d/%d updated, %d/%d available, generation %d/%d (%s elapsed)",
 			cond.Namespace, cond.Name, dep.Status.UpdatedReplicas, want,
 			dep.Status.AvailableReplicas, want,
-			dep.Status.ObservedGeneration, dep.ObjectMeta.Generation, elapsed)
+			dep.Status.ObservedGeneration, dep.Generation, elapsed)
 		return false, nil
 	})
 }
