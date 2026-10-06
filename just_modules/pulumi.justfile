@@ -640,132 +640,25 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="":
 # port is in range. Zero mutations; exits non-zero listing every missing
 # prerequisite; never prints Secret values. bootstrap-service runs this first
 # and aborts before any mutation on failure.
-# Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-service <name>] [--arango-port <n>]
+# Usage: just gcp-pulumi check-backend-prereqs --folder <dir> [--stack <name>] [--arango-service <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder (stack config source)")]
 [arg("arango_service", long="arango-service", short="a", help="ArangoDB Service name the app connects to (default arangodb — the source of ARANGODB_SERVICE_HOST)")]
-[arg("arango_port", long="arango-port", short="p", help="Local port for the port-forward probe (default 18529)")]
 [group('pulumi-management')]
 [no-cd]
-check-backend-prereqs folder stack="" arango_service="arangodb" arango_port="18529":
+check-backend-prereqs folder stack="" arango_service="arangodb":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     stack_name="{{ stack }}"
     [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
-    if [ -z "${stack_name}" ]; then
-        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
-        exit 1
-    fi
     folder="{{ folder }}"
-    folder="${folder%/}"
-    cfg="${folder}/Pulumi.${stack_name}.yaml"
-    if [ ! -f "${cfg}" ]; then
-        echo "MISSING: ${cfg} — scaffold it first (scaffold-backend-stack)." >&2
-        exit 1
-    fi
 
-    # Registry lookup by stack key.
-    entry=""
-    for f in config/clusters/*.yaml; do
-        [ -e "${f}" ] || continue
-        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
-            entry="${f}"
-            break
-        fi
-    done
-    if [ -z "${entry}" ]; then
-        echo "MISSING: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
-        exit 1
-    fi
-    namespace=$(yq -r '.namespace' "${entry}")
-    project="$(basename "${folder}")"
-    props=".config.\"${project}:properties\""
-
-    secret_name=$(yq -r "${props}.arangodbSecret.name" "${cfg}")
-    userkey=$(yq -r "${props}.arangodbSecret.userkey" "${cfg}")
-    passkey=$(yq -r "${props}.arangodbSecret.passkey" "${cfg}")
-    port=$(yq -r "${props}.port" "${cfg}")
-    app=$(yq -r "${props}.appName" "${cfg}")
-
-    missing=0
-
-    echo "=== namespace ${namespace} ==="
-    if ! kubectl get ns "${namespace}" >/dev/null 2>&1; then
-        echo "MISSING: namespace ${namespace} — run namespace-bootstrap for this cluster." >&2
-        missing=1
-    fi
-
-    echo "=== credentials Secret ${secret_name} (keys ${userkey}/${passkey}) ==="
-    if ! kubectl get secret "${secret_name}" -n "${namespace}" >/dev/null 2>&1; then
-        echo "MISSING: secret ${secret_name} in namespace ${namespace} — create it with the ArangoDB credentials." >&2
-        missing=1
-    else
-        for k in "${userkey}" "${passkey}"; do
-            if [ -z "$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${k}}" 2>/dev/null)" ]; then
-                echo "MISSING: secret ${secret_name} key '${k}' — key names must match the stack config." >&2
-                missing=1
-            fi
-        done
-    fi
-
-    echo "=== ArangoDB database ${app} via svc/{{ arango_service }} ==="
-    if [ "${missing}" -eq 0 ]; then
-        dbuser=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${userkey}}" | base64 -d)
-        dbpass=$(kubectl get secret "${secret_name}" -n "${namespace}" -o "jsonpath={.data.${passkey}}" | base64 -d)
-        local_port="{{ arango_port }}"
-        pf_log=$(mktemp)
-        kubectl port-forward -n "${namespace}" "svc/{{ arango_service }}" "${local_port}:8529" > "${pf_log}" 2>&1 &
-        pf_pid=$!
-        cleanup_pf() { kill "${pf_pid}" 2>/dev/null || true; rm -f "${pf_log}"; }
-        trap cleanup_pf EXIT
-        pf_up=0
-        for _ in $(seq 1 15); do
-            nc -z localhost "${local_port}" 2>/dev/null && { pf_up=1; break; }
-            sleep 1
-        done
-        if [ "${pf_up}" -ne 1 ]; then
-            echo "MISSING: could not reach svc/{{ arango_service }} in ${namespace} — port-forward never came up. Check the Service exists and its pods are ready." >&2
-            sed 's/^/         /' "${pf_log}" >&2
-            missing=1
-        else
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-                -u "${dbuser}:${dbpass}" \
-                "http://localhost:${local_port}/_db/${app}/_api/database/current")
-            case "${code}" in
-                200) : ;;
-                401)
-                    echo "MISSING: credentials rejected for database ${app} (401) — the Secret does not match the ArangoDB user; check create-arangodb-databases." >&2
-                    missing=1
-                    ;;
-                404)
-                    echo "MISSING: database ${app} not found (404) via svc/{{ arango_service }} — apply the create-arangodb-databases stack." >&2
-                    missing=1
-                    ;;
-                *)
-                    echo "MISSING: unexpected HTTP ${code} from /_db/${app}/_api/database/current via svc/{{ arango_service }}." >&2
-                    missing=1
-                    ;;
-            esac
-        fi
-        cleanup_pf
-        trap - EXIT
-        unset dbuser dbpass
-    fi
-
-    echo "=== port ${port} ==="
-    if ! [[ "${port}" =~ ^[0-9]+$ ]] || [ "${port}" -lt 1024 ] || [ "${port}" -gt 65535 ]; then
-        echo "MISSING: port '${port}' is not in the 1024-65535 range." >&2
-        missing=1
-    fi
-
-    if [ "${missing}" -ne 0 ]; then
-        echo "ERROR: prerequisite gate failed — fix the MISSING lines above, then re-run." >&2
-        exit 1
-    fi
-    echo "All prerequisites green for ${project}/${stack_name}."
-    echo "Next: just gcp-pulumi bootstrap-service --stack ${stack_name} --folder ${folder} --image-tag <published-tag>"
+    go run ./cmd/cluster-ops preflight backend-prereqs \
+        --folder {{ quote(folder) }} \
+        --stack "${stack_name}" \
+        --arango-service {{ quote(arango_service) }}
 
 # Run the first deploy of a scaffolded backend stack, preflight-gated.
 # Fixed order (the contract test asserts it): check-backend-prereqs →
