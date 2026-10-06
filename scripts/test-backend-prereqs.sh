@@ -81,4 +81,14 @@ grep -q "go run ./cmd/cluster-ops preflight deployer-access --cluster dcr-kube1 
     || fail "deployer-access not invoked:\n$(cat "${calls}")"
 echo "  deployer-access: PASS"
 
+echo "=== 4. folder value cannot execute shell ==="
+export PULUMI_STACK=dcr-kube1
+: > "${calls}"
+# Build the literal without command substitution in this script.
+inject_folder="$(printf '%s/x$(touch %s/pwned)y' "${tmp}" "${tmp}")"
+if out=$(just gcp-pulumi check-backend-prereqs --folder "${inject_folder}" 2>&1); then :; fi
+[ ! -e "${tmp}/pwned" ] || fail "folder interpolation executed shell code:
+$(cat "${calls}")"
+echo "  no injection: PASS"
+
 echo "backend prerequisite contract tests PASSED"

@@ -32,8 +32,9 @@ dedicated SA keeps a separate audit trail and can be revoked without touching
 cluster management.
 
 **Reuse an existing key** — pass `--sa-key credentials/<cluster>/deployer.json` to the recipes below. Valid
-only when that SA's roles are exactly the deployer set and nothing broader;
-`check-deploy-credentials` catches a mismatch.
+only when that SA holds every permission `check-deploy-credentials` requires;
+it reports missing permissions, but **never excess grants** — least privilege
+is enforced at minting time (the role set above), not by the gate.
 
 ## check-deploy-credentials
 

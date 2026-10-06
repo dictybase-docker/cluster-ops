@@ -654,9 +654,9 @@ check-backend-prereqs folder stack="" arango_service="arangodb":
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
-    folder="{{ folder }}"
+    folder={{ quote(folder) }}
 
     go run ./cmd/cluster-ops preflight backend-prereqs \
         --folder {{ quote(folder) }} \

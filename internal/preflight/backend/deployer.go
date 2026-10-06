@@ -265,7 +265,7 @@ func closeKMSClient(c *kms.KeyManagementClient) IOE.IOEither[error, struct{}] {
 func performRoundTrip(key registry.KMSKey) func(*kms.KeyManagementClient) IOE.IOEither[error, preflight.Result] {
 	return func(client *kms.KeyManagementClient) IOE.IOEither[error, preflight.Result] {
 		return IOE.TryCatchError(func() (preflight.Result, error) {
-			plaintext := []byte(fmt.Sprintf("probe-%d", time.Now().Unix()))
+			plaintext := fmt.Appendf(nil, "probe-%d", time.Now().Unix())
 			keyName := fmt.Sprintf(
 				"projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s",
 				key.Project, key.Location, key.KeyRing, key.Key,
