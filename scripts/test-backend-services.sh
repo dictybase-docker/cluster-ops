@@ -227,8 +227,8 @@ echo "  tag resolution: PASS (1.2.1 > v0.1.0 ordering, verbatim output)"
 echo "=== 7. create-deploy-key: reuse + standard folder ==="
 mkdir -p credentials/dcr-kube1
 printf '{"project_id":"dcr-kube1","type":"service_account"}' > credentials/dcr-kube1/deployer.json
-out=$("${REAL_JUST}" ci create-deploy-key --cluster dcr-kube1) \
-    || fail "create-deploy-key failed:\n${out}"
+out=$(CLUSTER_NAME=dcr-kube1 "${REAL_JUST}" ci create-deploy-key) \
+    || fail "create-deploy-key via CLUSTER_NAME failed:\n${out}"
 printf '%s' "${out}" | grep -q "Reusing existing key: credentials/dcr-kube1/deployer.json" \
     || fail "reuse path wrong:\n${out}"
 rm -f credentials/dcr-kube1/deployer.json

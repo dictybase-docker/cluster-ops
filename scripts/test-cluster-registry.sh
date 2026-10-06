@@ -57,9 +57,14 @@ for key in cluster= stack= kops_state= gcp_project= kms_secrets_provider= \
 done
 echo "  valid entry: PASS (all 11 keys printed)"
 
-echo "=== 2. real dcr-kube1 entry passes unchanged ==="
+echo "=== 2. real dcr-kube1 entry passes unchanged (flag + CLUSTER_NAME default) ==="
 just gcp-cluster registry-show --cluster dcr-kube1 >/dev/null || fail "dcr-kube1 registry entry rejected"
-echo "  dcr-kube1: PASS"
+CLUSTER_NAME=dcr-kube1 just gcp-cluster registry-show >/dev/null \
+    || fail "CLUSTER_NAME default path rejected"
+if out=$(just gcp-cluster registry-show 2>&1); then fail "no-source accepted"; fi
+printf '%s' "${out}" | grep -q "pass --cluster or set CLUSTER_NAME" \
+    || fail "no-source failure unnamed:\n${out}"
+echo "  dcr-kube1: PASS (flag, CLUSTER_NAME default, no-source refusal)"
 
 echo "=== 3. missing registry file fails with the expected path ==="
 rm -f "${entry}"

@@ -1990,14 +1990,19 @@ create-cluster cluster="" project="" kops_name="" state="" bucket_name="" ssh_ke
 # the backend deploy recipes and the `just ci` helpers — nothing downstream
 # re-derives these values.
 # Usage: just gcp-cluster registry-show --cluster <name>
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [group('cluster-management')]
 [no-cd]
-registry-show cluster:
+registry-show cluster="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     f="config/clusters/${name}.yaml"
     if [ ! -f "${f}" ]; then
         echo "ERROR: no registry entry for cluster '${name}' — expected ${f}." >&2
@@ -2064,16 +2069,21 @@ registry-show cluster:
 # encrypt/decrypt round-trip on the registry's secrets key. Fails closed
 # naming the missing permission; never prints key material.
 # Usage: just gcp-cluster verify-deployer-access --cluster <name> --sa-key <path>
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
 [group('cluster-management')]
 [no-cd]
-verify-deployer-access cluster sa_key:
+verify-deployer-access cluster="" sa_key:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     key="{{ sa_key }}"
     if [ ! -f "${key}" ]; then
         echo "ERROR: SA key file not found: ${key}" >&2
@@ -2157,15 +2167,17 @@ verify-deployer-access cluster sa_key:
 [arg("kops_state", long="kops-state", short="s", help="kOps state bucket URI (default: gs://kops-state-<cluster>)")]
 [group('cluster-management')]
 [no-cd]
-register-cluster env cluster namespace="" ci_env="" kops_state="":
+register-cluster env="" cluster="" namespace="" ci_env="" kops_state="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     env_name="{{ env }}"
+    [ -z "${env_name}" ] && env_name="${CLUSTER_ENV:-}"
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
     if [ -z "${env_name}" ] || [ -z "${name}" ]; then
-        echo "ERROR: --env and --cluster are required." >&2
+        echo "ERROR: no environment/cluster — pass --env and --cluster or run inside cluster-env." >&2
         exit 1
     fi
 

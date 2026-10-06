@@ -10,16 +10,21 @@
 # on the registry secrets key. Zero mutations; fails closed naming every
 # failure; never prints key material.
 # Usage: just ci check-deploy-credentials --cluster <name> --sa-key <path>
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
 [group('ci-management')]
 [no-cd]
-check-deploy-credentials cluster sa_key:
+check-deploy-credentials cluster="" sa_key:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     key="{{ sa_key }}"
     if [ ! -f "${key}" ]; then
         echo "ERROR: SA key file not found: ${key}" >&2
@@ -74,17 +79,22 @@ check-deploy-credentials cluster sa_key:
 # unreadable key; never echoes key material; prints the rm reminder for the
 # on-disk file. Needs an org-admin gh token (Actions secrets write).
 # Usage: just ci set-deploy-secret --cluster <name> --sa-key <path> --repos <owner/name>[,<owner/name>...]
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
 [arg("repos", long="repos", short="r", help="Target repositories, owner/name form, comma-separated")]
 [group('ci-management')]
 [no-cd]
-set-deploy-secret cluster sa_key repos:
+set-deploy-secret cluster="" sa_key repos:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     key="{{ sa_key }}"
     IFS=, read -r -a repos <<< "{{ repos }}"
     if [ "${#repos[@]}" -eq 0 ]; then
@@ -145,16 +155,21 @@ set-deploy-secret cluster sa_key repos:
 # hardcoded here. Idempotent upserts; verifies PROD_DEPLOY_SA_KEY visibility
 # per repo and prints the exact fix when absent.
 # Usage: just ci sync-deploy-vars --cluster <name> --repos <owner/name>[,<owner/name>...]
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("repos", long="repos", short="r", help="Target repositories, owner/name form, comma-separated")]
 [group('ci-management')]
 [no-cd]
-sync-deploy-vars cluster repos:
+sync-deploy-vars cluster="" repos:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     IFS=, read -r -a repos <<< "{{ repos }}"
     if [ "${#repos[@]}" -eq 0 ]; then
         echo "ERROR: pass --repos <owner/name>[,<owner/name>...]." >&2
@@ -343,16 +358,21 @@ latest-tag repo:
 # deployer-roles.txt role set. Run inside the cluster-env shell (gcloud
 # identity comes from it).
 # Usage: just ci create-deploy-key --cluster <name> [--sa-name <name>]
-[arg("cluster", long="cluster", short="c", help="Cluster name (registry entry: config/clusters/<name>.yaml)")]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("sa_name", long="sa-name", short="s", help="Deployer service account name (default deployer)")]
 [group('ci-management')]
 [no-cd]
-create-deploy-key cluster sa_name="deployer":
+create-deploy-key cluster="" sa_name="deployer":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
     sa="{{ sa_name }}"
     entry="config/clusters/${name}.yaml"
     if [ ! -f "${entry}" ]; then
