@@ -85,7 +85,7 @@ func dynamicClients(objs ...runtime.Object) kube.Clients {
 	return kube.Clients{Dynamic: dyn}
 }
 
-//nolint:cyclop // table fixtures are linear
+//nolint:funlen,cyclop // table fixtures are linear
 func TestVerifyArangoDB(t *testing.T) {
 	baseObjs := func() []runtime.Object {
 		objs := []runtime.Object{
