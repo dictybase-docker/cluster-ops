@@ -24,6 +24,7 @@ func main() {
 		Commands: []*cli.Command{
 			kopsCommand(),
 			validateCommand(),
+			preflightCommand(),
 			bucketCommand(),
 			envCommand(),
 			apiCommand(),
