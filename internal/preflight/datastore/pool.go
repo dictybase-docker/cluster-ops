@@ -37,16 +37,12 @@ func CheckPool(cfg PoolConfig) []IO.IO[preflight.Result] {
 		}),
 	}
 	if cfg.RequireAmd64 {
-		checks = append(checks, withNodes(cfg.Clients, selector, name+" arch",
-			func(n string, nodes []corev1.Node) preflight.Result { return poolArch(n, nodes) }))
+		checks = append(checks, withNodes(cfg.Clients, selector, name+" arch", poolArch))
 	}
 	checks = append(checks,
-		withNodes(cfg.Clients, selector, name+" taint",
-			func(n string, nodes []corev1.Node) preflight.Result { return poolTaint(n, cfg.Pool, nodes) }),
-		withNodes(cfg.Clients, selector, name+" zones",
-			func(n string, nodes []corev1.Node) preflight.Result { return poolZones(n, nodes) }),
-		withNodes(cfg.Clients, selector, name+" ready",
-			func(n string, nodes []corev1.Node) preflight.Result { return poolReady(n, nodes) }),
+		withNodes(cfg.Clients, selector, name+" taint", poolTaintWith(cfg.Pool)),
+		withNodes(cfg.Clients, selector, name+" zones", poolZones),
+		withNodes(cfg.Clients, selector, name+" ready", poolReady),
 	)
 	return checks
 }
@@ -97,6 +93,10 @@ func poolArch(name string, nodes []corev1.Node) preflight.Result {
 		Name: name, Detail: detail + " — ArangoDB Cluster requires amd64",
 		Status: preflight.StatusFail,
 	}
+}
+
+func poolTaintWith(pool string) func(string, []corev1.Node) preflight.Result {
+	return func(name string, nodes []corev1.Node) preflight.Result { return poolTaint(name, pool, nodes) }
 }
 
 func poolTaint(name, pool string, nodes []corev1.Node) preflight.Result {
