@@ -32,25 +32,21 @@ func CheckPool(cfg PoolConfig) []IO.IO[preflight.Result] {
 	selector := "pool=" + cfg.Pool
 	name := "pool " + cfg.Pool
 	checks := []IO.IO[preflight.Result]{
-		withNodes(cfg.Clients, selector, name, func(nodes []corev1.Node) preflight.Result {
-			return poolCount(name, cfg, nodes)
+		withNodes(cfg.Clients, selector, name, func(n string, nodes []corev1.Node) preflight.Result {
+			return poolCount(n, cfg, nodes)
 		}),
 	}
 	if cfg.RequireAmd64 {
-		checks = append(checks, withNodes(cfg.Clients, selector, name+" arch", func(nodes []corev1.Node) preflight.Result {
-			return poolArch(name, nodes)
-		}))
+		checks = append(checks, withNodes(cfg.Clients, selector, name+" arch",
+			func(n string, nodes []corev1.Node) preflight.Result { return poolArch(n, nodes) }))
 	}
 	checks = append(checks,
-		withNodes(cfg.Clients, selector, name+" taint", func(nodes []corev1.Node) preflight.Result {
-			return poolTaint(name, cfg.Pool, nodes)
-		}),
-		withNodes(cfg.Clients, selector, name+" zones", func(nodes []corev1.Node) preflight.Result {
-			return poolZones(name, nodes)
-		}),
-		withNodes(cfg.Clients, selector, name+" ready", func(nodes []corev1.Node) preflight.Result {
-			return poolReady(name, nodes)
-		}),
+		withNodes(cfg.Clients, selector, name+" taint",
+			func(n string, nodes []corev1.Node) preflight.Result { return poolTaint(n, cfg.Pool, nodes) }),
+		withNodes(cfg.Clients, selector, name+" zones",
+			func(n string, nodes []corev1.Node) preflight.Result { return poolZones(n, nodes) }),
+		withNodes(cfg.Clients, selector, name+" ready",
+			func(n string, nodes []corev1.Node) preflight.Result { return poolReady(n, nodes) }),
 	)
 	return checks
 }
@@ -60,14 +56,14 @@ func CheckPool(cfg PoolConfig) []IO.IO[preflight.Result] {
 func withNodes(
 	clients kube.Clients,
 	selector, name string,
-	build func([]corev1.Node) preflight.Result,
+	build func(string, []corev1.Node) preflight.Result,
 ) IO.IO[preflight.Result] {
 	return func() preflight.Result {
 		nodes, err := listPoolNodes(context.Background(), clients, selector)
 		if err != nil {
 			return lookupFailure(name, err)
 		}
-		return build(nodes)
+		return build(name, nodes)
 	}
 }
 
