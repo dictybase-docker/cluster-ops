@@ -49,7 +49,9 @@ const (
 )
 
 // arangoGVR is the ArangoDeployment custom resource.
-var arangoGVR = schema.GroupVersionResource{Group: "database.arangodb.com", Version: "v1", Resource: "arangodeployments"}
+var arangoGVR = schema.GroupVersionResource{
+	Group: "database.arangodb.com", Version: "v1", Resource: "arangodeployments",
+}
 
 // PVC expectations hardcoded by the stack (same values the shell recipe pins).
 const (
@@ -144,7 +146,9 @@ func arangoPVCCheck(
 		if count == want {
 			return preflight.Result{Name: name, Detail: detail, Status: preflight.StatusPass}
 		}
-		return preflight.Result{Name: name, Detail: fmt.Sprintf("%s, expected %d", detail, want), Status: preflight.StatusFail}
+		return preflight.Result{
+			Name: name, Detail: fmt.Sprintf("%s, expected %d", detail, want), Status: preflight.StatusFail,
+		}
 	}
 }
 
@@ -276,8 +280,10 @@ func arangoAppProbe(cfg ArangoAppCredentialsConfig, db string) IO.IO[preflight.R
 		}
 		if phase != corev1.PodSucceeded {
 			return preflight.Result{
-				Name:   name,
-				Detail: fmt.Sprintf("probe pod finished with phase %s — application credentials rejected or database missing", phase),
+				Name: name,
+				Detail: fmt.Sprintf(
+					"probe pod finished with phase %s — application credentials rejected or database missing", phase,
+				),
 				Status: preflight.StatusFail,
 			}
 		}

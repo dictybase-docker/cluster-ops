@@ -56,7 +56,9 @@ func minioPVCsBound(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 			}
 		}
 		if count >= 1 {
-			return preflight.Result{Name: label, Detail: fmt.Sprintf("%d Bound minio PVC(s)", count), Status: preflight.StatusPass}
+			return preflight.Result{
+				Name: label, Detail: fmt.Sprintf("%d Bound minio PVC(s)", count), Status: preflight.StatusPass,
+			}
 		}
 		return preflight.Result{Name: label, Detail: "no Bound minio PVC in " + ns, Status: preflight.StatusFail}
 	}
@@ -74,7 +76,9 @@ func minioService(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 		if len(svc.Spec.Ports) > 0 && svc.Spec.Ports[0].Port == minioPort {
 			return preflight.Result{Name: label, Detail: fmt.Sprintf("exposes %d", minioPort), Status: preflight.StatusPass}
 		}
-		return preflight.Result{Name: label, Detail: fmt.Sprintf("missing or not on %d", minioPort), Status: preflight.StatusFail}
+		return preflight.Result{
+			Name: label, Detail: fmt.Sprintf("missing or not on %d", minioPort), Status: preflight.StatusFail,
+		}
 	}
 }
 
