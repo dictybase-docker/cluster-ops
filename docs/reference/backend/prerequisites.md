@@ -16,28 +16,36 @@ in order:
 
 1. **Registry entry** — the stack resolves to a cluster through the
    [registry](cluster-registry.md); namespace comes from there.
-2. **Namespace** — exists and is Active (`kubectl get ns`).
+2. **Namespace** — exists. A failure names its cause: `not found`,
+   `access denied` (RBAC) or `API server unreachable` — the shell reported all
+   three as missing.
 3. **ArangoDB credentials Secret** — the Secret named by the stack config's
-   `arangodbSecret` exists in the namespace and carries the configured
-   `userkey`/`passkey`. Key names only — never Secret values.
+   `arangodbSecret` exists in the namespace and carries non-empty
+   `userkey`/`passkey` keys. Key names only — never Secret values.
 4. **Application database** — the service's database exists in ArangoDB and
    the credentials work, **through the same Service the app connects to** (the
    `arangodb` Service behind the `ARANGODB_SERVICE_HOST`/`ARANGODB_SERVICE_PORT`
-   env vars modware services read). The probe port-forwards the Service, then
-   calls the ArangoDB REST API with the Secret credentials: 200 = green,
-   401 = credentials, 404 = database missing (apply the
-   `create-arangodb-databases` stack, [ArangoDB deploy](../../arangodb-deploy.md)).
+   env vars modware services read). The probe opens a tunnel to the Service on
+   a free local port and calls the ArangoDB REST API with the Secret
+   credentials in the request header: 200 = green, 401 = credentials,
+   404 = database missing (apply the `create-arangodb-databases` stack,
+   [ArangoDB deploy](../../arangodb-deploy.md)).
 5. **Port** — the stack config's port value is in range.
 
 `just gcp-cluster verify-deployer-access --cluster <name> --sa-key <path>`
 checks the deployer identity the CI pipeline will use:
 
-1. Exports a kubeconfig from the registry's `kops_state` bucket — the same
-   code path `composite-deploy` uses at deploy time, so a change there is
-   caught by this probe, not by a failed deploy.
-2. Probes `kubectl auth can-i update deployments -n <namespace>` — fails with
-   the missing permission named.
-3. KMS encrypt/decrypt round-trip on the registry's secrets key.
+1. **Deployer key** — the key file is a GCP SA key whose `project_id` equals
+   the registry `gcp_project`.
+2. **Cluster access** — exports a kubeconfig from the registry's `kops_state`
+   bucket with the deployer key (the export path `composite-deploy` uses), then
+   asks the API server whether that identity may `update deployments` in the
+   namespace. The export uses `--admin`, so this proves the key can read the
+   kops state; the admin identity itself is always allowed.
+3. **KMS** — encrypt/decrypt round-trip on the registry's secrets key; the
+   location comes from the `kms_secrets_provider` URI.
+
+Every check runs even when another fails; the output lists each `FAIL`.
 
 ## Layers Checked
 
@@ -58,7 +66,6 @@ checks the deployer identity the CI pipeline will use:
 | `--stack` / `-s` | Yes* | `$PULUMI_STACK` | Resolves the cluster through the registry |
 | `--folder` / `-f` | Yes | — | Service project folder (stack config source) |
 | `--arango-service` / `-a` | No | `arangodb` | Service the app connects to (`ARANGODB_SERVICE_HOST` source) |
-| `--arango-port` / `-p` | No | `18529` | Local port for the port-forward probe |
 
 ### verify-deployer-access
 
