@@ -164,7 +164,7 @@ func TestJobComplete(t *testing.T) {
 			_ = fakeCS.BatchV1().Jobs("dev").Delete(context.Background(), "ephemeral", metav1.DeleteOptions{})
 		}()
 		err := waitResult(waitfor.JobComplete(context.Background(), clients, shortCfg(),
-			waitfor.JobCondition{Namespace: "dev", Name: "ephemeral"}))
+			waitfor.JobCondition{Namespace: testNS, Name: "ephemeral"}))
 		require.NoError(t, err)
 	})
 	t.Run("never appears: timeout", func(t *testing.T) {
