@@ -13,15 +13,17 @@ publishes the key to the org secret.
 
 ## Key Source
 
-**Mint a dedicated deployer (default recommendation)** — existing
-service-account recipes, no new tooling:
+**Mint a dedicated deployer** — one recipe, standard path, idempotent:
 
 ```bash
-just gcp-sa create-sa --project dcr-kube1 --sa-name deployer \
-  --roles-file gcs-files/roles-permissions/deployer-roles.txt
-just gcp-sa create-sa-key --project dcr-kube1 --sa-name deployer \
-  --key-file config/keys/deployer-dcr-kube1.json
+just ci create-deploy-key --cluster dcr-kube1
 ```
+
+Behavior: SA `deployer` created with the `deployer-roles.txt` role set when
+missing (reused otherwise); key minted at `credentials/<cluster>/deployer.json`
+— the standard per-cluster credentials folder — only when the file is absent
+(SA keys cap at 10; an existing key file is always reused, never re-minted).
+Then the preflight below.
 
 `deployer-roles.txt` holds the exact roles deploys need — kOps state bucket
 read (kubeconfig export), Pulumi state bucket read/write, and
@@ -29,7 +31,7 @@ read (kubeconfig export), Pulumi state bucket read/write, and
 dedicated SA keeps a separate audit trail and can be revoked without touching
 cluster management.
 
-**Reuse an existing key** — pass `--sa-key <path>` to the recipes below. Valid
+**Reuse an existing key** — pass `--sa-key credentials/<cluster>/deployer.json` to the recipes below. Valid
 only when that SA's roles are exactly the deployer set and nothing broader;
 `check-deploy-credentials` catches a mismatch.
 
@@ -65,9 +67,8 @@ prints the `rm` reminder for the on-disk file. Needs an org-admin `gh` token.
 
 ## Warnings
 
-- The key JSON is secret material. Keep it under a gitignored path
-  (`config/keys/`), delete it after publishing unless it is a managed
-  credential, and never commit it.
+- The key JSON is secret material. Keep it under the gitignored
+  `credentials/<cluster>/` folder, and never commit it.
 - Re-running `create-sa-key` accumulates keys (GCP allows 10 per SA) — audit
   with `gcloud iam service-accounts keys list`.
 - `deployer-roles.txt` caps what a leaked key can do; keep it minimal.

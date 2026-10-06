@@ -18,35 +18,28 @@ identity from it.
 
 ## Quick Reference
 
+All four backend services deploy with two commands (the aggregate runs steps
+2–6 per service, idempotently):
+
 ```bash
-# Add a service to an existing cluster (dcr-kube1 example):
-just gcp-cluster registry-show --cluster dcr-kube1          # 1. registry sanity
-just gcp-pulumi scaffold-backend-stack --stack dcr-kube1 \
-  --folder modware-order --port 9250                         # 2. stack config
-just gcp-pulumi check-backend-prereqs --stack dcr-kube1 \
-  --folder modware-order                                     # 3. prereq gate
-just gcp-pulumi bootstrap-service --stack dcr-kube1 \
-  --folder modware-order --image-tag <published-tag>        # 4. first deploy
-git add modware-order/Pulumi.dcr-kube1.yaml && git commit -m "…" && git push  # 4b. push BEFORE any tag
-just ci check-deploy-credentials --cluster dcr-kube1 --sa-key <path>  # 5a. key preflight
-just ci set-deploy-secret --cluster dcr-kube1 --sa-key <path> \
-  --repos dictyBase/modware-order                           # 5b. publish key
-just ci sync-deploy-vars --cluster dcr-kube1 \
-  --repos dictyBase/modware-order                           # 5c. vars
-just ci render-tag-deploy --stack dcr-kube1 --app order \
-  --project modware-order --out tag-build.yaml              # 6. workflow file
-# 7. open the PR in the service repo, merge, push a tag
+just ci create-deploy-key --cluster dcr-kube1          # once per cluster: SA + key
+just ci deploy-backend-services --stack dcr-kube1      # scaffold→gate→deploy→vars→render
+git add modware-*/Pulumi.dcr-kube1.yaml && git commit && git push   # stack files BEFORE any tag
+# then: PR bin/ci-render/<folder>-tag-build.yaml into each service repo, merge, cut tags
 ```
 
-Optional steps:
+Single-service or step-by-step runs — each numbered section below documents
+one recipe:
 
 ```bash
-just gcp-cluster verify-deployer-access --cluster dcr-kube1 --sa-key <path>  # 3b. deeper probe
+just gcp-pulumi check-backend-prereqs --stack dcr-kube1 --folder modware-stock   # 3. gate only
+just gcp-pulumi bootstrap-service --stack dcr-kube1 --folder modware-stock       # 4. converge one service
+just gcp-cluster verify-deployer-access --cluster dcr-kube1 --sa-key credentials/dcr-kube1/deployer.json
 ```
 
 ## 1. Verify the cluster registry
 
-Every later step reads the registry entry; confirm it resolves and prints all keys.
+Every later step reads the registry entry; `register-cluster` creates entries from bootstrap artifacts.
 → [Registry details](reference/backend/cluster-registry.md)
 
 ```bash
@@ -82,8 +75,9 @@ just gcp-pulumi bootstrap-service --stack dcr-kube1 --folder modware-order --ima
 
 ## 5. Publish CI credentials and variables
 
-Key preflight (fail-closed), key publish to the org secret, then the `<PROD>_*` repo variables.
-→ [CI credentials and variables details](reference/backend/ci-variables.md)
+Key creation at the standard `credentials/<cluster>/deployer.json` path, preflight, org-secret publish, then the `<PROD>_*` repo variables — the aggregate runs 5b–5d automatically.
+→ [CI credentials details](reference/backend/ci-credentials.md)
+→ [CI variables details](reference/backend/ci-variables.md)
 
 ```bash
 just ci check-deploy-credentials --cluster dcr-kube1 --sa-key config/keys/deployer-dcr-kube1.json
@@ -115,5 +109,6 @@ kubectl -n prod get deploy order-api-server -o jsonpath='{.spec.template.spec.co
 
 - [Upstream deploy refactor plan](plans/upstream-deploy-refactor.md)
 - [Modware service plan](plans/modware-service-any-cluster.md)
+- [Aggregate deploy details](reference/backend/deploy-services.md)
 - [ArangoDB deploy guide](arangodb-deploy.md)
 - [kOps cluster setup](kops-setup.md)

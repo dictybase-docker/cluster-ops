@@ -761,18 +761,21 @@ check-backend-prereqs folder stack="" arango_service="arangodb" arango_port="185
 # Run the first deploy of a scaffolded backend stack, preflight-gated.
 # Fixed order (the contract test asserts it): check-backend-prereqs →
 # ensure-stack → preview → update → rollout wait + image check. Aborts before
-# any mutation when prerequisites fail. The stack file commit and push stay
-# manual — CI deploys clone cluster-ops develop, so an unpushed stack file
-# deploys nothing. Named bootstrap-service because bootstrap-backend already
-# means the Pulumi state backend.
-# Usage: just gcp-pulumi bootstrap-service --folder <dir> [--stack <name>] --image-tag <tag> [--arango-service <name>]
+# any mutation when prerequisites fail. Idempotent: when the deployment
+# already runs the wanted image tag, the recipe verifies rollout only and
+# touches nothing. --image-tag is optional: without it the tag comes from
+# the repo's highest semver tag (just ci latest-tag). The stack file commit
+# and push stay manual — CI deploys clone cluster-ops develop, so an unpushed
+# stack file deploys nothing. Named bootstrap-service because bootstrap-backend
+# already means the Pulumi state backend.
+# Usage: just gcp-pulumi bootstrap-service --folder <dir> [--stack <name>] [--image-tag <tag>] [--arango-service <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder")]
-[arg("image_tag", long="image-tag", short="t", help="Published image tag for the manual first deploy — CI overwrites the tag on every later deploy")]
-[arg("arango_service", long="arango-service", short="a", help="ArangoDB Service name the app connects to (passed to the prereq gate)")]
+[arg("image_tag", long="image-tag", short="t", help="Image tag to deploy (default: the repo's highest semver tag via just ci latest-tag)")]
+[arg("arango_service", long="arango-service", short="a", help="ArangoDB Service name for the prereq gate (default arangodb)")]
 [group('pulumi-management')]
 [no-cd]
-bootstrap-service folder image_tag stack="" arango_service="arangodb":
+bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -787,15 +790,29 @@ bootstrap-service folder image_tag stack="" arango_service="arangodb":
     folder="${folder%/}"
     tag="{{ image_tag }}"
     project="$(basename "${folder}")"
+    if [ -z "${tag}" ]; then
+        tag=$(just ci latest-tag --repo "dictybase/${project}")
+        echo "Resolved image tag from repo tags: ${tag}"
+    fi
     app=$(yq -r ".config.\"${project}:properties\".appName" "${folder}/Pulumi.${stack_name}.yaml")
     namespace=$(yq -r ".config.\"${project}:properties\".namespace" "${folder}/Pulumi.${stack_name}.yaml")
-    deploy="${app}-api-server"
 
     gate_args=(--stack "${stack_name}" --folder "${folder}")
     [ -n "{{ arango_service }}" ] && gate_args+=(--arango-service "{{ arango_service }}")
 
     echo "=== 1/5: prerequisite gate (read-only) ==="
     just gcp-pulumi check-backend-prereqs "${gate_args[@]}"
+
+    deploy="${app}-api-server"
+    if kubectl -n "${namespace}" get "deploy/${deploy}" >/dev/null 2>&1; then
+        running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
+        if [ "${running}" = "dictybase/${project}:${tag}" ]; then
+            echo "Deployment already runs ${running} — verifying rollout only (idempotent skip)."
+            kubectl -n "${namespace}" rollout status "deploy/${deploy}"
+            exit 0
+        fi
+        echo "Deployment runs ${running}; converging to dictybase/${project}:${tag}."
+    fi
 
     echo "=== 2/5: ensure stack (select or init — fails when the stack file is absent) ==="
     just gcp-pulumi ensure-stack --stack "${stack_name}" --folder "${folder}"

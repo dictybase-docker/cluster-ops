@@ -44,7 +44,10 @@ cat > "${mock_bin}/kubectl" <<'EOF'
 echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
 case "$*" in
     "rollout status deploy/order-api-server") echo "deployment successfully rolled out" ;;
-    *"get deploy/order-api-server"*) echo -n "dictybase/modware-order:${MOCK_IMAGE_TAG:-v1.0.0}" ;;
+    *"get deploy/order-api-server -o"*) echo -n "dictybase/modware-order:${MOCK_IMAGE_TAG:-v1.0.0}" ;;
+    *"get deploy/order-api-server"*)
+        # existence probe: deployment absent in the fresh-deploy scenario
+        exit 1 ;;
 esac
 exit 0
 EOF
@@ -107,7 +110,7 @@ settag=$(line_of "set-config")                || fail "set-config did not run"
 preview=$(line_of "gcp-pulumi preview")       || fail "preview did not run"
 up=$(line_of "create-resource")               || fail "create-resource did not run"
 rollout=$(line_of "rollout status")          || fail "rollout did not run"
-image_check=$(line_of "get deploy/order-api-server") || fail "image check did not run"
+image_check=$(line_of "get deploy/order-api-server -o") || fail "image check did not run"
 [ "${gate}" -lt "${ensure}" ] || fail "gate ran after ensure-stack"
 [ "${ensure}" -lt "${settag}" ] || fail "ensure-stack ran after set-config"
 [ "${settag}" -lt "${preview}" ] || fail "set-config ran after preview"

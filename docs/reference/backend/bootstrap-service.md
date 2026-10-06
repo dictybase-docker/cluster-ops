@@ -17,8 +17,10 @@ Fixed order; the contract test asserts the sequence:
 2. `ensure-stack` — selects the stack, or initializes it from the stack file.
    Fails when `Pulumi.<stack>.yaml` is absent from the repo — CI must never
    invent stacks.
-3. Sets `properties.image.tag` to `--image-tag` (`set-config --plaintext`),
-   then `preview` — the operator sees the resources before anything changes.
+3. Sets `properties.image.tag` to the tag (`set-config --plaintext`), then
+   `preview` — the operator sees the resources before anything changes. Without
+   `--image-tag` the tag resolves from the repo's highest semver tag
+   ([latest-tag](ci-variables.md#variables-published)).
 4. `update` — applies (`create-resource` → `pulumi up`).
 5. Rollout wait + **image check** — `kubectl rollout status` alone does not
    prove the right image: the recipe also asserts the running pod's image tag
@@ -53,13 +55,15 @@ kubectl run --rm -i grpcurl-probe --image=fullstorydev/grpcurl -- \
 |------|----------|---------|-------|
 | `--stack` / `-s` | Yes* | `$PULUMI_STACK` | Registry stack name |
 | `--folder` / `-f` | Yes | — | Service project folder |
-| `--image-tag` / `-t` | Yes | — | Published image tag for the manual first deploy (CI overwrites the tag on every later deploy) |
+| `--image-tag` / `-t` | No | repo's highest semver tag | Omit to auto-resolve per service |
 | `--arango-service` / `-a` | No | `arangodb` | Passed to the prereq gate |
 
 *Or `$PULUMI_STACK` set inside `cluster-env`.
 
 ## Warnings
 
+- **Idempotent**: when the deployment already runs the wanted tag, the recipe
+  verifies rollout only — re-running never fails on prior progress.
 - A prerequisite failure leaves the cluster untouched — the contract test
   asserts no `pulumi up` ran.
 - `--image-tag` must be an already-published Docker Hub tag; the first deploy

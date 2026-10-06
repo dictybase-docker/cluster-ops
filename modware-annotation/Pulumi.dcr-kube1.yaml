@@ -18,4 +18,4 @@ config:
       name: dictybase/modware-annotation
       tag: bootstrap
     namespace: prod
-    port: 9255
+    port: 9250

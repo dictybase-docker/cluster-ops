@@ -1,0 +1,7 @@
+services:
+  - app: order
+    folder: modware-order
+    port: 9250
+  - app: annotation
+    folder: modware-annotation
+    port: 9250

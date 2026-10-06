@@ -17,6 +17,8 @@ prefix (`<CI_ENV>_*`); the prod deployer key is a separate org secret
 | `just ci check-deploy-credentials` | Read-only preflight of the deployer SA key against the registry |
 | `just ci set-deploy-secret` | Publish the key JSON to org secret `PROD_DEPLOY_SA_KEY` |
 | `just ci sync-deploy-vars` | Set `<CI_ENV>_*` repo variables and verify secret visibility |
+| `just ci latest-tag` | Highest semver tag of a repo, verbatim — the default image-tag source |
+| `just ci deploy-backend-services` | The aggregate: all services, all steps — see [aggregate details](deploy-services.md) |
 
 ## check-deploy-credentials
 

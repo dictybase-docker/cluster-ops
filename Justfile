@@ -197,6 +197,14 @@ test-render-tag-deploy:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-render-tag-deploy.sh"
 
+# Run backend services orchestration contract tests (aggregate loop, skips, tags)
+[group('dev-tools')]
+[no-cd]
+test-backend-services:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-backend-services.sh"
+
 # Run lint-recipes mechanical checks on all just recipes
 [group('dev-tools')]
 [no-cd]
@@ -253,7 +261,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-ci-recipes test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint
