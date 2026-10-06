@@ -113,7 +113,6 @@ case "$*" in
         ;;
     *"get secret"*"username"*) printf 'bG9ndG8=\n' ;;
     *"get secret"*"password"*) printf 'cHc=\n' ;;
-    *"port-forward"*) exit 0 ;;
     *"get pods"*)
         if [[ "${STUB_PODS_REMAIN:-no}" == yes ]]; then
             printf 'pod/logto-1\n'
@@ -168,15 +167,14 @@ case "$*" in
 esac
 exit 0
 EOF
-cat > "$tmp_dir/bin/nc" <<'EOF'
+# The forward recipes spawn `go run ./cmd/cluster-ops forward run`; the
+# behaviour of the Go forward (free port, reconnect) is covered by Go tests.
+cat > "$tmp_dir/bin/go" <<'EOF'
 #!/usr/bin/env bash
-if [[ -f "${STUB_NC_STATE}" ]]; then
-    exit 0
-fi
-touch "${STUB_NC_STATE}"
-exit 1
+printf 'go %s\n' "$*" >> "${STUB_LOG}"
+exit 0
 EOF
-chmod +x "$tmp_dir/bin/just" "$tmp_dir/bin/pulumi" "$tmp_dir/bin/kubectl" "$tmp_dir/bin/docker" "$tmp_dir/bin/gcloud" "$tmp_dir/bin/nc"
+chmod +x "$tmp_dir/bin/just" "$tmp_dir/bin/pulumi" "$tmp_dir/bin/kubectl" "$tmp_dir/bin/docker" "$tmp_dir/bin/gcloud" "$tmp_dir/bin/go"
 
 run_stub() {
     run_stub_env no no no no "$1"
@@ -184,7 +182,6 @@ run_stub() {
 
 run_stub_env() {
     local cluster_exists="$1" pulumi_rm_fail="$2" gcloud_rm_fail="$3" gcloud_no_objects="$4" script="$5" missing_physical="${6:-no}"
-    local nc_state="$tmp_dir/nc-state-${RANDOM}-$$"
     env \
         "PATH=$tmp_dir/bin:$PATH" \
         "STUB_LOG=$log_file" \
@@ -206,7 +203,6 @@ run_stub_env() {
         "STUB_PODS_REMAIN=${STUB_PODS_REMAIN:-no}" \
         "STUB_SOURCE_VERSION=${STUB_SOURCE_VERSION:-14.13}" \
         "STUB_DUMP_CLIENT_VERSION=${STUB_DUMP_CLIENT_VERSION:-16.15}" \
-        "STUB_NC_STATE=$nc_state" \
         bash -c "$script"
 }
 
@@ -235,7 +231,7 @@ if run_stub_flag STUB_SOURCE_VERSION 17.13 no no no no "$dump_render" >/dev/null
     echo 'FAIL: dump source-major mismatch unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -q 'pg_dump -h' "$log_file"
+! grep -qE '^docker .*pg_dump -h' "$log_file"  # go stub logs the bash -c body; only direct docker runs count
 ! test -f "$tmp_dir/dump.dump"
 echo 'dump source-major guard/no mutation: PASS'
 
@@ -246,7 +242,7 @@ if run_stub "$restore_replace_render" >/dev/null 2>&1; then
     echo 'FAIL: checksum failure unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE 'pulumi|kubectl|gcloud|docker' "$log_file"
+! grep -qE '^(pulumi|kubectl|gcloud|docker) ' "$log_file"
 cp "$tmp_dir/bad.sha256" "$tmp_dir/archive.dump.sha256"
 echo 'checksum guard/no mutation: PASS'
 
@@ -255,7 +251,7 @@ if run_stub "$(just --dry-run postgres restore-logical --archive "$tmp_dir/archi
     echo 'FAIL: missing password unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE 'pulumi|kubectl|gcloud|docker' "$log_file"
+! grep -qE '^(pulumi|kubectl|gcloud|docker) ' "$log_file"
 echo 'password guard/no mutation: PASS'
 
 : > "$log_file"
@@ -263,7 +259,7 @@ if run_stub_env yes no no no "$restore_render" >/dev/null 2>&1; then
     echo 'FAIL: existing target without replace unexpectedly succeeded' >&2
     exit 1
 fi
-! grep -qE 'pulumi config rm|gcloud|docker|kubectl delete|just deploy-cluster' "$log_file"
+! grep -qE '^(pulumi .*config rm|gcloud |docker |kubectl delete|just .*deploy-cluster)' "$log_file"
 echo 'replace-data guard/no mutation: PASS'
 
 : > "$log_file"
@@ -423,18 +419,23 @@ assert_before "$render_restore" 'Error: archive checksum mismatch' 'pg_restore -
 assert_before "$render_restore" 'majors are incompatible' 'pg_restore -h' 'major compat before restore'
 assert_before "$render_restore" 'Error: pg_restore cannot read archive' 'pg_restore -h' 'archive readable before restore'
 
-# Post-restore hygiene: reopen the port-forward before ANALYZE (commit 4ae1c91).
-# Two port-forward invocations expected (open before restore, reopen after);
-# the reopen must precede ANALYZE.
-pf_first=$(echo "$render_restore" | grep -n 'port-forward' | head -1 | cut -d: -f1)
-pf_reopen=$(echo "$render_restore" | grep -n 'port-forward' | tail -1 | cut -d: -f1)
-analyze_line=$(echo "$render_restore" | grep -n 'ANALYZE VERBOSE' | cut -d: -f1)
-if [ "$pf_first" = "$pf_reopen" ] || [ -z "$pf_first" ]; then
-    echo "FAIL: expected two port-forward invocations (open + reopen), found one" >&2
+# Post-restore hygiene: pg_restore and ANALYZE run as ONE forward-held child
+# (cluster-ops forward run), so there is no manual reopen logic. Exactly one
+# `go run … forward run` invocation, no kubectl port-forward, and the forward
+# must be set up before ANALYZE runs.
+pf_count=$(echo "$render_restore" | grep -c 'forward run')
+if [ "$pf_count" -ne 1 ]; then
+    echo "FAIL: expected exactly one forward run (pg_restore + ANALYZE in one child), found $pf_count" >&2
     exit 1
 fi
-if [ "$pf_reopen" -ge "$analyze_line" ]; then
-    echo "FAIL: reopen port-forward (line $pf_reopen) must precede ANALYZE (line $analyze_line)" >&2
+if echo "$render_restore" | grep -q 'port-forward'; then
+    echo "FAIL: restore-logical still renders a kubectl port-forward" >&2
+    exit 1
+fi
+forward_line=$(echo "$render_restore" | grep -n 'forward run' | head -1 | cut -d: -f1)
+analyze_line=$(echo "$render_restore" | grep -n 'ANALYZE VERBOSE' | cut -d: -f1)
+if [ "$forward_line" -ge "$analyze_line" ]; then
+    echo "FAIL: forward run (line $forward_line) must precede ANALYZE (line $analyze_line)" >&2
     exit 1
 fi
 
