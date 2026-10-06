@@ -49,14 +49,16 @@ _wait-ready namespace selector count="1" retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     # retries × interval becomes the Go wait budget; CrashLoopBackOff /
     # ImagePullBackOff fail fast with exit 2, timeout exits 1.
     go run ./cmd/cluster-ops wait pods-ready \
         --namespace {{ quote(namespace) }} \
         --selector {{ quote(selector) }} \
         --count {{ quote(count) }} \
-        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
-        --interval {{ quote(interval) }}
+        --timeout $(( RETRIES * INTERVAL )) \
+        --interval "$INTERVAL"
 
 # Read-only guard: allow replacing queued/terminated Jobs, but never interrupt
 # a pod with a running container.
@@ -129,13 +131,15 @@ _wait-job namespace job retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     # succeeded → exit 0; status.failed ≥ 1 → exit 2 with pod logs; a Job seen
     # once and then TTL-deleted counts as done.
     go run ./cmd/cluster-ops wait job-complete \
         --namespace {{ quote(namespace) }} \
         --job {{ quote(job) }} \
-        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
-        --interval {{ quote(interval) }}
+        --timeout $(( RETRIES * INTERVAL )) \
+        --interval "$INTERVAL"
 
 # ── public recipes ────────────────────────────────────────────────────────────
 
@@ -727,11 +731,13 @@ _wait-gone namespace kind selector="" retries="36" interval="5":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     args=(
         --namespace {{ quote(namespace) }}
         --kind {{ quote(kind) }}
-        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} ))
-        --interval {{ quote(interval) }}
+        --timeout $(( RETRIES * INTERVAL ))
+        --interval "$INTERVAL"
     )
     # A missing namespace or API type counts as gone.
     if [[ -n "{{ selector }}" ]]; then
@@ -951,8 +957,9 @@ deploy-operator stack="" namespace="prod" retries="60" interval="10":
         --selector app.kubernetes.io/name=kube-arangodb \
         --count 1 --retries "{{ retries }}" --interval "{{ interval }}"
 
-    echo "Checking the ArangoDeployment CRD is registered..."
-    kubectl get crd arangodeployments.database.arangodb.com
+    echo "Waiting for the ArangoDeployment CRD to establish..."
+    go run ./cmd/cluster-ops wait crd-established \
+        --crd arangodeployments.database.arangodb.com --timeout 120
 
     echo "Operator ready in namespace '$NS'."
 
@@ -972,6 +979,8 @@ deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" 
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     FOLDER="arangodb-cluster"
     NS="{{ namespace }}"
     ROOT_PASSWORD={{ quote(root_password) }}
@@ -989,6 +998,13 @@ deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" 
         --key properties.secret.password --value "$ROOT_PASSWORD"
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo "Waiting for the ArangoDeployment to report state=Running..."
+    go run ./cmd/cluster-ops wait custom-resource \
+        --namespace "$NS" --name arangodb \
+        --group database.arangodb.com --version v1 --kind ArangoDeployment \
+        --status-path state --expected-value Running --failed-value Failed \
+        --timeout $(( RETRIES * INTERVAL )) --interval "$INTERVAL"
 
     just arangodb _wait-ready --namespace "$NS" \
         --selector arango_deployment=arangodb \

@@ -54,14 +54,16 @@ _wait-ready namespace selector count="1" retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     # retries × interval becomes the Go wait budget; CrashLoopBackOff /
     # ImagePullBackOff fail fast with exit 2, timeout exits 1.
     go run ./cmd/cluster-ops wait pods-ready \
         --namespace {{ quote(namespace) }} \
         --selector {{ quote(selector) }} \
         --count {{ quote(count) }} \
-        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
-        --interval {{ quote(interval) }}
+        --timeout $(( RETRIES * INTERVAL )) \
+        --interval "$INTERVAL"
 
 # ── public recipes ───────────────────────────────────────────────────────────
 
@@ -995,8 +997,9 @@ deploy-operator stack="" namespace="operators" retries="60" interval="10":
         --selector app.kubernetes.io/name=cloudnative-pg \
         --count 1 --retries "{{ retries }}" --interval "{{ interval }}"
 
-    echo "Checking the Cluster CRD is registered..."
-    kubectl get crd clusters.postgresql.cnpg.io
+    echo "Waiting for the Cluster CRD to establish..."
+    go run ./cmd/cluster-ops wait crd-established \
+        --crd clusters.postgresql.cnpg.io --timeout 120
 
     echo "Operator ready in namespace '$NS'."
 
@@ -1044,8 +1047,9 @@ deploy-backup-plugin stack="" retries="60" interval="10":
         --selector app.kubernetes.io/name=plugin-barman-cloud \
         --count 1 --retries "{{ retries }}" --interval "{{ interval }}"
 
-    echo "Checking the ObjectStore CRD is registered..."
-    kubectl get crd objectstores.barmancloud.cnpg.io
+    echo "Waiting for the ObjectStore CRD to establish..."
+    go run ./cmd/cluster-ops wait crd-established \
+        --crd objectstores.barmancloud.cnpg.io --timeout 120
 
     echo "Barman Cloud plugin ready."
 
@@ -1066,6 +1070,8 @@ deploy-cluster app_password cluster="logto" namespace="prod" stack="" instances=
     #!/usr/bin/env bash
     set -euo pipefail
 
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
     FOLDER="cloudnative-pg-cluster"
     NS="{{ namespace }}"
     CLUSTER="{{ cluster }}"
@@ -1091,23 +1097,16 @@ deploy-cluster app_password cluster="logto" namespace="prod" stack="" instances=
         --count "{{ instances }}" --retries "{{ retries }}" --interval "{{ interval }}"
 
     echo "Waiting for Cluster '$CLUSTER' to report healthy..."
-    healthy=""
-    for i in $(seq 1 "{{ retries }}"); do
-        phase=$(kubectl get cluster.postgresql.cnpg.io "$CLUSTER" -n "$NS" \
-            -o jsonpath='{.status.phase}' 2>/dev/null || true)
-        if [[ "$phase" == "Cluster in healthy state" ]]; then
-            echo "Cluster phase: $phase"
-            healthy="yes"
-            break
-        fi
-        echo "Cluster phase: ${phase:-<missing>} (try $i/{{ retries }})..."
-        sleep "{{ interval }}"
-    done
-    if [[ -z "$healthy" ]]; then
-        echo "Error: Cluster '$CLUSTER' never reached 'Cluster in healthy state'." >&2
-        kubectl describe cluster.postgresql.cnpg.io "$CLUSTER" -n "$NS" >&2 || true
-        exit 1
-    fi
+    go run ./cmd/cluster-ops wait custom-resource \
+        --namespace "$NS" --name "$CLUSTER" \
+        --group postgresql.cnpg.io --version v1 --kind Cluster \
+        --status-path phase --expected-value "Cluster in healthy state" --failed-value Failed \
+        --timeout $(( RETRIES * INTERVAL )) --interval "$INTERVAL" \
+        || {
+            echo "Error: Cluster '$CLUSTER' never reached 'Cluster in healthy state'." >&2
+            kubectl describe cluster.postgresql.cnpg.io "$CLUSTER" -n "$NS" >&2 || true
+            exit 1
+        }
 
     echo
     echo "PostgreSQL Services in $NS:"

@@ -704,7 +704,8 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
         running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
         if [ "${running}" = "dictybase/${project}:${tag}" ]; then
             echo "Deployment already runs ${running} — verifying rollout only (idempotent skip)."
-            kubectl -n "${namespace}" rollout status "deploy/${deploy}"
+            go run ./cmd/cluster-ops wait deployment-rollout \
+                --namespace "${namespace}" --name "${deploy}" --timeout 300
             exit 0
         fi
         echo "Deployment runs ${running}; converging to dictybase/${project}:${tag}."
@@ -722,7 +723,8 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
     just gcp-pulumi create-resource --stack "${stack_name}" --folder "${folder}"
 
     echo "=== 5/5: rollout + image check ==="
-    kubectl -n "${namespace}" rollout status "deploy/${deploy}"
+    go run ./cmd/cluster-ops wait deployment-rollout \
+        --namespace "${namespace}" --name "${deploy}" --timeout 300
     running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
     if [ "${running}" != "dictybase/${project}:${tag}" ]; then
         echo "ERROR: running image '${running}' does not match the requested tag '${tag}'." >&2

@@ -59,6 +59,12 @@ esac
 EOF
 chmod +x "${tmp_dir}/bin/pulumi"
 
+cat > "${tmp_dir}/bin/go" <<'EOF'
+#!/usr/bin/env bash
+printf 'go %s\n' "$*" >> "${STUB_LOG}"
+exit "${STUB_GO_EXIT:-0}"
+EOF
+chmod +x "${tmp_dir}/bin/go"
 cat > "${tmp_dir}/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -69,6 +75,7 @@ case "$*" in
         ;;
     *"get service logto-rw"*) printf '5432\n' ;;
     *"rollout status deployment/logto"*) exit "${STUB_ROLLOUT_STATUS:-0}" ;;
+    # retired: the rollout wait now runs through the Go CLI (stubbed above)
     *"get deployment logto"*) printf '{"status":{"availableReplicas":1}}\n' ;;
     *"get pods"*"app=logto"*)
         printf '{"items":[{"status":{"phase":"Running","containerStatuses":[{"ready":true}]}}]}\n'
@@ -195,7 +202,7 @@ expected_order=(
     "just gcp-pulumi ensure-stack"
     "just gcp-pulumi preview"
     "just gcp-pulumi create-resource"
-    "kubectl rollout status deployment/logto"
+    "go run ./cmd/cluster-ops wait deployment-rollout"
     "just logto verify"
 )
 last=-1
