@@ -212,9 +212,11 @@ test-preflight-integration name="k3d-dev-cluster":
 
     # `k3d kubeconfig get` prints YAML to stdout, not a path: write it to a
     # temp file and point KUBECONFIG at the file. Never switches global context.
+    # k3d may emit server https://0.0.0.0:<port>; the k3d serverlb proxy
+    # allowlists localhost hosts only, so rewrite it to 127.0.0.1.
     kubeconfig_file=$(mktemp /tmp/k3d-kubeconfig-XXXXXX)
     trap 'rm -f "${kubeconfig_file}"' EXIT
-    k3d kubeconfig get {{ quote(name) }} > "${kubeconfig_file}"
+    k3d kubeconfig get {{ quote(name) }} | sed 's#0\.0\.0\.0#127.0.0.1#g' > "${kubeconfig_file}"
 
     KUBECONFIG="${kubeconfig_file}" gotestsum --format-hide-empty-pkg --format dots -- \
         -tags=integration -count=1 ./internal/preflight/backend/...
