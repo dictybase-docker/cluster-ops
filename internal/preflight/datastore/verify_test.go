@@ -36,16 +36,20 @@ func readyPod(ns, name string, labels map[string]string) *corev1.Pod {
 	}
 }
 
+const (
+	fixNS = "prod"
+)
+
 var (
 	arangoGVR      = schema.GroupVersionResource{Group: "database.arangodb.com", Version: "v1", Resource: "arangodeployments"}
 	cnpgGVR        = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "clusters"}
 	schedBackupGVR = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "scheduledbackups"}
 )
 
-func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry
+func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "database.arangodb.com/v1",
-		"kind":       "ArangoDeployment",
+		"kind":       "ArangoDeployment", //nolint:goconst // fixture literal
 		"metadata":   map[string]any{"namespace": ns, "name": "arangodb"},
 		"status":     map[string]any{"state": state},
 	}}
@@ -53,7 +57,7 @@ func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unp
 	return obj
 }
 
-func scheduledBackupCR(ns, name string) *unstructured.Unstructured {
+func scheduledBackupCR(ns, name string) *unstructured.Unstructured { //nolint:goconst,lll,unparam // fixture literals
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "postgresql.cnpg.io/v1",
 		"kind":       "ScheduledBackup",
@@ -63,10 +67,10 @@ func scheduledBackupCR(ns, name string) *unstructured.Unstructured {
 	return obj
 }
 
-func cnpgCluster(ns, name, phase string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry
+func cnpgCluster(ns, name, phase string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "postgresql.cnpg.io/v1",
-		"kind":       "Cluster",
+		"kind":       "Cluster", //nolint:goconst // fixture literal
 		"metadata":   map[string]any{"namespace": ns, "name": name},
 		"status":     map[string]any{"phase": phase},
 	}}
@@ -86,33 +90,34 @@ func dynamicClients(objs ...runtime.Object) kube.Clients {
 }
 
 //nolint:funlen,cyclop // table fixtures are linear
-func TestVerifyArangoDB(t *testing.T) {
+func TestVerifyArangoDB(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
+	//nolint:lll,goconst // fixture literals
 	baseObjs := func() []runtime.Object {
 		objs := []runtime.Object{
 			nodeByName("n1", withTaint), nodeByName("n2", withTaint), nodeByName("n3", withTaint),
 		}
 		for i := range 9 {
-			objs = append(objs, readyPod("prod", fmt.Sprintf("member-%d", i),
+			objs = append(objs, readyPod(fixNS, fmt.Sprintf("member-%d", i),
 				map[string]string{"arango_deployment": "arangodb"}))
 		}
 		objs = append(objs,
-			readyPod("prod", "operator-0", map[string]string{"app.kubernetes.io/name": "kube-arangodb"}),
+			readyPod(fixNS, "operator-0", map[string]string{"app.kubernetes.io/name": "kube-arangodb"}),
 			&corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "arangodb",
+				ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "arangodb",
 					Labels: map[string]string{"arango_deployment": "arangodb"}},
 				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8529}}},
 			},
-			&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "setup",
+			&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "setup",
 				Labels: map[string]string{"app": "arangodb-create-databases"}},
 				Status: batchv1.JobStatus{Succeeded: 1}},
-			&batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "arangodb-backup-cronjob"}},
+			&batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "arangodb-backup-cronjob"}},
 		)
 		for i := range 3 {
-			objs = append(objs, pvcObj("prod", fmt.Sprintf("agent-%d", i),
+			objs = append(objs, pvcObj(fixNS, fmt.Sprintf("agent-%d", i),
 				"dictycr-ssd", "20Gi", "Bound", map[string]string{"arango_deployment": "arangodb"}))
 		}
 		for i := range 3 {
-			objs = append(objs, pvcObj("prod", fmt.Sprintf("dbserver-%d", i),
+			objs = append(objs, pvcObj(fixNS, fmt.Sprintf("dbserver-%d", i),
 				"dictycr-balanced", "150Gi", "Bound", map[string]string{"arango_deployment": "arangodb"}))
 		}
 		return objs
@@ -121,7 +126,7 @@ func TestVerifyArangoDB(t *testing.T) {
 	t.Run("full green deployment", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(baseObjs(),
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		for _, r := range results {
@@ -134,14 +139,14 @@ func TestVerifyArangoDB(t *testing.T) {
 		objs := baseObjs()
 		// member-8 becomes unready: replace the ready one (same name).
 		objs[11] = &corev1.Pod{ // member-8: nodes(0-2)+pods(3-11)
-			ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "member-8",
+			ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "member-8",
 				Labels: map[string]string{"arango_deployment": "arangodb"}},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning,
 				ContainerStatuses: []corev1.ContainerStatus{{Ready: false}}},
 		}
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(objs,
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		members := findDatastoreResult(results, "member pods")
@@ -152,7 +157,7 @@ func TestVerifyArangoDB(t *testing.T) {
 	t.Run("CR state Failed is named", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(baseObjs(),
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Failed"))
+		dyn := dynamicClients(arangoCR(fixNS, "Failed"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		cr := findDatastoreResult(results, "ArangoDeployment arangodb")
@@ -164,7 +169,7 @@ func TestVerifyArangoDB(t *testing.T) {
 		objs := baseObjs() // base already carries the three agent PVCs
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(objs,
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		agents := findDatastoreResult(results, "agent PVCs")
@@ -183,12 +188,12 @@ func TestVerifyArangoDB(t *testing.T) {
 		}
 		objs = filtered
 		for i := range 3 {
-			objs = append(objs, pvcObj("prod", fmt.Sprintf("dbserver-%d", i),
+			objs = append(objs, pvcObj(fixNS, fmt.Sprintf("dbserver-%d", i),
 				"dictycr-balanced", "100Gi", "Bound", map[string]string{"arango_deployment": "arangodb"}))
 		}
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(objs,
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		dbs := findDatastoreResult(results, "dbserver PVCs")
@@ -199,14 +204,14 @@ func TestVerifyArangoDB(t *testing.T) {
 		objs := baseObjs()
 		for i, o := range objs {
 			if j, ok := o.(*batchv1.Job); ok && j.Name == "setup" {
-				objs[i] = &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "setup",
+				objs[i] = &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "setup",
 					Labels: map[string]string{"app": "arangodb-create-databases"}},
 					Status: batchv1.JobStatus{Failed: 1}}
 			}
 		}
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(objs,
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		job := findDatastoreResult(results, "setup Job")
@@ -225,7 +230,7 @@ func TestVerifyArangoDB(t *testing.T) {
 		objs = filtered
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(objs,
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
-		dyn := dynamicClients(arangoCR("prod", "Running"))
+		dyn := dynamicClients(arangoCR(fixNS, "Running"))
 		results := preflight.Run(datastore.VerifyArangoDB(arangoCfg(clients, dyn)))
 
 		backup := findDatastoreResult(results, "backup CronJob")
@@ -234,18 +239,19 @@ func TestVerifyArangoDB(t *testing.T) {
 	})
 }
 
-func TestVerifyPostgres(t *testing.T) {
+func TestVerifyPostgres(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
+	//nolint:lll,goconst // fixture literals
 	pgObjs := func(healthy bool) []runtime.Object {
 		objs := []runtime.Object{
 			nodeByName("n1", withTaint), nodeByName("n2", withTaint), nodeByName("n3", withTaint),
 			readyPod("operators", "operator-0", map[string]string{"app.kubernetes.io/name": "cloudnative-pg"}),
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"),
-			readyPod("prod", "logto-1", map[string]string{"cnpg.io/cluster": "logto"}),
-			pvcObj("prod", "logto-1", "dictycr-balanced", "1Gi", "Bound", map[string]string{"cnpg.io/cluster": "logto"}),
+			readyPod(fixNS, "logto-1", map[string]string{"cnpg.io/cluster": "logto"}),
+			pvcObj(fixNS, "logto-1", "dictycr-balanced", "1Gi", "Bound", map[string]string{"cnpg.io/cluster": "logto"}),
 		}
 		for _, suffix := range []string{"rw", "ro", "r"} {
 			objs = append(objs, &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "logto-" + suffix},
+				ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "logto-" + suffix},
 				Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 5432}}},
 			})
 		}
@@ -253,9 +259,9 @@ func TestVerifyPostgres(t *testing.T) {
 		if !healthy {
 			phase = "Cluster in failed state"
 		}
-		objs = append(objs, cnpgCluster("prod", "logto", phase))
+		objs = append(objs, cnpgCluster(fixNS, "logto", phase))
 		if healthy {
-			objs = append(objs, scheduledBackupCR("prod", "logto-daily"))
+			objs = append(objs, scheduledBackupCR(fixNS, "logto-daily"))
 		}
 		return objs
 	}
@@ -263,8 +269,8 @@ func TestVerifyPostgres(t *testing.T) {
 	t.Run("healthy cluster passes", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(pgObjs(true)...)}
 		dyn := dynamicClients(
-			cnpgCluster("prod", "logto", "Cluster in healthy state"),
-			scheduledBackupCR("prod", "logto-daily"),
+			cnpgCluster(fixNS, "logto", "Cluster in healthy state"),
+			scheduledBackupCR(fixNS, "logto-daily"),
 		)
 		results := preflight.Run(datastore.VerifyPostgres(pgCfg(clients, dyn)))
 		for _, r := range results {
@@ -275,7 +281,7 @@ func TestVerifyPostgres(t *testing.T) {
 
 	t.Run("unhealthy phase fails with the observed value", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(pgObjs(false)...)}
-		dyn := dynamicClients(cnpgCluster("prod", "logto", "Cluster in failed state"))
+		dyn := dynamicClients(cnpgCluster(fixNS, "logto", "Cluster in failed state"))
 		results := preflight.Run(datastore.VerifyPostgres(pgCfg(clients, dyn)))
 		phase := findDatastoreResult(results, "Cluster logto phase")
 		require.Equal(t, preflight.StatusFail, phase.Status)
@@ -284,20 +290,21 @@ func TestVerifyPostgres(t *testing.T) {
 
 	t.Run("zero ScheduledBackup fails", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(pgObjs(true)...)}
-		dyn := dynamicClients(cnpgCluster("prod", "logto", "Cluster in healthy state"))
+		dyn := dynamicClients(cnpgCluster(fixNS, "logto", "Cluster in healthy state"))
 		results := preflight.Run(datastore.VerifyPostgres(pgCfg(clients, dyn)))
 		sb := findDatastoreResult(results, "ScheduledBackup")
 		require.Equal(t, preflight.StatusFail, sb.Status)
 	})
 }
 
-func TestVerifyRedis(t *testing.T) {
+func TestVerifyRedis(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
+	//nolint:lll,goconst // fixture literals
 	redisObjs := func() []runtime.Object {
 		return []runtime.Object{
-			readyPod("prod", "redis-0", map[string]string{"app": "redis"}),
-			&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "redis-data"},
+			readyPod(fixNS, "redis-0", map[string]string{"app": "redis"}),
+			&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "redis-data"},
 				Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound}},
-			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "redis"},
+			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "redis"},
 				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 6379}}}},
 		}
 	}
@@ -314,15 +321,16 @@ func TestVerifyRedis(t *testing.T) {
 	})
 }
 
-func TestVerifyMinio(t *testing.T) {
+func TestVerifyMinio(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
+	//nolint:lll,goconst // fixture literals
 	minioObjs := func() []runtime.Object {
 		return []runtime.Object{
-			readyPod("prod", "minio-0", map[string]string{"app.kubernetes.io/name": "minio"}),
-			pvcObj("prod", "minio-data-0", "dictycr-balanced", "1Gi", "Bound",
+			readyPod(fixNS, "minio-0", map[string]string{"app.kubernetes.io/name": "minio"}),
+			pvcObj(fixNS, "minio-data-0", "dictycr-balanced", "1Gi", "Bound",
 				map[string]string{"app.kubernetes.io/name": "minio"}),
-			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "minio"},
+			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "minio"},
 				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 9000}}}},
-			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "minio-root"}},
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "minio-root"}},
 		}
 	}
 	t.Run("all green", func(t *testing.T) {
@@ -339,14 +347,15 @@ func TestVerifyMinio(t *testing.T) {
 	})
 }
 
-func TestVerifyNats(t *testing.T) {
+func TestVerifyNats(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
+	//nolint:lll,goconst // fixture literals
 	natsObjs := func() []runtime.Object {
 		return []runtime.Object{
-			&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "nats"},
+			&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats"},
 				Status: appsv1.StatefulSetStatus{ReadyReplicas: 1}},
-			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "nats"},
+			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats"},
 				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "nats", Port: 4222}}}},
-			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "nats-box"}},
+			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats-box"}},
 		}
 	}
 	t.Run("server ready; rtt fails on fake exec", func(t *testing.T) {
@@ -379,34 +388,34 @@ func pvcObj(ns, name, class, size, phase string, labels map[string]string) *core
 	return pvc
 }
 
-func arangoCfg(clients kube.Clients, dyn kube.Clients) datastore.ArangoConfig {
+func arangoCfg(clients kube.Clients, dyn kube.Clients) datastore.ArangoConfig { //nolint:goconst,lll,unparam // fixture literals
 	clients.Dynamic = dyn.Dynamic
 	return datastore.ArangoConfig{
-		Clients: clients, Namespace: "prod", OperatorNamespace: "prod",
+		Clients: clients, Namespace: fixNS, OperatorNamespace: fixNS,
 		Members: 9, Pool: "database", WantNodes: 3,
 	}
 }
 
-func pgCfg(clients kube.Clients, dyn kube.Clients) datastore.PostgresConfig {
+func pgCfg(clients kube.Clients, dyn kube.Clients) datastore.PostgresConfig { //nolint:goconst,lll,unparam // fixture literals
 	clients.Dynamic = dyn.Dynamic
 	return datastore.PostgresConfig{
-		Clients: clients, Namespace: "prod", OperatorNamespace: "operators",
+		Clients: clients, Namespace: fixNS, OperatorNamespace: "operators",
 		Cluster: "logto", Instances: 1, Pool: "database", WantNodes: 3,
 	}
 }
 
 func redisCfg(clients kube.Clients) datastore.RedisConfig {
-	return datastore.RedisConfig{Clients: clients, Namespace: "prod", Name: "redis",
+	return datastore.RedisConfig{Clients: clients, Namespace: fixNS, Name: "redis",
 		Pool: testPool, WantNodes: 3}
 }
 
 func minioCfg(clients kube.Clients) datastore.MinioConfig {
-	return datastore.MinioConfig{Clients: clients, Namespace: "prod", Secret: "minio-root",
+	return datastore.MinioConfig{Clients: clients, Namespace: fixNS, Secret: "minio-root",
 		Pool: testPool, WantNodes: 3}
 }
 
 func natsCfg(clients kube.Clients) datastore.NatsConfig {
-	return datastore.NatsConfig{Clients: clients, Namespace: "prod"}
+	return datastore.NatsConfig{Clients: clients, Namespace: fixNS}
 }
 
 func findDatastoreResult(results []preflight.Result, needle string) preflight.Result {
@@ -418,15 +427,15 @@ func findDatastoreResult(results []preflight.Result, needle string) preflight.Re
 	return preflight.Result{}
 }
 
-func TestVerifyArangoAppCredentials(t *testing.T) {
+func TestVerifyArangoAppCredentials(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixture-heavy
 	clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(
-		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "prod", Name: "backend"}},
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "backend"}},
 	)}
 	fakeC := clients.Kube.(*k8sfake.Clientset) //nolint:errcheck // type assertion cannot fail
 	// Complete the probe pod shortly after creation so the wait returns.
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		pods, err := fakeC.CoreV1().Pods("prod").List(context.Background(), metav1.ListOptions{})
+		pods, err := fakeC.CoreV1().Pods(fixNS).List(context.Background(), metav1.ListOptions{})
 		if err != nil {
 			return
 		}
@@ -435,13 +444,13 @@ func TestVerifyArangoAppCredentials(t *testing.T) {
 				continue
 			}
 			pods.Items[i].Status.Phase = corev1.PodSucceeded
-			_, _ = fakeC.CoreV1().Pods("prod").Update(context.Background(),
+			_, _ = fakeC.CoreV1().Pods(fixNS).Update(context.Background(),
 				&pods.Items[i], metav1.UpdateOptions{})
 		}
 	}()
 
 	cfg := datastore.ArangoAppCredentialsConfig{
-		Clients: clients, Namespace: "prod", SecretName: "backend",
+		Clients: clients, Namespace: fixNS, SecretName: "backend",
 		UserKey: "user", PassKey: "password", Image: "arangodb:3.12", Databases: []string{"order"},
 	}
 	results := preflight.Run(datastore.VerifyArangoAppCredentials(cfg))
@@ -449,7 +458,7 @@ func TestVerifyArangoAppCredentials(t *testing.T) {
 
 	// The overrides structure: credentials come from secretKeyRef env, and
 	// argv only carries the $(VAR) indirection — never the plaintext.
-	pods, err := fakeC.CoreV1().Pods("prod").List(context.Background(), metav1.ListOptions{})
+	pods, err := fakeC.CoreV1().Pods(fixNS).List(context.Background(), metav1.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, pods.Items, 1)
 	container := pods.Items[0].Spec.Containers[0]
