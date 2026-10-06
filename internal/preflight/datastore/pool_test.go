@@ -135,10 +135,12 @@ func findResult(results []preflight.Result, suffix string) preflight.Result {
 	return preflight.Result{}
 }
 
+const appSelectorLabel = "app.kubernetes.io/name"
+
 func TestOperatorRunning(t *testing.T) {
-	opPod := func(ns, app string) *corev1.Pod {
+	opPod := func(ns, app string) *corev1.Pod { //nolint:unparam // fixture symmetry
 		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-			Namespace: ns, Name: app + "-0", Labels: map[string]string{"app.kubernetes.io/name": app},
+			Namespace: ns, Name: app + "-0", Labels: map[string]string{appSelectorLabel: app},
 		}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}
 	}
 	t.Run("running operator passes", func(t *testing.T) {
