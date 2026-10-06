@@ -22,6 +22,9 @@ import (
 const deployerRolesFile = "gcs-files/roles-permissions/deployer-roles.txt"
 
 const (
+	defPoolValue     = "database"
+	defArangoService = "arangodb"
+	defRedisName     = "redis"
 	flagPool         = "pool"
 	flagCount        = "count"
 	flagNodeCount    = "node-count"
@@ -84,6 +87,7 @@ func clusterFlags() []cli.Flag {
 	}
 }
 
+//nolint:funlen,cyclop // subcommand table; splitting hurts review
 func preflightCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "preflight",
@@ -106,7 +110,7 @@ func preflightCommand() *cli.Command {
 					},
 					&cli.StringFlag{
 						Name: "arango-service", Aliases: []string{"a"},
-						Value: "arangodb",
+						Value: defArangoService,
 						Usage: "ArangoDB Service name the app connects to",
 					},
 					&cli.StringFlag{
@@ -364,7 +368,7 @@ func kubeconfigOnlyFlags() []cli.Flag {
 
 func poolFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
-		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.StringFlag{Name: flagPool, Value: defPoolValue, Usage: usageNodePool},
 		&cli.IntFlag{Name: flagCount, Value: 3, Usage: "Expected node count"},
 		&cli.BoolFlag{Name: flagRequireAmd64, Usage: "Fail when a pool node is not amd64 (ArangoDB)"},
 	)
@@ -486,7 +490,7 @@ func arangodbFlags() []cli.Flag {
 		},
 		&cli.StringFlag{Name: flagOperatorNS, Value: "prod", Usage: "Namespace holding the kube-arangodb operator"},
 		&cli.IntFlag{Name: flagMembers, Value: 9, Usage: "Expected member pod count"},
-		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.StringFlag{Name: flagPool, Value: defPoolValue, Usage: usageNodePool},
 		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
@@ -497,7 +501,7 @@ func postgresFlags() []cli.Flag {
 		&cli.StringFlag{Name: flagOperatorNS, Value: "operators", Usage: "Namespace holding the CNPG operator"},
 		&cli.StringFlag{Name: "cluster", Value: "logto", Usage: "Cluster name"},
 		&cli.IntFlag{Name: flagInstances, Value: 1, Usage: "Expected instance pod count"},
-		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.StringFlag{Name: flagPool, Value: defPoolValue, Usage: usageNodePool},
 		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
@@ -519,8 +523,8 @@ func arangoAppCredentialsFlags() []cli.Flag {
 func redisPreflightFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
 		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace Redis runs in"},
-		&cli.StringFlag{Name: "name", Value: "redis", Usage: "Deployment/Service name"},
-		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.StringFlag{Name: "name", Value: defRedisName, Usage: "Deployment/Service name"},
+		&cli.StringFlag{Name: flagPool, Value: defPoolValue, Usage: usageNodePool},
 		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
@@ -529,7 +533,7 @@ func minioPreflightFlags() []cli.Flag {
 	return append(kubeconfigOnlyFlags(),
 		&cli.StringFlag{Name: flagNamespace, Aliases: []string{"n"}, Required: true, Usage: "Namespace MinIO runs in"},
 		&cli.StringFlag{Name: "secret", Value: "minio-root", Usage: "Root credentials Secret"},
-		&cli.StringFlag{Name: flagPool, Value: "database", Usage: usageNodePool},
+		&cli.StringFlag{Name: flagPool, Value: defPoolValue, Usage: usageNodePool},
 		&cli.IntFlag{Name: flagNodeCount, Value: 3, Usage: usageNodeCount},
 	)
 }
