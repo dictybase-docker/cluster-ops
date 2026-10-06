@@ -18,7 +18,7 @@ func runForward(t *testing.T, args ...string) error {
 		Commands:       []*cli.Command{forwardCommand()},
 		ExitErrHandler: func(*cli.Context, error) {},
 	}
-	return app.Run(append([]string{"forward-test", "forward"}, args...))
+	return app.Run(append([]string{"forward-test", cmdForward}, args...))
 }
 
 func TestForwardRunRequiresService(t *testing.T) {
