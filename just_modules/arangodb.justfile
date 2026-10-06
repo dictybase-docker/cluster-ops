@@ -1200,29 +1200,19 @@ verify-app-credentials namespace="prod" stack="":
         echo "Error: app Secret keys, ArangoDB version, or database list missing from stack config." >&2
         exit 1
     fi
-    kubectl get secret "$SECRET_NAME" -n "$NS" -o json | jq -e --arg user "$USER_KEY" --arg pass "$PASS_KEY" '.data[$user] != null and .data[$pass] != null' >/dev/null
 
+    # One Go check per database: the probe pod mounts credentials via
+    # secretKeyRef env (never argv) and waits for the result.
+    args=(
+        --namespace "$NS" --secret-name "$SECRET_NAME"
+        --user-key "$USER_KEY" --pass-key "$PASS_KEY"
+        --image "arangodb:${ARANGO_VERSION}"
+    )
     while IFS= read -r DB; do
         [[ -z "$DB" ]] && continue
-        POD_DB="${DB//_/-}"
-        POD="arango-app-check-${POD_DB}-$(date -u +%s)-$$"
-        OVERRIDES=$(jq -nc \
-            --arg name "$POD" --arg image "arangodb:${ARANGO_VERSION}" \
-            --arg secret "$SECRET_NAME" --arg user_key "$USER_KEY" \
-            --arg pass_key "$PASS_KEY" --arg db "$DB" \
-            '{spec:{containers:[{name:$name,image:$image,command:["arangosh"],
-              args:["--server.endpoint","http+tcp://arangodb:8529",
-                    "--server.username","$(APP_USER)",
-                    "--server.password","$(APP_PASSWORD)",
-                    "--server.database",$db,
-                    "--javascript.execute-string","db._query(\"RETURN 1\").toArray(); print(\"application access verified\");"],
-              env:[{name:"APP_USER",valueFrom:{secretKeyRef:{name:$secret,key:$user_key}}},
-                   {name:"APP_PASSWORD",valueFrom:{secretKeyRef:{name:$secret,key:$pass_key}}}]}],
-              restartPolicy:"Never"}}')
-        echo "Verifying app access to database '$DB'..."
-        kubectl run "$POD" --rm -i --restart=Never -n "$NS" \
-            --image "arangodb:${ARANGO_VERSION}" --overrides="$OVERRIDES"
+        args+=(--database "$DB")
     done <<< "$DATABASES"
+    go run ./cmd/cluster-ops preflight arango-app-credentials "${args[@]}"
     echo "Application credentials verified on all configured databases."
 
 # Internal: run one arangosh expression against the coordinator in a
@@ -2956,25 +2946,17 @@ check-pool pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-
-    echo "Checking stateful-db pool prerequisites..."
-    echo
-
-    # Fetch node data once
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-
-    # Node count
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight pool \
+        --pool { quote(pool) } --count { quote(node_count) } --require-amd64)
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: pool prerequisites failed. See reference/arangodb/pool-requirements.md for fixes." >&2
+        exit "$code"
     fi
+    echo "All pool checks passed. Next: just arangodb configure-backup-secrets."
 
     # Architecture check (must be amd64 for production ArangoDB)
     amd64_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select(.status.nodeInfo.architecture == "amd64")] | length')
@@ -3029,109 +3011,17 @@ verify namespace="prod" operator_namespace="prod" members="9" pool="database" no
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    OP_NS="{{ operator_namespace }}"
-    WANT_MEMBERS="{{ members }}"
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-    CHECK_COLOR=0
-
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
-        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight arangodb \
+        --namespace {{ quote(namespace) }} \
+        --operator-namespace {{ quote(operator_namespace) }} \
+        --members {{ quote(members) }} \
+        --pool {{ quote(pool) }} --node-count {{ quote(node_count) }})
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: $code check(s) failed. See reference/arangodb/troubleshooting.md." >&2
+        exit "$code"
     fi
-    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
-    else
-        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
-    fi
-
-    operator=$(kubectl get pods -n "$OP_NS" -l app.kubernetes.io/name=kube-arangodb -o json 2>/dev/null \
-        | jq '[.items[] | select(.status.phase == "Running")] | length' || echo 0)
-    if [[ "$operator" -ge 1 ]]; then
-        ok "operator Running in $OP_NS"
-    else
-        bad "no Running operator pod in $OP_NS"
-    fi
-
-    for sc in dictycr-balanced dictycr-ssd; do
-        if kubectl get sc "$sc" >/dev/null 2>&1; then
-            ok "StorageClass $sc present"
-        else
-            bad "StorageClass $sc missing"
-        fi
-    done
-
-    if kubectl get arangodeployment -n "$NS" arangodb >/dev/null 2>&1; then
-        ok "ArangoDeployment arangodb present in $NS"
-    else
-        bad "ArangoDeployment arangodb missing in $NS"
-    fi
-
-    members_ready=$(kubectl get pods -n "$NS" -l arango_deployment=arangodb -o json \
-        | jq '[.items[] | select(.status.phase == "Running")
-        | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)] | length')
-    if [[ "$members_ready" -eq "$WANT_MEMBERS" ]]; then
-        ok "$members_ready/$WANT_MEMBERS member pods Running and ready"
-    else
-        bad "$members_ready/$WANT_MEMBERS member pods Running and ready"
-    fi
-
-    pvc_json=$(kubectl get pvc -n "$NS" -l arango_deployment=arangodb -o json)
-    check_pvcs() {
-        local class="$1" size="$2" want="$3" label="$4"
-        local n
-        n=$(printf '%s\n' "$pvc_json" | jq --arg c "$class" --arg s "$size" \
-            '[.items[] | select(.spec.storageClassName == $c)
-              | select(.status.phase == "Bound")
-              | select(.spec.resources.requests.storage == $s)] | length')
-        if [[ "$n" -eq "$want" ]]; then
-            ok "$n Bound $label PVC(s) at $size on $class"
-        else
-            bad "$n Bound $label PVC(s) at $size on $class, expected $want"
-        fi
-    }
-    check_pvcs dictycr-ssd 20Gi 3 agent
-    check_pvcs dictycr-balanced 150Gi 3 dbserver
-
-    coord=$(kubectl get svc -n "$NS" -l arango_deployment=arangodb -o json \
-        | jq '[.items[] | select([.spec.ports[]? | select(.port == 8529)] | length > 0)] | length')
-    if [[ "$coord" -ge 1 ]]; then
-        ok "$coord Service(s) exposing port 8529 in $NS"
-    else
-        bad "no Service exposing port 8529 in $NS"
-    fi
-
-    dbjobs=$(kubectl get jobs -n "$NS" -l app=arangodb-create-databases -o json 2>/dev/null \
-        | jq '[.items[] | select((.status.succeeded // 0) >= 1)] | length' || echo 0)
-    total_dbjobs=$(kubectl get jobs -n "$NS" -l app=arangodb-create-databases -o json 2>/dev/null \
-        | jq '.items | length' || echo 0)
-    if [[ "$dbjobs" -ge 1 ]]; then
-        ok "application credential/database setup Job succeeded"
-    elif [[ "$total_dbjobs" -eq 0 ]]; then
-        warn "no application setup Job found — confirm import and Secret 'backend' state"
-    else
-        bad "application setup Job present but not succeeded"
-    fi
-
-    if kubectl get cronjob -n "$NS" arangodb-backup-cronjob >/dev/null 2>&1; then
-        ok "backup CronJob present"
-    else
-        warn "no arangodb-backup-cronjob — expected only if the backup stack was applied"
-    fi
-
-    echo
     echo "Zone spread is preferred (soft anti-affinity), not guaranteed — not checked here."
-    if [[ "$failures" -ne 0 ]]; then
-        echo "Error: $failures check(s) failed." >&2
-        exit 1
-    fi
-    echo "All required checks passed."
