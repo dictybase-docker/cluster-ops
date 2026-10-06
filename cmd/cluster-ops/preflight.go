@@ -28,6 +28,13 @@ var (
 const (
 	flagKubeconfig = "kubeconfig"
 	envKubeconfig  = "KUBECONFIG"
+	cmdForward     = "forward"
+	cmdForwardRun  = "run"
+	cmdForwardHold = "hold"
+	flagNS         = "ns"
+	flagSVC        = "svc"
+	flagRemotePort = "remote-port"
+	flagLocalPort  = "local-port"
 )
 
 // kubeconfigFlag is the shared kubeconfig flag (defaults to KUBECONFIG env).

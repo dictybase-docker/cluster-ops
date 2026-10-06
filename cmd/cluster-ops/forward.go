@@ -32,16 +32,16 @@ func kubeFlags() []cli.Flag {
 
 func forwardCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "forward",
+		Name:  cmdForward,
 		Usage: "Port-forward lifecycle for recipes and interactive dev access",
 		Subcommands: []*cli.Command{
 			{
-				Name:  "run",
+				Name:  cmdForwardRun,
 				Usage: "Forward to a Service, run a command with FORWARD_PORT exported, tear down on exit",
 				Flags: append(kubeFlags(),
-					&cli.StringFlag{Name: "ns", Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
-					&cli.StringFlag{Name: "svc", Aliases: []string{"s"}, Required: true, Usage: "Service name"},
-					&cli.IntFlag{Name: "remote-port", Required: true, Usage: "Remote port on the pod"},
+					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
+					&cli.StringFlag{Name: flagSVC, Aliases: []string{"s"}, Required: true, Usage: "Service name"},
+					&cli.IntFlag{Name: flagRemotePort, Required: true, Usage: "Remote port on the pod"},
 					&cli.IntFlag{
 						Name:  "local-port",
 						Value: 0,
@@ -51,12 +51,12 @@ func forwardCommand() *cli.Command {
 				Action: forwardRunAction,
 			},
 			{
-				Name:  "hold",
+				Name:  cmdForwardHold,
 				Usage: "Hold a foreground forward (Ctrl-C to stop); reconnects on pod restart",
 				Flags: append(kubeFlags(),
-					&cli.StringFlag{Name: "ns", Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
-					&cli.StringFlag{Name: "svc", Aliases: []string{"s"}, Required: true, Usage: "Service name"},
-					&cli.IntFlag{Name: "remote-port", Required: true, Usage: "Remote port on the pod"},
+					&cli.StringFlag{Name: flagNS, Aliases: []string{"n"}, Required: true, Usage: "Namespace"},
+					&cli.StringFlag{Name: flagSVC, Aliases: []string{"s"}, Required: true, Usage: "Service name"},
+					&cli.IntFlag{Name: flagRemotePort, Required: true, Usage: "Remote port on the pod"},
 					&cli.IntFlag{
 						Name:  "local-port",
 						Value: 0,
