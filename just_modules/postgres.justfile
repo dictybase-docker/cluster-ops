@@ -77,23 +77,17 @@ check-pool pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-
-    echo "Checking stateful-db pool prerequisites..."
-    echo
-
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight pool \
+        --pool { quote(pool) } --count { quote(node_count) })
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: pool prerequisites failed. See reference/postgres/pool-requirements.md for fixes." >&2
+        exit "$code"
     fi
+    echo "All pool checks passed. Next: just postgres deploy-operator."
 
     tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
         select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
@@ -1127,32 +1121,21 @@ verify cluster="logto" namespace="prod" operator_namespace="operators" instances
     #!/usr/bin/env bash
     set -euo pipefail
 
-    CLUSTER="{{ cluster }}"
-    NS="{{ namespace }}"
-    OP_NS="{{ operator_namespace }}"
-    WANT_INSTANCES="{{ instances }}"
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-    CHECK_COLOR=0
-
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
-        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight postgres \
+        --namespace {{ quote(namespace) }} \
+        --operator-namespace {{ quote(operator_namespace) }} \
+        --cluster {{ quote(cluster) }} \
+        --instances {{ quote(instances) }} \
+        --pool {{ quote(pool) }} --node-count {{ quote(node_count) }})
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: $code check(s) failed. See reference/postgres/troubleshooting.md." >&2
+        exit "$code"
     fi
-    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
-    else
-        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
-    fi
-
+    echo "All checks passed."
     operator=$(kubectl get pods -n "$OP_NS" -l app.kubernetes.io/name=cloudnative-pg -o json 2>/dev/null \
         | jq '[.items[] | select(.status.phase == "Running")] | length' || echo 0)
     if [[ "$operator" -ge 1 ]]; then

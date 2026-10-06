@@ -208,21 +208,28 @@ job2=$(sed -n 's/.*--job \([^ ]*\).*/\1/p' "$MOCK_JUST_CALLS" | tail -1)
 [[ -n "$job1" && -n "$job2" && "$job1" != "$job2" ]]
 grep -q 'properties.createDatabases=false' "$MOCK_PULUMI_CALLS"
 
-export MOCK_MODE=verify
+# The verify recipe is a thin wrapper: the Go preflight (mocked here)
+# carries the checks; the recipe only forwards flags.
+cat > "$tmp/bin/go" <<'MOCK_GO'
+#!/usr/bin/env bash
+printf 'go %s\n' "$*" >> "$MOCK_JUST_CALLS"
+exit "${MOCK_GO_EXIT:-0}"
+MOCK_GO
+chmod +x "$tmp/bin/go"
+
+: > "$MOCK_JUST_CALLS"
+export MOCK_GO_EXIT=1
 set +e
 "$just_bin" arangodb verify > "$tmp/verify-default.out" 2>&1
 verify_default_status=$?
 set -e
+unset MOCK_GO_EXIT
 [[ "$verify_default_status" -ne 0 ]]
-grep -q 'operator Running in prod' "$tmp/verify-default.out"
-! grep -q 'no Running operator pod' "$tmp/verify-default.out"
+grep -q 'preflight arangodb --namespace prod --operator-namespace prod' "$MOCK_JUST_CALLS"
+! grep -q 'preflight arangodb --namespace prod --operator-namespace operators' "$MOCK_JUST_CALLS"
 
-set +e
+: > "$MOCK_JUST_CALLS"
 "$just_bin" arangodb verify --operator-namespace operators > "$tmp/verify-override.out" 2>&1
-verify_override_status=$?
-set -e
-[[ "$verify_override_status" -ne 0 ]]
-grep -q 'no Running operator pod in operators' "$tmp/verify-override.out"
-unset MOCK_MODE
+grep -q 'preflight arangodb --namespace prod --operator-namespace operators' "$MOCK_JUST_CALLS"
 
 echo "ArangoDB post-import finalization contract tests PASSED"

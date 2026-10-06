@@ -34,20 +34,17 @@ check-pool pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight pool \
+        --pool { quote(pool) } --count { quote(node_count) })
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: pool prerequisites failed. See reference/redis/pool-requirements.md for fixes." >&2
+        exit "$code"
     fi
+    echo "All pool checks passed. Next: just redis deploy."
 
     tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
         select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
@@ -135,23 +132,18 @@ verify name="redis" namespace="prod" pool="database" node_count="3":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NAME="{{ name }}"
-    NS="{{ namespace }}"
-    POOL="{{ pool }}"
-    WANT_NODES="{{ node_count }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-    CHECK_COLOR=0
-
-    nodes_json=$(kubectl get nodes -l "pool=$POOL" -o json)
-    node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-    if [[ "$node_count" -eq "$WANT_NODES" ]]; then
-        ok "$node_count node(s) with pool=$POOL"
-    else
-        bad "$node_count node(s) with pool=$POOL, expected $WANT_NODES"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight redis \
+        --namespace {{ quote(namespace) }} --name {{ quote(name) }} \
+        --pool {{ quote(pool) }} --node-count {{ quote(node_count) }})
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: $code check(s) failed. See reference/redis/troubleshooting.md." >&2
+        exit "$code"
     fi
-
+    echo "All checks passed."
     pods_ready=$(kubectl get pods -n "$NS" -l "app=${NAME}" -o json \
         | jq '[.items[] | select(.status.phase == "Running")
         | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)] | length')

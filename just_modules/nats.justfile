@@ -101,20 +101,16 @@ verify namespace="prod":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    failures=0
-
-    source "{{ justfile_directory() }}/scripts/lib/check-helpers.sh"
-    CHECK_COLOR=0
-
-    sts_ready=$(kubectl get sts -n "$NS" nats -o json 2>/dev/null \
-        | jq '.status.readyReplicas // 0' || echo 0)
-    if [[ "${sts_ready:-0}" -ge 1 ]]; then
-        ok "NATS server StatefulSet has ${sts_ready:-0} ready replica(s)"
-    else
-        bad "no ready NATS server replica in $NS"
+    set +e
+    out=$(go run ./cmd/cluster-ops preflight nats --namespace {{ quote(namespace) }})
+    code=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$code" -ne 0 ]; then
+        echo "ERROR: $code check(s) failed. See reference/nats/troubleshooting.md." >&2
+        exit "$code"
     fi
-
+    echo "All checks passed."
     port=$(kubectl get svc -n "$NS" nats -o jsonpath='{.spec.ports[?(@.name=="nats")].port}' 2>/dev/null | head -n1 || true)
     if [[ "$port" == "4222" ]]; then
         ok "Service nats exposes 4222"
