@@ -21,57 +21,10 @@ check-deploy-credentials cluster="" sa_key:
 
     name="{{ cluster }}"
     [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
-    if [ -z "${name}" ]; then
-        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
-        exit 1
-    fi
-    key="{{ sa_key }}"
-    if [ ! -f "${key}" ]; then
-        echo "ERROR: SA key file not found: ${key}" >&2
-        exit 1
-    fi
-    project_id=$(jq -r '.project_id // empty' "${key}")
-    if [ -z "${project_id}" ]; then
-        echo "ERROR: ${key} is not a GCP service account key JSON." >&2
-        exit 1
-    fi
 
-    entry="config/clusters/${name}.yaml"
-    if [ ! -f "${entry}" ]; then
-        echo "ERROR: no registry entry for cluster '${name}' — expected ${entry}." >&2
-        exit 1
-    fi
-    reg_project=$(yq -r '.gcp_project' "${entry}")
-    if [ "${project_id}" != "${reg_project}" ]; then
-        echo "ERROR: key project '${project_id}' does not match registry gcp_project '${reg_project}'." >&2
-        echo "       Mint or reuse a key from the '${reg_project}' project only." >&2
-        exit 1
-    fi
-
-    echo "=== 1/2: deployer access (kubeconfig + deployments + KMS) ==="
-    just gcp-cluster verify-deployer-access --cluster "${name}" --sa-key "${key}"
-
-    echo "=== 2/2: roles from deployer-roles.txt present on the SA ==="
-    roles_file="gcs-files/roles-permissions/deployer-roles.txt"
-    if [ -f "${roles_file}" ]; then
-        sa_email=$(jq -r '.client_email // empty' "${key}")
-        while read -r role; do
-            [ -z "${role}" ] && continue
-            if ! gcloud projects get-iam-policy "${reg_project}" \
-                --flatten="bindings[].members" \
-                --filter="bindings.members:${sa_email}" \
-                --format="value(bindings.role)" 2>/dev/null | grep -qx "${role}"; then
-                echo "MISSING: role '${role}' not granted to ${sa_email} in ${reg_project}." >&2
-                exit 1
-            fi
-        done < "${roles_file}"
-        echo "All deployer roles present."
-    else
-        echo "WARN: ${roles_file} not found — role check skipped (add the file to enforce it)." >&2
-    fi
-
-    echo "Deploy credentials verified for ${name}."
-    echo "Next: just ci set-deploy-secret --cluster ${name} --sa-key ${key} --repos <owner/name>"
+    go run ./cmd/cluster-ops preflight deploy-credentials \
+        --cluster "${name}" \
+        --sa-key {{ quote(sa_key) }}
 
 # Publish the deployer SA key to the org secret PROD_DEPLOY_SA_KEY.
 # One idempotent upsert (gh secret set) that stores the key and sets repo
