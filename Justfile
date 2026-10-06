@@ -189,6 +189,11 @@ test-ci-recipes:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-ci-recipes.sh"
 
+test-pulumi-backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-pulumi-backend.sh"
+
 # Run tag workflow render contract tests (shape, ref pin, input-drift guard)
 [group('dev-tools')]
 [no-cd]
@@ -261,7 +266,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint
