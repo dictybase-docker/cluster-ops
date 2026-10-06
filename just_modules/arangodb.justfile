@@ -49,37 +49,14 @@ _wait-ready namespace selector count="1" retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    SEL="{{ selector }}"
-    WANT="{{ count }}"
-    RETRIES="{{ retries }}"
-    INTERVAL="{{ interval }}"
-
-    for i in $(seq 1 "$RETRIES"); do
-        set +e
-        out=$(kubectl get pods -n "$NS" -l "$SEL" -o json 2>&1)
-        status=$?
-        set -e
-        if [[ $status -ne 0 ]]; then
-            echo "$out" >&2
-            echo "Error: kubectl get pods -n $NS -l $SEL failed." >&2
-            exit 1
-        fi
-        ready=$(printf '%s\n' "$out" | jq '[.items[]
-            | select(.status.phase == "Running")
-            | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)]
-            | length')
-        if [[ "$ready" -ge "$WANT" ]]; then
-            echo "$ready/$WANT pod(s) ready in $NS ($SEL)."
-            exit 0
-        fi
-        echo "Waiting for pods in $NS ($SEL): $ready/$WANT ready (try $i/$RETRIES)..."
-        sleep "$INTERVAL"
-    done
-
-    echo "Error: only $ready/$WANT pod(s) ready in $NS ($SEL) after $((RETRIES * INTERVAL))s." >&2
-    kubectl get pods -n "$NS" -l "$SEL" -o wide || true
-    exit 1
+    # retries × interval becomes the Go wait budget; CrashLoopBackOff /
+    # ImagePullBackOff fail fast with exit 2, timeout exits 1.
+    go run ./cmd/cluster-ops wait pods-ready \
+        --namespace {{ quote(namespace) }} \
+        --selector {{ quote(selector) }} \
+        --count {{ quote(count) }} \
+        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
+        --interval {{ quote(interval) }}
 
 # Read-only guard: allow replacing queued/terminated Jobs, but never interrupt
 # a pod with a running container.
@@ -152,50 +129,13 @@ _wait-job namespace job retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    JOB="{{ job }}"
-    RETRIES="{{ retries }}"
-    INTERVAL="{{ interval }}"
-    seen=0
-
-    for i in $(seq 1 "$RETRIES"); do
-        set +e
-        out=$(kubectl get job -n "$NS" "$JOB" -o json 2>&1)
-        status=$?
-        set -e
-        if [[ $status -ne 0 ]]; then
-            if [[ $seen -eq 1 ]]; then
-                echo "Job $JOB is gone from $NS — it finished and its TTL removed it."
-                exit 0
-            fi
-            if echo "$out" | grep -qi "not found"; then
-                echo "Waiting for job $JOB to appear in $NS (try $i/$RETRIES)..."
-                sleep "$INTERVAL"
-                continue
-            fi
-            echo "$out" >&2
-            echo "Error: kubectl get job $JOB -n $NS failed." >&2
-            exit 1
-        fi
-        seen=1
-        succeeded=$(printf '%s\n' "$out" | jq -r '.status.succeeded // 0')
-        failed=$(printf '%s\n' "$out" | jq -r '.status.failed // 0')
-        if [[ "$succeeded" -ge 1 ]]; then
-            echo "Job $JOB completed in $NS."
-            exit 0
-        fi
-        if [[ "$failed" -ge 1 ]]; then
-            echo "Error: job $JOB in $NS failed. Last 100 log lines:" >&2
-            kubectl logs -n "$NS" "job/$JOB" --all-containers --tail=100 || true
-            exit 1
-        fi
-        echo "Waiting for job $JOB in $NS (try $i/$RETRIES)..."
-        sleep "$INTERVAL"
-    done
-
-    echo "Error: job $JOB in $NS did not finish after $((RETRIES * INTERVAL))s." >&2
-    kubectl get job -n "$NS" "$JOB" || true
-    exit 1
+    # succeeded → exit 0; status.failed ≥ 1 → exit 2 with pod logs; a Job seen
+    # once and then TTL-deleted counts as done.
+    go run ./cmd/cluster-ops wait job-complete \
+        --namespace {{ quote(namespace) }} \
+        --job {{ quote(job) }} \
+        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
+        --interval {{ quote(interval) }}
 
 # ── public recipes ────────────────────────────────────────────────────────────
 
@@ -787,42 +727,17 @@ _wait-gone namespace kind selector="" retries="36" interval="5":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    KIND="{{ kind }}"
-    SELECTOR="{{ selector }}"
-    RETRIES="{{ retries }}"
-    INTERVAL="{{ interval }}"
-    extra=()
-    if [[ -n "$SELECTOR" ]]; then
-        extra+=(-l "$SELECTOR")
+    args=(
+        --namespace {{ quote(namespace) }}
+        --kind {{ quote(kind) }}
+        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} ))
+        --interval {{ quote(interval) }}
+    )
+    # A missing namespace or API type counts as gone.
+    if [[ -n "{{ selector }}" ]]; then
+        args+=(--selector {{ quote(selector) }})
     fi
-
-    for i in $(seq 1 "$RETRIES"); do
-        set +e
-        out=$(kubectl get "$KIND" -n "$NS" "${extra[@]}" -o json 2>&1)
-        status=$?
-        set -e
-        if [[ $status -ne 0 ]]; then
-            if echo "$out" | grep -qiE "doesn.t have a resource type|the server could not find the requested resource|namespaces? \"$NS\" not found"; then
-                echo "$KIND gone in $NS (API type or namespace not found)."
-                exit 0
-            fi
-            echo "$out" >&2
-            echo "Error: kubectl get $KIND -n $NS failed." >&2
-            exit 1
-        fi
-        count=$(printf '%s\n' "$out" | jq '.items | length')
-        if [[ "$count" -eq 0 ]]; then
-            echo "$KIND gone in $NS."
-            exit 0
-        fi
-        echo "Waiting for $KIND in $NS to go ($count left, try $i/$RETRIES)..."
-        sleep "$INTERVAL"
-    done
-
-    echo "Error: $KIND in $NS still present after $((RETRIES * INTERVAL))s." >&2
-    kubectl get "$KIND" -n "$NS" "${extra[@]}" || true
-    exit 1
+    go run ./cmd/cluster-ops wait resources-gone "${args[@]}"
 
 # Destroy a Pulumi folder if that stack exists; skip (do not fail) if it never did.
 # Usage: just arangodb _destroy-stack --folder <dir> [--stack <name>]

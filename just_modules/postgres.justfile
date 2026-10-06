@@ -54,37 +54,14 @@ _wait-ready namespace selector count="1" retries="90" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    NS="{{ namespace }}"
-    SEL="{{ selector }}"
-    WANT="{{ count }}"
-    RETRIES="{{ retries }}"
-    INTERVAL="{{ interval }}"
-
-    for i in $(seq 1 "$RETRIES"); do
-        set +e
-        out=$(kubectl get pods -n "$NS" -l "$SEL" -o json 2>&1)
-        status=$?
-        set -e
-        if [[ $status -ne 0 ]]; then
-            echo "$out" >&2
-            echo "Error: kubectl get pods -n $NS -l $SEL failed." >&2
-            exit 1
-        fi
-        ready=$(printf '%s\n' "$out" | jq '[.items[]
-            | select(.status.phase == "Running")
-            | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)]
-            | length')
-        if [[ "$ready" -ge "$WANT" ]]; then
-            echo "$ready/$WANT pod(s) ready in $NS ($SEL)."
-            exit 0
-        fi
-        echo "Waiting for pods in $NS ($SEL): $ready/$WANT ready (try $i/$RETRIES)..."
-        sleep "$INTERVAL"
-    done
-
-    echo "Error: only $ready/$WANT pod(s) ready in $NS ($SEL) after $((RETRIES * INTERVAL))s." >&2
-    kubectl get pods -n "$NS" -l "$SEL" -o wide || true
-    exit 1
+    # retries × interval becomes the Go wait budget; CrashLoopBackOff /
+    # ImagePullBackOff fail fast with exit 2, timeout exits 1.
+    go run ./cmd/cluster-ops wait pods-ready \
+        --namespace {{ quote(namespace) }} \
+        --selector {{ quote(selector) }} \
+        --count {{ quote(count) }} \
+        --timeout $(( {{ quote(retries) }} * {{ quote(interval) }} )) \
+        --interval {{ quote(interval) }}
 
 # ── public recipes ───────────────────────────────────────────────────────────
 
@@ -824,15 +801,14 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
         just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"
         kubectl delete cluster "$CLUSTER" -n "$NS" --wait --timeout=300s
         kubectl delete jobs,pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER},cnpg.io/jobRole=full-recovery" --ignore-not-found
-        for i in $(seq 1 30); do
-            [[ -z "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]] && break
-            sleep 2
-        done
-        if [[ -n "$(kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" -o name 2>/dev/null)" ]]; then
-            echo "Error: target pods still present after 60 seconds; refusing to delete PVCs." >&2
-            kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" >&2 || true
-            exit 1
-        fi
+        go run ./cmd/cluster-ops wait resources-gone \
+            --namespace "$NS" --kind pods \
+            --selector "cnpg.io/cluster=${CLUSTER}" --timeout 60 --interval 2 \
+            || {
+                echo "Error: target pods still present after 60 seconds; refusing to delete PVCs." >&2
+                kubectl get pods -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" >&2 || true
+                exit 1
+            }
         kubectl delete pvc -n "$NS" -l "cnpg.io/cluster=${CLUSTER}" --ignore-not-found
     else
         just postgres _clear-own-backup-archive --folder "$FOLDER" --cluster "$CLUSTER" --stack "$STACK"

@@ -89,7 +89,7 @@ sa-accounts-setup project="" activate_api="true":
     if [ "{{ activate_api }}" = "true" ]; then
         just gcp-api enable-apis --project "${project_id}" \
              --api-file {{ quote(invocation_directory()) }}/gcs-files/apis/enabled_apis.txt
-        sleep 10
+        # No sleep: the Go SA recipes retry on IAM propagation delay.
     fi
 
     sa_accounts=("cloud-manager" "cluster-backup" "database-backup" "deploy-manager" "kops-cluster-creator")
