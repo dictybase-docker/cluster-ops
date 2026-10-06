@@ -194,6 +194,31 @@ test-pulumi-backend:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-pulumi-backend.sh"
 
+# Run the preflight integration tests against the local k3d cluster.
+# Needs the cluster running (just k3d start-cluster). Not part of `just check`.
+# Usage: just test-preflight-integration [--name <k3d-cluster>]
+[arg("name", long="name", short="n", help="k3d cluster name")]
+[group('testing')]
+[no-cd]
+test-preflight-integration name="k3d-dev-cluster":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    if ! k3d cluster get {{ quote(name) }} >/dev/null 2>&1; then
+        echo "ERROR: k3d cluster {{ name }} not found — start it with 'just k3d start-cluster'." >&2
+        exit 1
+    fi
+
+    # `k3d kubeconfig get` prints YAML to stdout, not a path: write it to a
+    # temp file and point KUBECONFIG at the file. Never switches global context.
+    kubeconfig_file=$(mktemp /tmp/k3d-kubeconfig-XXXXXX)
+    trap 'rm -f "${kubeconfig_file}"' EXIT
+    k3d kubeconfig get {{ quote(name) }} > "${kubeconfig_file}"
+
+    KUBECONFIG="${kubeconfig_file}" gotestsum --format-hide-empty-pkg --format dots -- \
+        -tags=integration -count=1 ./internal/preflight/backend/...
+
 # Run tag workflow render contract tests (shape, ref pin, input-drift guard)
 [group('dev-tools')]
 [no-cd]
