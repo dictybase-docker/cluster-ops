@@ -1,24 +1,5 @@
 # ── private helpers ──────────────────────────────────────────────────────────
 
-# Waits for a TCP port to accept connections.
-# Usage: just arangodb _wait-for-port --port <port> [--retries <n>]
-[arg("port", long="port", short="p", help="TCP port to wait for")]
-[arg("retries", long="retries", short="r", help="Number of retries")]
-[group('arangodb')]
-[no-cd]
-_wait-for-port port retries="30":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for i in $(seq 1 {{ quote(retries) }}); do
-        if nc -z localhost {{ quote(port) }} 2>/dev/null; then
-            echo "Port-forward established on localhost:{{ port }}."
-            exit 0
-        fi
-        sleep 1
-    done
-    echo "Error: localhost:{{ port }} did not open after {{ retries }}s."
-    exit 1
-
 # Discovers the arangodb-single-* service name in a namespace
 [group('arangodb')]
 [no-cd]
@@ -232,7 +213,6 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     set -euo pipefail
 
     # Configuration
-    LOCAL_PORT=9255
     REMOTE_PORT=8529
     TIMESTAMP=$(date +%Y%m%d-%H%M%S)
     DUMP_DIR="{{ output_dir }}/{{ db_name }}-${TIMESTAMP}"
@@ -245,8 +225,6 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
 
     # Cleanup function
     cleanup() {
-        echo "Stopping port-forward (PID: $PF_PID)..."
-        kill $PF_PID || true
         echo "Removing temporary kubeconfig..."
         rm -f "$KUBECONFIG_FILE"
     }
@@ -266,32 +244,28 @@ dump-remote-db db_name output_dir="scratch" namespace="dev" service="arangodb" i
     DB_USER=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ quote(namespace) }} -o jsonpath='{.data.user}' | base64 -d)
     PASSWORD=$(KUBECONFIG="$KUBECONFIG_FILE" kubectl get secret backend -n {{ quote(namespace) }} -o jsonpath='{.data.password}' | base64 -d)
 
-    echo "Starting port-forward to service/{{ service }}..."
-    # Kill any existing port-forward on this port to avoid conflicts
-    lsof -ti:8529 | xargs kill -9 2>/dev/null || true
-
-    KUBECONFIG="$KUBECONFIG_FILE" kubectl port-forward -n {{ quote(namespace) }} service/{{ quote(service) }} ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
-    PF_PID=$!
-
-    just arangodb _wait-for-port --port ${LOCAL_PORT}
-
     echo "Starting dump of database '{{ db_name }}'..."
     mkdir -p "$DUMP_DIR"
 
-    DOCKER_NET_FLAGS="--net=host"
-    ENDPOINT="tcp://127.0.0.1:${LOCAL_PORT}"
-
-    echo "Running arangodump in Docker container..."
-    docker run --rm $DOCKER_NET_FLAGS \
-        -v "${PWD}/${DUMP_DIR}:/dump" \
-        arangodb:{{ quote(image_tag) }} \
-        arangodump \
-        --server.endpoint "$ENDPOINT" \
-        --server.username "$DB_USER" \
-        --server.password "$PASSWORD" \
-        --output-directory /dump \
-        --server.database "{{ db_name }}" \
-        --include-system-collections
+    # The Go forward picks a free local port and exports FORWARD_PORT to the
+    # child shell; arangodump reads the password from the environment via the
+    # @VAR@ indirection, so no secret ever reaches argv.
+    export ARANGODB_PASSWORD="$PASSWORD" DB_USER DB_NAME={{ quote(db_name) }}
+    export ARANGO_IMAGE={{ quote(image_tag) }} DUMP_DIR="${PWD}/${DUMP_DIR}"
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$KUBECONFIG_FILE" --ns {{ quote(namespace) }} --svc {{ quote(service) }} --remote-port $REMOTE_PORT -- \
+        bash -c 'docker run --rm --net=host \
+            -v "${DUMP_DIR}:/dump" \
+            -e ARANGODB_PASSWORD \
+            "arangodb:${ARANGO_IMAGE}" \
+            arangodump \
+            --server.endpoint "tcp://127.0.0.1:${FORWARD_PORT}" \
+            --server.username "$DB_USER" \
+            --server.password "@ARANGODB_PASSWORD@" \
+            --output-directory /dump \
+            --server.database "$DB_NAME" \
+            --include-system-collections'
+    unset ARANGODB_PASSWORD DB_USER DB_NAME ARANGO_IMAGE DUMP_DIR
 
     echo "Compressing dump..."
     tar -czf "$ARCHIVE_FILE" -C "$(dirname "$DUMP_DIR")" "$(basename "$DUMP_DIR")"
@@ -400,17 +374,14 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     #!/usr/bin/env bash
     set -euo pipefail
 
-    LOCAL_PORT=9529
     REMOTE_PORT=8529
     KUBECONFIG_FILE=$(mktemp -t k3d-kubeconfig-XXXXXX)
     JWT_FILE=$(mktemp -t arangodb-jwt-XXXXXX)
     DUMP_DIR="${PWD}/{{ input_dir }}"
     LOST_FOUND_TMP=""
-    PF_PID=""
 
     # Single cleanup covers all resources — no trap override needed
     cleanup() {
-        [[ -n "$PF_PID" ]] && { echo "Stopping port-forward (PID: $PF_PID)..."; kill "$PF_PID" 2>/dev/null || true; }
         if [[ -n "$LOST_FOUND_TMP" ]]; then
             mv "$LOST_FOUND_TMP/lost+found" "$DUMP_DIR/lost+found" 2>/dev/null || true
             rm -rf "$LOST_FOUND_TMP"
@@ -435,17 +406,8 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     ARANGO_SVC=$(just arangodb _discover-arango-svc {{ quote(namespace) }})
     echo "Found service: $ARANGO_SVC"
 
-    lsof -ti:${LOCAL_PORT} | xargs kill -9 2>/dev/null || true
-
-    echo "Starting port-forward to service/$ARANGO_SVC..."
-    kubectl port-forward -n {{ quote(namespace) }} "service/$ARANGO_SVC" ${LOCAL_PORT}:${REMOTE_PORT} > /dev/null 2>&1 &
-    PF_PID=$!
-
-    just arangodb _wait-for-port --port ${LOCAL_PORT}
-
     # Docker networking set by just os() at parse time — no runtime uname needed
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
-    ENDPOINT="tcp://{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}:${LOCAL_PORT}"
 
     # Temporarily move lost+found — it's a filesystem artifact ArangoDB rejects
     if [[ -d "$DUMP_DIR/lost+found" ]]; then
@@ -457,32 +419,35 @@ restore-local-arangodb input_dir="scratch/arangodump" namespace="dev" image_tag=
     kubectl get secret arangodb-jwt -n {{ quote(namespace) }} \
         -o jsonpath='{.data.token}' | base64 -d > "$JWT_FILE"
 
+    # The Go forward picks a free local port and exports FORWARD_PORT to the
+    # child shell; restore and password reset share one forward-held child.
+    export NEW_ROOT_PASS ARANGO_IMAGE={{ quote(image_tag) }} DUMP_DIR JWT_FILE DOCKER_NET_FLAGS
     echo "Restoring databases from '{{ input_dir }}'..."
-    docker run --rm $DOCKER_NET_FLAGS \
-        -v "${DUMP_DIR}:/dump" \
-        -v "${JWT_FILE}:/jwt.secret:ro" \
-        arangodb:{{ quote(image_tag) }} \
-        arangorestore \
-        --server.endpoint "$ENDPOINT" \
-        --server.jwt-secret-keyfile /jwt.secret \
-        --input-directory /dump \
-        --all-databases true \
-        --include-system-collections \
-        --create-database true
+    go run ./cmd/cluster-ops forward run \
+        --ns {{ quote(namespace) }} --svc "$ARANGO_SVC" --remote-port $REMOTE_PORT -- \
+        bash -c 'docker run --rm "$DOCKER_NET_FLAGS" \
+            -v "${DUMP_DIR}:/dump" \
+            -v "${JWT_FILE}:/jwt.secret:ro" \
+            "arangodb:${ARANGO_IMAGE}" \
+            arangorestore \
+            --server.endpoint "tcp://127.0.0.1:${FORWARD_PORT}" \
+            --server.jwt-secret-keyfile /jwt.secret \
+            --input-directory /dump \
+            --all-databases true \
+            --include-system-collections \
+            --create-database true && \
+        docker run --rm "$DOCKER_NET_FLAGS" \
+            -v "${JWT_FILE}:/jwt.secret:ro" \
+            -e ARANGO_NEW_PASS \
+            "arangodb:${ARANGO_IMAGE}" \
+            arangosh \
+            --server.endpoint "tcp://127.0.0.1:${FORWARD_PORT}" \
+            --server.jwt-secret-keyfile /jwt.secret \
+            --javascript.execute-string \
+                "require(\"@arangodb/users\").update(\"root\", process.env.ARANGO_NEW_PASS); print(\"Root password reset successfully.\")"'
+    unset NEW_ROOT_PASS ARANGO_IMAGE DUMP_DIR JWT_FILE DOCKER_NET_FLAGS
 
     echo "Restore complete."
-
-    echo "Resetting root password to local value from 'arangodb-root' secret..."
-    docker run --rm $DOCKER_NET_FLAGS \
-        -v "${JWT_FILE}:/jwt.secret:ro" \
-        -e "ARANGO_NEW_PASS=${NEW_ROOT_PASS}" \
-        arangodb:{{ quote(image_tag) }} \
-        arangosh \
-        --server.endpoint "$ENDPOINT" \
-        --server.jwt-secret-keyfile /jwt.secret \
-        --javascript.execute-string \
-            "require('@arangodb/users').update('root', process.env.ARANGO_NEW_PASS); print('Root password reset successfully.');"
-
     echo "Root password has been reset to the local value."
 
 # Deploy ArangoDB operator and single instance to local k3d cluster.
