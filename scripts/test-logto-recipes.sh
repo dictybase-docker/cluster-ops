@@ -196,7 +196,7 @@ run_recipe "$just_bin" logto install --stack "$stack" --retries 2 --interval 1 >
 install_calls=()
 while IFS= read -r line; do
     install_calls+=("$line")
-done < <(rg '^(just|kubectl)' "$log_file")
+done < <(rg '^(just|kubectl|go)' "$log_file")
 expected_order=(
     "just logto check"
     "just gcp-pulumi ensure-stack"
