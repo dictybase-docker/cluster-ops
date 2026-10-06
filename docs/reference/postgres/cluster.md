@@ -21,6 +21,10 @@ The program also probes the Barman Cloud plugin stack (`cnpg-backup-plugin`) —
 just postgres deploy-cluster --app-password '<app-password>'
 ```
 
+`just postgres verify` runs `cluster-ops preflight postgres` — the Go check
+prints one PASS/FAIL line per item below and exits non-zero listing every
+failure.
+
 ## Behavior
 
 - Runs `ensure-stack` → sets the encrypted `bootstrap.userSecret.password` → `preview` → `create-resource`

@@ -5,8 +5,8 @@ Back to: [Redis Deploy Guide](../../redis-deploy.md)
 ## What It Does
 
 Read-only post-install check of the running standalone Redis: node pool, pod
-readiness, data PVC, Service port, and one `PING` handshake. Changes nothing;
-safe to re-run at any time.
+readiness, data PVC, Service port, and one `PING` handshake (executed inside
+the pod by the Go check). Changes nothing; safe to re-run at any time.
 
 ## Command
 
@@ -16,17 +16,16 @@ just redis verify
 
 ## Behavior
 
-Each check prints PASS/FAIL (plain text — colors are disabled in this recipe);
-the recipe exits non-zero if any of them fails.
+The recipe runs `cluster-ops preflight redis`, which prints one PASS/FAIL
+line per check and exits non-zero if any fails (exit 1 timeout-class,
+2 terminal — see [waiting](../kubernetes/waiting.md) is unrelated; verify
+uses the check exit contract: 0 met, any FAIL → non-zero).
 
-1. **Pool** — `kubectl get nodes -l pool=database` returns exactly `--node-count` nodes (default 3)
+1. **Pool** — nodes with label `pool=database` number exactly `--node-count` (default 3)
 2. **Pod** — at least one `app=<name>` pod is `Running` with every container `ready`
 3. **PVC** — `<name>-data` is `Bound`
 4. **Service** — `<name>` exposes port `6379`
-5. **PING handshake** — `redis-cli PING` inside the pod returns `PONG`; the server is unauthenticated, so no credentials are needed and a failure is a real connectivity problem
-
-The handshake step is skipped when no ready pod was found (steps 2 and 5 then
-fail and pass respectively; the pod failure is the one to act on).
+5. **PING handshake** — `redis-cli PING` runs inside the first ready pod via the API server exec; `PONG` passes. The server is unauthenticated, so a failure is a real connectivity problem
 
 ## Flags
 
