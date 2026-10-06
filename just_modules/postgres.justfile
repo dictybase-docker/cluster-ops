@@ -537,10 +537,9 @@ _clear-own-backup-archive folder cluster stack="":
 [arg("source_secret", long="source-secret", help="Source Secret containing username/password")]
 [arg("output", long="output", short="o", help="Custom-format archive path")]
 [arg("client_image", long="client-image", help="PostgreSQL client image; use target major or newer")]
-[arg("port", long="port", help="Local source port-forward port")]
 [group('postgres')]
 [no-cd]
-dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-superuser" output="" client_image="postgres:16.15" port="15432":
+dump-logical source_cluster source_kubeconfig="" source_env_file="" source_namespace="dev" source_service="logto-rw" source_database="logto" source_secret="logto-superuser" output="" client_image="postgres:16.15":
     #!/usr/bin/env bash
     set -euo pipefail
     umask 077
@@ -554,7 +553,6 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
     SOURCE_DB={{ quote(source_database) }}
     SOURCE_SECRET={{ quote(source_secret) }}
     CLIENT_IMAGE={{ quote(client_image) }}
-    SOURCE_PORT={{ quote(port) }}
     ARCHIVE={{ quote(output) }}
 
     if [[ -z "$SOURCE_CLUSTER" ]]; then
@@ -595,32 +593,11 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
     PARTIAL="${ARCHIVE}.partial"
     CHECKSUM="${ARCHIVE}.sha256"
     METADATA="${ARCHIVE}.metadata"
-    PF_LOG=$(mktemp -t postgres-logical-pf.XXXXXX)
-    PF_PID=""
 
     cleanup() {
-        [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null || true
-        rm -f "$PF_LOG" "$PARTIAL"
+        rm -f "$PARTIAL"
     }
     trap cleanup EXIT
-
-    if nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null; then
-        echo "Error: local port $SOURCE_PORT is already in use." >&2
-        exit 1
-    fi
-    kubectl --kubeconfig "$SOURCE_KUBECONFIG" port-forward \
-        -n "$SOURCE_NS" "svc/$SOURCE_SERVICE" "$SOURCE_PORT:5432" \
-        >"$PF_LOG" 2>&1 &
-    PF_PID=$!
-    for i in $(seq 1 30); do
-        nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null && break
-        sleep 1
-    done
-    if ! nc -z 127.0.0.1 "$SOURCE_PORT" 2>/dev/null; then
-        cat "$PF_LOG" >&2
-        echo "Error: source port-forward did not open on $SOURCE_PORT." >&2
-        exit 1
-    fi
 
     SOURCE_USER=$(kubectl --kubeconfig "$SOURCE_KUBECONFIG" get secret "$SOURCE_SECRET" -n "$SOURCE_NS" -o jsonpath='{.data.username}' | base64 -d)
     SOURCE_PASSWORD=$(kubectl --kubeconfig "$SOURCE_KUBECONFIG" get secret "$SOURCE_SECRET" -n "$SOURCE_NS" -o jsonpath='{.data.password}' | base64 -d)
@@ -631,11 +608,15 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
 
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
     DB_HOST="{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}"
-    CLIENT_VERSION=$(PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
+    export PGPASSWORD="$SOURCE_PASSWORD" SOURCE_USER SOURCE_PASSWORD SOURCE_DB CLIENT_IMAGE DB_HOST DOCKER_NET_FLAGS
+    CLIENT_VERSION=$(docker run --rm "$DOCKER_NET_FLAGS" \
         -e PGPASSWORD "$CLIENT_IMAGE" pg_dump --version | awk '{print $3}')
-    SOURCE_VERSION=$(PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
-        -e PGPASSWORD "$CLIENT_IMAGE" \
-        psql -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" -Atqc 'show server_version' | tr -d '[:space:]')
+    # The forward child expands $FORWARD_PORT — a free local port the Go
+    # parent picked, never a recipe constant.
+    SOURCE_VERSION=$(go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$SOURCE_KUBECONFIG" --ns "$SOURCE_NS" --svc "$SOURCE_SERVICE" --remote-port 5432 -- \
+        bash -c 'docker run --rm "$DOCKER_NET_FLAGS" -e PGPASSWORD "$CLIENT_IMAGE" \
+            psql -h "$DB_HOST" -p "$FORWARD_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" -Atqc "show server_version"' | tr -d '[:space:]')
     CLIENT_MAJOR="${CLIENT_VERSION%%.*}"
     SOURCE_MAJOR="${SOURCE_VERSION%%.*}"
     if [[ ! "$CLIENT_MAJOR" =~ ^[0-9]+$ || ! "$SOURCE_MAJOR" =~ ^[0-9]+$ || "$SOURCE_MAJOR" -gt "$CLIENT_MAJOR" ]]; then
@@ -645,10 +626,12 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
     echo "Source PostgreSQL version: $SOURCE_VERSION"
     echo "Client PostgreSQL version: $CLIENT_VERSION"
     echo "Creating logical archive: $ARCHIVE"
-    PGPASSWORD="$SOURCE_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
-        -e PGPASSWORD "$CLIENT_IMAGE" \
-        pg_dump -h "$DB_HOST" -p "$SOURCE_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" \
-        --format=custom --no-owner --no-acl --quote-all-identifiers > "$PARTIAL"
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$SOURCE_KUBECONFIG" --ns "$SOURCE_NS" --svc "$SOURCE_SERVICE" --remote-port 5432 -- \
+        bash -c 'docker run --rm "$DOCKER_NET_FLAGS" -e PGPASSWORD "$CLIENT_IMAGE" \
+            pg_dump -h "$DB_HOST" -p "$FORWARD_PORT" -U "$SOURCE_USER" -d "$SOURCE_DB" \
+            --format=custom --no-owner --no-acl --quote-all-identifiers' > "$PARTIAL"
+    unset PGPASSWORD SOURCE_PASSWORD SOURCE_USER SOURCE_DB CLIENT_IMAGE DB_HOST DOCKER_NET_FLAGS
     mv "$PARTIAL" "$ARCHIVE"
 
     sha256_file() {
@@ -684,11 +667,10 @@ dump-logical source_cluster source_kubeconfig="" source_env_file="" source_names
 [arg("database", long="database", help="Target database")]
 [arg("target_secret", long="target-secret", help="Target Secret containing username/password")]
 [arg("client_image", long="client-image", help="PostgreSQL client image; use target major")]
-[arg("port", long="port", help="Local target port-forward port")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name")]
 [group('postgres')]
 [no-cd]
-restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-superuser" client_image="postgres:16.15" port="15433" stack="":
+restore-logical archive app_password="" replace_data="no" cluster="logto" namespace="prod" service="logto-rw" database="logto" target_secret="logto-superuser" client_image="postgres:16.15" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -702,7 +684,6 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     DATABASE={{ quote(database) }}
     TARGET_SECRET={{ quote(target_secret) }}
     CLIENT_IMAGE={{ quote(client_image) }}
-    TARGET_PORT={{ quote(port) }}
     STACK=$(just postgres _require-stack --stack "{{ stack }}")
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
 
@@ -866,59 +847,26 @@ restore-logical archive app_password="" replace_data="no" cluster="logto" namesp
     just postgres deploy-cluster --app-password "$APP_PASSWORD" \
         --cluster "$CLUSTER" --namespace "$NS" --stack "$STACK"
 
-    PF_LOG=$(mktemp -t postgres-logical-restore-pf.XXXXXX)
-    PF_PID=""
-    cleanup() {
-        [[ -n "$PF_PID" ]] && kill "$PF_PID" 2>/dev/null || true
-        rm -f "$PF_LOG"
-    }
-    trap cleanup EXIT
-    if nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
-        echo "Error: local port $TARGET_PORT is already in use." >&2
-        exit 1
-    fi
-    kubectl port-forward -n "$NS" "svc/$SERVICE" "$TARGET_PORT:5432" >"$PF_LOG" 2>&1 &
-    PF_PID=$!
-    for i in $(seq 1 30); do
-        nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null && break
-        sleep 1
-    done
-    if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
-        cat "$PF_LOG" >&2
-        echo "Error: target port-forward did not open on $TARGET_PORT." >&2
-        exit 1
-    fi
-
     TARGET_USER=$(kubectl get secret "$TARGET_SECRET" -n "$NS" -o jsonpath='{.data.username}' | base64 -d)
     TARGET_PASSWORD=$(kubectl get secret "$TARGET_SECRET" -n "$NS" -o jsonpath='{.data.password}' | base64 -d)
     DOCKER_NET_FLAGS="{{ if os() == "macos" { "--add-host=host.docker.internal:host-gateway" } else { "--net=host" } }}"
     DB_HOST="{{ if os() == "macos" { "host.docker.internal" } else { "127.0.0.1" } }}"
     ARCHIVE_DIR=$(dirname "$ARCHIVE")
     ARCHIVE_NAME=$(basename "$ARCHIVE")
+    export PGPASSWORD="$TARGET_PASSWORD" TARGET_USER TARGET_PASSWORD DATABASE CLIENT_IMAGE DB_HOST DOCKER_NET_FLAGS ARCHIVE_DIR ARCHIVE_NAME
     echo "Restoring $ARCHIVE into $NS/$DATABASE..."
-    PGPASSWORD="$TARGET_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
-        -v "$ARCHIVE_DIR:/work:ro" \
-        -e PGPASSWORD "$CLIENT_IMAGE" \
-        pg_restore -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" \
-        --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl \
-        "/work/$ARCHIVE_NAME"
-    if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
-        kill "$PF_PID" 2>/dev/null || true
-        kubectl port-forward -n "$NS" "svc/$SERVICE" "$TARGET_PORT:5432" >"$PF_LOG" 2>&1 &
-        PF_PID=$!
-        for i in $(seq 1 30); do
-            nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null && break
-            sleep 1
-        done
-        if ! nc -z 127.0.0.1 "$TARGET_PORT" 2>/dev/null; then
-            cat "$PF_LOG" >&2
-            echo "Error: target port-forward did not reopen on $TARGET_PORT after restore." >&2
-            exit 1
-        fi
-    fi
-    PGPASSWORD="$TARGET_PASSWORD" docker run --rm $DOCKER_NET_FLAGS \
-        -e PGPASSWORD "$CLIENT_IMAGE" \
-        psql -h "$DB_HOST" -p "$TARGET_PORT" -U "$TARGET_USER" -d "$DATABASE" -v ON_ERROR_STOP=1 -c 'ANALYZE VERBOSE'
+    # One forward-held child: pg_restore feeds straight into ANALYZE, so the
+    # tunnel lives exactly as long as the SQL does — no reopen logic.
+    go run ./cmd/cluster-ops forward run \
+        --ns "$NS" --svc "$SERVICE" --remote-port 5432 -- \
+        bash -c 'docker run --rm "$DOCKER_NET_FLAGS" -v "$ARCHIVE_DIR:/work:ro" -e PGPASSWORD "$CLIENT_IMAGE" \
+            pg_restore -h "$DB_HOST" -p "$FORWARD_PORT" -U "$TARGET_USER" -d "$DATABASE" \
+            --clean --if-exists --exit-on-error --single-transaction --no-owner --no-acl \
+            "/work/$ARCHIVE_NAME" && \
+        docker run --rm "$DOCKER_NET_FLAGS" -e PGPASSWORD "$CLIENT_IMAGE" \
+            psql -h "$DB_HOST" -p "$FORWARD_PORT" -U "$TARGET_USER" -d "$DATABASE" \
+            -v ON_ERROR_STOP=1 -c "ANALYZE VERBOSE"'
+    unset PGPASSWORD TARGET_PASSWORD TARGET_USER DATABASE CLIENT_IMAGE DB_HOST DOCKER_NET_FLAGS ARCHIVE_DIR ARCHIVE_NAME
     echo "Logical restore complete."
 
 # Reset a RUNNING cluster's data and re-import from the configured recovery
