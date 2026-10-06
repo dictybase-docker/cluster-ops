@@ -16,6 +16,6 @@ config:
     command: start-server
     image:
       name: dictybase/modware-order
-      tag: bootstrap
+      tag: v1.2.1
     namespace: prod
     port: 9250
