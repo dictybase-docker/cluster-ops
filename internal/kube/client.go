@@ -6,6 +6,7 @@ import (
 
 	E "github.com/IBM/fp-go/v2/either"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -13,8 +14,9 @@ import (
 
 // Clients holds Kubernetes clients and configuration.
 type Clients struct {
-	Kube kubernetes.Interface
-	Rest *rest.Config
+	Kube    kubernetes.Interface
+	Dynamic dynamic.Interface
+	Rest    *rest.Config
 }
 
 // Reason represents classified Kubernetes error reasons.
@@ -57,9 +59,15 @@ func NewClients(kubeconfig, context string) E.Either[error, Clients] {
 		return E.Left[Clients](fmt.Errorf("failed to create kubernetes client: %w", err))
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return E.Left[Clients](fmt.Errorf("failed to create dynamic client: %w", err))
+	}
+
 	return E.Right[error](Clients{
-		Kube: clientset,
-		Rest: config,
+		Kube:    clientset,
+		Dynamic: dynamicClient,
+		Rest:    config,
 	})
 }
 
