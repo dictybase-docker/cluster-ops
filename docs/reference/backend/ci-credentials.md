@@ -41,7 +41,10 @@ Read-only, zero mutations, fails closed listing every failure:
 
 1. Key file parses as GCP SA JSON; its `project_id` equals the registry's
    `gcp_project` — a dev key against a prod registry fails here.
-2. The SA carries every role in `deployer-roles.txt` (IAM policy describe).
+2. The SA holds every permission of every role in `deployer-roles.txt`:
+   roles expand to permissions, which are tested **as the deployer key** with
+   `testIamPermissions` (100 per call). Grants through groups or inherited from
+   the folder/org count; every missing permission is listed.
 3. Kubeconfig export from the registry's `kops_state` bucket works — the same
    export path `composite-deploy` uses at deploy time.
 4. KMS encrypt/decrypt round-trip on the registry's `kms_secrets_provider`
