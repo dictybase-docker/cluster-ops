@@ -382,6 +382,7 @@ func scObj(name string) runtime.Object {
 	return &storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: name}}
 }
 
+//nolint:unparam // fixture symmetry
 func pvcObj(ns, name, class, size, phase string, labels map[string]string) *corev1.PersistentVolumeClaim {
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, Labels: labels},
