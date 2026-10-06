@@ -12,6 +12,7 @@ import (
 	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
+	"github.com/dictybase-docker/cluster-ops/internal/gcp"
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/waitfor"
 	"github.com/urfave/cli/v2"
@@ -104,13 +105,14 @@ func waitAction(build func(c *cli.Context) waitRunner) cli.ActionFunc {
 }
 
 const (
-	usageNamespace = "Namespace"
-	flagSelector   = "selector"
+	usageNamespace    = "Namespace"
+	flagWaitNamespace = "namespace"
+	flagSelector      = "selector"
 )
 
 func waitNamespaceFlag() cli.Flag {
 	return &cli.StringFlag{
-		Name:     flagNS,
+		Name:     flagWaitNamespace,
 		Aliases:  []string{"n"},
 		Required: true,
 		Usage:    usageNamespace,
@@ -134,7 +136,7 @@ func waitCommand() *cli.Command {
 				},
 				Action: waitAction(func(c *cli.Context) waitRunner {
 					cond := waitfor.PodReadyCondition{
-						Namespace: c.String(flagNS),
+						Namespace: c.String(flagWaitNamespace),
 						Selector:  c.String("selector"),
 						Count:     c.Int("count"),
 					}
@@ -152,7 +154,7 @@ func waitCommand() *cli.Command {
 					waitTimeoutFlag(), waitIntervalFlag(),
 				},
 				Action: waitAction(func(c *cli.Context) waitRunner {
-					cond := waitfor.JobCondition{Namespace: c.String(flagNS), Name: c.String("job")}
+					cond := waitfor.JobCondition{Namespace: c.String(flagWaitNamespace), Name: c.String("job")}
 					return func(ctx context.Context, clients kube.Clients, cfg waitfor.WaitConfig) error {
 						return ioErr(waitfor.JobComplete(ctx, clients, cfg, cond))
 					}
@@ -168,7 +170,7 @@ func waitCommand() *cli.Command {
 					waitTimeoutFlag(), waitIntervalFlag(),
 				},
 				Action: waitAction(func(c *cli.Context) waitRunner {
-					ns, kind, selector := c.String(flagNS), c.String("kind"), c.String("selector")
+					ns, kind, selector := c.String(flagWaitNamespace), c.String("kind"), c.String("selector")
 					return func(ctx context.Context, clients kube.Clients, cfg waitfor.WaitConfig) error {
 						return ioErr(waitfor.ResourcesGone(ctx, clients, cfg, ns, kind, selector))
 					}
@@ -179,11 +181,11 @@ func waitCommand() *cli.Command {
 				Usage: "Wait until a Deployment's observedGeneration is current and all replicas are available",
 				Flags: []cli.Flag{
 					waitNamespaceFlag(),
-					&cli.StringFlag{Name: "name", Required: true, Usage: "Deployment name"},
+					&cli.StringFlag{Name: nameFlag, Required: true, Usage: "Deployment name"},
 					waitTimeoutFlag(), waitIntervalFlag(),
 				},
 				Action: waitAction(func(c *cli.Context) waitRunner {
-					cond := waitfor.DeploymentRolloutCondition{Namespace: c.String(flagNS), Name: c.String("name")}
+					cond := waitfor.DeploymentRolloutCondition{Namespace: c.String(flagWaitNamespace), Name: c.String("name")}
 					return func(ctx context.Context, clients kube.Clients, cfg waitfor.WaitConfig) error {
 						return ioErr(waitfor.DeploymentRollout(ctx, clients, cfg, cond))
 					}
@@ -194,7 +196,7 @@ func waitCommand() *cli.Command {
 				Usage: "Wait until a custom resource's status field reaches a value",
 				Flags: []cli.Flag{
 					waitNamespaceFlag(),
-					&cli.StringFlag{Name: "name", Required: true, Usage: "Resource name"},
+					&cli.StringFlag{Name: nameFlag, Required: true, Usage: "Resource name"},
 					&cli.StringFlag{Name: "group", Required: true, Usage: "API group (e.g. database.arangodb.com)"},
 					&cli.StringFlag{Name: "version", Required: true, Usage: "API version (e.g. v1)"},
 					&cli.StringFlag{Name: "kind", Required: true, Usage: "Kind (e.g. ArangoDeployment)"},
@@ -205,7 +207,7 @@ func waitCommand() *cli.Command {
 				},
 				Action: waitAction(func(c *cli.Context) waitRunner {
 					cond := waitfor.CustomResourceCondition{
-						Namespace:     c.String(flagNS),
+						Namespace:     c.String(flagWaitNamespace),
 						Name:          c.String("name"),
 						Group:         c.String("group"),
 						Version:       c.String("version"),
@@ -250,6 +252,24 @@ func waitCommand() *cli.Command {
 						return ioErr(waitfor.StorageClassesReady(ctx, clients, cfg, cond))
 					}
 				}),
+			},
+			{
+				Name:  "machine-image",
+				Usage: "Wait until a GCP machine image reports READY (FAILED is terminal)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "project", Usage: "GCP project (defaults to ADC metadata)"},
+					&cli.StringFlag{Name: nameFlag, Required: true, Usage: "Machine image name"},
+					waitTimeoutFlag(), waitIntervalFlag(),
+				},
+				Action: func(c *cli.Context) error {
+					project, name := c.String("project"), c.String("name")
+					ctx, stop := signalContext()
+					defer stop()
+					if err := gcp.WaitMachineImage(ctx, project, name, waitConfig(c)); err != nil {
+						return cli.Exit(err.Error(), exitForWait(err))
+					}
+					return nil
+				},
 			},
 			{
 				Name:  "nodes-ready",

@@ -1431,33 +1431,20 @@ sync-node-pools cluster="" kops_name="" state="" expected_nodes="3":
     echo "Syncing stateful-db pool labels and taints (${kn})..."
 
     want="{{ expected_nodes }}"
-    retries=30
-    ready_nodes=""
-
-    for i in $(seq 1 "$retries"); do
-        nodes_json=$(kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o json)
-        node_count=$(printf '%s\n' "$nodes_json" | jq '.items | length')
-        ready_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.status.conditions[] | select(.type == "Ready" and .status == "True")] | length > 0)] | length')
-
-        if [ "$node_count" -eq "$want" ] && [ "$ready_count" -eq "$want" ]; then
-            ready_nodes=$(printf '%s\n' "$nodes_json" | jq -r '.items[].metadata.name' | tr '\n' ' ')
-            break
-        fi
-
-        if [ "$node_count" -eq 0 ] && [ "$has_sdb_ig" -eq 0 ]; then
-            echo "Notice: 0 stateful-db nodes found; stateful-db IG not declared in cluster config. Skipping."
-            exit 0
-        fi
-
-        echo "Waiting for $want stateful-db node(s) to be Ready: $ready_count/$want ready ($node_count found, try $i/$retries)..."
-        sleep 2
-    done
-
-    if [ -z "$ready_nodes" ]; then
-        echo "Error: timed out waiting for $want Ready stateful-db node(s)." >&2
-        kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o wide || true
-        exit 1
+    if [ "$has_sdb_ig" -eq 0 ]; then
+        echo "Notice: 0 stateful-db nodes expected; stateful-db IG not declared in cluster config. Skipping."
+        exit 0
     fi
+
+    # Ready-condition wait with progress logs; timeout exits 1.
+    go run ./cmd/cluster-ops wait nodes-ready \
+        --selector kops.k8s.io/instancegroup=stateful-db \
+        --count "$want" --timeout 60 --interval 2 \
+        || {
+            echo "Error: timed out waiting for $want Ready stateful-db node(s)." >&2
+            kubectl get nodes -l kops.k8s.io/instancegroup=stateful-db -o wide || true
+            exit 1
+        }
 
     kubectl label nodes -l kops.k8s.io/instancegroup=stateful-db pool=database --overwrite
     kubectl taint nodes -l kops.k8s.io/instancegroup=stateful-db dedicated=database:NoSchedule --overwrite
