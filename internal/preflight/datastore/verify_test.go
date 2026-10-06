@@ -46,7 +46,7 @@ var (
 	schedBackupGVR = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "scheduledbackups"}
 )
 
-func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
+func arangoCR(ns string, state string) *unstructured.Unstructured { //nolint:unparam // fixture symmetry //nolint:goconst,lll,unparam // fixture literals
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "database.arangodb.com/v1",
 		"kind":       "ArangoDeployment", //nolint:goconst // fixture literal
