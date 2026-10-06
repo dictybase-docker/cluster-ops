@@ -232,7 +232,7 @@ func PodsReadyCount(clients kube.Clients, ns, selector string, want int, label s
 		if err != nil {
 			return lookupFailure(label, err)
 		}
-		detail := fmt.Sprintf("%d/%d pod(s) Running and ready", got, want)
+		detail := fmt.Sprintf("%d/%d %s Running and ready", got, want, label)
 		status := preflight.StatusFail
 		if got >= want {
 			status = preflight.StatusPass
