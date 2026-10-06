@@ -4,7 +4,7 @@ Back to: [MinIO Deploy Guide](../../minio-deploy.md)
 
 ## What It Does
 
-Mirrors **one bucket** from a source S3-compatible endpoint (another cluster's MinIO, GCS S3 gateway, AWS S3) into this MinIO, using `mc mirror --preserve --overwrite`. Runs from the operator machine; reaches the in-cluster API through a `kubectl port-forward` to `svc/minio`.
+Mirrors **one bucket** from a source S3-compatible endpoint (another cluster's MinIO, GCS S3 gateway, AWS S3) into this MinIO, using `mc mirror --preserve --overwrite`. Runs from the operator machine; reaches the in-cluster API through `cluster-ops forward run`, which opens a free local port to `svc/minio` and reconnects if the pod restarts.
 
 ## Command
 
@@ -19,11 +19,11 @@ just minio import-bucket \
 ## Behavior
 
 1. Reads this MinIO's root credentials from Secret `minio-root` in the namespace
-2. Opens a port-forward `localhost:19000 → svc/minio:9000` (killed on exit)
-3. Registers `mc` aliases `minio-src` (explicit source credentials) and `minio-dst` (Secret-derived)
+2. Wraps the whole mc flow in one `cluster-ops forward run` child to `svc/minio:9000` — a free local port exported as `FORWARD_PORT`, torn down when the child exits
+3. Registers the `mc` alias `minio-src` (explicit source credentials); the target alias `minio_dst` rides in the `MC_HOST_MINIO_DST` env (Secret-derived credentials)
 4. Creates the bucket on the target if missing (`mc mb --ignore-existing`)
 5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed
-6. Retries the mirror up to `--retries` times (default 5), re-probing the port-forward before each retry — each attempt resumes, skipping objects already copied
+6. Retries the mirror up to `--retries` times (default 5) inside the same forward-held child — each attempt resumes, skipping objects already copied
 
 ## Flags
 
@@ -50,12 +50,12 @@ Source credentials are **not** the target's `minio-root` values and are never wr
 | Alias | Credentials from | Points at |
 |-------|------------------|-----------|
 | `minio-src` | `--source-user` / `--source-password` flags | source endpoint |
-| `minio-dst` | Secret `minio-root` in this cluster | this MinIO via port-forward |
+| `minio_dst` | Secret `minio-root` in this cluster, via `MC_HOST_MINIO_DST` env | this MinIO via the forward |
 
 The recipe guards the direction: source → target, one bucket. To seed multiple buckets, run once per bucket.
 
 ## Large Imports
 
-The mirror streams through the operator machine over the port-forward — throughput is bounded by the local uplink, not the cluster. For multi-TiB buckets, run from a VM with good bandwidth to both endpoints.
+The mirror streams through the operator machine over the forward — throughput is bounded by the local uplink, not the cluster. For multi-TiB buckets, run from a VM with good bandwidth to both endpoints.
 
 The recipe already mitigates the two laptop-path failure modes: HTTPS load balancers that reset long-lived HTTP/2 streams (HTTP/1.1 is forced for source reads) and transient per-object failures (`mc mirror --retry` retries objects in place, and the outer `--retries` loop resumes the whole mirror). If it is still slow, that is the port-forward uplink ceiling — run from a VM with good bandwidth to both endpoints. See [troubleshooting](troubleshooting.md).
