@@ -2,11 +2,16 @@
 # Contract tests for the `just ci` recipes: check-deploy-credentials,
 # set-deploy-secret, sync-deploy-vars.
 #
-# gh and gcloud are mocked on PATH; nested `just` calls are intercepted the
-# same way. Asserts: var names derive from the registry ci_env (never
-# hardcoded), a missing registry entry fails, repo names validate, the secret
-# upsert carries --visibility selected, and a gh failure propagates with the
-# repo named.
+# check-deploy-credentials is a thin wrapper over
+# `go run ./cmd/cluster-ops preflight deploy-credentials`; go is mocked on
+# PATH (MOCK_GO_EXIT selects the gate result) and the probe behaviour —
+# wrong-project key, IAM permissions batched via testIamPermissions with
+# every missing permission listed — is covered by the Go unit tests in
+# internal/preflight/backend. gh is mocked on PATH for the other recipes.
+# Asserts: flag pass-through and exit propagation for the gate; var names
+# derive from the registry ci_env (never hardcoded), a missing registry entry
+# fails, repo names validate, the secret upsert carries --visibility
+# selected, and a gh failure propagates with the repo named.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,40 +46,18 @@ case "$1 $2" in
 esac
 exit 0
 EOF
-cat > "${mock_bin}/gcloud" <<'EOF'
+cat > "${mock_bin}/go" <<'EOF'
 #!/usr/bin/env bash
-echo "gcloud $*" >> "${MOCK_CALLS_LOG}"
-case "$1" in
-    projects) printf 'roles/storage.objectViewer\nroles/cloudkms.cryptoKeyEncrypterDecrypter\nroles/iam.serviceAccountUser\n' ;;
-    kms) cat ;;
-    *) exit 0 ;;
-esac
+echo "go $*" >> "${MOCK_CALLS_LOG}"
+exit "${MOCK_GO_EXIT:-0}"
 EOF
-cat > "${mock_bin}/kubectl" <<'EOF'
-#!/usr/bin/env bash
-echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
-case "$*" in
-    "auth can-i update deployments -n prod") echo "yes" ;;
-    "get pods -n prod -l app=arangodb"*) echo -n "arangodb-0" ;;
-esac
-exit 0
-EOF
-cat > "${mock_bin}/kops" <<'EOF'
-#!/usr/bin/env bash
-echo "kops $*" >> "${MOCK_CALLS_LOG}"
-case "$1" in
-    export) : > "$(echo "$*" | grep -o '\-\-kubeconfig [^ ]*' | cut -d' ' -f2)" ;;
-esac
-exit 0
-EOF
-# Nested just calls from check-deploy-credentials (verify-deployer-access):
-# record and succeed.
+# Nested just calls: record and succeed.
 cat > "${mock_bin}/just" <<'EOF'
 #!/usr/bin/env bash
 echo "just $*" >> "${MOCK_CALLS_LOG}"
 exit 0
 EOF
-chmod +x "${mock_bin}/gh" "${mock_bin}/gcloud" "${mock_bin}/kubectl" "${mock_bin}/kops" "${mock_bin}/just"
+chmod +x "${mock_bin}/gh" "${mock_bin}/go" "${mock_bin}/just"
 export MOCK_CALLS_LOG="${calls}"
 REAL_JUST="$(command -v just)"
 export PATH="${mock_bin}:${PATH}"
@@ -84,42 +67,27 @@ cat > "${sa_key}" <<'JSON'
 {"project_id": "dcr-kube1", "client_email": "deployer@dcr-kube1.iam.gserviceaccount.com", "type": "service_account"}
 JSON
 
-# deployer-roles.txt: one role the gcloud mock always returns.
-mkdir -p gcs-files/roles-permissions
-roles_file="gcs-files/roles-permissions/deployer-roles.txt"
-had_roles=false
-if [ -f "${roles_file}" ]; then
-    had_roles=true
-else
-    printf 'roles/storage.objectViewer\n' > "${roles_file}"
-fi
-restore_roles() {
-    if [ "${had_roles}" = "false" ] && [ -f "${roles_file}" ]; then
-        rm -f "${roles_file}"
-    fi
-}
-trap 'cleanup; restore_roles' EXIT
-
 line_of() { grep -n -e "$1" "${calls}" | head -n1 | cut -d: -f1; }
 last_of() { grep -n -e "$1" "${calls}" | tail -n1 | cut -d: -f1; }
 
-echo "=== 1. check-deploy-credentials: wrong-project key refused ==="
-bad_key="${tmp}/bad.json"
-printf '{"project_id": "dcr-experiments", "type": "service_account"}' > "${bad_key}"
-if out=$("${REAL_JUST}" ci check-deploy-credentials --cluster dcr-kube1 --sa-key "${bad_key}" 2>&1); then
-    fail "wrong-project key accepted: ${out}"
+echo "=== 1. check-deploy-credentials: failing gate propagates ==="
+: > "${calls}"
+if out=$(MOCK_GO_EXIT=1 "${REAL_JUST}" ci check-deploy-credentials --cluster dcr-kube1 --sa-key "${sa_key}" 2>&1); then
+    fail "failing preflight exited 0: ${out}"
 fi
-printf '%s' "${out}" | grep -q "does not match registry gcp_project" || fail "wrong-project failure unnamed:\n${out}"
-echo "  wrong-project: PASS"
+echo "  exit propagated: PASS"
 
-echo "=== 2. check-deploy-credentials: happy path probes roles ==="
+echo "=== 2. check-deploy-credentials: flags reach the Go preflight ==="
 : > "${calls}"
 out=$("${REAL_JUST}" ci check-deploy-credentials --cluster dcr-kube1 --sa-key "${sa_key}") \
     || fail "happy path failed: ${out}"
-printf '%s' "${out}" | grep -q "All deployer roles present" || fail "roles line missing:\n${out}"
-grep -q "just gcp-cluster verify-deployer-access" "${calls}" || fail "deployer probe not delegated"
-grep -q "gcloud projects get-iam-policy" "${calls}" || fail "iam policy not probed"
-echo "  happy path: PASS (delegates verify-deployer-access + role probe)"
+grep -q -- "go run ./cmd/cluster-ops preflight deploy-credentials --cluster dcr-kube1 --sa-key ${sa_key}" "${calls}" \
+    || fail "deploy-credentials not invoked with the flags: $(cat "${calls}")"
+: > "${calls}"
+CLUSTER_NAME=dcr-kube1 "${REAL_JUST}" ci check-deploy-credentials --sa-key "${sa_key}" >/dev/null \
+    || fail "CLUSTER_NAME default failed"
+grep -q -- "--cluster dcr-kube1" "${calls}" || fail "CLUSTER_NAME not used as the --cluster default: $(cat "${calls}")"
+echo "  happy path: PASS (flags + CLUSTER_NAME default)"
 
 echo "=== 3. set-deploy-secret: upsert carries selected visibility ==="
 : > "${calls}"
