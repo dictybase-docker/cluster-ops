@@ -34,10 +34,12 @@ Plain values:
 just gcp-pulumi set-config --folder <project-folder> --key "<key>" --value "<value>"
 ```
 
-Secret values — use `set-secret`, never a raw `pulumi config set --secret`:
+Secret values — use `set-secret`, never a raw `pulumi config set --secret`. Omit
+`--value` to type the secret at a hidden prompt; it then stays out of the shell
+history and the process arguments:
 
 ```bash
-just gcp-pulumi set-secret --folder <project-folder> --key "<key>" --value "<secret-value>"
+just gcp-pulumi set-secret --folder <project-folder> --key "<key>"
 ```
 
 Both write with `--path`, so dotted keys like `properties.secret.password` create nested structure rather than a literal flat key.

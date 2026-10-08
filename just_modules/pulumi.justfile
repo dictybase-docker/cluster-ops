@@ -157,21 +157,32 @@ ensure-stack folder stack="":
         exit 1
     fi
 # Set an encrypted config value on a stack (config set --path --secret).
-# Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> --value <secret> [--stack <name>]
-[arg("value", long="value", short="v", help="Secret value to store")]
+# Omit --value to enter the secret at a hidden prompt. That path keeps the
+# value out of the shell history and the process arguments.
+# Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> [--value <secret>] [--stack <name>]
+[arg("value", long="value", short="v", help="Secret value to store; omit to enter it at a hidden prompt")]
 [arg("key", long="key", short="k", help="Config key path, e.g. properties.secret.password")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
 [arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
 [no-cd]
-set-secret folder key value stack="":
+set-secret folder key value="" stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack config set \\
-        --folder {{ quote(folder) }} --stack "${stack_name}" \\
-        --key {{ quote(key) }} --value {{ quote(value) }} --secret
+    secret_value={{ quote(value) }}
+    if [ -n "${secret_value}" ]; then
+        go run ./cmd/cluster-ops stack config set \\
+            --folder {{ quote(folder) }} --stack "${stack_name}" \\
+            --key {{ quote(key) }} --value "${secret_value}" --secret
+    else
+        read -rsp "Secret value (input hidden): " secret_value
+        echo
+        printf '%s' "${secret_value}" | go run ./cmd/cluster-ops stack config set \\
+            --folder {{ quote(folder) }} --stack "${stack_name}" \\
+            --key {{ quote(key) }} --secret
+    fi
 # Set a plain (unencrypted) config value on a stack (config set --path).
 # Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>] [--plaintext <yes>]
 [arg("value", long="value", short="v", help="Config value to store")]

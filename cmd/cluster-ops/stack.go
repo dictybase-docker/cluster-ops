@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	E "github.com/IBM/fp-go/v2/either"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
@@ -39,7 +41,7 @@ func stackCommand() *cli.Command {
 					Action: stackConfigSetAction,
 					Flags: append(stackFlags(),
 						&cli.StringFlag{Name: "key", Required: true},
-						&cli.StringFlag{Name: "value", Required: true},
+						&cli.StringFlag{Name: "value", Usage: "Config value to store; read from stdin when omitted"},
 						&cli.BoolFlag{Name: "secret"},
 					),
 				}},
@@ -202,12 +204,32 @@ func stackConfigSetAction(cltx *cli.Context) error {
 		return err
 	}
 	key, value := cltx.String("key"), cltx.String("value")
+	if !cltx.IsSet("value") {
+		stdin := readSecretFromStdin(os.Stdin)
+		secret, err := E.UnwrapError(stdin())
+		if err != nil {
+			return err
+		}
+		value = secret
+	}
 	setConfig := pulumiauto.SetConfig(context.Background(), s, key, value, cltx.Bool("secret"))
 	if _, err := E.UnwrapError(setConfig()); err != nil {
 		return err
 	}
 	fmt.Printf("set %s\n", key)
 	return nil
+}
+
+// readSecretFromStdin captures the secret piped in by the set-secret recipe's
+// hidden prompt, keeping it out of the process arguments.
+func readSecretFromStdin(r io.Reader) IOE.IOEither[error, string] {
+	return IOE.TryCatchError(func() (string, error) {
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return "", fmt.Errorf("read secret from stdin: %w", err)
+		}
+		return strings.TrimRight(string(data), "\n\r"), nil
+	})
 }
 
 func stackPreviewAction(cltx *cli.Context) error {

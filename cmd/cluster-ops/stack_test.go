@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"io"
+	"strings"
 	"testing"
 
+	E "github.com/IBM/fp-go/v2/either"
 	"github.com/dictybase-docker/cluster-ops/internal/pulumiauto"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -54,4 +57,23 @@ func TestDeployModeFromFlags(t *testing.T) {
 	require.Equal(t, pulumiauto.DeployMode{}, deployModeFrom(false, false))
 	require.Equal(t, pulumiauto.DeployMode{DryRun: true}, deployModeFrom(true, false))
 	require.Equal(t, pulumiauto.DeployMode{AllowProtected: true}, deployModeFrom(false, true))
+}
+
+// errReader fails every Read; stands in for a broken stdin pipe.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+// The set-secret recipe pipes the hidden prompt; the CLI must trim the
+// trailing newline and surface read failures as errors.
+func TestReadSecretFromStdin(t *testing.T) {
+	stdinIO := readSecretFromStdin(strings.NewReader("s3cr3t\n"))
+	secret, err := E.UnwrapError(stdinIO())
+	require.NoError(t, err)
+	require.Equal(t, "s3cr3t", secret)
+
+	stdinErr := readSecretFromStdin(errReader{})
+	r, err2 := E.UnwrapError(stdinErr())
+	require.Error(t, err2)
+	require.Empty(t, r)
 }
