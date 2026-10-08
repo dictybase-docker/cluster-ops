@@ -47,7 +47,7 @@ config:
           repository:
             secure: v1:bn+WQdYfb00oja3H:fNFbB9Qq9cpo7zSCmqZTRXp9aWHgasZkPVS3vBBXinlulO4=
           token:
-            secure: v1:w2LDUDTF9y9NkCdK:E9DmWFYIzIvOBhsNptzV108UkprzCzZ28tCZgPrZbTk4wYmxttvKCoKRzqgjfD/+gz4cpmXfTBM=
+            secure: v1:BD3VG2QaezKK/eLg:RJIzWzGF3dr5aWpOxSqTcblWaDfDBx++cASOaYTz1E7HkLb/eIAdRs/ehod0sMEfgaE7PQqXs6w=
     logLevel: debug
     namespace: dev
     nats:
