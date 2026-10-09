@@ -117,6 +117,9 @@ func newClientsIOE(c *cli.Context) IOE.IOEither[error, kube.Clients] {
 }
 
 func exitOrWrap(prefix string, err error) error {
+	if err == nil {
+		return nil
+	}
 	if exit, ok := errors.AsType[cli.ExitCoder](err); ok {
 		return exit
 	}
@@ -134,13 +137,40 @@ func forwardRunAction(c *cli.Context) error {
 	runChildOnSession := func(sess *kube.Session) IOE.IOEither[error, struct{}] {
 		return IOE.TryCatchError(func() (struct{}, error) {
 			defer sess.Close()
-			if err := runChild(ctx, args, sess.LocalPort); err != nil {
-				return struct{}{}, cli.Exit("", exitCodeFrom(err))
+			childCtx, cancelChild := childContext(ctx, sess.Done())
+			defer cancelChild()
+			if err := runChild(childCtx, args, sess.LocalPort); err != nil {
+				return struct{}{}, supervisorErrOr(cli.Exit("", exitCodeFrom(err)), sess.Err())
 			}
 			return struct{}{}, nil
 		})
 	}
 	return openForward(c, ctx, forwardOpts(c), runChildOnSession, "forward run")
+}
+
+// childContext scopes the forwarded child to its forward: it is canceled by
+// the parent (signals) or when the supervisor gives up (done closes), so a
+// dead forward never leaves an orphan child running.
+func childContext(ctx context.Context, done <-chan struct{}) (context.Context, context.CancelFunc) {
+	childCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-done:
+			cancel()
+		case <-childCtx.Done():
+		}
+	}()
+	return childCtx, cancel
+}
+
+// supervisorErrOr prioritizes the supervisor's error over the child's exit
+// status: when the forward died under a failing child, the dead forward is
+// the root cause.
+func supervisorErrOr(childErr, sessErr error) error {
+	if sessErr != nil {
+		return fmt.Errorf("forward ended while the child ran: %w", sessErr)
+	}
+	return childErr
 }
 
 func forwardHoldAction(c *cli.Context) error {
