@@ -36,7 +36,7 @@ check-pool pool="database" node_count="3":
 
     set +e
     out=$(go run ./cmd/cluster-ops preflight pool \
-        --pool { quote(pool) } --count { quote(node_count) })
+        --pool {{ quote(pool) }} --count {{ quote(node_count) }})
     code=$?
     set -e
     printf '%s\n' "$out"
@@ -45,32 +45,6 @@ check-pool pool="database" node_count="3":
         exit "$code"
     fi
     echo "All pool checks passed. Next: just redis deploy."
-
-    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
-        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
-    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
-    else
-        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
-    fi
-
-    zones=$(printf '%s\n' "$nodes_json" | jq -r '[.items[].metadata.labels["topology.kubernetes.io/zone"] // "unknown"] | unique | sort | join(", ")')
-    info "zones: $zones"
-
-    ready_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.status.conditions[] | select(.type == "Ready" and .status == "True")] | length > 0)] | length')
-    if [[ "$ready_count" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $ready_count node(s) are Ready"
-    else
-        bad "$ready_count/$node_count node(s) are Ready"
-    fi
-
-    echo
-    if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll pool checks passed.\033[0m Next: just redis deploy.\n'
-    else
-        printf '\033[31m%d check(s) failed.\033[0m See reference/redis/pool-requirements.md for fixes.\n' "$failures"
-        exit 1
-    fi
 
 # Deploy standalone Redis 8, then wait for the pod.
 # One command for: ensure-stack, preview, apply, readiness. The server runs
