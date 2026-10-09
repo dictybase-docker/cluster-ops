@@ -239,6 +239,15 @@ validate-kops-ha cluster="" kops_name="" state="": build
 validate-hardening:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! go run ./cmd/cluster-ops preflight hardening; then
+        echo "Some components failed. See Phase 7 for troubleshooting." >&2
+        exit 1
+    fi
+
+# Rollback copy of the pre-migration validate-hardening (delete one release after migration).
+validate-hardening-shell:
+    #!/usr/bin/env bash
+    set -euo pipefail
 
     echo "=== Post-Provisioning Hardening Check ==="
     echo ""

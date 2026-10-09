@@ -1,12 +1,40 @@
 package custodian
 
 import (
+	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
+
+// The exported checks accept kubernetes.Interface so preflight tests can use
+// the fake clientset.
+func TestExportedChecksUseInterface(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "autoscaler-abc", Namespace: "kube-system",
+			Labels: map[string]string{"app": "cluster-autoscaler"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	got := CheckClusterAutoscaler(context.Background(), k8sfake.NewSimpleClientset(pod))
+	require.Equal(t, "cluster-autoscaler", got.Name)
+	require.Equal(t, statusPass, got.Status)
+
+	ds := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-problem-detector", Namespace: "kube-system"},
+		Status: appsv1.DaemonSetStatus{
+			NumberReady: 1, DesiredNumberScheduled: 2,
+		},
+	}
+	npd := CheckNodeProblemDetector(context.Background(), k8sfake.NewSimpleClientset(ds))
+	require.Equal(t, statusWarn, npd.Status)
+	require.Equal(t, "1/2 ready", npd.Message)
+}
 
 func TestValidateDaemonSet(t *testing.T) {
 	tests := []struct {
