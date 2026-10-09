@@ -328,8 +328,16 @@ validate-hardening-shell:
 validate-cluster cluster="" kops_name="" state="" waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
+    c={{ quote(cluster) }}
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn={{ quote(kops_name) }}
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+    st={{ quote(state) }}
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
+    [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
     go run ./cmd/cluster-ops preflight validate-cluster \
-        --cluster {{ quote(cluster) }} --kops-name {{ quote(kops_name) }} --state {{ quote(state) }} --waittime {{ quote(waittime) }}
+        --cluster "${c}" --kops-name "${kn}" --state "${st}" --waittime {{ quote(waittime) }}
 
 # Rollback copy of the pre-migration validate-cluster (delete one release after migration).
 validate-cluster-shell cluster="" kops_name="" state="" waittime="20":
@@ -1490,14 +1498,21 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    c={{ quote(cluster) }}
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kn={{ quote(kops_name) }}
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+    st={{ quote(state) }}
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
+    [ -z "${st}" ] && [ -n "${c}" ] && st="gs://kops-state-${c}"
+
     args=()
-    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
-    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
-    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+    [ -n "${c}" ] && args+=(--cluster "${c}")
+    [ -n "${kn}" ] && args+=(--kops-name "${kn}")
+    [ -n "${st}" ] && args+=(--state "${st}")
 
     # Ensure isolated per-cluster kubeconfig exists before the kube-dependent checks
-    c="{{ cluster }}"
-    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     kubeconfig_file="${KUBECONFIG:-}"
     if [ -z "${kubeconfig_file}" ] && [ -n "${c}" ]; then
         kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
@@ -1507,14 +1522,14 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
     if [ -n "${kubeconfig_file}" ] && [ ! -s "${kubeconfig_file}" ]; then
         echo
         echo "Kubeconfig missing at ${kubeconfig_file}; exporting from state store..."
-        just gcp-cluster export-kubeconfig "${args[@]+"${args[@]}"}"
+        just gcp-cluster export-kubeconfig "${args[@]+"${args[@]}"}" || true
     fi
 
     echo "=== 1/3: cluster health ==="
     echo "=== 2/3: HA topology ==="
     echo "=== 3/3: hardening addons ==="
     go run ./cmd/cluster-ops preflight verify-cluster \
-        --cluster {{ quote(cluster) }} --kops-name {{ quote(kops_name) }} --state {{ quote(state) }} --waittime {{ quote(waittime) }}
+        --cluster "${c}" --kops-name "${kn}" --state "${st}" --waittime {{ quote(waittime) }}
 
     echo
     echo "All validations passed."
@@ -1726,14 +1741,29 @@ _cluster-config-report cluster="":
 preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_key="":
     #!/usr/bin/env bash
     set -euo pipefail
+    c={{ quote(cluster) }}
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    p={{ quote(project) }}
+    [ -z "${p}" ] && p="${PROJECT_ID:-}"
+    kn={{ quote(kops_name) }}
+    [ -z "${kn}" ] && kn="${KOPS_CLUSTER_NAME:-}"
+    [ -z "${kn}" ] && [ -n "${c}" ] && kn="${c}-k8s.local"
+    bn={{ quote(bucket_name) }}
+    [ -z "${bn}" ] && bn="${BUCKET_NAME:-}"
+    [ -z "${bn}" ] && [ -n "${c}" ] && bn="kops-state-${c}"
+    st={{ quote(state) }}
+    [ -z "${st}" ] && st="${KOPS_STATE_STORE:-}"
+    [ -z "${st}" ] && [ -n "${bn}" ] && st="gs://${bn#gs://}"
+    sk={{ quote(ssh_key) }}
+    [ -z "${sk}" ] && sk="${SSH_KEY:-}"
     if ! go run ./cmd/cluster-ops preflight create \
-        --cluster {{ quote(cluster) }} --project {{ quote(project) }} --kops-name {{ quote(kops_name) }} \
-        --state {{ quote(state) }} --bucket-name {{ quote(bucket_name) }} --ssh-key {{ quote(ssh_key) }} \
+        --cluster "${c}" --project "${p}" --kops-name "${kn}" \
+        --state "${st}" --bucket-name "${bn}" --ssh-key "${sk}" \
         --root {{ quote(invocation_directory()) }}; then
         echo "Pre-flight check failed. Resolve issues before running create-cluster." >&2
         exit 1
     fi
-    just gcp-cluster _cluster-config-report --cluster {{ quote(cluster) }}
+    just gcp-cluster _cluster-config-report --cluster "${c}"
     echo
     echo "All pre-flight checks passed. Ready for create-cluster."
 

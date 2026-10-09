@@ -38,6 +38,7 @@ var templateVarRE = regexp.MustCompile(`\$\{[A-Za-z0-9_]+\}`)
 type CreateProbes struct {
 	LookPath            func(bin string) (string, error)
 	RunCapture          func(name string, args ...string) (string, error)
+	ConfigValue         func(key string) (string, error) // gcloud config get-value <key>
 	Stat                func(path string) (fs.FileInfo, error)
 	ReadFile            func(path string) ([]byte, error)
 	DescribeImage       func(ctx context.Context, project, image string) (bool, error)
@@ -261,8 +262,8 @@ func checkShellIsolation(cfg CreateConfig) IO.IO[preflight.Result] {
 				Status: preflight.StatusFail,
 			}
 		}
-		project, _ := cfg.Probes.RunCapture("gcloud", "config", "get-value", "project")
-		account, _ := cfg.Probes.RunCapture("gcloud", "config", "get-value", "account")
+		project, _ := cfg.Probes.ConfigValue("project")
+		account, _ := cfg.Probes.ConfigValue("account")
 		project, account = strings.TrimSpace(project), strings.TrimSpace(account)
 		if project != cfg.Env.Project {
 			return preflight.Result{
@@ -598,6 +599,7 @@ func DefaultCreateProbes(project string) CreateProbes {
 	return CreateProbes{
 		LookPath:            exec.LookPath,
 		RunCapture:          runCapture,
+		ConfigValue:         gcloudConfigValue,
 		Stat:                os.Stat,
 		ReadFile:            os.ReadFile,
 		DescribeImage:       describeImage,
@@ -607,6 +609,12 @@ func DefaultCreateProbes(project string) CreateProbes {
 		ListInstances:       listInstances(project),
 		GitClean:            gitClean,
 	}
+}
+
+// gcloudConfigValue reads gcloud's active config values — the one surface the
+// GCP SDKs do not expose (active config name/account live in gcloud's config).
+func gcloudConfigValue(key string) (string, error) {
+	return runCapture("gcloud", "config", "get-value", key)
 }
 
 func runCapture(name string, args ...string) (string, error) {
@@ -722,4 +730,25 @@ func gitClean(path string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// CreateEnvInputs are the resolved boundary values (flags + environment).
+type CreateEnvInputs struct {
+	Cluster, Project, KopsName, State, BucketURI, SSHPub, CredFile string
+	ActiveConfig                                                   string // $CLOUDSDK_ACTIVE_CONFIG_NAME — the ACTUAL value
+	PinFile, Root                                                  string
+}
+
+// BuildCreateEnv assembles CreateEnv from resolved inputs. ActiveConfig stays
+// the operator's real value: the shell-isolation check compares actual vs
+// expected, so synthesizing it here would make the check unable to fail.
+func BuildCreateEnv(in CreateEnvInputs) CreateEnv {
+	return CreateEnv{
+		Cluster: in.Cluster, Project: in.Project, KopsName: in.KopsName,
+		State: in.State, BucketURI: in.BucketURI, SSHPub: in.SSHPub,
+		CredFile:     in.CredFile,
+		ActiveConfig: in.ActiveConfig,
+		ExpectedSA:   "kops-cluster-creator@" + in.Project + ".iam.gserviceaccount.com",
+		PinFile:      in.PinFile, Root: in.Root,
+	}
 }

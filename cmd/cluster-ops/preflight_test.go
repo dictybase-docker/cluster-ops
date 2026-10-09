@@ -90,3 +90,13 @@ func TestArangodbVerifyFlagsRequired(t *testing.T) {
 	require.Error(t, runPreflight(t, "arangodb"), "arangodb needs --namespace")
 	require.Error(t, runPreflight(t, "arangodb", "--namespace", "prod"), "arangodb needs --members etc.")
 }
+
+// An empty wrapper placeholder must fall back to the cluster-shell
+// environment (urfave treats explicitly-empty flags as set).
+func TestResolveNameFallsBackToEnv(t *testing.T) {
+	t.Setenv("CLUSTER_NAME", "from-env")
+	require.Equal(t, "explicit", resolveName("explicit", "CLUSTER_NAME"))
+	require.Equal(t, "from-env", resolveName("", "CLUSTER_NAME"))
+	t.Setenv("CLUSTER_NAME", "")
+	require.Empty(t, resolveName("", "CLUSTER_NAME"))
+}
