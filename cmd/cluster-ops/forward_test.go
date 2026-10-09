@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -50,4 +52,48 @@ func TestExitCodeFromChild(t *testing.T) {
 func TestForwardHoldRequiresService(t *testing.T) {
 	err := runForward(t, "hold", "--ns", "dev", "--remote-port", "9000")
 	require.Error(t, err, "--svc is required")
+}
+
+// exitOrWrap must pass success through untouched: fmt.Errorf("%s: %w", prefix,
+// nil) is itself non-nil, and a successful forward must exit 0.
+func TestExitOrWrapPassesThroughSuccess(t *testing.T) {
+	require.NoError(t, exitOrWrap("forward run", nil))
+	require.NoError(t, exitOrWrap("forward hold", nil))
+}
+
+// The child must not outlive its forward: when the supervisor gives up (the
+// reconnect budget is spent), the child context is canceled so the child gets
+// SIGTERM, the childWaitDelay grace, then SIGKILL.
+func TestRunChildStopsWhenForwardDies(t *testing.T) {
+	done := make(chan struct{})
+	ctx, cancel := childContext(context.Background(), done)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- runChild(ctx, []string{"sleep", "30"}, 45678) }()
+	close(done) // the supervisor gives up
+	select {
+	case err := <-errCh:
+		require.Error(t, err, "child must stop when the forward is gone")
+	case <-time.After(5 * time.Second):
+		t.Fatal("child outlived the forward")
+	}
+}
+
+func TestChildContextCancelsWithParent(t *testing.T) {
+	parent, stop := context.WithCancel(context.Background())
+	ctx, cancel := childContext(parent, make(chan struct{}))
+	defer cancel()
+	stop()
+	require.Eventually(t, func() bool { return ctx.Err() != nil },
+		2*time.Second, time.Millisecond)
+}
+
+// When the supervisor died under a failing child, the supervisor's error is
+// the root cause and outranks the child's exit status.
+func TestSupervisorErrOrPrioritizesSupervisorError(t *testing.T) {
+	serr := errors.New("reconnects exhausted")
+	childErr := errors.New("exit status 1")
+	require.ErrorIs(t, supervisorErrOr(childErr, serr), serr)
+	require.Equal(t, childErr, supervisorErrOr(childErr, nil))
+	require.NoError(t, supervisorErrOr(nil, nil))
 }
