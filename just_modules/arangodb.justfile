@@ -1607,21 +1607,13 @@ _setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup
         --role roles/storage.objectAdmin \
         --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=arangodb-backup-bucket-writer,description=Object admin limited to the ArangoDB restic backup bucket"
 
-    # Key creation is NOT idempotent — every run mints a new key and old ones
-    # keep working until deleted. Reuse an existing key file when present.
-    if [[ -f "$KEY_FILE" ]]; then
-        echo
-        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
-        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
-        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT"
-    else
-        mkdir -p "$(dirname "$KEY_FILE")"
-        gcloud iam service-accounts keys create "$KEY_FILE" \
-            --iam-account "$SA_EMAIL" \
-            --project "$PROJECT"
-        chmod 600 "$KEY_FILE"
-        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
-    fi
+    # Key converge is idempotent: a live key file whose private_key_id matches
+    # an upstream key is reused; a missing or dead one mints exactly once
+    # (written 0600). Prune accumulated keys with:
+    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
+    go run ./cmd/cluster-ops sa create-key \
+        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     echo
     echo "Next: just arangodb configure-backup-secrets --restic-password '<restic-pass>'"
@@ -1963,20 +1955,13 @@ grant-source-bucket-reader bucket="" source_project="" sa_name="arangodb-restic-
         --bucket "${SOURCE_BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
         --role roles/storage.objectViewer
 
-    # Key creation is NOT idempotent — every run mints a new key and old ones
-    # keep working until deleted. Reuse an existing key file when present.
-    if [[ -f "$KEY_FILE" ]]; then
-        echo
-        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
-        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
-        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $SOURCE_PROJECT"
-    else
-        mkdir -p "$(dirname "$KEY_FILE")"
-        gcloud iam service-accounts keys create "$KEY_FILE" \
-            --iam-account "$SA_EMAIL" \
-            --project "$SOURCE_PROJECT"
-        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
-    fi
+    # Key converge is idempotent: a live key file whose private_key_id matches
+    # an upstream key is reused; a missing or dead one mints exactly once
+    # (written 0600). Prune accumulated keys with:
+    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
+    go run ./cmd/cluster-ops sa create-key \
+        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     echo
     echo "Next: just arangodb configure-source-secrets --restic-password '<source pw>' --gcs-project '$SOURCE_PROJECT' --gcs-key-file '$KEY_FILE'"

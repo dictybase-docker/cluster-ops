@@ -14,9 +14,16 @@ import (
 
 // call-name constants keep goconst quiet across the recorded fakes.
 const (
-	callGet    = "get"
-	callCreate = "create"
-	callUpdate = "update"
+	callGet          = "get"
+	callCreate       = "create"
+	callUpdate       = "update"
+	callCount        = "count"
+	callPurge        = "purge"
+	callDeleteBucket = "delete-bucket"
+	callSet          = "set"
+	callEnsureSA     = "ensure-sa"
+	callListKeys     = "list-keys"
+	callCreateKey    = "create-key"
 )
 
 type fakeBucketAPI struct {
