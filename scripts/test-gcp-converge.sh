@@ -82,7 +82,7 @@ echo "=== 4. delete-state-bucket gates the delete on the typed confirmation ==="
 if printf 'no\n' | just gcp-cluster delete-state-bucket --cluster t1 --confirm yes >/dev/null 2>&1; then
     fail "delete-state-bucket deleted although the prompt was declined"
 fi
-grep -q "bucket delete" "${calls}" && fail "bucket delete ran although the prompt was declined: $(cat "${calls}")"
+grep -q -- "--confirm yes" "${calls}" && fail "a confirmed delete ran although the prompt was declined: $(cat "${calls}")"
 printf 'delete\n' | just gcp-cluster delete-state-bucket --cluster t1 --confirm yes >/dev/null 2>&1 \
     || fail "confirmed delete failed: $(cat "${calls}")"
 grep -q "bucket delete" "${calls}" || fail "bucket delete not invoked after confirmation: $(cat "${calls}")"

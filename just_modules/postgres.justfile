@@ -351,28 +351,13 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     [[ -n "$NOTES" ]] && echo "Inferred       : ${NOTES}"
     echo
 
-    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
-    if src_gcloud gcloud iam service-accounts describe "$SA_EMAIL" --project "$SRC_PROJECT" >/dev/null 2>&1; then
-        echo "Service account ${SA_EMAIL} already exists — continuing."
-    else
-        src_gcloud gcloud iam service-accounts create "$SA_NAME" \
-            --project "$SRC_PROJECT" \
-            --display-name "CloudNativePG cross-project backup reader"
-    fi
-
-    # Read-only, pinned to the source bucket. The bucket already exists here
-    # (the source cluster's backups live in it), so a bucket-level binding
-    # works — no project-level condition needed.
-    src_gcloud go run ./cmd/cluster-ops iam add-bucket-binding \
-        --bucket "${BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
-        --role roles/storage.objectViewer
-
-    # Key converge is idempotent: a live key file whose private_key_id matches
-    # an upstream key is reused; a missing or dead one mints exactly once
-    # (written 0600). Prune accumulated keys with:
-    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
-    src_gcloud go run ./cmd/cluster-ops sa create-key \
-        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    # SA + bucket objectViewer + key converge in the SOURCE project
+    # (idempotent; ordering SA → binding → key, stop-on-failure).
+    src_gcloud go run ./cmd/cluster-ops sa setup-reader \
+        --source-project "$SRC_PROJECT" --name "$SA_NAME" \
+        --display-name "CloudNativePG cross-project backup reader" \
+        --bucket "$BUCKET" --role roles/storage.objectViewer \
+        --key-file "$KEY_FILE"
     echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     # Store the recovery source on the cluster stack. deploy-cluster

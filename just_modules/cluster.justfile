@@ -643,16 +643,11 @@ delete-state-bucket cluster="" bucket_name="" confirm="no":
     echo "Bucket:  ${bucket_uri}"
     echo ""
 
-    if ! gcloud storage ls "${bucket_uri}" &>/dev/null; then
-        echo "Bucket does not exist or is not accessible: ${bucket_uri}"
-        echo "Nothing to delete."
-        exit 0
+    echo "--- Dry-run: classified probe + delete preview ---"
+    if ! go run ./cmd/cluster-ops bucket delete --bucket "${bucket_name}" --dry-run; then
+        echo "State bucket probe failed for ${bucket_uri} — see the error above."
+        exit 1
     fi
-
-    echo "--- Dry-run: objects that would be deleted ---"
-    gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | head -n 20 || true
-    object_count="$(gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | wc -l | tr -d ' ')"
-    echo "Approx object count: ${object_count}"
     echo ""
 
     if [ "{{ confirm }}" != "yes" ]; then

@@ -121,8 +121,9 @@ add-role-to-sa-shell project="" sa_name role:
     sa_email="{{ sa_name }}@${project_id}.iam.gserviceaccount.com"
 
     echo "Adding role {{ role }} to service account $sa_email in project ${project_id}"
-    go run ./cmd/cluster-ops iam add-binding \
-        --project "${project_id}" --member "serviceAccount:${sa_email}" --role {{ quote(role) }}
+    gcloud projects add-iam-policy-binding ${project_id} \
+        --member="serviceAccount:$sa_email" \
+        --role="{{ role }}"
     echo "Role {{ role }} successfully added to $sa_email"
 
     echo "Verifying role assignment..."
@@ -131,9 +132,7 @@ add-role-to-sa-shell project="" sa_name role:
         --format='table(bindings.role,bindings.members)' \
         --filter="bindings.members:$sa_email AND bindings.role:{{ role }}"
 
-# Rollback copy of the pre-migration assign-roles-to-sa (delete one release after migration).
-# Assign multiple roles to an existing service account from a file.
-# Usage: just gcp-role assign-roles-to-sa [--project <project-id>] --sa-name <name> --roles-file <path>
+# Rollback copy of the pre-migration assign-roles-to-sa (real gcloud body).
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
 [arg("sa_name", long="sa-name", short="s", help="Service account name")]
 [arg("roles_file", long="roles-file", short="r", help="File listing roles (one per line)")]
@@ -164,8 +163,9 @@ assign-roles-to-sa-shell project="" sa_name roles_file:
         [ -z "$role" ] && continue
 
         echo "Assigning role: $role"
-        go run ./cmd/cluster-ops iam add-binding \
-            --project "${project_id}" --member "serviceAccount:${sa_email}" --role "$role"
+        gcloud projects add-iam-policy-binding ${project_id} \
+            --member="serviceAccount:$sa_email" \
+            --role="$role"
     done < "{{ roles_file }}"
 
     echo "Finished assigning roles to $sa_email"
@@ -175,3 +175,4 @@ assign-roles-to-sa-shell project="" sa_name roles_file:
         --flatten="bindings[].members" \
         --format='table(bindings.role)' \
         --filter="bindings.members:$sa_email"
+

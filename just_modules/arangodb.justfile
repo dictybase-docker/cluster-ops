@@ -1939,28 +1939,13 @@ grant-source-bucket-reader bucket="" source_project="" sa_name="arangodb-restic-
     echo "Key file       : ${KEY_FILE}"
     echo
 
-    # Idempotent: probe first so a re-run does not spew a conflict ERROR.
-    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$SOURCE_PROJECT" >/dev/null 2>&1; then
-        echo "Service account already exists — continuing."
-    else
-        gcloud iam service-accounts create "$SA_NAME" \
-            --project "$SOURCE_PROJECT" \
-            --display-name "ArangoDB restic cross-project reader"
-    fi
-
-    # Least privilege: BUCKET-level objectViewer (list+get). Never grant
-    # project-wide storage.admin, and never grant write on the source project.
-    # Additive binding, so re-running is idempotent.
-    go run ./cmd/cluster-ops iam add-bucket-binding \
-        --bucket "${SOURCE_BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
-        --role roles/storage.objectViewer
-
-    # Key converge is idempotent: a live key file whose private_key_id matches
-    # an upstream key is reused; a missing or dead one mints exactly once
-    # (written 0600). Prune accumulated keys with:
-    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
-    go run ./cmd/cluster-ops sa create-key \
-        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    # SA + bucket objectViewer + key converge in the SOURCE project
+    # (idempotent; ordering SA → binding → key, stop-on-failure).
+    go run ./cmd/cluster-ops sa setup-reader \
+        --source-project "$SOURCE_PROJECT" --name "$SA_NAME" \
+        --display-name "ArangoDB restic cross-project reader" \
+        --bucket "$SOURCE_BUCKET" --role roles/storage.objectViewer \
+        --key-file "$KEY_FILE"
     echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     echo
