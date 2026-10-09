@@ -140,32 +140,23 @@ func forwardRunAction(c *cli.Context) error {
 			return struct{}{}, nil
 		})
 	}
-
-	result := F.Pipe2(
-		newClientsIOE(c),
-		IOE.Chain(func(clients kube.Clients) IOE.IOEither[error, *kube.Session] {
-			return kube.Forward(ctx, clients, forwardOpts(c))
-		}),
-		IOE.Chain(runChildOnSession),
-	)
-	return exitOrWrap("forward run", IOE.Fold(
-		IO.Of[error],
-		func(struct{}) IO.IO[error] { return IO.Of[error](nil) },
-	)(result)())
+	return openForward(c, ctx, forwardOpts(c), runChildOnSession, "forward run")
 }
 
 func forwardHoldAction(c *cli.Context) error {
 	ctx, stop := signalContext()
 	defer stop()
 
+	opts := forwardOpts(c)
+	// Set before Forward starts: the supervisor calls it from its own
+	// goroutine on the first dial and on every reconnect.
+	opts.OnReady = func(localPort int, pod string) {
+		fmt.Fprintf(os.Stderr, "Forwarding from 127.0.0.1:%d -> %s:%d (pod %s)\n",
+			localPort, opts.Service, opts.RemotePort, pod)
+	}
 	holdSession := func(sess *kube.Session) IOE.IOEither[error, struct{}] {
 		return IOE.TryCatchError(func() (struct{}, error) {
 			defer sess.Close()
-			opts := forwardOpts(c)
-			sess.OnReady = func(pod string) {
-				fmt.Fprintf(os.Stderr, "Forwarding from 127.0.0.1:%d -> %s:%d (pod %s)\n",
-					sess.LocalPort, opts.Service, opts.RemotePort, pod)
-			}
 			select {
 			case <-ctx.Done():
 				fmt.Fprintln(os.Stderr, "Shutting down…")
@@ -179,16 +170,27 @@ func forwardHoldAction(c *cli.Context) error {
 			}
 		})
 	}
+	return openForward(c, ctx, opts, holdSession, "forward hold")
+}
 
-	result := F.Pipe2(
+// openForward opens the forward, runs use on the live session and maps the
+// outcome to the CLI error contract.
+func openForward(
+	c *cli.Context,
+	ctx context.Context,
+	opts kube.ForwardOpts,
+	use func(*kube.Session) IOE.IOEither[error, struct{}],
+	prefix string,
+) error {
+	return exitOrWrap(prefix, F.Pipe3(
 		newClientsIOE(c),
 		IOE.Chain(func(clients kube.Clients) IOE.IOEither[error, *kube.Session] {
-			return kube.Forward(ctx, clients, forwardOpts(c))
+			return kube.Forward(ctx, clients, opts)
 		}),
-		IOE.Chain(holdSession),
-	)
-	return exitOrWrap("forward hold", IOE.Fold(
-		IO.Of[error],
-		func(struct{}) IO.IO[error] { return IO.Of[error](nil) },
-	)(result)())
+		IOE.Chain(use),
+		IOE.Fold(
+			IO.Of[error],
+			func(struct{}) IO.IO[error] { return IO.Of[error](nil) },
+		),
+	)())
 }
