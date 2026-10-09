@@ -16,6 +16,8 @@ import (
 // READY; FAILED is terminal, a missing image keeps waiting (creation is
 // async). Uses application default credentials (gcloud auth in recipes).
 func WaitMachineImage(ctx context.Context, project, name string, cfg waitfor.WaitConfig) error {
+	ctx, cancel := budgetContext(ctx, cfg)
+	defer cancel()
 	svc, err := compute.NewService(ctx, option.WithScopes(compute.ComputeScope))
 	if err != nil {
 		return &waitfor.Error{Kind: waitfor.KindAPI, Msg: fmt.Sprintf("compute client: %v", err)}
@@ -24,6 +26,25 @@ func WaitMachineImage(ctx context.Context, project, name string, cfg waitfor.Wai
 	if err != nil {
 		return err
 	}
+	return pollMachineImage(ctx, svc, project, name, cfg)
+}
+
+// budgetContext bounds the whole wait — polling loop and every API call — by
+// cfg.Timeout. The CLI's context only carries signals; without the budget a
+// hung API request could outlive --timeout indefinitely.
+func budgetContext(ctx context.Context, cfg waitfor.WaitConfig) (context.Context, context.CancelFunc) {
+	if cfg.Timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, cfg.Timeout)
+}
+
+// pollMachineImage runs the READY-wait loop against a compute service.
+func pollMachineImage(
+	ctx context.Context, svc *compute.Service, project, name string, cfg waitfor.WaitConfig,
+) error {
+	ctx, cancel := budgetContext(ctx, cfg)
+	defer cancel()
 	start := time.Now()
 	for {
 		status, err := describeMachineImage(ctx, svc, project, name)
@@ -54,6 +75,10 @@ func describeMachineImage(
 		if isNotFound(err) {
 			return "CREATING", nil
 		}
+		if ctx.Err() != nil {
+			return "", &waitfor.Error{Kind: waitfor.KindTimeout,
+				Msg: fmt.Sprintf("timed out waiting for machine image %s", name)}
+		}
 		return "", &waitfor.Error{Kind: waitfor.KindAPI,
 			Msg: fmt.Sprintf("describe machine image %s: %v", name, err)}
 	}
@@ -72,8 +97,9 @@ func resolveProject(ctx context.Context, project string) (string, error) {
 }
 
 // waitTick sleeps one interval, capped at the time left in cfg.Timeout, and
-// reports a timeout once the budget is spent. The budget comes from cfg, not
-// ctx: the CLI's context only carries signals.
+// reports a timeout once the budget is spent — including when the final
+// capped sleep is what spends it, so no extra poll sneaks past the deadline.
+// The budget comes from cfg, not ctx: the CLI's context only carries signals.
 func waitTick(ctx context.Context, cfg waitfor.WaitConfig, start time.Time, name string) error {
 	timedOut := &waitfor.Error{
 		Kind: waitfor.KindTimeout,
@@ -92,6 +118,9 @@ func waitTick(ctx context.Context, cfg waitfor.WaitConfig, start time.Time, name
 	}
 	select {
 	case <-time.After(sleep):
+		if cfg.Timeout > 0 && time.Since(start) >= cfg.Timeout {
+			return timedOut
+		}
 		return nil
 	case <-ctx.Done():
 		return timedOut
