@@ -38,17 +38,16 @@ func greenProbes() CreateProbes {
 	return CreateProbes{
 		LookPath: func(string) (string, error) { return "/usr/bin/tool", nil },
 		RunCapture: func(name string, args ...string) (string, error) {
-			switch name {
-			case "asdf":
+			if name == "asdf" {
 				return "kubectl 1.28.8 true\n", nil
-			case "gcloud":
-				if args[len(args)-1] == "account" {
-					return "kops-cluster-creator@proj-dcr.iam.gserviceaccount.com\n", nil
-				}
-				return "proj-dcr\n", nil
-			default:
-				return "", nil
 			}
+			return "", nil
+		},
+		ConfigValue: func(key string) (string, error) {
+			if key == "account" {
+				return "kops-cluster-creator@proj-dcr.iam.gserviceaccount.com\n", nil
+			}
+			return "proj-dcr\n", nil
 		},
 		Stat: func(path string) (fs.FileInfo, error) {
 			if strings.Contains(path, "nope") {
@@ -251,4 +250,38 @@ func TestCreateNodeImages(t *testing.T) {
 	require.Equal(t, preflight.StatusFail, got[8].Status)
 	require.Contains(t, got[8].Detail,
 		"image not found: image 'proj-dcr/img-1' not found in GCP project 'proj-dcr'")
+}
+
+// The shell-isolation check compares ACTUAL vs expected: the builder must
+// keep the operator's real CLOUDSDK_ACTIVE_CONFIG_NAME, never synthesize it.
+func TestBuildCreateEnvKeepsActualActiveConfig(t *testing.T) {
+	env := BuildCreateEnv(CreateEnvInputs{
+		Cluster: "dcr", Project: "proj-dcr",
+		ActiveConfig: "wrong-config",
+	})
+	require.Equal(t, "wrong-config", env.ActiveConfig,
+		"actual config must not be synthesized from the project")
+	require.Equal(t,
+		"kops-cluster-creator@proj-dcr.iam.gserviceaccount.com",
+		env.ExpectedSA)
+}
+
+func TestCreateShellIsolation(t *testing.T) {
+	env := greenEnv()
+	env.ActiveConfig = "wrong-config"
+	got := runCreate(env, greenProbes())
+	require.Equal(t, preflight.StatusFail, got[5].Status)
+	require.Contains(t, got[5].Detail,
+		"CLOUDSDK_ACTIVE_CONFIG_NAME is 'wrong-config'")
+
+	probes := greenProbes()
+	probes.ConfigValue = func(key string) (string, error) {
+		if key == "account" {
+			return "someoneelse@proj-dcr.iam.gserviceaccount.com\n", nil
+		}
+		return "proj-dcr\n", nil
+	}
+	got = runCreate(greenEnv(), probes)
+	require.Equal(t, preflight.StatusFail, got[5].Status)
+	require.Contains(t, got[5].Detail, "gcloud account is")
 }

@@ -28,6 +28,11 @@ cat > "${mock_bin}/go" <<'MOCK'
 echo "go $*" >> "${MOCK_CALLS_LOG}"
 exit "${MOCK_GO_EXIT:-0}"
 MOCK
+cat > "${mock_bin}/kops" <<'MOCK'
+#!/usr/bin/env bash
+echo "kops $*" >> "${MOCK_CALLS_LOG}"
+exit 1
+MOCK
 chmod +x "${mock_bin}"/*
 export MOCK_CALLS_LOG="${calls}"
 export PATH="${mock_bin}:${PATH}"
@@ -49,5 +54,24 @@ if MOCK_GO_EXIT=1 just gcp-cluster verify-cluster --cluster dcr-test-1 >/dev/nul
     fail "verify-cluster exited 0 although the check failed"
 fi
 echo "  exit propagated: PASS"
+
+echo "=== 3. no-arg invocation resolves the cluster-shell environment ==="
+: > "${calls}"
+CLUSTER_NAME=env-cluster just gcp-cluster verify-cluster >/dev/null 2>&1 \
+    || fail "verify-cluster with env only failed"
+grep -q -- "--cluster env-cluster" "${calls}" \
+    || fail "empty --cluster must resolve from CLUSTER_NAME: $(cat "${calls}")"
+echo "  env fallback: PASS"
+
+echo "=== 4. a failed kubeconfig export does not swallow the composite ==="
+: > "${calls}"
+if KUBECONFIG="" MOCK_GO_EXIT=1 just gcp-cluster verify-cluster --cluster dcr-test-1 >/dev/null 2>&1; then
+    fail "verify-cluster passed although kops is broken"
+fi
+grep -q "kops export kubeconfig" "${calls}" \
+    || fail "export-kubeconfig must be attempted: $(cat "${calls}")"
+grep -q "preflight verify-cluster" "${calls}" \
+    || fail "the composite must still run after a failed export: $(cat "${calls}")"
+echo "  export is best-effort: PASS"
 
 echo "cluster validation contract tests PASSED"

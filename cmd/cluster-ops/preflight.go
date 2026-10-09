@@ -340,7 +340,7 @@ func validateClusterAction(cltx *cli.Context) error {
 }
 
 func kopsValidateConfig(cltx *cli.Context) cluster.ValidateConfig {
-	clusterName := cltx.String(flagCluster)
+	clusterName := resolveName(cltx.String(flagCluster), envClusterName)
 	return cluster.ValidateConfig{
 		Cluster:  clusterName,
 		KopsName: cluster.DeriveKopsName(clusterName, cltx.String(flagKopsName)),
@@ -348,6 +348,16 @@ func kopsValidateConfig(cltx *cli.Context) cluster.ValidateConfig {
 		WaitTime: cltx.Int(flagWaitTime),
 		Validate: kopsValidate,
 	}
+}
+
+// resolveName mirrors the recipe's fallback: an empty flag falls back to the
+// environment — urfave treats an explicitly-passed empty value as set, so the
+// wrapper's placeholders must not shadow the cluster-shell environment.
+func resolveName(flagVal, envName string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv(envName)
 }
 
 func verifyClusterAction(cltx *cli.Context) error {
@@ -365,8 +375,8 @@ func verifyClusterAction(cltx *cli.Context) error {
 }
 
 func createAction(cltx *cli.Context) error {
-	clusterName := cltx.String(flagCluster)
-	project := cltx.String(flagProject)
+	clusterName := resolveName(cltx.String(flagCluster), envClusterName)
+	project := resolveName(cltx.String(flagProject), envProjectID)
 	root := cltx.String(flagRoot)
 	kopsName := cltx.String(flagKopsName)
 	if kopsName == "" {
@@ -405,14 +415,13 @@ func createAction(cltx *cli.Context) error {
 	}
 	return reportGate(
 		runGate(cluster.CheckCreate(cluster.CreateConfig{
-			Env: cluster.CreateEnv{
+			Env: cluster.BuildCreateEnv(cluster.CreateEnvInputs{
 				Cluster: clusterName, Project: project, KopsName: kopsName, State: state,
 				BucketURI: bucketURI, SSHPub: sshPub,
 				CredFile:     os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-				ActiveConfig: project + "-kops-cluster-creator",
-				ExpectedSA:   "kops-cluster-creator@" + project + ".iam.gserviceaccount.com",
+				ActiveConfig: os.Getenv("CLOUDSDK_ACTIVE_CONFIG_NAME"),
 				PinFile:      pinFile, Root: root,
-			},
+			}),
 			Probes: cluster.DefaultCreateProbes(project),
 		})),
 		"pre-flight cluster creation check failed",

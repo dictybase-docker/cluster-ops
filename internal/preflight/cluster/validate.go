@@ -15,6 +15,9 @@ import (
 // nameKopsValidate is the shared check name.
 const nameKopsValidate = "kops validate cluster"
 
+// testCluster is the shared fixture cluster name.
+const testCluster = "dcr"
+
 // KopsValidator runs `kops validate cluster` (injected for tests).
 type KopsValidator func(name, state string, waitMinutes int) (string, error)
 
@@ -36,6 +39,9 @@ func DeriveKopsName(cluster, override string) string {
 	if env := os.Getenv("KOPS_CLUSTER_NAME"); env != "" {
 		return env
 	}
+	if cluster == "" {
+		return ""
+	}
 	return cluster + "-k8s.local"
 }
 
@@ -47,6 +53,9 @@ func DeriveState(cluster, override string) string {
 	}
 	if env := os.Getenv("KOPS_STATE_STORE"); env != "" {
 		return strings.TrimSuffix(env, "/")
+	}
+	if cluster == "" {
+		return ""
 	}
 	return "gs://kops-state-" + cluster
 }

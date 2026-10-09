@@ -19,25 +19,25 @@ func runValidate(cfg ValidateConfig) []preflight.Result {
 // validateCfg seeds one fixed scenario; the validator is the variable under test.
 func validateCfg(validate KopsValidator) ValidateConfig {
 	return ValidateConfig{
-		Cluster: "dcr", KopsName: "kn", State: "gs://s", WaitTime: 20,
+		Cluster: testCluster, KopsName: "kn", State: "gs://s", WaitTime: 20,
 		Validate: validate,
 	}
 }
 
 func TestDeriveKopsName(t *testing.T) {
 	t.Setenv("KOPS_CLUSTER_NAME", "")
-	require.Equal(t, "dcr-k8s.local", DeriveKopsName("dcr", ""))
+	require.Equal(t, "dcr-k8s.local", DeriveKopsName(testCluster, ""))
 	t.Setenv("KOPS_CLUSTER_NAME", "env-name")
-	require.Equal(t, "env-name", DeriveKopsName("dcr", ""))
-	require.Equal(t, "explicit", DeriveKopsName("dcr", "explicit"))
+	require.Equal(t, "env-name", DeriveKopsName(testCluster, ""))
+	require.Equal(t, "explicit", DeriveKopsName(testCluster, "explicit"))
 }
 
 func TestDeriveState(t *testing.T) {
 	t.Setenv("KOPS_STATE_STORE", "")
-	require.Equal(t, "gs://kops-state-dcr", DeriveState("dcr", ""))
+	require.Equal(t, "gs://kops-state-dcr", DeriveState(testCluster, ""))
 	t.Setenv("KOPS_STATE_STORE", "gs://from-env/")
-	require.Equal(t, "gs://from-env", DeriveState("dcr", ""))
-	require.Equal(t, "gs://explicit", DeriveState("dcr", "gs://explicit/"))
+	require.Equal(t, "gs://from-env", DeriveState(testCluster, ""))
+	require.Equal(t, "gs://explicit", DeriveState(testCluster, "gs://explicit/"))
 }
 
 func TestKopsValidatePass(t *testing.T) {
@@ -83,4 +83,13 @@ func TestKopsValidateOtherError(t *testing.T) {
 	}))
 	require.Equal(t, preflight.StatusFail, got[0].Status)
 	require.Equal(t, "kops validate cluster error: state store unreachable", got[0].Detail)
+}
+
+// Nothing derivable without a cluster name: callers must omit --name/--state
+// (kops' own defaults) instead of passing "<empty>-k8s.local".
+func TestDeriveEmptyCluster(t *testing.T) {
+	t.Setenv("KOPS_CLUSTER_NAME", "")
+	t.Setenv("KOPS_STATE_STORE", "")
+	require.Empty(t, DeriveKopsName("", ""))
+	require.Empty(t, DeriveState("", ""))
 }
