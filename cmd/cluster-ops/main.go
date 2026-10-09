@@ -265,17 +265,22 @@ func reportConverge(res gcp.Result, mode gcp.MutationMode) error {
 	return nil
 }
 
-// loadLifecycleFile reads gcloud's --lifecycle-file YAML ("" = none).
-func loadLifecycleFile(path string) (storage.Lifecycle, error) {
+// loadLifecycleFile reads gcloud's --lifecycle-file YAML. It returns nil when
+// the flag is absent: existing bucket rules are then left untouched.
+func loadLifecycleFile(path string) (*storage.Lifecycle, error) {
 	if path == "" {
-		return storage.Lifecycle{}, nil
+		return nil, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return storage.Lifecycle{}, err
+		return nil, err
 	}
 	defer f.Close()
-	return gcp.ParseGcloudLifecycle(f)
+	parsed, err := gcp.ParseGcloudLifecycle(f)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func printJSONLine(v any) error {
@@ -546,6 +551,7 @@ func runSetupReader(cfg gcp.CrossProjectReaderConfig, mode gcp.MutationMode) ([]
 	if err != nil {
 		return nil, err
 	}
+	defer client.Close()
 	forced := gcp.SetupCrossProjectReader(
 		gcp.IAMServiceAccountAPI{Service: keySvc},
 		gcp.StorageBucketIAM{Client: client},

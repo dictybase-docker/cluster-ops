@@ -15,6 +15,7 @@ import (
 type fakeProjectIAM struct {
 	policy  *crm.Policy
 	calls   []string
+	getErrs []error   // popped per GetPolicy call (first non-nil is returned once)
 	setErrs []error   // popped per SetPolicy call (first non-nil is returned once)
 	log     *[]string // optional shared sequence log
 }
@@ -23,6 +24,13 @@ func (f *fakeProjectIAM) GetPolicy(context.Context, string) (*crm.Policy, error)
 	f.calls = append(f.calls, callGet)
 	if f.log != nil {
 		*f.log = append(*f.log, callGet)
+	}
+	if len(f.getErrs) > 0 {
+		err := f.getErrs[0]
+		f.getErrs = f.getErrs[1:]
+		if err != nil {
+			return nil, err
+		}
 	}
 	return f.policy, nil
 }
@@ -123,4 +131,29 @@ func TestRetryOnConflictPredicate(t *testing.T) {
 	require.True(t, retryOnConflict(conflict))
 	ok := E.Of[error](Result{Action: ActionUpdated})
 	require.False(t, retryOnConflict(ok))
+}
+
+// Mirrors the bucket-IAM rule: a CONDITIONAL binding never satisfies or
+// absorbs the plain member (the first draft matched by role only).
+func TestProjectIAMBindingConditionalSameRole(t *testing.T) {
+	cond := &crm.Expr{Expression: "resource.name.startsWith('projects/_/buckets/b')"}
+	api := &fakeProjectIAM{policy: &crm.Policy{Etag: testEtag, Bindings: []*crm.Binding{{
+		Role:      testRole,
+		Members:   []string{testMember},
+		Condition: cond,
+	}}}}
+
+	got, err := E.UnwrapError(ConvergeProjectIAMBinding(api, testProject, testMember, testRole, MutationMode{})())
+	require.NoError(t, err)
+	require.Equal(t, ActionUpdated, got.Action,
+		"conditional binding must not satisfy the plain grant")
+
+	require.Len(t, api.policy.Bindings, 2)
+	conditional := api.policy.Bindings[0]
+	require.NotNil(t, conditional.Condition, "conditional binding preserved")
+	require.Equal(t, []string{testMember}, conditional.Members,
+		"conditional binding must not absorb the plain member")
+	require.Nil(t, api.policy.Bindings[1].Condition)
+	require.Equal(t, []string{testMember}, api.policy.Bindings[1].Members,
+		"unconditional binding carries the member")
 }
