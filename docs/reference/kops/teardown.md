@@ -46,6 +46,8 @@ just gcp-cluster delete-state-bucket
 just gcp-cluster delete-state-bucket --confirm yes
 ```
 
+The recipe runs `cluster-ops bucket delete --confirm yes` for the purge (objects and noncurrent versions before the bucket delete); see `cluster-ops bucket delete --help` for the flag table (including `--dry-run`).
+
 Bucket name defaults to `kops-state-<cluster-name>` derived from `CLUSTER_NAME` (same convention `create-state-bucket` uses). Override with `--bucket-name <bucket|gs://bucket>` or the `BUCKET_NAME` env var.
 
 > Deleting the bucket discards every manifest version kops stored. The Git bundle still lets you rebuild, but the state history is gone permanently.

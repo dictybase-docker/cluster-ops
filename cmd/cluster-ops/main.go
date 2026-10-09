@@ -19,6 +19,7 @@ import (
 const (
 	projectFlag = "project"
 	nameFlag    = "name"
+	bucketFlag  = "bucket"
 	createCmd   = "create"
 )
 
@@ -177,7 +178,7 @@ func bucketCommand() *cli.Command {
 						Required: true,
 					},
 					&cli.StringFlag{
-						Name: "bucket", Aliases: []string{"b"},
+						Name: bucketFlag, Aliases: []string{"b"},
 						Required: true,
 					},
 					&cli.IntFlag{
@@ -199,12 +200,23 @@ func bucketCommand() *cli.Command {
 				Action: bucketConvergeAction,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
-					&cli.StringFlag{Name: "bucket", Aliases: []string{"b"}, Required: true},
+					&cli.StringFlag{Name: bucketFlag, Aliases: []string{"b"}, Required: true},
 					&cli.StringFlag{Name: "location", Value: "US"},
 					&cli.BoolFlag{Name: "versioning", Value: true},
 					&cli.StringFlag{Name: "lifecycle-file"},
 					&cli.StringFlag{Name: "cred-file"},
 					&cli.BoolFlag{Name: "dry-run"},
+				},
+			},
+			{
+				Name:   "delete",
+				Usage:  "Purge objects/versions and delete a bucket (destructive)",
+				Action: bucketDeleteAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: bucketFlag, Aliases: []string{"b"}, Required: true},
+					&cli.StringFlag{Name: "confirm", Usage: "Pass exactly 'yes' to delete"},
+					&cli.BoolFlag{Name: "dry-run"},
+					&cli.StringFlag{Name: "cred-file"},
 				},
 			},
 		},
@@ -219,7 +231,7 @@ func bucketConvergeAction(cltx *cli.Context) error {
 		return err
 	}
 	cfg := gcp.BucketConfig{
-		Name:       cltx.String("bucket"),
+		Name:       cltx.String(bucketFlag),
 		ProjectID:  cltx.String(projectFlag),
 		Location:   cltx.String("location"),
 		Versioning: cltx.Bool("versioning"),
@@ -276,6 +288,41 @@ func closeStorageClient(c *storage.Client) IOE.IOEither[error, struct{}] {
 	return IOE.TryCatchError(func() (struct{}, error) {
 		return struct{}{}, c.Close()
 	})
+}
+
+// bucketDeleteAction purges and deletes a state bucket. DryRun reports only;
+// deletion requires --confirm yes (the wrapper's prompt converts to it).
+func bucketDeleteAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{
+		DryRun:    cltx.Bool("dry-run"),
+		Confirmed: cltx.String("confirm") == "yes",
+	}
+	res, err := runBucketDelete(cltx.String(bucketFlag), cltx.String("cred-file"), mode)
+	if err != nil {
+		return err
+	}
+	if mode.DryRun {
+		fmt.Fprintf(os.Stderr, "[DRY RUN] %s %s\n", res.Name, res.Action)
+		return printJSONLine(res)
+	}
+	fmt.Printf("%s %s\n", res.Name, res.Action)
+	return nil
+}
+
+func runBucketDelete(name, credFile string, mode gcp.MutationMode) (gcp.Result, error) {
+	forced := F.Pipe1(
+		deleteWithClient(name, mode),
+		IOE.WithResource[gcp.Result](gcp.NewStorageClientFrom(credFile), closeStorageClient),
+	)()
+	return E.UnwrapError(forced)
+}
+
+func deleteWithClient(
+	name string, mode gcp.MutationMode,
+) func(*storage.Client) IOE.IOEither[error, gcp.Result] {
+	return func(c *storage.Client) IOE.IOEither[error, gcp.Result] {
+		return gcp.DeleteBucketState(gcp.StorageDeleteAPI{Client: c}, name, mode)
+	}
 }
 
 // ---------- env ----------
