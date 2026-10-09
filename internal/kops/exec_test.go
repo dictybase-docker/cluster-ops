@@ -50,7 +50,7 @@ func TestRunKopsCaptureIOE(t *testing.T) {
 }
 
 func TestBuildKopsArgs(t *testing.T) {
-	args := []string{"create", "cluster", "--name", "test.k8s.local", "--state", "gs://bucket/", "--project", "proj"}
+	args := []string{"create", cmdCluster, "--name", "test.k8s.local", "--state", "gs://bucket/", "--project", "proj"}
 	expected := "kops create cluster --name test.k8s.local --state gs://bucket/ --project proj"
 	actual := fmt.Sprintf("kops %s", joinArgs(args))
 	if actual != expected {

@@ -328,6 +328,13 @@ validate-hardening-shell:
 validate-cluster cluster="" kops_name="" state="" waittime="20":
     #!/usr/bin/env bash
     set -euo pipefail
+    go run ./cmd/cluster-ops preflight validate-cluster \
+        --cluster {{ quote(cluster) }} --kops-name {{ quote(kops_name) }} --state {{ quote(state) }} --waittime {{ quote(waittime) }}
+
+# Rollback copy of the pre-migration validate-cluster (delete one release after migration).
+validate-cluster-shell cluster="" kops_name="" state="" waittime="20":
+    #!/usr/bin/env bash
+    set -euo pipefail
     c="{{ cluster }}"
     [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
     kn="{{ kops_name }}"
