@@ -55,6 +55,12 @@ const (
 	flagKopsName   = "kops-name"
 	flagState      = "state"
 	flagWaitTime   = "waittime"
+	flagProject    = "project"
+	flagBucketName = "bucket-name"
+	flagSSHKey     = "ssh-key"
+	flagRoot       = "root"
+	envClusterName = "CLUSTER_NAME"
+	envProjectID   = "PROJECT_ID"
 	envKubeconfig  = "KUBECONFIG"
 	cmdForward     = "forward"
 	cmdForwardRun  = "run"
@@ -86,7 +92,7 @@ func clusterFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name: "cluster", Aliases: []string{"c"},
-			EnvVars: []string{"CLUSTER_NAME"},
+			EnvVars: []string{envClusterName},
 			Usage:   "Cluster name (defaults to CLUSTER_NAME)",
 		},
 		&cli.StringFlag{
@@ -137,6 +143,20 @@ func preflightCommand() *cli.Command {
 				Usage:  "kops validate cluster with classified errors",
 				Action: validateClusterAction,
 				Flags:  kopsValidateFlags(),
+			},
+			{
+				Name:   "create",
+				Usage:  "Pre-flight cluster creation gate (env, toolchain, creds, manifests, state store)",
+				Action: createAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagCluster, EnvVars: []string{envClusterName}, Usage: "Cluster name"},
+					&cli.StringFlag{Name: flagProject, EnvVars: []string{envProjectID}, Usage: "GCP project id"},
+					&cli.StringFlag{Name: flagKopsName, Usage: "Full kops DNS name"},
+					&cli.StringFlag{Name: flagState, Usage: "Kops state URI"},
+					&cli.StringFlag{Name: flagBucketName, Usage: "State bucket name"},
+					&cli.StringFlag{Name: flagSSHKey, Usage: "SSH public key path"},
+					&cli.StringFlag{Name: flagRoot, Usage: "Repo root (manifest bundle + git checks)"},
+				},
 			},
 			{
 				Name:   "verify-cluster",
@@ -291,7 +311,11 @@ func hardeningAction(cltx *cli.Context) error {
 // kopsValidateFlags is the shared validate-cluster/verify-cluster flag set.
 func kopsValidateFlags() []cli.Flag {
 	return []cli.Flag{
-		&cli.StringFlag{Name: flagCluster, EnvVars: []string{"CLUSTER_NAME"}, Usage: "Cluster name"},
+		&cli.StringFlag{
+			Name:    flagCluster,
+			EnvVars: []string{envClusterName},
+			Usage:   "Cluster name (defaults to CLUSTER_NAME)",
+		},
 		&cli.StringFlag{Name: flagKopsName, Usage: "Full kops DNS name " +
 			"(defaults to KOPS_CLUSTER_NAME or <cluster>-k8s.local)"},
 		&cli.StringFlag{Name: flagState, Usage: "Kops state URI " +
@@ -337,6 +361,61 @@ func verifyClusterAction(cltx *cli.Context) error {
 		})),
 		"cluster verification failed",
 		"\nAll validations passed.",
+	)
+}
+
+func createAction(cltx *cli.Context) error {
+	clusterName := cltx.String(flagCluster)
+	project := cltx.String(flagProject)
+	root := cltx.String(flagRoot)
+	kopsName := cltx.String(flagKopsName)
+	if kopsName == "" {
+		kopsName = os.Getenv("KOPS_CLUSTER_NAME")
+	}
+	if kopsName == "" {
+		kopsName = clusterName + "-k8s.local"
+	}
+	bn := cltx.String(flagBucketName)
+	if bn == "" {
+		bn = os.Getenv("BUCKET_NAME")
+	}
+	if bn == "" {
+		bn = "kops-state-" + clusterName
+	}
+	bn = strings.TrimSuffix(strings.TrimPrefix(bn, "gs://"), "/")
+	bucketURI := "gs://" + bn
+	state := cltx.String(flagState)
+	if state == "" {
+		state = os.Getenv("KOPS_STATE_STORE")
+	}
+	if state == "" {
+		state = bucketURI
+	}
+	state = strings.TrimSuffix(state, "/")
+	sshPub := cltx.String(flagSSHKey)
+	if sshPub == "" {
+		sshPub = os.Getenv("SSH_KEY")
+	}
+	if sshPub == "" {
+		sshPub = filepath.Join(root, "credentials", project, "k8sVM.pub")
+	}
+	pinFile := os.Getenv("ASDF_DEFAULT_TOOL_VERSIONS_FILENAME")
+	if pinFile == "" {
+		pinFile = ".tool-versions"
+	}
+	return reportGate(
+		runGate(cluster.CheckCreate(cluster.CreateConfig{
+			Env: cluster.CreateEnv{
+				Cluster: clusterName, Project: project, KopsName: kopsName, State: state,
+				BucketURI: bucketURI, SSHPub: sshPub,
+				CredFile:     os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+				ActiveConfig: project + "-kops-cluster-creator",
+				ExpectedSA:   "kops-cluster-creator@" + project + ".iam.gserviceaccount.com",
+				PinFile:      pinFile, Root: root,
+			},
+			Probes: cluster.DefaultCreateProbes(project),
+		})),
+		"pre-flight cluster creation check failed",
 	)
 }
 
