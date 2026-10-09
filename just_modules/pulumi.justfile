@@ -53,6 +53,56 @@ pulumi-gcs-setup sa_json_path="" gcs_bucket="" lifecycle_config="" location="us-
     echo "Setting up GCS bucket: ${bucket}"
     echo "Location: {{ location }}"
 
+    lifecycle_args=()
+    [ -n "{{ lifecycle_config }}" ] && lifecycle_args=(--lifecycle-file {{ quote(lifecycle_config) }})
+    go run ./cmd/cluster-ops bucket converge \
+        --bucket "${bucket}" --project "$project_id" --location {{ quote(location) }} \
+        --versioning true \
+        ${lifecycle_args[@]+"${lifecycle_args[@]}"}
+
+    pulumi login "gs://${bucket}"
+
+    echo "Pulumi has been set up to use GCS bucket ${bucket} as the backend in location {{ location }} with object versioning enabled."
+    if [ -n "{{ lifecycle_config }}" ]; then
+        echo "Lifecycle configuration has been applied from {{ lifecycle_config }}."
+    fi
+
+# Rollback copy of the pre-migration pulumi-gcs-setup (delete one release after migration).
+pulumi-gcs-setup-shell sa_json_path="" gcs_bucket="" lifecycle_config="" location="us-central1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud config set disable_prompts true
+
+    sa_path="{{ sa_json_path }}"
+    if [ -z "$sa_path" ]; then
+        sa_path="${PULUMI_GCP_CREDENTIALS:-${GOOGLE_APPLICATION_CREDENTIALS:-}}"
+    fi
+    if [ -z "$sa_path" ]; then
+        echo "ERROR: Service account key required — set PULUMI_GCP_CREDENTIALS or pass --sa-json-path."
+        exit 1
+    fi
+    if [ ! -f "$sa_path" ]; then
+        echo "ERROR: Service account key file not found: $sa_path"
+        exit 1
+    fi
+    full_sa_json_path=$(realpath "$sa_path")
+
+    export GOOGLE_APPLICATION_CREDENTIALS="$full_sa_json_path"
+
+    project_id=$(jq -r '.project_id' "$full_sa_json_path")
+
+    bucket="{{ gcs_bucket }}"
+    if [ -z "$bucket" ] && [ -n "${PULUMI_BACKEND_URL:-}" ]; then
+        bucket="${PULUMI_BACKEND_URL#gs://}"
+    fi
+    if [ -z "$bucket" ]; then
+        bucket="pulumi-state-${project_id}"
+    fi
+
+    echo "Using project: $project_id"
+    echo "Setting up GCS bucket: ${bucket}"
+    echo "Location: {{ location }}"
+
     if ! gcloud storage buckets describe "gs://${bucket}" --project="$project_id" &>/dev/null; then
         echo "Bucket does not exist. Creating it..."
         gcloud storage buckets create "gs://${bucket}" --project="$project_id" --location="{{ location }}"
