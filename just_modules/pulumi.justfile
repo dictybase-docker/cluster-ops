@@ -276,6 +276,15 @@ create-multiple-resources stack from-stack resources_file:
 check-tools:
     #!/usr/bin/env bash
     set -uo pipefail
+    if ! go run ./cmd/cluster-ops preflight tools; then
+        echo "Install with: just install-tool --name <tool> --version <version>" >&2
+        exit 1
+    fi
+
+# Rollback copy of the pre-migration check-tools (delete one release after migration).
+check-tools-shell:
+    #!/usr/bin/env bash
+    set -uo pipefail
     "{{ justfile_directory() }}/scripts/pulumi/check-tools.sh"
 
 # Verify Pulumi backend wiring (env vars, state bucket, KMS key, active login).

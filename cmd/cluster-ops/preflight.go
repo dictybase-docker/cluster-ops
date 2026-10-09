@@ -14,6 +14,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/backend"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/datastore"
+	"github.com/dictybase-docker/cluster-ops/internal/preflight/toolchain"
 	"github.com/dictybase-docker/cluster-ops/internal/registry"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
@@ -122,6 +123,11 @@ func preflightCommand() *cli.Command {
 				},
 			},
 			{
+				Name:   "tools",
+				Usage:  "Local toolchain binaries and versions",
+				Action: toolsAction,
+			},
+			{
 				Name:   "deployer-access",
 				Usage:  "Deployer key project, cluster access via kops state, KMS round-trip",
 				Action: deployerAccessAction,
@@ -199,6 +205,14 @@ func reportGate(results []preflight.Result, failMsg string, okLines ...string) e
 
 func runGate(checks []IO.IO[preflight.Result]) []preflight.Result {
 	return preflight.Run(checks)
+}
+
+func toolsAction(_ *cli.Context) error {
+	return reportGate(
+		runGate(toolchain.CheckTools(toolchain.DefaultToolsConfig())),
+		"toolchain check failed",
+		"\nAll required tools present.",
+	)
 }
 
 // ---------- deployer-access / deploy-credentials ----------
