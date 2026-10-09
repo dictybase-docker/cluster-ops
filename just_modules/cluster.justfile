@@ -667,6 +667,63 @@ delete-state-bucket cluster="" bucket_name="" confirm="no":
         exit 1
     fi
 
+    go run ./cmd/cluster-ops bucket delete --bucket "${bucket_name}" --confirm yes
+    echo ""
+    echo "State bucket deleted: ${bucket_uri}"
+
+# Rollback copy of the pre-migration delete-state-bucket (delete one release after migration).
+delete-state-bucket-shell cluster="" bucket_name="" confirm="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    bucket="{{ bucket_name }}"
+    [ -z "${bucket}" ] && bucket="${BUCKET_NAME:-}"
+    if [ -z "${bucket}" ] && [ -n "${c}" ]; then
+        bucket="kops-state-${c}"
+    fi
+
+    case "${bucket}" in
+        gs://*) bucket_uri="${bucket}"; bucket_name="${bucket#gs://}" ;;
+        *)       bucket_uri="gs://${bucket}"; bucket_name="${bucket}" ;;
+    esac
+    bucket_name="${bucket_name%/}"
+    bucket_uri="gs://${bucket_name}"
+
+    if [ -z "${bucket_name}" ]; then
+        echo "ERROR: bucket name required. Pass --bucket-name <name> or --cluster <name> (or set BUCKET_NAME / CLUSTER_NAME)."
+        exit 1
+    fi
+
+    echo "=== State bucket deletion ==="
+    echo "Bucket:  ${bucket_uri}"
+    echo ""
+
+    if ! gcloud storage ls "${bucket_uri}" &>/dev/null; then
+        echo "Bucket does not exist or is not accessible: ${bucket_uri}"
+        echo "Nothing to delete."
+        exit 0
+    fi
+
+    echo "--- Dry-run: objects that would be deleted ---"
+    gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | head -n 20 || true
+    object_count="$(gcloud storage ls --recursive "${bucket_uri}" 2>/dev/null | wc -l | tr -d ' ')"
+    echo "Approx object count: ${object_count}"
+    echo ""
+
+    if [ "{{ confirm }}" != "yes" ]; then
+        echo "Dry-run complete. Nothing deleted."
+        echo "To permanently delete the bucket and all objects/versions, run with --confirm yes."
+        exit 0
+    fi
+
+    read -r -p "Type 'delete' to confirm permanent deletion: " answer
+    if [ "${answer}" != "delete" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+
     gcloud storage rm --recursive "${bucket_uri}"
     echo ""
     echo "State bucket deleted: ${bucket_uri}"
