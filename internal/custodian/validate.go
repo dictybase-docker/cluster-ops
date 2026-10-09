@@ -37,6 +37,19 @@ type HACheck struct {
 	Message string `json:"message"`
 }
 
+// RunHAChecks runs the full HA topology suite against an existing client.
+func RunHAChecks(ctx context.Context, cs kubernetes.Interface) []HACheck {
+	return []HACheck{
+		CheckClusterAutoscaler(ctx, cs),
+		CheckNodeProblemDetector(ctx, cs),
+		checkMetricsServer(ctx, cs),
+		CheckCertManager(ctx, cs),
+		CheckNodeLocalDNS(ctx, cs),
+		CheckControlPlaneZoneSpread(ctx, cs),
+		CheckBatchNodeTaints(ctx, cs),
+	}
+}
+
 // ValidateHA runs the full HA topology validation suite.
 func ValidateHA(kubeconfig string) ([]HACheck, error) {
 	cs, _, err := createKubernetesClient(kubeconfig)
@@ -47,21 +60,13 @@ func ValidateHA(kubeconfig string) ([]HACheck, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	checks := []HACheck{
-		checkClusterAutoscaler(ctx, cs),
-		checkNodeProblemDetector(ctx, cs),
-		checkMetricsServer(ctx, cs),
-		checkCertManager(ctx, cs),
-		checkNodeLocalDNS(ctx, cs),
-		checkControlPlaneZoneSpread(ctx, cs),
-		checkBatchNodeTaints(ctx, cs),
-	}
-	return checks, nil
+	return RunHAChecks(ctx, cs), nil
 }
 
 // ── Autoscaler ──
 
-func checkClusterAutoscaler(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckClusterAutoscaler validates the cluster-autoscaler pods.
+func CheckClusterAutoscaler(ctx context.Context, cs kubernetes.Interface) HACheck {
 	return F.Pipe1(
 		listPods(ctx, cs, "kube-system", "app=cluster-autoscaler"),
 		E.Fold(
@@ -75,7 +80,8 @@ func checkClusterAutoscaler(ctx context.Context, cs *kubernetes.Clientset) HAChe
 
 // ── Node Problem Detector ──
 
-func checkNodeProblemDetector(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckNodeProblemDetector validates the node-problem-detector DaemonSet.
+func CheckNodeProblemDetector(ctx context.Context, cs kubernetes.Interface) HACheck {
 	return F.Pipe1(
 		getDaemonSet(ctx, cs, "kube-system", "node-problem-detector"),
 		E.Fold(
@@ -91,7 +97,7 @@ func checkNodeProblemDetector(ctx context.Context, cs *kubernetes.Clientset) HAC
 
 // ── Metrics Server ──
 
-func checkMetricsServer(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+func checkMetricsServer(ctx context.Context, cs kubernetes.Interface) HACheck {
 	return F.Pipe1(
 		listPods(ctx, cs, "kube-system", "k8s-app=metrics-server"),
 		E.Fold(
@@ -105,7 +111,7 @@ func checkMetricsServer(ctx context.Context, cs *kubernetes.Clientset) HACheck {
 
 // ── cert-manager ──
 
-func checkCertManagerNamespace(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+func checkCertManagerNamespace(ctx context.Context, cs kubernetes.Interface) HACheck {
 	return F.Pipe1(
 		listPods(ctx, cs, "cert-manager", ""),
 		E.Fold(
@@ -119,7 +125,8 @@ func checkCertManagerNamespace(ctx context.Context, cs *kubernetes.Clientset) HA
 	)
 }
 
-func checkCertManager(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckCertManager validates cert-manager pods (kube-system or cert-manager).
+func CheckCertManager(ctx context.Context, cs kubernetes.Interface) HACheck {
 	// kOps deploys cert-manager into kube-system; standalone Helm installs into cert-manager.
 	return F.Pipe1(
 		listPods(ctx, cs, "kube-system", "app.kubernetes.io/instance=cert-manager"),
@@ -139,7 +146,8 @@ func checkCertManager(ctx context.Context, cs *kubernetes.Clientset) HACheck {
 
 // ── Node Local DNS ──
 
-func checkNodeLocalDNS(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckNodeLocalDNS validates the node-local-dns pods.
+func CheckNodeLocalDNS(ctx context.Context, cs kubernetes.Interface) HACheck {
 	return F.Pipe1(
 		listPods(ctx, cs, "kube-system", "k8s-app=node-local-dns"),
 		E.Fold(
@@ -153,7 +161,8 @@ func checkNodeLocalDNS(ctx context.Context, cs *kubernetes.Clientset) HACheck {
 
 // ── Control Plane Zone Spread ──
 
-func checkControlPlaneZoneSpread(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckControlPlaneZoneSpread validates control-plane zone spread.
+func CheckControlPlaneZoneSpread(ctx context.Context, cs kubernetes.Interface) HACheck {
 	nodes, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{
 		LabelSelector: "node-role.kubernetes.io/control-plane",
 	})
@@ -176,7 +185,8 @@ func checkControlPlaneZoneSpread(ctx context.Context, cs *kubernetes.Clientset) 
 
 // ── Batch Node Taints ──
 
-func checkBatchNodeTaints(ctx context.Context, cs *kubernetes.Clientset) HACheck {
+// CheckBatchNodeTaints validates the spot taint on batch nodes.
+func CheckBatchNodeTaints(ctx context.Context, cs kubernetes.Interface) HACheck {
 	nodes, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{
 		LabelSelector: "pool=batch",
 	})
@@ -208,7 +218,7 @@ func checkBatchNodeTaints(ctx context.Context, cs *kubernetes.Clientset) HACheck
 // listPods returns an Either: Left error from the API call, Right list of pods.
 func listPods(
 	ctx context.Context,
-	cs *kubernetes.Clientset,
+	cs kubernetes.Interface,
 	namespace, labelSelector string,
 ) E.Either[error, []corev1.Pod] {
 	return IOE.TryCatchError(func() ([]corev1.Pod, error) {
@@ -225,7 +235,7 @@ func listPods(
 // getDaemonSet returns an Either: Left error, Right daemonset.
 func getDaemonSet(
 	ctx context.Context,
-	cs *kubernetes.Clientset,
+	cs kubernetes.Interface,
 	namespace, name string,
 ) E.Either[error, *appsv1.DaemonSet] {
 	return IOE.TryCatchError(func() (*appsv1.DaemonSet, error) {

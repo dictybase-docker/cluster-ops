@@ -14,6 +14,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/backend"
+	cluster "github.com/dictybase-docker/cluster-ops/internal/preflight/cluster"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/datastore"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/toolchain"
 	"github.com/dictybase-docker/cluster-ops/internal/registry"
@@ -124,6 +125,12 @@ func preflightCommand() *cli.Command {
 					},
 					registryDirFlag(),
 				},
+			},
+			{
+				Name:   "hardening",
+				Usage:  "Post-provisioning hardening: autoscaler, NPD, metrics-server, cert-manager, node-local DNS",
+				Action: hardeningAction,
+				Flags:  []cli.Flag{kubeconfigFlag()},
 			},
 			{
 				Name:   "storageclass",
@@ -245,6 +252,21 @@ func storageclassAction(cltx *cli.Context) error {
 		})),
 		"storageclass check failed",
 		"\nAll StorageClass checks passed.",
+	)
+}
+
+func hardeningAction(cltx *cli.Context) error {
+	clients, err := newClientsValue(cltx)
+	if err != nil {
+		return err
+	}
+	return reportGate(
+		runGate(cluster.CheckHardening(cluster.HardeningConfig{
+			Clients: clients,
+			Metrics: cluster.RestMetricsProbe(clients),
+		})),
+		"hardening check failed",
+		"\nAll 5 hardening components running.",
 	)
 }
 
