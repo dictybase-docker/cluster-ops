@@ -66,6 +66,7 @@ func runKopsValidate(name, state string, waitMinutes int) (string, error) {
 		time.Duration(waitMinutes)*time.Minute+validateGrace,
 	)
 	defer cancel()
+	//nolint:gosec // G204: fixed `kops validate cluster` argv from typed inputs
 	out, err := exec.CommandContext(ctx, "kops", validateClusterArgs(name, state, waitMinutes)...).Output()
 	if err != nil {
 		if ctx.Err() != nil {

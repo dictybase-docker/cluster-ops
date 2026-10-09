@@ -2,13 +2,16 @@ package custodian
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // The exported checks accept kubernetes.Interface so preflight tests can use
@@ -143,4 +146,27 @@ func TestValidatePodsRunning(t *testing.T) {
 			}
 		})
 	}
+}
+
+// API failures are not "component missing": only a typed NotFound may say
+// "daemonset not found"; outages keep statusError with the cause.
+func TestComponentAPIErrorsAreNotMissing(t *testing.T) {
+	cs := k8sfake.NewSimpleClientset()
+	cs.PrependReactor("get", "daemonsets", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("connection refused")
+	})
+	npd := CheckNodeProblemDetector(context.Background(), cs)
+	require.Equal(t, statusError, npd.Status)
+	require.Contains(t, npd.Message, "connection refused")
+
+	cs2 := k8sfake.NewSimpleClientset()
+	cs2.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("connection refused")
+	})
+	cm := CheckCertManager(context.Background(), cs2)
+	require.Equal(t, statusError, cm.Status)
+
+	missing := CheckNodeProblemDetector(context.Background(), k8sfake.NewSimpleClientset())
+	require.Equal(t, statusFail, missing.Status)
+	require.Equal(t, "daemonset not found", missing.Message)
 }

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
@@ -14,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 func podRunning(name string, labels map[string]string) *corev1.Pod {
@@ -99,4 +103,36 @@ func TestHardeningMetricsAPIError(t *testing.T) {
 	})
 	require.Equal(t, preflight.StatusFail, got[2].Status)
 	require.Equal(t, "metrics API error: probe: connection refused", got[2].Detail)
+}
+
+// The metrics probe must be bounded and must not call every failure "not
+// reporting": only unavailable statuses get that class (Review Focus 2, 5).
+func TestRestMetricsProbeClasses(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+	err := RestMetricsProbe(kube.Clients{Rest: &rest.Config{Host: ts.URL}})(context.Background())
+	require.Error(t, err)
+	require.NotErrorIs(t, err, errMetricsNotReporting)
+	require.Contains(t, err.Error(), "403")
+
+	notFound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer notFound.Close()
+	err = RestMetricsProbe(kube.Clients{Rest: &rest.Config{Host: notFound.URL}})(context.Background())
+	require.ErrorIs(t, err, errMetricsNotReporting)
+
+	hung := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer hung.Close()
+	restore := metricProbeTimeout
+	metricProbeTimeout = 50 * time.Millisecond
+	defer func() { metricProbeTimeout = restore }()
+	start := time.Now()
+	err = RestMetricsProbe(kube.Clients{Rest: &rest.Config{Host: hung.URL}})(context.Background())
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 2*time.Second, "probe must be bounded")
 }

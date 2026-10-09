@@ -40,6 +40,7 @@ type CreateProbes struct {
 	RunCapture          func(name string, args ...string) (string, error)
 	ConfigValue         func(key string) (string, error) // gcloud config get-value <key>
 	Stat                func(path string) (fs.FileInfo, error)
+	RealPath            func(path string) (string, error) // filepath.EvalSymlinks
 	ReadFile            func(path string) ([]byte, error)
 	DescribeImage       func(ctx context.Context, project, image string) (bool, error)
 	DescribeImageFamily func(ctx context.Context, project, family string) (string, error)
@@ -294,6 +295,12 @@ func checkSSHKey(cfg CreateConfig) IO.IO[preflight.Result] {
 		if !envReady(cfg.Env) {
 			return notRunEnv(name)
 		}
+		if !strings.HasSuffix(cfg.Env.SSHPub, ".pub") {
+			return preflight.Result{
+				Name:   "SSH public key",
+				Detail: "must end in .pub: " + cfg.Env.SSHPub, Status: preflight.StatusFail,
+			}
+		}
 		if _, err := cfg.Probes.Stat(cfg.Env.SSHPub); err != nil {
 			return preflight.Result{
 				Name: "SSH public key", Detail: "not found: " + cfg.Env.SSHPub, Status: preflight.StatusFail,
@@ -301,7 +308,9 @@ func checkSSHKey(cfg CreateConfig) IO.IO[preflight.Result] {
 		}
 		dir := filepath.Dir(cfg.Env.SSHPub)
 		expected := filepath.Join(cfg.Env.Root, "credentials", cfg.Env.Project)
-		if filepath.Clean(dir) != filepath.Clean(expected) {
+		dirReal, dirErr := cfg.Probes.RealPath(dir)
+		expReal, expErr := cfg.Probes.RealPath(expected)
+		if dirErr != nil || expErr != nil || filepath.Clean(dirReal) != filepath.Clean(expReal) {
 			return preflight.Result{
 				Name:   "SSH key isolation",
 				Detail: fmt.Sprintf("parent directory (%s) != expected (credentials/%s)", dir, cfg.Env.Project),
@@ -440,10 +449,15 @@ func checkNodeImages(cfg CreateConfig) IO.IO[preflight.Result] {
 				continue
 			}
 			exists, err := cfg.Probes.DescribeImage(context.Background(), project, image)
-			if err == nil && exists {
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("image check failed: '%s': %v", img, err))
+				continue
+			}
+			if exists {
 				okImages = append(okImages, img)
 				continue
 			}
+			// Family resolution runs only after a confirmed 404.
 			resolved, ferr := cfg.Probes.DescribeImageFamily(context.Background(), project, image)
 			if ferr == nil && resolved != "" {
 				problems = append(problems, fmt.Sprintf(
@@ -480,8 +494,9 @@ func checkTaints(cfg CreateConfig) IO.IO[preflight.Result] {
 		if strings.Contains(string(ig), "taints:") {
 			return preflight.Result{
 				Name: name,
-				Detail: fmt.Sprintf("spec.taints found in %s/instancegroups.yaml — GCE rejects "+
-					"autoscaler taint labels containing slashes; use nodeLabels instead", bundle),
+				Detail: fmt.Sprintf("spec.taints found in %s/instancegroups.yaml — "+
+					"GCE rejects autoscaler taint labels containing slashes; "+
+					"use nodeLabels instead", bundle),
 				Status: preflight.StatusFail,
 			}
 		}
@@ -601,6 +616,7 @@ func DefaultCreateProbes(project string) CreateProbes {
 		RunCapture:          runCapture,
 		ConfigValue:         gcloudConfigValue,
 		Stat:                os.Stat,
+		RealPath:            filepath.EvalSymlinks,
 		ReadFile:            os.ReadFile,
 		DescribeImage:       describeImage,
 		DescribeImageFamily: describeImageFamily,
@@ -644,14 +660,22 @@ func listBucketExists(ctx context.Context, uri string) (bool, error) {
 	return true, nil
 }
 
+// bucketAndPrefix splits a gs:// URI into bucket and object prefix, keeping
+// the prefix's trailing slash so a sibling directory (kn-backup/) cannot
+// satisfy a kn/ lookup.
+func bucketAndPrefix(uri string) (bucket, prefix string) {
+	bucket, prefix, _ = strings.Cut(strings.TrimPrefix(uri, "gs://"), "/")
+	return bucket, prefix
+}
+
 func listBucketPathExists(ctx context.Context, uri string) (bool, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer client.Close()
-	bucket, prefix, _ := strings.Cut(strings.TrimPrefix(uri, "gs://"), "/")
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: strings.TrimSuffix(prefix, "/")})
+	bucket, prefix := bucketAndPrefix(uri)
+	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
 	if _, err := it.Next(); err != nil {
 		if errors.Is(err, iterator.Done) {
 			return false, nil
@@ -735,7 +759,7 @@ func gitClean(path string) (string, error) {
 // CreateEnvInputs are the resolved boundary values (flags + environment).
 type CreateEnvInputs struct {
 	Cluster, Project, KopsName, State, BucketURI, SSHPub, CredFile string
-	ActiveConfig                                                   string // $CLOUDSDK_ACTIVE_CONFIG_NAME — the ACTUAL value
+	ActiveConfig                                                   string // $CLOUDSDK_ACTIVE_CONFIG_NAME (actual)
 	PinFile, Root                                                  string
 }
 
