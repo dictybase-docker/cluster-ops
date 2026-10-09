@@ -15,6 +15,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/util"
 	"github.com/urfave/cli/v2"
 	crm "google.golang.org/api/cloudresourcemanager/v1"
+	iamv1 "google.golang.org/api/iam/v1"
 )
 
 const (
@@ -422,6 +423,38 @@ func bucketIAMWithClient(
 	}
 }
 
+// saCreateKeyAction converges an SA key: a live file matching an upstream key
+// is reused; otherwise exactly one key is minted and written 0600.
+func saCreateKeyAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
+	saEmail := cltx.String(nameFlag) + "@" + cltx.String(projectFlag) + ".iam.gserviceaccount.com"
+	res, err := runSAKeyConverge(saEmail, cltx.String("output-file"), cltx.String(credFileFlag), mode)
+	if err != nil {
+		return err
+	}
+	return reportConverge(res, mode)
+}
+
+func runSAKeyConverge(saEmail, keyFile, credFile string, mode gcp.MutationMode) (gcp.Result, error) {
+	forced := F.Pipe1(
+		saKeyWithClient(saEmail, keyFile, mode),
+		IOE.WithResource[gcp.Result](gcp.NewIAMService(credFile), closeIAMService),
+	)()
+	return E.UnwrapError(forced)
+}
+
+func saKeyWithClient(
+	saEmail, keyFile string, mode gcp.MutationMode,
+) func(*iamv1.Service) IOE.IOEither[error, gcp.Result] {
+	return func(s *iamv1.Service) IOE.IOEither[error, gcp.Result] {
+		return gcp.ConvergeSAKey(gcp.IAMSAKeyAPI{Service: s}, gcp.OSKeyFiles{}, saEmail, keyFile, mode)
+	}
+}
+
+func closeIAMService(*iamv1.Service) IOE.IOEither[error, struct{}] {
+	return IOE.Of[error](struct{}{})
+}
+
 // ---------- env ----------
 
 func envCommand() *cli.Command {
@@ -510,12 +543,14 @@ func saCommand() *cli.Command {
 			},
 			{
 				Name:   "create-key",
-				Usage:  "Create a key for an existing service account",
-				Action: gcp.CreateServiceAccountKey,
+				Usage:  "Converge a key for an existing service account (idempotent)",
+				Action: saCreateKeyAction,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: nameFlag, Required: true},
 					&cli.StringFlag{Name: projectFlag, Required: true},
 					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
 				},
 			},
 		},

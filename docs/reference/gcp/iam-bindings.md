@@ -31,3 +31,18 @@ other policy content is touched.
 ## Notes
 
 - The `gcp-role` wrappers (`add-role-to-sa`, `assign-roles-to-sa`) call `iam add-binding`; their pre-migration bodies remain as `*-shell` for one release.
+
+## Service account keys (`sa create-key`)
+
+Key minting is idempotent: a key file whose `private_key_id` matches a live
+upstream key is reused (`unchanged`); a missing file mints once; a file whose
+key was deleted upstream re-mints exactly once. Key material is written 0600
+by a file step outside the cloud seam; only key ID and path are logged.
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--name` | Yes | — | Service account name |
+| `--project` | Yes | — | GCP project id |
+| `--output-file` | No | `key.json` | Key file path |
+| `--cred-file` | No | ADC | Credential file |
+| `--dry-run` | No | off | Report only |
