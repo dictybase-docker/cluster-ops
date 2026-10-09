@@ -389,10 +389,7 @@ func poolAction(cltx *cli.Context) error {
 }
 
 func newClientsValue(cltx *cli.Context) (kube.Clients, error) {
-	res := newClientsIOE(cltx)()
-	err := E.Fold(F.Identity[error], func(kube.Clients) error { return nil })(res)
-	clients := E.GetOrElse(func(_ error) kube.Clients { return kube.Clients{} })(res)
-	return clients, err
+	return E.UnwrapError(newClientsIOE(cltx)())
 }
 
 func datastoreAction(
