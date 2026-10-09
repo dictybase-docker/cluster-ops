@@ -54,4 +54,7 @@ Creates `${PULUMI_BACKEND_URL}` (default `gs://pulumi-state-<project-id>`) with 
 | `--location` | `us-central1` |
 | `--lifecycle-config` | None — optional path to a lifecycle policy file |
 
+The recipe runs `cluster-ops bucket converge` for the mutation; see
+`cluster-ops bucket converge --help` for the flag table (including `--dry-run`).
+
 The recipe is idempotent: an existing bucket is reused rather than recreated, and object versioning is re-asserted on every run — a pre-existing bucket without versioning is converged instead of failing [check-backend](check-backend.md).

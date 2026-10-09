@@ -193,7 +193,7 @@ func setLifecycleConfig(
 	lifecycleRules := []storage.LifecycleRule{
 		{
 			Action: storage.LifecycleAction{
-				Type: "Delete",
+				Type: lifecycleActionDelete,
 			},
 			Condition: storage.LifecycleCondition{
 				NumNewerVersions: int64(maxVersions),

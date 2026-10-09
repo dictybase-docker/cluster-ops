@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
+	"cloud.google.com/go/storage"
+	E "github.com/IBM/fp-go/v2/either"
+	F "github.com/IBM/fp-go/v2/function"
+	IOE "github.com/IBM/fp-go/v2/ioeither"
 	"github.com/dictybase-docker/cluster-ops/internal/custodian"
 	"github.com/dictybase-docker/cluster-ops/internal/gcp"
 	"github.com/dictybase-docker/cluster-ops/internal/kops"
@@ -188,8 +193,89 @@ func bucketCommand() *cli.Command {
 					},
 				},
 			},
+			{
+				Name:   "converge",
+				Usage:  "Converge bucket versioning and lifecycle (idempotent)",
+				Action: bucketConvergeAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: "bucket", Aliases: []string{"b"}, Required: true},
+					&cli.StringFlag{Name: "location", Value: "US"},
+					&cli.BoolFlag{Name: "versioning", Value: true},
+					&cli.StringFlag{Name: "lifecycle-file"},
+					&cli.StringFlag{Name: "cred-file"},
+					&cli.BoolFlag{Name: "dry-run"},
+				},
+			},
 		},
 	}
+}
+
+// bucketConvergeAction converges bucket versioning/lifecycle. Dry-run prints
+// intent and mutates nothing.
+func bucketConvergeAction(cltx *cli.Context) error {
+	lifecycle, err := loadLifecycleFile(cltx.String("lifecycle-file"))
+	if err != nil {
+		return err
+	}
+	cfg := gcp.BucketConfig{
+		Name:       cltx.String("bucket"),
+		ProjectID:  cltx.String(projectFlag),
+		Location:   cltx.String("location"),
+		Versioning: cltx.Bool("versioning"),
+		Lifecycle:  lifecycle,
+		CredFile:   cltx.String("cred-file"),
+	}
+	mode := gcp.MutationMode{DryRun: cltx.Bool("dry-run")}
+	res, err := runBucketConverge(cfg, mode)
+	if err != nil {
+		return err
+	}
+	if mode.DryRun {
+		fmt.Fprintf(os.Stderr, "[DRY RUN] %s %s\n", res.Name, res.Action)
+		return printJSONLine(res)
+	}
+	fmt.Printf("%s %s\n", res.Name, res.Action)
+	return nil
+}
+
+// loadLifecycleFile reads gcloud's --lifecycle-file YAML ("" = none).
+func loadLifecycleFile(path string) (storage.Lifecycle, error) {
+	if path == "" {
+		return storage.Lifecycle{}, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return storage.Lifecycle{}, err
+	}
+	defer f.Close()
+	return gcp.ParseGcloudLifecycle(f)
+}
+
+func printJSONLine(v any) error {
+	return json.NewEncoder(os.Stdout).Encode(v)
+}
+
+func runBucketConverge(cfg gcp.BucketConfig, mode gcp.MutationMode) (gcp.Result, error) {
+	forced := F.Pipe1(
+		convergeWithClient(cfg, mode),
+		IOE.WithResource[gcp.Result](gcp.NewStorageClientFrom(cfg.CredFile), closeStorageClient),
+	)()
+	return E.UnwrapError(forced)
+}
+
+func convergeWithClient(
+	cfg gcp.BucketConfig, mode gcp.MutationMode,
+) func(*storage.Client) IOE.IOEither[error, gcp.Result] {
+	return func(c *storage.Client) IOE.IOEither[error, gcp.Result] {
+		return gcp.ConvergeBucket(gcp.StorageBucketAPI{Client: c}, cfg, mode)
+	}
+}
+
+func closeStorageClient(c *storage.Client) IOE.IOEither[error, struct{}] {
+	return IOE.TryCatchError(func() (struct{}, error) {
+		return struct{}{}, c.Close()
+	})
 }
 
 // ---------- env ----------
