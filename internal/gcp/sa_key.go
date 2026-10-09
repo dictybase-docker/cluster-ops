@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -24,17 +25,22 @@ import (
 type SAKeyAPI interface {
 	ListKeys(ctx context.Context, saEmail string) ([]string, error)
 	CreateKey(ctx context.Context, saEmail string) (keyID string, keyJSON []byte, err error)
+	// DeleteKey compensates an orphaned mint (write-after-mint failure).
+	DeleteKey(ctx context.Context, saEmail, keyID string) error
 }
 
 // KeyFiles is the injected key-file IO (shared with the SA setup flows).
 type KeyFiles interface {
-	Stat(path string) (fs.FileInfo, error)
 	ReadFile(path string) ([]byte, error)
 	WriteFile(path string, data []byte, perm os.FileMode) error
+	MkdirAll(path string, perm fs.FileMode) error
 }
 
 // keyFilePerm is the only mode key material may be written with.
 const keyFilePerm os.FileMode = 0o600
+
+// keyDirPerm is the only mode key directories may be created with.
+const keyDirPerm os.FileMode = 0o700
 
 type saKeyWork struct {
 	api     SAKeyAPI
@@ -134,10 +140,23 @@ func (w saKeyWork) convergeFromProbe(st keyState) IOE.IOEither[error, Result] {
 }
 
 func (w saKeyWork) mintKey(st keyState) IOE.IOEither[error, Result] {
-	return F.Pipe1(
-		IOE.TryCatchError(w.rawCreateKey),
-		IOE.Chain(w.writeKeyFile(st.mintKind)),
+	return F.Pipe2(
+		w.prepareKeyDir(),
+		IOE.Chain(w.createFromDir),
+		IOE.Chain(w.persistWith(st.mintKind)),
 	)
+}
+
+// prepareKeyDir makes the key's parent directory (0700) BEFORE any cloud
+// mint — a path that cannot hold the file must never receive a minted key.
+func (w saKeyWork) prepareKeyDir() IOE.IOEither[error, struct{}] {
+	return IOE.TryCatchError(func() (struct{}, error) {
+		return struct{}{}, w.files.MkdirAll(filepath.Dir(w.keyFile), keyDirPerm)
+	})
+}
+
+func (w saKeyWork) createFromDir(struct{}) IOE.IOEither[error, keyMaterial] {
+	return IOE.TryCatchError(w.rawCreateKey)
 }
 
 func (w saKeyWork) rawCreateKey() (keyMaterial, error) {
@@ -145,17 +164,25 @@ func (w saKeyWork) rawCreateKey() (keyMaterial, error) {
 	return keyMaterial{id: keyID, json: keyJSON}, err
 }
 
-func (w saKeyWork) writeKeyFile(kind Action) func(keyMaterial) IOE.IOEither[error, Result] {
+func (w saKeyWork) persistWith(kind Action) func(keyMaterial) IOE.IOEither[error, Result] {
 	return func(k keyMaterial) IOE.IOEither[error, Result] {
 		return IOE.TryCatchError(func() (Result, error) {
-			if err := w.files.WriteFile(w.keyFile, k.json, keyFilePerm); err != nil {
-				return Result{}, fmt.Errorf("write key file %s: %w", w.keyFile, err)
-			}
-			// Audit: key ID and path only — never the material.
-			slog.Info("converged SA key", "sa", w.saEmail, "keyID", k.id, "path", w.keyFile)
-			return Result{Name: w.name(), Action: kind}, nil
+			return w.writeCompensated(k, kind)
 		})
 	}
+}
+
+// writeCompensated writes the material and compensates an orphaned mint: a
+// write failure deletes the just-created cloud key (best-effort) before the
+// original error propagates.
+func (w saKeyWork) writeCompensated(k keyMaterial, kind Action) (Result, error) {
+	if err := w.files.WriteFile(w.keyFile, k.json, keyFilePerm); err != nil {
+		_ = w.api.DeleteKey(context.Background(), w.saEmail, k.id)
+		return Result{}, fmt.Errorf("write key file %s: %w", w.keyFile, err)
+	}
+	// Audit: key ID and path only — never the material.
+	slog.Info("converged SA key", "sa", w.saEmail, "keyID", k.id, "path", w.keyFile)
+	return Result{Name: w.name(), Action: kind}, nil
 }
 
 // keyFileID extracts private_key_id from a key JSON blob.
@@ -182,14 +209,34 @@ func keyIDFromPath(resource string) string {
 
 // ---- production adapters ----
 
-// OSKeyFiles is the production KeyFiles adapter.
+// OSKeyFiles is the production KeyFiles adapter. WriteFile is atomic and
+// tightens the mode even when the target existed loose (temp + chmod +
+// rename in the same directory).
 type OSKeyFiles struct{}
-
-func (OSKeyFiles) Stat(path string) (fs.FileInfo, error) { return os.Stat(path) }
 
 func (OSKeyFiles) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
-func (OSKeyFiles) WriteFile(p string, d []byte, m os.FileMode) error { return os.WriteFile(p, d, m) }
+func (OSKeyFiles) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(path, perm) }
+
+func (OSKeyFiles) WriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".keytmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
 
 // IAMSAKeyAPI adapts google.golang.org/api/iam/v1 to SAKeyAPI.
 type IAMSAKeyAPI struct {
@@ -207,6 +254,13 @@ func (a IAMSAKeyAPI) ListKeys(ctx context.Context, saEmail string) ([]string, er
 		ids = append(ids, keyIDFromPath(k.Name))
 	}
 	return ids, nil
+}
+
+// DeleteKey removes a minted key (compensation path for orphaned mints).
+func (a IAMSAKeyAPI) DeleteKey(ctx context.Context, saEmail, keyID string) error {
+	name := "projects/-/serviceAccounts/" + saEmail
+	_, err := a.Service.Projects.ServiceAccounts.Keys.Delete(name + "/keys/" + keyID).Context(ctx).Do()
+	return err
 }
 
 func (a IAMSAKeyAPI) CreateKey(ctx context.Context, saEmail string) (string, []byte, error) {

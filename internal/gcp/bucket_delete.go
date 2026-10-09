@@ -35,24 +35,41 @@ func DeleteBucketState(api BucketDeleteAPI, name string, mode MutationMode) IOE.
 
 func (w deleteWork) bucketName() string { return "gs://" + w.name }
 
-func (w deleteWork) preflightDelete() IOE.IOEither[error, int64] {
+// deletePreflight is the probe outcome: object count, or "absent" — a typed
+// NotFound is a clean no-op in both modes ("Nothing to delete").
+type deletePreflight struct {
+	count  int64
+	absent bool
+}
+
+func (w deleteWork) preflightDelete() IOE.IOEither[error, deletePreflight] {
 	return F.Pipe1(
 		IOE.TryCatchError(w.rawCount),
-		IOE.MapLeft[int64](w.wrapCountErr),
+		IOE.MapLeft[deletePreflight](w.wrapCountErr),
 	)
 }
 
-func (w deleteWork) rawCount() (int64, error) {
-	return w.api.CountObjects(context.Background(), w.name)
+func (w deleteWork) rawCount() (deletePreflight, error) {
+	n, err := w.api.CountObjects(context.Background(), w.name)
+	if err != nil {
+		if IsNotFound(err) {
+			return deletePreflight{absent: true}, nil
+		}
+		return deletePreflight{}, err
+	}
+	return deletePreflight{count: n}, nil
 }
 
 func (w deleteWork) wrapCountErr(err error) error {
 	return fmt.Errorf("count objects in %s: %w", w.bucketName(), err)
 }
 
-// purgeAndDelete is the mutation half: every gate (dry-run, confirmation)
-// runs before the first mutating seam is reachable.
-func (w deleteWork) purgeAndDelete(count int64) IOE.IOEither[error, Result] {
+// purgeAndDelete is the mutation half: every gate (absent, dry-run,
+// confirmation) runs before the first mutating seam is reachable.
+func (w deleteWork) purgeAndDelete(p deletePreflight) IOE.IOEither[error, Result] {
+	if p.absent {
+		return IOE.Of[error](Result{Name: w.bucketName(), Action: ActionUnchanged})
+	}
 	if w.mode.DryRun {
 		return IOE.Of[error](Result{Name: w.bucketName(), Action: ActionDryRun})
 	}
@@ -60,7 +77,7 @@ func (w deleteWork) purgeAndDelete(count int64) IOE.IOEither[error, Result] {
 		return IOE.Left[Result](
 			fmt.Errorf("%s: confirmation required — re-run with --confirm yes", w.bucketName()))
 	}
-	if count > 0 {
+	if p.count > 0 {
 		return F.Pipe1(w.purgeObjects(), IOE.Chain(w.afterPurge))
 	}
 	return w.afterPurge(struct{}{})

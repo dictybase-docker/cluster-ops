@@ -2,12 +2,12 @@ package gcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
 	"testing"
-	"time"
 
 	E "github.com/IBM/fp-go/v2/either"
 	"github.com/stretchr/testify/require"
@@ -15,11 +15,13 @@ import (
 )
 
 type fakeSAKeyAPI struct {
-	live    []string
-	mints   int
-	lastID  string
-	listErr error
-	log     *[]string // optional shared sequence log
+	live      []string
+	mints     int
+	deletes   int
+	lastID    string
+	deletedID string
+	listErr   error
+	log       *[]string // optional shared sequence log
 }
 
 func (f *fakeSAKeyAPI) ListKeys(context.Context, string) ([]string, error) {
@@ -41,26 +43,19 @@ func (f *fakeSAKeyAPI) CreateKey(context.Context, string) (string, []byte, error
 	return f.lastID, []byte(`{"private_key_id": "` + f.lastID + `"}`), nil
 }
 
-type fakeInfo string
-
-func (f fakeInfo) Name() string       { return string(f) }
-func (f fakeInfo) Size() int64        { return 0 }
-func (f fakeInfo) Mode() fs.FileMode  { return 0o600 }
-func (f fakeInfo) ModTime() time.Time { return time.Time{} }
-func (f fakeInfo) IsDir() bool        { return false }
-func (f fakeInfo) Sys() any           { return nil }
-
 type fakeFiles struct {
 	keyFile   string // content of the key file, "" = missing
 	wrote     []byte
 	wroteMode os.FileMode
 }
 
-func (f *fakeFiles) Stat(string) (fs.FileInfo, error) {
-	if f.keyFile == "" {
-		return nil, fs.ErrNotExist
+func (f *fakeSAKeyAPI) DeleteKey(_ context.Context, _ string, keyID string) error {
+	if f.log != nil {
+		*f.log = append(*f.log, callDeleteKey)
 	}
-	return fakeInfo("key.json"), nil
+	f.deletes++
+	f.deletedID = keyID
+	return nil
 }
 
 func (f *fakeFiles) ReadFile(string) ([]byte, error) {
@@ -69,6 +64,8 @@ func (f *fakeFiles) ReadFile(string) ([]byte, error) {
 	}
 	return []byte(f.keyFile), nil
 }
+
+func (f *fakeFiles) MkdirAll(string, fs.FileMode) error { return nil }
 
 func (f *fakeFiles) WriteFile(_ string, data []byte, perm os.FileMode) error {
 	f.wrote = data
@@ -131,4 +128,56 @@ func TestSAKeyListErrorNamed(t *testing.T) {
 func TestKeyIDFromPath(t *testing.T) {
 	require.Equal(t, "abc123", keyIDFromPath("projects/p/serviceAccounts/e/keys/abc123"))
 	require.Equal(t, "abc123", keyIDFromPath("abc123"))
+}
+
+// failingFiles fails the key write (simulating a full disk / bad path).
+type failingFiles struct {
+	fakeFiles
+	mkdirs  int
+	writeOK bool
+}
+
+func (f *failingFiles) MkdirAll(string, fs.FileMode) error {
+	f.mkdirs++
+	return nil
+}
+
+func (f *failingFiles) WriteFile(string, []byte, os.FileMode) error {
+	if !f.writeOK {
+		return errors.New("disk full")
+	}
+	return nil
+}
+
+// Review Focus 4 / C2: mint → write failure must NOT orphan a cloud key —
+// the mint is compensated with a delete, and the parent dir is ready first.
+func TestSAKeyWriteFailureCompensates(t *testing.T) {
+	api := &fakeSAKeyAPI{live: nil}
+	files := &failingFiles{}
+	_, err := E.UnwrapError(ConvergeSAKey(api, files, testSAEmail, "creds/proj/key.json", MutationMode{})())
+	require.Error(t, err)
+	require.Equal(t, 1, api.mints)
+	require.Equal(t, 1, api.deletes, "orphaned mint is deleted again")
+	require.Equal(t, "k-new-1", api.deletedID)
+}
+
+func TestSAKeyMintsAfterParentReady(t *testing.T) {
+	api := &fakeSAKeyAPI{live: nil}
+	files := &failingFiles{writeOK: true}
+	_, err := E.UnwrapError(ConvergeSAKey(api, files, testSAEmail, "creds/proj/key.json", MutationMode{})())
+	require.NoError(t, err)
+	require.Equal(t, 1, files.mkdirs, "parent directory prepared before minting")
+}
+
+// The production file adapter really writes 0600 (tightened even when the
+// file already existed loose).
+func TestOSKeyFilesWrites0600(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/key.json"
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o600))
+	require.NoError(t, os.Chmod(path, 0o644), "loosen the fixture before the converge")
+	require.NoError(t, OSKeyFiles{}.WriteFile(path, []byte(`{"private_key_id":"k1"}`), keyFilePerm))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }

@@ -93,12 +93,14 @@ func (w iamWork) updatedResult(struct{}) Result {
 	return Result{Name: w.name(), Action: ActionUpdated}
 }
 
-// addMember returns a COPY of the policy with member added to role, or nil
-// when already bound. The input is never mutated — a conflicted retry must
-// observe the pristine policy again.
+// addMember returns a COPY of the policy with member added to the role's
+// UNCONDITIONAL binding (created when absent), or nil when already bound.
+// Conditional bindings never satisfy or absorb the plain member (matching by
+// role alone would corrupt them) and are copied untouched. The input is never
+// mutated — a conflicted retry must observe the pristine policy again.
 func addMember(p *crm.Policy, role, member string) *crm.Policy {
 	for _, b := range p.Bindings {
-		if b.Role == role && slices.Contains(b.Members, member) {
+		if b.Role == role && b.Condition == nil && slices.Contains(b.Members, member) {
 			return nil
 		}
 	}
@@ -108,7 +110,8 @@ func addMember(p *crm.Policy, role, member string) *crm.Policy {
 	for _, b := range p.Bindings {
 		nb := *b
 		nb.Members = append([]string(nil), b.Members...)
-		if nb.Role == role {
+		nb.Condition = b.Condition
+		if b.Role == role && b.Condition == nil {
 			nb.Members = append(nb.Members, member)
 			found = true
 		}
