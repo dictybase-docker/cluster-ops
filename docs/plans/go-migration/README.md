@@ -7,6 +7,7 @@ the port-forward tunnel and k3d integration tests.
 | Plan | Scope | Status |
 |------|-------|--------|
 | [Phase 1 implementation](checks-phase1-implementation.md) | Shared foundation + the four backend deploy-gate checks, task by task | Ready to execute — verified on a clean branch copy |
+| [Review fixes](review-fixes.md) | Defects found reviewing port-forward, wait/poll and checks phase 2, task by task | Ready to execute — replay-verified on a copy of `bd0fdee` |
 | [Checks and probes](checks-probes.md) | All check/verify/validate recipes; phases 1–3 | Proposed |
 | [Port-forward](port-forward.md) | The 8 `kubectl port-forward` invocations | Proposed — needs phase 1 |
 | [Wait and poll](wait-poll.md) | `sleep`/`until` loops and `kubectl wait` → `internal/waitfor` | Proposed — needs phase 1 |
