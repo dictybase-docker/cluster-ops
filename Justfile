@@ -194,6 +194,11 @@ test-pulumi-backend:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-pulumi-backend.sh"
 
+test-datastore-recipes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-datastore-recipes.sh"
+
 # Run the preflight integration tests against the local k3d cluster.
 # Needs the cluster running (just k3d start-cluster). Not part of `just check`.
 # Usage: just test-preflight-integration [--name <k3d-cluster>]
@@ -293,7 +298,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint

@@ -78,4 +78,26 @@ for module in arangodb minio postgres redis; do
 done
 echo "  exit propagated: PASS"
 
+import_bucket() {
+    just minio import-bucket --bucket media --source-url https://src.example \
+        --source-user srcuser --source-password srcpass "$@"
+}
+
+echo "=== 3. import-bucket mirrors through the forward port ==="
+: > "${calls}"
+out=$(import_bucket 2>&1) || fail "import-bucket failed: ${out}"
+[[ "$(grep -c '^mc mirror' "${calls}")" == "1" ]] || fail "expected one mirror: $(cat "${calls}")"
+grep -q '^mc mirror MC_HOST_minio_dst=http://rootuser:rootpass@localhost:45678$' "${calls}" \
+    || fail "target alias must use the forward port: $(grep '^mc mirror' "${calls}")"
+echo "  target alias + mirror: PASS"
+
+echo "=== 4. import-bucket retries the mirror --retries times, then fails ==="
+: > "${calls}"
+if out=$(MOCK_MC_MIRROR=fail import_bucket --retries 3 2>&1); then
+    fail "import-bucket exited 0 although every mirror failed"
+fi
+[[ "$(grep -c '^mc mirror' "${calls}")" == "3" ]] || fail "expected 3 mirror attempts: $(grep -c '^mc mirror' "${calls}")"
+printf '%s' "${out}" | grep -q "after 3 attempts" || fail "failure must name the attempts: ${out}"
+echo "  retries: PASS"
+
 echo "datastore recipe contract tests PASSED"
