@@ -429,6 +429,15 @@ apply-storageclass stack="":
 check-storageclass classes="dictycr-balanced" provisioner="pd.csi.storage.gke.io":
     #!/usr/bin/env bash
     set -uo pipefail
+    if ! go run ./cmd/cluster-ops preflight storageclass --classes {{ quote(classes) }} --provisioner {{ quote(provisioner) }}; then
+        echo "PVCs will stay Pending. See docs/reference/pulumi/storage-class.md" >&2
+        exit 1
+    fi
+
+# Rollback copy of the pre-migration check-storageclass (delete one release after migration).
+check-storageclass-shell classes="dictycr-balanced" provisioner="pd.csi.storage.gke.io":
+    #!/usr/bin/env bash
+    set -uo pipefail
 
     WANT_PROVISIONER="{{ provisioner }}"
     failures=0

@@ -50,7 +50,7 @@ just gcp-pulumi fork-stack --to-stack <new-cluster> --from-stack dcr-kube1 --fol
 
 ## Verify
 
-`apply-storageclass` runs this check for you. Use `check-storageclass` standalone for day-2 drift checks — it defaults to requiring only `dictycr-balanced` with provisioner `pd.csi.storage.gke.io`.
+`apply-storageclass` runs this check for you. Use `check-storageclass` standalone for day-2 drift checks — it defaults to requiring only `dictycr-balanced` with provisioner `pd.csi.storage.gke.io`. The recipe wraps `cluster-ops preflight storageclass`; see `cluster-ops preflight storageclass --help` for the flag table.
 
 Production — name both classes, otherwise a missing `dictycr-ssd` passes silently:
 
