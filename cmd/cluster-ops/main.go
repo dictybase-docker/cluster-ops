@@ -348,6 +348,18 @@ func iamCommand() *cli.Command {
 					&cli.BoolFlag{Name: dryRunFlag},
 				},
 			},
+			{
+				Name:   "add-bucket-binding",
+				Usage:  "Converge a bucket IAM binding (idempotent)",
+				Action: iamAddBucketBindingAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: bucketFlag, Aliases: []string{"b"}, Required: true},
+					&cli.StringFlag{Name: "member", Required: true},
+					&cli.StringFlag{Name: "role", Required: true},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
+				},
+			},
 		},
 	}
 }
@@ -381,6 +393,33 @@ func iamBindingWithClient(
 
 func closeCRMService(*crm.Service) IOE.IOEither[error, struct{}] {
 	return IOE.Of[error](struct{}{})
+}
+
+func iamAddBucketBindingAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
+	res, err := runBucketIAMBinding(
+		cltx.String(bucketFlag), cltx.String("member"), cltx.String("role"),
+		cltx.String(credFileFlag), mode)
+	if err != nil {
+		return err
+	}
+	return reportConverge(res, mode)
+}
+
+func runBucketIAMBinding(bucket, member, role, credFile string, mode gcp.MutationMode) (gcp.Result, error) {
+	forced := F.Pipe1(
+		bucketIAMWithClient(bucket, member, role, mode),
+		IOE.WithResource[gcp.Result](gcp.NewStorageClientFrom(credFile), closeStorageClient),
+	)()
+	return E.UnwrapError(forced)
+}
+
+func bucketIAMWithClient(
+	bucket, member, role string, mode gcp.MutationMode,
+) func(*storage.Client) IOE.IOEither[error, gcp.Result] {
+	return func(c *storage.Client) IOE.IOEither[error, gcp.Result] {
+		return gcp.ConvergeBucketIAMBinding(gcp.StorageBucketIAM{Client: c}, bucket, member, role, mode)
+	}
 }
 
 // ---------- env ----------

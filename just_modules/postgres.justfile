@@ -371,10 +371,9 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
     # Read-only, pinned to the source bucket. The bucket already exists here
     # (the source cluster's backups live in it), so a bucket-level binding
     # works — no project-level condition needed.
-    src_gcloud gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-        --member "serviceAccount:${SA_EMAIL}" \
-        --role roles/storage.objectViewer \
-        --project "$SRC_PROJECT"
+    src_gcloud go run ./cmd/cluster-ops iam add-bucket-binding \
+        --bucket "${BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectViewer
 
     # Key creation is NOT idempotent — reuse an existing key file.
     if [[ -f "$KEY_FILE" ]]; then

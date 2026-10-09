@@ -1959,10 +1959,9 @@ grant-source-bucket-reader bucket="" source_project="" sa_name="arangodb-restic-
     # Least privilege: BUCKET-level objectViewer (list+get). Never grant
     # project-wide storage.admin, and never grant write on the source project.
     # Additive binding, so re-running is idempotent.
-    gcloud storage buckets add-iam-policy-binding "gs://${SOURCE_BUCKET}" \
-        --member "serviceAccount:${SA_EMAIL}" \
-        --role roles/storage.objectViewer \
-        --project "$SOURCE_PROJECT"
+    go run ./cmd/cluster-ops iam add-bucket-binding \
+        --bucket "${SOURCE_BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectViewer
 
     # Key creation is NOT idempotent — every run mints a new key and old ones
     # keep working until deleted. Reuse an existing key file when present.
