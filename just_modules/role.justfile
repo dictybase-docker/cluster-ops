@@ -48,9 +48,8 @@ add-role-to-sa project="" sa_name role:
     sa_email="{{ sa_name }}@${project_id}.iam.gserviceaccount.com"
 
     echo "Adding role {{ role }} to service account $sa_email in project ${project_id}"
-    gcloud projects add-iam-policy-binding ${project_id} \
-        --member="serviceAccount:$sa_email" \
-        --role="{{ role }}"
+    go run ./cmd/cluster-ops iam add-binding \
+        --project "${project_id}" --member "serviceAccount:${sa_email}" --role {{ quote(role) }}
     echo "Role {{ role }} successfully added to $sa_email"
 
     echo "Verifying role assignment..."
@@ -91,9 +90,82 @@ assign-roles-to-sa project="" sa_name roles_file:
         [ -z "$role" ] && continue
 
         echo "Assigning role: $role"
-        gcloud projects add-iam-policy-binding ${project_id} \
-            --member="serviceAccount:$sa_email" \
-            --role="$role"
+        go run ./cmd/cluster-ops iam add-binding \
+            --project "${project_id}" --member "serviceAccount:${sa_email}" --role "$role"
+    done < "{{ roles_file }}"
+
+    echo "Finished assigning roles to $sa_email"
+
+    echo "Roles assigned to $sa_email in project ${project_id}:"
+    gcloud projects get-iam-policy ${project_id} \
+        --flatten="bindings[].members" \
+        --format='table(bindings.role)' \
+        --filter="bindings.members:$sa_email"
+
+# Rollback copy of the pre-migration add-role-to-sa (delete one release after migration).
+[arg("role", long="role", short="r", help="IAM role to add (e.g. roles/storage.admin)")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="s", help="Service account name")]
+[group('role-management')]
+add-role-to-sa-shell project="" sa_name role:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud config set disable_prompts true
+
+    project_id="${PROJECT_ID:-{{ project }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project."
+        exit 1
+    fi
+
+    sa_email="{{ sa_name }}@${project_id}.iam.gserviceaccount.com"
+
+    echo "Adding role {{ role }} to service account $sa_email in project ${project_id}"
+    go run ./cmd/cluster-ops iam add-binding \
+        --project "${project_id}" --member "serviceAccount:${sa_email}" --role {{ quote(role) }}
+    echo "Role {{ role }} successfully added to $sa_email"
+
+    echo "Verifying role assignment..."
+    gcloud projects get-iam-policy ${project_id} \
+        --flatten="bindings[].members" \
+        --format='table(bindings.role,bindings.members)' \
+        --filter="bindings.members:$sa_email AND bindings.role:{{ role }}"
+
+# Rollback copy of the pre-migration assign-roles-to-sa (delete one release after migration).
+# Assign multiple roles to an existing service account from a file.
+# Usage: just gcp-role assign-roles-to-sa [--project <project-id>] --sa-name <name> --roles-file <path>
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="s", help="Service account name")]
+[arg("roles_file", long="roles-file", short="r", help="File listing roles (one per line)")]
+[group('role-management')]
+[no-cd]
+assign-roles-to-sa-shell project="" sa_name roles_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gcloud config set disable_prompts true
+
+    project_id="${PROJECT_ID:-{{ project }}}"
+    if [ -z "$project_id" ]; then
+        echo "ERROR: no project id — set PROJECT_ID or pass --project."
+        exit 1
+    fi
+
+    sa_email="{{ sa_name }}@${project_id}.iam.gserviceaccount.com"
+
+    echo "Assigning roles to service account $sa_email in project ${project_id} from file {{ roles_file }}"
+
+    if [ ! -f "{{ roles_file }}" ]; then
+        echo "Error: File {{ roles_file }} not found"
+        exit 1
+    fi
+
+    while IFS= read -r role || [ -n "$role" ]; do
+        role=$(echo "$role" | xargs)
+        [ -z "$role" ] && continue
+
+        echo "Assigning role: $role"
+        go run ./cmd/cluster-ops iam add-binding \
+            --project "${project_id}" --member "serviceAccount:${sa_email}" --role "$role"
     done < "{{ roles_file }}"
 
     echo "Finished assigning roles to $sa_email"

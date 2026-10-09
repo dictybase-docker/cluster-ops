@@ -14,13 +14,16 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/kops"
 	"github.com/dictybase-docker/cluster-ops/internal/util"
 	"github.com/urfave/cli/v2"
+	crm "google.golang.org/api/cloudresourcemanager/v1"
 )
 
 const (
-	projectFlag = "project"
-	nameFlag    = "name"
-	bucketFlag  = "bucket"
-	createCmd   = "create"
+	projectFlag  = "project"
+	nameFlag     = "name"
+	bucketFlag   = "bucket"
+	credFileFlag = "cred-file"
+	dryRunFlag   = "dry-run"
+	createCmd    = "create"
 )
 
 func main() {
@@ -34,6 +37,7 @@ func main() {
 			forwardCommand(),
 			waitCommand(),
 			bucketCommand(),
+			iamCommand(),
 			envCommand(),
 			apiCommand(),
 			saCommand(),
@@ -204,8 +208,8 @@ func bucketCommand() *cli.Command {
 					&cli.StringFlag{Name: "location", Value: "US"},
 					&cli.BoolFlag{Name: "versioning", Value: true},
 					&cli.StringFlag{Name: "lifecycle-file"},
-					&cli.StringFlag{Name: "cred-file"},
-					&cli.BoolFlag{Name: "dry-run"},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
 				},
 			},
 			{
@@ -215,8 +219,8 @@ func bucketCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: bucketFlag, Aliases: []string{"b"}, Required: true},
 					&cli.StringFlag{Name: "confirm", Usage: "Pass exactly 'yes' to delete"},
-					&cli.BoolFlag{Name: "dry-run"},
-					&cli.StringFlag{Name: "cred-file"},
+					&cli.BoolFlag{Name: dryRunFlag},
+					&cli.StringFlag{Name: credFileFlag},
 				},
 			},
 		},
@@ -236,13 +240,18 @@ func bucketConvergeAction(cltx *cli.Context) error {
 		Location:   cltx.String("location"),
 		Versioning: cltx.Bool("versioning"),
 		Lifecycle:  lifecycle,
-		CredFile:   cltx.String("cred-file"),
+		CredFile:   cltx.String(credFileFlag),
 	}
-	mode := gcp.MutationMode{DryRun: cltx.Bool("dry-run")}
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
 	res, err := runBucketConverge(cfg, mode)
 	if err != nil {
 		return err
 	}
+	return reportConverge(res, mode)
+}
+
+// reportConverge prints the action line (dry-run: intent on stderr + JSON).
+func reportConverge(res gcp.Result, mode gcp.MutationMode) error {
 	if mode.DryRun {
 		fmt.Fprintf(os.Stderr, "[DRY RUN] %s %s\n", res.Name, res.Action)
 		return printJSONLine(res)
@@ -294,19 +303,14 @@ func closeStorageClient(c *storage.Client) IOE.IOEither[error, struct{}] {
 // deletion requires --confirm yes (the wrapper's prompt converts to it).
 func bucketDeleteAction(cltx *cli.Context) error {
 	mode := gcp.MutationMode{
-		DryRun:    cltx.Bool("dry-run"),
+		DryRun:    cltx.Bool(dryRunFlag),
 		Confirmed: cltx.String("confirm") == "yes",
 	}
-	res, err := runBucketDelete(cltx.String(bucketFlag), cltx.String("cred-file"), mode)
+	res, err := runBucketDelete(cltx.String(bucketFlag), cltx.String(credFileFlag), mode)
 	if err != nil {
 		return err
 	}
-	if mode.DryRun {
-		fmt.Fprintf(os.Stderr, "[DRY RUN] %s %s\n", res.Name, res.Action)
-		return printJSONLine(res)
-	}
-	fmt.Printf("%s %s\n", res.Name, res.Action)
-	return nil
+	return reportConverge(res, mode)
 }
 
 func runBucketDelete(name, credFile string, mode gcp.MutationMode) (gcp.Result, error) {
@@ -323,6 +327,60 @@ func deleteWithClient(
 	return func(c *storage.Client) IOE.IOEither[error, gcp.Result] {
 		return gcp.DeleteBucketState(gcp.StorageDeleteAPI{Client: c}, name, mode)
 	}
+}
+
+// iamCommand manages GCP IAM bindings.
+func iamCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "iam",
+		Usage: "Manage GCP IAM bindings",
+		Subcommands: []*cli.Command{
+			{
+				Name:      "add-binding",
+				Usage:     "Converge a project IAM binding (idempotent)",
+				Action:    iamAddBindingAction,
+				ArgsUsage: " ",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
+					&cli.StringFlag{Name: "member", Required: true},
+					&cli.StringFlag{Name: "role", Required: true},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
+				},
+			},
+		},
+	}
+}
+
+func iamAddBindingAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
+	res, err := runIAMBinding(
+		cltx.String(projectFlag), cltx.String("member"), cltx.String("role"),
+		cltx.String(credFileFlag), mode)
+	if err != nil {
+		return err
+	}
+	return reportConverge(res, mode)
+}
+
+func runIAMBinding(project, member, role, credFile string, mode gcp.MutationMode) (gcp.Result, error) {
+	forced := F.Pipe1(
+		iamBindingWithClient(project, member, role, mode),
+		IOE.WithResource[gcp.Result](gcp.NewCRMService(credFile), closeCRMService),
+	)()
+	return E.UnwrapError(forced)
+}
+
+func iamBindingWithClient(
+	project, member, role string, mode gcp.MutationMode,
+) func(*crm.Service) IOE.IOEither[error, gcp.Result] {
+	return func(s *crm.Service) IOE.IOEither[error, gcp.Result] {
+		return gcp.ConvergeProjectIAMBinding(gcp.CRMProjectIAM{Service: s}, project, member, role, mode)
+	}
+}
+
+func closeCRMService(*crm.Service) IOE.IOEither[error, struct{}] {
+	return IOE.Of[error](struct{}{})
 }
 
 // ---------- env ----------
