@@ -1,10 +1,12 @@
 package kops
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	E "github.com/IBM/fp-go/v2/either"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
@@ -43,12 +45,35 @@ func runKopsCapture(args ...string) (string, error) {
 	return E.UnwrapError(effect())
 }
 
+// validateGrace bounds how long the runner waits past kops' own --wait budget
+// before killing a hung command (overridable in tests).
+var validateGrace = 10 * time.Second
+
 // ValidateClusterIOE runs `kops validate cluster --name=<name> --state=<state>
-// --wait <m>m` and returns its captured output. The error wraps the exec error
-// (%w), so errors.Is(exec.ErrNotFound) and *exec.ExitError survive for
-// classification by callers.
+// --wait <m>m` under a deadline of the wait budget plus validateGrace. A
+// killed command errors as context.DeadlineExceeded (wrapped), so callers can
+// classify a timeout; other exec errors keep errors.Is(exec.ErrNotFound) /
+// *exec.ExitError for classification.
 func ValidateClusterIOE(name, state string, waitMinutes int) IOE.IOEither[error, string] {
-	return runKopsCaptureIOE(validateClusterArgs(name, state, waitMinutes)...)
+	return IOE.TryCatchError(func() (string, error) {
+		return runKopsValidate(name, state, waitMinutes)
+	})
+}
+
+func runKopsValidate(name, state string, waitMinutes int) (string, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		time.Duration(waitMinutes)*time.Minute+validateGrace,
+	)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "kops", validateClusterArgs(name, state, waitMinutes)...).Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("kops validate cluster: %w", context.DeadlineExceeded)
+		}
+		return "", fmt.Errorf("kops validate cluster: %w", err)
+	}
+	return string(out), nil
 }
 
 // Shared kops argv tokens (with update.go's cmdCluster and friends).
