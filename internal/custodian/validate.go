@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -28,6 +29,7 @@ const (
 const (
 	checkControlPlaneZones = "control-plane-zones"
 	checkBatchTaints       = "batch-taints"
+	checkNodeDetector      = "node-problem-detector"
 )
 
 // HACheck represents a single validation check result.
@@ -86,10 +88,13 @@ func CheckNodeProblemDetector(ctx context.Context, cs kubernetes.Interface) HACh
 		getDaemonSet(ctx, cs, "kube-system", "node-problem-detector"),
 		E.Fold(
 			func(err error) HACheck {
-				return HACheck{"node-problem-detector", statusFail, "daemonset not found"}
+				if apierrors.IsNotFound(err) {
+					return HACheck{checkNodeDetector, statusFail, "daemonset not found"}
+				}
+				return HACheck{checkNodeDetector, statusError, err.Error()}
 			},
 			func(ds *appsv1.DaemonSet) HACheck {
-				return validateDaemonSet("node-problem-detector", ds)
+				return validateDaemonSet(checkNodeDetector, ds)
 			},
 		),
 	)
@@ -115,8 +120,11 @@ func checkCertManagerNamespace(ctx context.Context, cs kubernetes.Interface) HAC
 	return F.Pipe1(
 		listPods(ctx, cs, "cert-manager", ""),
 		E.Fold(
-			func(_ error) HACheck {
-				return HACheck{"cert-manager", statusFail, "no cert-manager pods found"}
+			func(err error) HACheck {
+				if apierrors.IsNotFound(err) {
+					return HACheck{"cert-manager", statusFail, "no cert-manager pods found"}
+				}
+				return HACheck{"cert-manager", statusError, err.Error()}
 			},
 			func(pods []corev1.Pod) HACheck {
 				return validatePodsRunning("cert-manager", pods)

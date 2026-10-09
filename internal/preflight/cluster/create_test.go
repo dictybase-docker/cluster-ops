@@ -55,6 +55,7 @@ func greenProbes() CreateProbes {
 			}
 			return fakeInfo(path), nil
 		},
+		RealPath: func(path string) (string, error) { return path, nil },
 		ReadFile: func(path string) ([]byte, error) {
 			switch {
 			case strings.HasSuffix(path, "cluster.yaml"):
@@ -284,4 +285,49 @@ func TestCreateShellIsolation(t *testing.T) {
 	got = runCreate(greenEnv(), probes)
 	require.Equal(t, preflight.StatusFail, got[5].Status)
 	require.Contains(t, got[5].Detail, "gcloud account is")
+}
+
+// A forbidden image probe must name the error — never "image not found"
+// (Review Focus 5: slow-but-false probes).
+func TestCreateImageProbeErrorNotMissing(t *testing.T) {
+	probes := greenProbes()
+	probes.DescribeImage = func(context.Context, string, string) (bool, error) {
+		return false, errors.New("403 forbidden")
+	}
+	got := runCreate(greenEnv(), probes)
+	require.Equal(t, preflight.StatusFail, got[8].Status)
+	require.Contains(t, got[8].Detail, "image check failed: 'proj-dcr/img-1': 403 forbidden")
+	require.NotContains(t, got[8].Detail, "image not found")
+}
+
+// The active-cluster probe must not let a sibling prefix (kn-backup/) count.
+func TestBucketAndPrefixKeepsTrailingSlash(t *testing.T) {
+	bucket, prefix := bucketAndPrefix("gs://kops-state-dcr/dcr-k8s.local/")
+	require.Equal(t, "kops-state-dcr", bucket)
+	require.Equal(t, "dcr-k8s.local/", prefix)
+}
+
+// SSH isolation: public keys must end in .pub (otherwise pub == priv "proves"
+// a keypair from one file), and the parent directory is compared canonically.
+func TestCreateSSHKeyChecks(t *testing.T) {
+	env := greenEnv()
+	env.SSHPub = "/repo/credentials/proj-dcr/k8sVM"
+	got := runCreate(env, greenProbes())
+	require.Equal(t, preflight.StatusFail, got[6].Status)
+	require.Contains(t, got[6].Detail, "must end in .pub")
+
+	probes := greenProbes()
+	env = greenEnv()
+	env.SSHPub = "/alt/credentials/proj-dcr/k8sVM.pub"
+	got = runCreate(env, probes)
+	require.Equal(t, preflight.StatusFail, got[6].Status)
+	require.Contains(t, got[6].Detail, "!= expected (credentials/proj-dcr)")
+
+	// The same tree reached through a symlinked path resolves to the isolated
+	// directory and passes.
+	probes.RealPath = func(path string) (string, error) {
+		return strings.Replace(path, "/alt/", "/repo/", 1), nil
+	}
+	got = runCreate(env, probes)
+	require.Equal(t, preflight.StatusPass, got[6].Status, got[6].Detail)
 }

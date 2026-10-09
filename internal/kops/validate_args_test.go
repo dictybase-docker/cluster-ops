@@ -27,6 +27,7 @@ func TestValidateClusterArgs(t *testing.T) {
 func TestValidateClusterIOETimesOut(t *testing.T) {
 	shim := t.TempDir()
 	sleepy := "#!/usr/bin/env bash\nexec sleep 30\n"
+	//nolint:gosec // G306: test shim must be executable
 	require.NoError(t, os.WriteFile(filepath.Join(shim, "kops"), []byte(sleepy), 0o755))
 	t.Setenv("PATH", shim+string(os.PathListSeparator)+os.Getenv("PATH"))
 

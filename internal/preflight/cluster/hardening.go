@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	IO "github.com/IBM/fp-go/v2/io"
 	"github.com/dictybase-docker/cluster-ops/internal/custodian"
@@ -95,12 +96,19 @@ func checkMetrics(cfg HardeningConfig) IO.IO[preflight.Result] {
 	}
 }
 
+// metricProbeTimeout bounds one metrics probe (overridable in tests): a
+// stalled metrics API must not hang the gate.
+var metricProbeTimeout = 10 * time.Second
+
 // RestMetricsProbe probes GET /apis/metrics.k8s.io/v1beta1/nodes through the
-// cluster REST config: transport errors propagate, a non-2xx response (e.g.
-// 404 while metrics-server is not serving) is errMetricsNotReporting. A served
+// cluster REST config under metricProbeTimeout: transport errors propagate;
+// 404/503 (not serving) are errMetricsNotReporting; any other status is a
+// named API error (403 must not masquerade as "not reporting"). A served
 // response counts as reporting even when the list is empty.
 func RestMetricsProbe(clients kube.Clients) MetricsProbe {
 	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, metricProbeTimeout)
+		defer cancel()
 		transport, err := rest.TransportFor(clients.Rest)
 		if err != nil {
 			return fmt.Errorf("metrics transport: %w", err)
@@ -115,9 +123,13 @@ func RestMetricsProbe(clients kube.Clients) MetricsProbe {
 			return fmt.Errorf("metrics request: %w", err)
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusOK:
+			return nil
+		case http.StatusNotFound, http.StatusServiceUnavailable:
 			return errMetricsNotReporting
+		default:
+			return fmt.Errorf("metrics API status %d", resp.StatusCode)
 		}
-		return nil
 	}
 }
