@@ -20,7 +20,7 @@ just minio import-bucket \
 
 1. Reads this MinIO's root credentials from Secret `minio-root` in the namespace
 2. Wraps the whole mc flow in one `cluster-ops forward run` child to `svc/minio:9000` — a free local port exported as `FORWARD_PORT`, torn down when the child exits
-3. Registers the `mc` alias `minio-src` (explicit source credentials); the target alias `minio_dst` rides in the `MC_HOST_MINIO_DST` env (Secret-derived credentials)
+3. Registers the `mc` alias `minio-src` (explicit source credentials); the target alias `minio_dst` is built inside the forwarded child as `MC_HOST_minio_dst` from the Secret-derived credentials and `FORWARD_PORT` — env, never argv
 4. Creates the bucket on the target if missing (`mc mb --ignore-existing`)
 5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed
 6. Retries the mirror up to `--retries` times (default 5) inside the same forward-held child — each attempt resumes, skipping objects already copied
@@ -50,7 +50,7 @@ Source credentials are **not** the target's `minio-root` values and are never wr
 | Alias | Credentials from | Points at |
 |-------|------------------|-----------|
 | `minio-src` | `--source-user` / `--source-password` flags | source endpoint |
-| `minio_dst` | Secret `minio-root` in this cluster, via `MC_HOST_MINIO_DST` env | this MinIO via the forward |
+| `minio_dst` | Secret `minio-root` in this cluster, via `MC_HOST_minio_dst` env (set inside the forwarded child) | this MinIO via the forward |
 
 The recipe guards the direction: source → target, one bucket. To seed multiple buckets, run once per bucket.
 

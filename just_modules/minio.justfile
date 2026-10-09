@@ -144,20 +144,20 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
 
     # Reach the cluster-internal API through a forward-held child: the Go
     # parent picks a free local port, exports FORWARD_PORT, and reconnects
-    # across pod restarts. Target credentials ride in MC_HOST_MINIO_DST env —
-    # never argv. (Source credentials come from the caller's own flags.)
-    # Source credentials stay in one alias-set call (they come from the
-    # caller's own flags); the target alias rides in MC_HOST_MINIO_DST env.
+    # across pod restarts. FORWARD_PORT exists only inside the child, so the
+    # child builds the target alias (MC_HOST_minio_dst — the suffix is the
+    # alias name, case-sensitive) from the exported root credentials: env,
+    # never argv. Source credentials come from the caller's own flags.
     mc alias set minio-src "$SRC_URL" "$SRC_USER" "$SRC_PASSWORD" --quiet
     RETRIES="{{ retries }}"
     [[ "$RETRIES" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
 
-    export MC_HOST_MINIO_DST="http://${USER_KEY}:${PASS_KEY}@localhost:\${FORWARD_PORT}"
-    export BUCKET REMOVE_FLAG=""
+    export USER_KEY PASS_KEY BUCKET RETRIES REMOVE_FLAG=""
     [[ "{{ remove }}" == "yes" ]] && REMOVE_FLAG="--remove"
     echo "Ensuring bucket '$BUCKET' exists on the target..."
     go run ./cmd/cluster-ops forward run --ns "$NS" --svc minio --remote-port 9000 -- \
         bash -c '
+            export MC_HOST_minio_dst="http://${USER_KEY}:${PASS_KEY}@localhost:${FORWARD_PORT}"
             mc mb --ignore-existing "minio_dst/$BUCKET"
 
             # HTTPS load balancers (GCP classic LB among them) reset long-lived
@@ -184,7 +184,7 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
             echo "Done. Object counts:"
             mc ls --recursive "minio_dst/$BUCKET" | wc -l
         '
-    unset MC_HOST_MINIO_DST BUCKET REMOVE_FLAG RETRIES
+    unset USER_KEY PASS_KEY BUCKET REMOVE_FLAG RETRIES
 
 # Post-install check: pool, pod, PVC, Service, Secret. Exits non-zero on failure.
 # Usage: just minio verify [--namespace <ns>] [--secret <name>] [--pool <label>] [--node-count <n>]
