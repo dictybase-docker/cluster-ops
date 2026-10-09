@@ -40,13 +40,13 @@ cat > "${mock_bin}/kubectl" <<'MOCK'
 #!/usr/bin/env bash
 echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
 case "$*" in
-    *"{.data.rootUser}"*) printf 'rootuser' | base64 ;;
-    *"{.data.rootPassword}"*) printf 'rootpass' | base64 ;;
+    *"{.data.rootUser}"*) printf '%s' "${MOCK_ROOT_USER:-rootuser}" | base64 ;;
+    *"{.data.rootPassword}"*) printf '%s' "${MOCK_ROOT_PASS:-rootpass}" | base64 ;;
 esac
 MOCK
 cat > "${mock_bin}/mc" <<'MOCK'
 #!/usr/bin/env bash
-echo "mc $1 MC_HOST_minio_dst=${MC_HOST_minio_dst:-unset}" >> "${MOCK_CALLS_LOG}"
+echo "mc $* MC_HOST_minio_dst=${MC_HOST_minio_dst:-unset} MC_CONFIG_DIR=${MC_CONFIG_DIR:-unset}" >> "${MOCK_CALLS_LOG}"
 [[ "$1" == "mirror" && "${MOCK_MC_MIRROR:-ok}" == "fail" ]] && exit 1
 exit 0
 MOCK
@@ -87,7 +87,7 @@ echo "=== 3. import-bucket mirrors through the forward port ==="
 : > "${calls}"
 out=$(import_bucket 2>&1) || fail "import-bucket failed: ${out}"
 [[ "$(grep -c '^mc mirror' "${calls}")" == "1" ]] || fail "expected one mirror: $(cat "${calls}")"
-grep -q '^mc mirror MC_HOST_minio_dst=http://rootuser:rootpass@localhost:45678$' "${calls}" \
+grep '^mc mirror' "${calls}" | grep -q 'MC_HOST_minio_dst=http://rootuser:rootpass@localhost:45678' \
     || fail "target alias must use the forward port: $(grep '^mc mirror' "${calls}")"
 echo "  target alias + mirror: PASS"
 
@@ -99,5 +99,33 @@ fi
 [[ "$(grep -c '^mc mirror' "${calls}")" == "3" ]] || fail "expected 3 mirror attempts: $(grep -c '^mc mirror' "${calls}")"
 printf '%s' "${out}" | grep -q "after 3 attempts" || fail "failure must name the attempts: ${out}"
 echo "  retries: PASS"
+
+echo "=== 5. user values reach the shell quoted ({{ quote() }} rendering) ==="
+: > "${calls}"
+out=$(just minio import-bucket --bucket 'we"ird$(echo INJ)' --secret 'sec"ret' \
+    --source-url https://src.example --source-user srcuser --source-password srcpass 2>&1) \
+    || fail "import-bucket broke on shell metacharacters in flags: ${out}"
+grep -qF 'minio_dst/we"ird$(echo INJ)' "${calls}" \
+    || fail "bucket must reach mc literally: $(cat "${calls}")"
+grep -qF 'sec"ret' "${calls}" \
+    || fail "secret must reach kubectl literally: $(cat "${calls}")"
+echo "  quote() rendering: PASS"
+
+echo "=== 6. source alias lives in a throwaway MC_CONFIG_DIR, removed after ==="
+: > "${calls}"
+out=$(import_bucket 2>&1) || fail "import-bucket failed: ${out}"
+cfg_dir=$(grep -o 'MC_CONFIG_DIR=[^ ]*' "${calls}" | head -1 | cut -d= -f2)
+[[ -n "${cfg_dir}" && "${cfg_dir}" != "unset" && "${cfg_dir}" != "${HOME}/.mc" ]] \
+    || fail "source alias must not touch the default mc config: $(cat "${calls}")"
+[[ ! -d "${cfg_dir}" ]] || fail "throwaway MC_CONFIG_DIR left behind: ${cfg_dir}"
+echo "  throwaway config: PASS"
+
+echo "=== 7. target URL percent-encodes the credentials ==="
+: > "${calls}"
+out=$(MOCK_ROOT_USER='ro@ot' MOCK_ROOT_PASS='p@ss/wo:rd#1%2' import_bucket 2>&1) \
+    || fail "import-bucket failed: ${out}"
+grep '^mc mirror' "${calls}" | grep -q 'MC_HOST_minio_dst=http://ro%40ot:p%40ss%2Fwo%3Ard%231%252@localhost:45678' \
+    || fail "credentials must be URL-encoded: $(grep '^mc mirror' "${calls}")"
+echo "  percent-encoding: PASS"
 
 echo "datastore recipe contract tests PASSED"
