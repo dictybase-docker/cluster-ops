@@ -176,4 +176,28 @@ echo "${report_out}" | grep -q "Control Plane:.*zones: us-central1-a, us-central
 rm -rf config/kops/dcr-test-1 config/kops/env-cluster config/kops/ignored-cluster
 echo "  ✓ cleaned up test directories"
 
+echo "=== 6. create-cluster runs preflight before any mutation ==="
+# The go mock is created here on purpose: sections 1–4 run the real
+# `go run ./cmd/cluster-ops preflight …` against the mocked kops binary.
+cat << 'EOF' > "${test_env_dir}/go"
+#!/usr/bin/env bash
+echo "go $*" >> "${MOCK_KOPS_LOG}"
+exit "${MOCK_GO_EXIT:-0}"
+EOF
+chmod +x "${test_env_dir}/go"
+: > "${MOCK_KOPS_LOG}"
+if MOCK_GO_EXIT=1 just gcp-cluster create-cluster --cluster dcr-test-1 --project proj-test-1 >/dev/null 2>&1; then
+    echo "ERROR: create-cluster passed despite failing preflight"
+    exit 1
+fi
+grep -q "preflight create" "${MOCK_KOPS_LOG}" || {
+    echo "ERROR: preflight create not invoked: $(cat "${MOCK_KOPS_LOG}")"
+    exit 1
+}
+grep -q "create cluster" "${MOCK_KOPS_LOG}" && {
+    echo "ERROR: kops create cluster ran although preflight failed"
+    exit 1
+}
+echo "  ✓ preflight create gates create-cluster (no mutation on failure)"
+
 echo "All bootstrap bundle contract tests PASSED!"
