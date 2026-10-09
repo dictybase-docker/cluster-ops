@@ -11,6 +11,7 @@ import (
 	F "github.com/IBM/fp-go/v2/function"
 	IO "github.com/IBM/fp-go/v2/io"
 	S "github.com/IBM/fp-go/v2/string"
+	"github.com/dictybase-docker/cluster-ops/internal/kops"
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight/backend"
@@ -49,6 +50,10 @@ var (
 
 const (
 	flagKubeconfig = "kubeconfig"
+	flagCluster    = "cluster"
+	flagKopsName   = "kops-name"
+	flagState      = "state"
+	flagWaitTime   = "waittime"
 	envKubeconfig  = "KUBECONFIG"
 	cmdForward     = "forward"
 	cmdForwardRun  = "run"
@@ -124,6 +129,25 @@ func preflightCommand() *cli.Command {
 						Usage:   "Kubeconfig path (defaults to KUBECONFIG)",
 					},
 					registryDirFlag(),
+				},
+			},
+			{
+				Name:   "validate-cluster",
+				Usage:  "kops validate cluster with classified errors",
+				Action: validateClusterAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: flagCluster, EnvVars: []string{"CLUSTER_NAME"}, Usage: "Cluster name"},
+					&cli.StringFlag{
+						Name: flagKopsName,
+						Usage: "Full kops DNS name " +
+							"(defaults to KOPS_CLUSTER_NAME or <cluster>-k8s.local)",
+					},
+					&cli.StringFlag{
+						Name: flagState,
+						Usage: "Kops state URI " +
+							"(defaults to KOPS_STATE_STORE or gs://kops-state-<cluster>)",
+					},
+					&cli.IntFlag{Name: flagWaitTime, Value: 20, Usage: "Minutes to wait for validation"},
 				},
 			},
 			{
@@ -267,6 +291,28 @@ func hardeningAction(cltx *cli.Context) error {
 		})),
 		"hardening check failed",
 		"\nAll 5 hardening components running.",
+	)
+}
+
+// kopsValidate adapts the kops IOEither to the injected validator signature
+// (force at the edge, then unwrap to (value, error)).
+func kopsValidate(name, state string, waitMinutes int) (string, error) {
+	forced := kops.ValidateClusterIOE(name, state, waitMinutes)()
+	return E.UnwrapError(forced)
+}
+
+func validateClusterAction(cltx *cli.Context) error {
+	clusterName := cltx.String(flagCluster)
+	return reportGate(
+		runGate([]IO.IO[preflight.Result]{cluster.CheckKopsValidate(cluster.ValidateConfig{
+			Cluster:  clusterName,
+			KopsName: cluster.DeriveKopsName(clusterName, cltx.String(flagKopsName)),
+			State:    cluster.DeriveState(clusterName, cltx.String(flagState)),
+			WaitTime: cltx.Int(flagWaitTime),
+			Validate: kopsValidate,
+		})}),
+		"kops validation failed",
+		"\nCluster validated.",
 	)
 }
 

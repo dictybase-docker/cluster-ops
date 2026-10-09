@@ -42,3 +42,30 @@ func runKopsCapture(args ...string) (string, error) {
 	effect := runKopsCaptureIOE(args...)
 	return E.UnwrapError(effect())
 }
+
+// ValidateClusterIOE runs `kops validate cluster --name=<name> --state=<state>
+// --wait <m>m` and returns its captured output. The error wraps the exec error
+// (%w), so errors.Is(exec.ErrNotFound) and *exec.ExitError survive for
+// classification by callers.
+func ValidateClusterIOE(name, state string, waitMinutes int) IOE.IOEither[error, string] {
+	return runKopsCaptureIOE(validateClusterArgs(name, state, waitMinutes)...)
+}
+
+// Shared kops argv tokens (with update.go's cmdCluster and friends).
+const (
+	cmdValidate = "validate"
+	flagWait    = "--wait"
+)
+
+// validateClusterArgs mirrors the shell recipe's argv: --name/--state are
+// omitted when empty so kops falls back to its own defaults.
+func validateClusterArgs(name, state string, waitMinutes int) []string {
+	args := []string{cmdValidate, cmdCluster}
+	if name != "" {
+		args = append(args, "--name="+name)
+	}
+	if state != "" {
+		args = append(args, "--state="+state)
+	}
+	return append(args, flagWait, fmt.Sprintf("%dm", waitMinutes))
+}

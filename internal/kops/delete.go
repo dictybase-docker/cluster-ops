@@ -27,7 +27,7 @@ func DeleteCluster(cltx *cli.Context) error {
 
 	dryRun := !cltx.Bool("yes")
 
-	dryRunOut, err := runKopsCapture("delete", "cluster",
+	dryRunOut, err := runKopsCapture("delete", cmdCluster,
 		"--name="+name, "--state="+state)
 	if err != nil {
 		return fmt.Errorf("kops delete dry-run failed: %w", err)
@@ -48,7 +48,7 @@ func executeTeardown(cltx *cli.Context, name, state, project, dryRunOut string) 
 			return "", confirmTeardown(cltx)
 		}),
 		IOE.Chain(func(_ string) IOE.IOEither[error, string] {
-			return runKopsIOE("delete", "cluster",
+			return runKopsIOE("delete", cmdCluster,
 				"--name="+name, "--state="+state, "--yes")
 		}),
 		IOE.Chain(func(_ string) IOE.IOEither[error, string] {
