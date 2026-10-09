@@ -19,6 +19,13 @@ import (
 // nameMetricsServer is the shared component name (custodian parity).
 const nameMetricsServer = "metrics-server"
 
+// custodian.HACheck status values (mirrors internal/custodian's unexported consts).
+const (
+	haStatusPass = "pass"
+	haStatusWarn = "warn"
+	haStatusInfo = "info"
+)
+
 // errMetricsNotReporting marks a reachable metrics API that is not serving
 // (404 / non-2xx) — distinct from transport errors. Matched with errors.Is,
 // never by message.
@@ -57,9 +64,9 @@ func mapHACheck(
 		h := check(context.Background(), cfg.Clients.Kube)
 		status := preflight.StatusFail
 		switch h.Status {
-		case "pass":
+		case haStatusPass:
 			status = preflight.StatusPass
-		case "info":
+		case haStatusInfo:
 			status = preflight.StatusInfo
 		}
 		return preflight.Result{Name: h.Name, Detail: h.Message, Status: status}

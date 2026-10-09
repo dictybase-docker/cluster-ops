@@ -11,6 +11,7 @@ import (
 	F "github.com/IBM/fp-go/v2/function"
 	IO "github.com/IBM/fp-go/v2/io"
 	S "github.com/IBM/fp-go/v2/string"
+	"github.com/dictybase-docker/cluster-ops/internal/custodian"
 	"github.com/dictybase-docker/cluster-ops/internal/kops"
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
@@ -135,20 +136,13 @@ func preflightCommand() *cli.Command {
 				Name:   "validate-cluster",
 				Usage:  "kops validate cluster with classified errors",
 				Action: validateClusterAction,
-				Flags: []cli.Flag{
-					&cli.StringFlag{Name: flagCluster, EnvVars: []string{"CLUSTER_NAME"}, Usage: "Cluster name"},
-					&cli.StringFlag{
-						Name: flagKopsName,
-						Usage: "Full kops DNS name " +
-							"(defaults to KOPS_CLUSTER_NAME or <cluster>-k8s.local)",
-					},
-					&cli.StringFlag{
-						Name: flagState,
-						Usage: "Kops state URI " +
-							"(defaults to KOPS_STATE_STORE or gs://kops-state-<cluster>)",
-					},
-					&cli.IntFlag{Name: flagWaitTime, Value: 20, Usage: "Minutes to wait for validation"},
-				},
+				Flags:  kopsValidateFlags(),
+			},
+			{
+				Name:   "verify-cluster",
+				Usage:  "Composite: kops validation + HA topology + hardening addons",
+				Action: verifyClusterAction,
+				Flags:  append(kopsValidateFlags(), kubeconfigFlag()),
 			},
 			{
 				Name:   "hardening",
@@ -294,6 +288,18 @@ func hardeningAction(cltx *cli.Context) error {
 	)
 }
 
+// kopsValidateFlags is the shared validate-cluster/verify-cluster flag set.
+func kopsValidateFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: flagCluster, EnvVars: []string{"CLUSTER_NAME"}, Usage: "Cluster name"},
+		&cli.StringFlag{Name: flagKopsName, Usage: "Full kops DNS name " +
+			"(defaults to KOPS_CLUSTER_NAME or <cluster>-k8s.local)"},
+		&cli.StringFlag{Name: flagState, Usage: "Kops state URI " +
+			"(defaults to KOPS_STATE_STORE or gs://kops-state-<cluster>)"},
+		&cli.IntFlag{Name: flagWaitTime, Value: 20, Usage: "Minutes to wait for validation"},
+	}
+}
+
 // kopsValidate adapts the kops IOEither to the injected validator signature
 // (force at the edge, then unwrap to (value, error)).
 func kopsValidate(name, state string, waitMinutes int) (string, error) {
@@ -302,17 +308,35 @@ func kopsValidate(name, state string, waitMinutes int) (string, error) {
 }
 
 func validateClusterAction(cltx *cli.Context) error {
-	clusterName := cltx.String(flagCluster)
 	return reportGate(
-		runGate([]IO.IO[preflight.Result]{cluster.CheckKopsValidate(cluster.ValidateConfig{
-			Cluster:  clusterName,
-			KopsName: cluster.DeriveKopsName(clusterName, cltx.String(flagKopsName)),
-			State:    cluster.DeriveState(clusterName, cltx.String(flagState)),
-			WaitTime: cltx.Int(flagWaitTime),
-			Validate: kopsValidate,
-		})}),
+		runGate([]IO.IO[preflight.Result]{cluster.CheckKopsValidate(kopsValidateConfig(cltx))}),
 		"kops validation failed",
 		"\nCluster validated.",
+	)
+}
+
+func kopsValidateConfig(cltx *cli.Context) cluster.ValidateConfig {
+	clusterName := cltx.String(flagCluster)
+	return cluster.ValidateConfig{
+		Cluster:  clusterName,
+		KopsName: cluster.DeriveKopsName(clusterName, cltx.String(flagKopsName)),
+		State:    cluster.DeriveState(clusterName, cltx.String(flagState)),
+		WaitTime: cltx.Int(flagWaitTime),
+		Validate: kopsValidate,
+	}
+}
+
+func verifyClusterAction(cltx *cli.Context) error {
+	return reportGate(
+		runGate(cluster.VerifyCluster(cluster.VerifyConfig{
+			Kubeconfig: cltx.String(flagKubeconfig),
+			Validate:   kopsValidateConfig(cltx),
+			MetricsFor: cluster.RestMetricsProbe,
+			HA:         custodian.RunHAChecks,
+			NewClients: cluster.ClientsFromKubeconfig,
+		})),
+		"cluster verification failed",
+		"\nAll validations passed.",
 	)
 }
 

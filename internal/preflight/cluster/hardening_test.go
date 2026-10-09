@@ -32,14 +32,20 @@ func npdDaemonSet(ready, desired int32) *appsv1.DaemonSet {
 	}
 }
 
+func certManagerLabels() map[string]string {
+	return map[string]string{"app.kubernetes.io/instance": "cert-manager"}
+}
+
+func nodeLocalDNSLabels() map[string]string {
+	return map[string]string{"k8s-app": "node-local-dns"}
+}
+
 func healthyFixtures() []runtime.Object {
 	return []runtime.Object{
 		podRunning("autoscaler-abc", map[string]string{"app": "cluster-autoscaler"}),
 		npdDaemonSet(2, 2),
-		podRunning("cert-manager-abc",
-			map[string]string{"app.kubernetes.io/instance": "cert-manager"}),
-		podRunning("node-local-dns-abc",
-			map[string]string{"k8s-app": "node-local-dns"}),
+		podRunning("cert-manager-abc", certManagerLabels()),
+		podRunning("node-local-dns-abc", nodeLocalDNSLabels()),
 	}
 }
 
@@ -63,10 +69,8 @@ func TestHardeningAllRunning(t *testing.T) {
 func TestHardeningReportsEveryFailure(t *testing.T) {
 	got := runHardening([]runtime.Object{
 		npdDaemonSet(1, 2),
-		podRunning("cert-manager-abc",
-			map[string]string{"app.kubernetes.io/instance": "cert-manager"}),
-		podRunning("node-local-dns-abc",
-			map[string]string{"k8s-app": "node-local-dns"}),
+		podRunning("cert-manager-abc", certManagerLabels()),
+		podRunning("node-local-dns-abc", nodeLocalDNSLabels()),
 	}, func(context.Context) error { return nil })
 	require.Len(t, got, 5)
 	fails := []string{}

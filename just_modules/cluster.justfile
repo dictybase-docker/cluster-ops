@@ -1495,6 +1495,40 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
     [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
     [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
 
+    # Ensure isolated per-cluster kubeconfig exists before the kube-dependent checks
+    c="{{ cluster }}"
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    kubeconfig_file="${KUBECONFIG:-}"
+    if [ -z "${kubeconfig_file}" ] && [ -n "${c}" ]; then
+        kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+        export KUBECONFIG="${kubeconfig_file}"
+    fi
+
+    if [ -n "${kubeconfig_file}" ] && [ ! -s "${kubeconfig_file}" ]; then
+        echo
+        echo "Kubeconfig missing at ${kubeconfig_file}; exporting from state store..."
+        just gcp-cluster export-kubeconfig "${args[@]+"${args[@]}"}"
+    fi
+
+    echo "=== 1/3: cluster health ==="
+    echo "=== 2/3: HA topology ==="
+    echo "=== 3/3: hardening addons ==="
+    go run ./cmd/cluster-ops preflight verify-cluster \
+        --cluster {{ quote(cluster) }} --kops-name {{ quote(kops_name) }} --state {{ quote(state) }} --waittime {{ quote(waittime) }}
+
+    echo
+    echo "All validations passed."
+
+# Rollback copy of the pre-migration verify-cluster (delete one release after migration).
+verify-cluster-shell cluster="" kops_name="" state="" waittime="20":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args=()
+    [ -n "{{ cluster }}" ] && args+=(--cluster "{{ cluster }}")
+    [ -n "{{ kops_name }}" ] && args+=(--kops-name "{{ kops_name }}")
+    [ -n "{{ state }}" ] && args+=(--state "{{ state }}")
+
     echo "=== 1/3: cluster health ==="
     just gcp-cluster validate-cluster "${args[@]+"${args[@]}"}" --waittime "{{ waittime }}"
 
