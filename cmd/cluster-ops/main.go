@@ -95,7 +95,7 @@ func kopsDeleteFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name: "project-id", Aliases: []string{"p"},
-			EnvVars: []string{"PROJECT_ID"},
+			EnvVars: []string{envProjectID},
 		},
 		&cli.BoolFlag{
 			Name:  "yes",

@@ -1726,6 +1726,21 @@ _cluster-config-report cluster="":
 preflight-create cluster="" project="" kops_name="" state="" bucket_name="" ssh_key="":
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! go run ./cmd/cluster-ops preflight create \
+        --cluster {{ quote(cluster) }} --project {{ quote(project) }} --kops-name {{ quote(kops_name) }} \
+        --state {{ quote(state) }} --bucket-name {{ quote(bucket_name) }} --ssh-key {{ quote(ssh_key) }} \
+        --root {{ quote(invocation_directory()) }}; then
+        echo "Pre-flight check failed. Resolve issues before running create-cluster." >&2
+        exit 1
+    fi
+    just gcp-cluster _cluster-config-report --cluster {{ quote(cluster) }}
+    echo
+    echo "All pre-flight checks passed. Ready for create-cluster."
+
+# Rollback copy of the pre-migration preflight-create (delete one release after migration).
+preflight-create-shell cluster="" project="" kops_name="" state="" bucket_name="" ssh_key="":
+    #!/usr/bin/env bash
+    set -euo pipefail
 
     c="{{ cluster }}"
     [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
