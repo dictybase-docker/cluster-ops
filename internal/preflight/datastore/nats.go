@@ -12,6 +12,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -22,8 +23,12 @@ type NatsConfig struct {
 	Namespace string
 }
 
-// natsClientPort is the default NATS client port.
-const natsClientPort = int32(4222)
+const (
+	// natsClientPort is the default NATS client port.
+	natsClientPort = int32(4222)
+	// natsBoxName is the chart's nats-box Deployment (carries the nats CLI).
+	natsBoxName = "nats-box"
+)
 
 // VerifyNats is the post-install check: server StatefulSet readiness, client
 // Service port, and the nats-box rtt handshake. Never short-circuits.
@@ -82,14 +87,9 @@ func natsService(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 func natsBoxRTT(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 	label := "client rtt"
 	return func() preflight.Result {
-		if _, err := clients.Kube.AppsV1().Deployments(ns).Get(
-			context.Background(), "nats-box", metav1.GetOptions{},
-		); err != nil {
-			return preflight.Result{
-				Name:   label,
-				Detail: "nats-box deployment missing in " + ns + " (handshake skipped)",
-				Status: preflight.StatusFail,
-			}
+		pod, err := natsBoxPod(context.Background(), clients.Kube, ns)
+		if err != nil {
+			return preflight.Result{Name: label, Detail: err.Error() + " (handshake skipped)", Status: preflight.StatusFail}
 		}
 		// Exec needs a live API server; the fake clientset cannot run it.
 		if clients.Rest == nil {
@@ -101,7 +101,7 @@ func natsBoxRTT(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 		}
 		var stdout, stderr bytes.Buffer
 		req := clients.Kube.CoreV1().RESTClient().Post().
-			Namespace(ns).Resource("pods").Name("deploy/nats-box").
+			Namespace(ns).Resource("pods").Name(pod).
 			SubResource("exec").
 			VersionedParams(&corev1.PodExecOptions{
 				Command: []string{"nats", "--server",
@@ -123,4 +123,29 @@ func natsBoxRTT(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 		}
 		return preflight.Result{Name: label, Detail: strings.TrimSpace(stdout.String()), Status: preflight.StatusPass}
 	}
+}
+
+// natsBoxPod resolves the nats-box Deployment to a ready pod. The exec API
+// takes a pod name — kubectl's `deploy/nats-box` shorthand is resolved
+// client-side by kubectl and is a 404 for the API server.
+func natsBoxPod(ctx context.Context, kube kubernetes.Interface, ns string) (string, error) {
+	dep, err := kube.AppsV1().Deployments(ns).Get(ctx, natsBoxName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("nats-box deployment missing in %s: %w", ns, err)
+	}
+	if dep.Spec.Selector == nil || len(dep.Spec.Selector.MatchLabels)+len(dep.Spec.Selector.MatchExpressions) == 0 {
+		return "", fmt.Errorf("nats-box deployment in %s has no pod selector", ns)
+	}
+	pods, err := kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(dep.Spec.Selector),
+	})
+	if err != nil {
+		return "", fmt.Errorf("list nats-box pods in %s: %w", ns, err)
+	}
+	for i := range pods.Items {
+		if podReady(&pods.Items[i]) {
+			return pods.Items[i].Name, nil
+		}
+	}
+	return "", fmt.Errorf("no ready nats-box pod in %s", ns)
 }
