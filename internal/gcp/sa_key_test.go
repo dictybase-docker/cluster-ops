@@ -19,9 +19,13 @@ type fakeSAKeyAPI struct {
 	mints   int
 	lastID  string
 	listErr error
+	log     *[]string // optional shared sequence log
 }
 
 func (f *fakeSAKeyAPI) ListKeys(context.Context, string) ([]string, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, callListKeys)
+	}
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -29,6 +33,9 @@ func (f *fakeSAKeyAPI) ListKeys(context.Context, string) ([]string, error) {
 }
 
 func (f *fakeSAKeyAPI) CreateKey(context.Context, string) (string, []byte, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, callCreateKey)
+	}
 	f.mints++
 	f.lastID = fmt.Sprintf("k-new-%d", f.mints)
 	return f.lastID, []byte(`{"private_key_id": "` + f.lastID + `"}`), nil
@@ -71,9 +78,12 @@ func (f *fakeFiles) WriteFile(_ string, data []byte, perm os.FileMode) error {
 
 const testSAEmail = "sa@proj-dcr.iam.gserviceaccount.com"
 
+// liveKeyFile is the shared "key present with id k1" fixture.
+const liveKeyFile = `{"private_key_id": "k1"}`
+
 func TestSAKeyReusesLiveFile(t *testing.T) {
 	api := &fakeSAKeyAPI{live: []string{"k1"}}
-	files := &fakeFiles{keyFile: `{"private_key_id": "k1"}`}
+	files := &fakeFiles{keyFile: liveKeyFile}
 	got, err := E.UnwrapError(ConvergeSAKey(api, files, testSAEmail, "key.json", MutationMode{})())
 	require.NoError(t, err)
 	require.Equal(t, ActionUnchanged, got.Action)
@@ -93,7 +103,7 @@ func TestSAKeyMintsWhenMissing(t *testing.T) {
 // Review Focus 3: dead upstream key → exactly one re-mint.
 func TestSAKeyRemintsWhenKeyGone(t *testing.T) {
 	api := &fakeSAKeyAPI{live: []string{"k2"}}
-	files := &fakeFiles{keyFile: `{"private_key_id": "k1"}`}
+	files := &fakeFiles{keyFile: liveKeyFile}
 	got, err := E.UnwrapError(ConvergeSAKey(api, files, testSAEmail, "key.json", MutationMode{})())
 	require.NoError(t, err)
 	require.Equal(t, ActionUpdated, got.Action)

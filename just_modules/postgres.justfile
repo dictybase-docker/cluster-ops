@@ -156,21 +156,13 @@ configure-backup bucket="" project="" sa_name="postgres-backup-sa" key_file="" s
         --role roles/storage.bucketViewer \
         --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=postgres-backup-bucket-reader,description=Bucket metadata reader for the CloudNativePG backup bucket"
 
-    # Key creation is NOT idempotent — every run mints a new key and old ones
-    # keep working until deleted. Reuse an existing key file when present.
-    if [[ -f "$KEY_FILE" ]]; then
-        echo
-        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
-        echo "Delete it first if you really want to mint a new one, and prune the old key with:"
-        echo "  gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT"
-    else
-        mkdir -p "$(dirname "$KEY_FILE")"
-        gcloud iam service-accounts keys create "$KEY_FILE" \
-            --iam-account "$SA_EMAIL" \
-            --project "$PROJECT"
-        chmod 600 "$KEY_FILE"
-        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
-    fi
+    # Key converge is idempotent: a live key file whose private_key_id matches
+    # an upstream key is reused; a missing or dead one mints exactly once
+    # (written 0600). Prune accumulated keys with:
+    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
+    go run ./cmd/cluster-ops sa create-key \
+        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     # Namespaces are owned by the namespace-bootstrap stack — applied once
     # during cluster setup (just gcp-pulumi apply-namespaces), never here.
@@ -375,17 +367,13 @@ configure-source source_cluster="" source_cnpg_cluster="" bucket="" source_proje
         --bucket "${BUCKET}" --member "serviceAccount:${SA_EMAIL}" \
         --role roles/storage.objectViewer
 
-    # Key creation is NOT idempotent — reuse an existing key file.
-    if [[ -f "$KEY_FILE" ]]; then
-        echo "Key file '$KEY_FILE' already exists — NOT creating another key."
-    else
-        mkdir -p "$(dirname "$KEY_FILE")"
-        src_gcloud gcloud iam service-accounts keys create "$KEY_FILE" \
-            --iam-account "$SA_EMAIL" \
-            --project "$SRC_PROJECT"
-        chmod 600 "$KEY_FILE"
-        echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
-    fi
+    # Key converge is idempotent: a live key file whose private_key_id matches
+    # an upstream key is reused; a missing or dead one mints exactly once
+    # (written 0600). Prune accumulated keys with:
+    #   gcloud iam service-accounts keys list --iam-account $SA_EMAIL --project $PROJECT
+    src_gcloud go run ./cmd/cluster-ops sa create-key \
+        --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+    echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
 
     # Store the recovery source on the cluster stack. deploy-cluster
     # re-applies with this set and the bootstrap becomes a recovery.

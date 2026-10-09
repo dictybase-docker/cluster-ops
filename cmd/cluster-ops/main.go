@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	E "github.com/IBM/fp-go/v2/either"
@@ -19,12 +20,15 @@ import (
 )
 
 const (
-	projectFlag  = "project"
-	nameFlag     = "name"
-	bucketFlag   = "bucket"
-	credFileFlag = "cred-file"
-	dryRunFlag   = "dry-run"
-	createCmd    = "create"
+	projectFlag    = "project"
+	nameFlag       = "name"
+	bucketFlag     = "bucket"
+	credFileFlag   = "cred-file"
+	dryRunFlag     = "dry-run"
+	roleFlag       = "role"
+	displayNameFlg = "display-name"
+	keyFileDefault = "key.json"
+	createCmd      = "create"
 )
 
 func main() {
@@ -344,7 +348,7 @@ func iamCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: projectFlag, Aliases: []string{"p"}, Required: true},
 					&cli.StringFlag{Name: "member", Required: true},
-					&cli.StringFlag{Name: "role", Required: true},
+					&cli.StringFlag{Name: roleFlag, Required: true},
 					&cli.StringFlag{Name: credFileFlag},
 					&cli.BoolFlag{Name: dryRunFlag},
 				},
@@ -356,7 +360,7 @@ func iamCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: bucketFlag, Aliases: []string{"b"}, Required: true},
 					&cli.StringFlag{Name: "member", Required: true},
-					&cli.StringFlag{Name: "role", Required: true},
+					&cli.StringFlag{Name: roleFlag, Required: true},
 					&cli.StringFlag{Name: credFileFlag},
 					&cli.BoolFlag{Name: dryRunFlag},
 				},
@@ -368,7 +372,7 @@ func iamCommand() *cli.Command {
 func iamAddBindingAction(cltx *cli.Context) error {
 	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
 	res, err := runIAMBinding(
-		cltx.String(projectFlag), cltx.String("member"), cltx.String("role"),
+		cltx.String(projectFlag), cltx.String("member"), cltx.String(roleFlag),
 		cltx.String(credFileFlag), mode)
 	if err != nil {
 		return err
@@ -399,7 +403,7 @@ func closeCRMService(*crm.Service) IOE.IOEither[error, struct{}] {
 func iamAddBucketBindingAction(cltx *cli.Context) error {
 	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
 	res, err := runBucketIAMBinding(
-		cltx.String(bucketFlag), cltx.String("member"), cltx.String("role"),
+		cltx.String(bucketFlag), cltx.String("member"), cltx.String(roleFlag),
 		cltx.String(credFileFlag), mode)
 	if err != nil {
 		return err
@@ -453,6 +457,103 @@ func saKeyWithClient(
 
 func closeIAMService(*iamv1.Service) IOE.IOEither[error, struct{}] {
 	return IOE.Of[error](struct{}{})
+}
+
+func saSetupBackupAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
+	cfg := gcp.BackupSAConfig{
+		Project:     cltx.String(projectFlag),
+		SAName:      cltx.String(nameFlag),
+		DisplayName: cltx.String(displayNameFlg),
+		Roles:       splitCSV(cltx.String("roles")),
+		KeyFilePath: cltx.String("key-file"),
+		CredFile:    cltx.String(credFileFlag),
+	}
+	res, err := runSetupBackup(cfg, mode)
+	if err != nil {
+		return err
+	}
+	return reportConvergeAll(res, mode)
+}
+
+func saSetupReaderAction(cltx *cli.Context) error {
+	mode := gcp.MutationMode{DryRun: cltx.Bool(dryRunFlag)}
+	cfg := gcp.CrossProjectReaderConfig{
+		SourceProject: cltx.String("source-project"),
+		SAName:        cltx.String(nameFlag),
+		DisplayName:   cltx.String(displayNameFlg),
+		Bucket:        cltx.String(bucketFlag),
+		Role:          cltx.String(roleFlag),
+		KeyFilePath:   cltx.String("key-file"),
+		CredFile:      cltx.String(credFileFlag),
+	}
+	res, err := runSetupReader(cfg, mode)
+	if err != nil {
+		return err
+	}
+	return reportConvergeAll(res, mode)
+}
+
+// splitCSV splits a comma-separated list, skipping empties.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := []string{}
+	for v := range strings.SplitSeq(s, ",") {
+		if t := strings.TrimSpace(v); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return parts
+}
+
+// reportConvergeAll prints one action line per composed step.
+func reportConvergeAll(res []gcp.Result, mode gcp.MutationMode) error {
+	for _, r := range res {
+		if err := reportConverge(r, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runSetupBackup(cfg gcp.BackupSAConfig, mode gcp.MutationMode) ([]gcp.Result, error) {
+	iamSvc, err := E.UnwrapError(gcp.NewCRMService(cfg.CredFile)())
+	if err != nil {
+		return nil, err
+	}
+	keySvc, err := E.UnwrapError(gcp.NewIAMService(cfg.CredFile)())
+	if err != nil {
+		return nil, err
+	}
+	forced := gcp.SetupBackupSA(
+		gcp.IAMServiceAccountAPI{Service: keySvc},
+		gcp.CRMProjectIAM{Service: iamSvc},
+		gcp.IAMSAKeyAPI{Service: keySvc},
+		gcp.OSKeyFiles{},
+		cfg, mode,
+	)()
+	return E.UnwrapError(forced)
+}
+
+func runSetupReader(cfg gcp.CrossProjectReaderConfig, mode gcp.MutationMode) ([]gcp.Result, error) {
+	keySvc, err := E.UnwrapError(gcp.NewIAMService(cfg.CredFile)())
+	if err != nil {
+		return nil, err
+	}
+	client, err := E.UnwrapError(gcp.NewStorageClientFrom(cfg.CredFile)())
+	if err != nil {
+		return nil, err
+	}
+	forced := gcp.SetupCrossProjectReader(
+		gcp.IAMServiceAccountAPI{Service: keySvc},
+		gcp.StorageBucketIAM{Client: client},
+		gcp.IAMSAKeyAPI{Service: keySvc},
+		gcp.OSKeyFiles{},
+		cfg, mode,
+	)()
+	return E.UnwrapError(forced)
 }
 
 // ---------- env ----------
@@ -537,8 +638,37 @@ func saCommand() *cli.Command {
 					&cli.StringFlag{Name: projectFlag, Required: true},
 					&cli.StringFlag{Name: "roles-file", Aliases: []string{"r"}, Required: true},
 					&cli.StringFlag{Name: "description"},
-					&cli.StringFlag{Name: "display-name"},
-					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+					&cli.StringFlag{Name: displayNameFlg},
+					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: keyFileDefault},
+				},
+			},
+			{
+				Name:   "setup-backup",
+				Usage:  "Converge backup SA + role bindings + key (idempotent)",
+				Action: saSetupBackupAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: projectFlag, Required: true},
+					&cli.StringFlag{Name: nameFlag, Required: true},
+					&cli.StringFlag{Name: displayNameFlg},
+					&cli.StringFlag{Name: "roles", Usage: "Comma-separated roles (may be empty)"},
+					&cli.StringFlag{Name: "key-file", Aliases: []string{"o"}, Value: keyFileDefault},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
+				},
+			},
+			{
+				Name:   "setup-reader",
+				Usage:  "Converge cross-project reader SA + bucket binding + key (idempotent)",
+				Action: saSetupReaderAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "source-project", Required: true},
+					&cli.StringFlag{Name: nameFlag, Required: true},
+					&cli.StringFlag{Name: displayNameFlg},
+					&cli.StringFlag{Name: bucketFlag, Required: true},
+					&cli.StringFlag{Name: roleFlag, Value: "roles/storage.objectViewer"},
+					&cli.StringFlag{Name: "key-file", Aliases: []string{"o"}, Value: keyFileDefault},
+					&cli.StringFlag{Name: credFileFlag},
+					&cli.BoolFlag{Name: dryRunFlag},
 				},
 			},
 			{
@@ -548,7 +678,7 @@ func saCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: nameFlag, Required: true},
 					&cli.StringFlag{Name: projectFlag, Required: true},
-					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: "key.json"},
+					&cli.StringFlag{Name: "output-file", Aliases: []string{"o"}, Value: keyFileDefault},
 					&cli.StringFlag{Name: credFileFlag},
 					&cli.BoolFlag{Name: dryRunFlag},
 				},

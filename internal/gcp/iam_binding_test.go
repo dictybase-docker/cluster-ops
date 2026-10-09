@@ -15,16 +15,23 @@ import (
 type fakeProjectIAM struct {
 	policy  *crm.Policy
 	calls   []string
-	setErrs []error // popped per SetPolicy call (first non-nil is returned once)
+	setErrs []error   // popped per SetPolicy call (first non-nil is returned once)
+	log     *[]string // optional shared sequence log
 }
 
 func (f *fakeProjectIAM) GetPolicy(context.Context, string) (*crm.Policy, error) {
 	f.calls = append(f.calls, callGet)
+	if f.log != nil {
+		*f.log = append(*f.log, callGet)
+	}
 	return f.policy, nil
 }
 
 func (f *fakeProjectIAM) SetPolicy(_ context.Context, _ string, p *crm.Policy) error {
 	f.calls = append(f.calls, callSet)
+	if f.log != nil {
+		*f.log = append(*f.log, callSet)
+	}
 	if len(f.setErrs) > 0 {
 		err := f.setErrs[0]
 		f.setErrs = f.setErrs[1:]

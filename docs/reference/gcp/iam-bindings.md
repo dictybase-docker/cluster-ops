@@ -46,3 +46,16 @@ by a file step outside the cloud seam; only key ID and path are logged.
 | `--output-file` | No | `key.json` | Key file path |
 | `--cred-file` | No | ADC | Credential file |
 | `--dry-run` | No | off | Report only |
+
+## SA setup flows (`sa setup-backup` / `sa setup-reader`)
+
+Composite converges (SA → bindings → key) over the primitives above; a failed
+binding stops the flow before the key is minted. `--roles` may be empty when
+the bindings are conditional.
+
+**Conditions:** the backup recipes pin their grants to one bucket with IAM
+condition expressions (`--condition` is deferred from the converge). Those
+conditional bindings therefore stay in the shell wrappers; only the key
+converge migrated (`sa create-key`, which fixes the previously non-idempotent
+mint). Adopting `sa setup-backup`/`setup-reader` in those recipes follows once
+`--condition` support lands.
