@@ -71,17 +71,30 @@ func resolveProject(ctx context.Context, project string) (string, error) {
 	return p, nil
 }
 
+// waitTick sleeps one interval, capped at the time left in cfg.Timeout, and
+// reports a timeout once the budget is spent. The budget comes from cfg, not
+// ctx: the CLI's context only carries signals.
 func waitTick(ctx context.Context, cfg waitfor.WaitConfig, start time.Time, name string) error {
+	timedOut := &waitfor.Error{
+		Kind: waitfor.KindTimeout,
+		Msg:  fmt.Sprintf("timed out waiting for machine image %s after %s", name, time.Since(start).Round(time.Second)),
+	}
+	sleep := intervalOr(cfg)
+	if cfg.Timeout > 0 {
+		remaining := cfg.Timeout - time.Since(start)
+		if remaining <= 0 {
+			return timedOut
+		}
+		sleep = min(sleep, remaining)
+	}
 	if ctx.Err() != nil {
-		return &waitfor.Error{Kind: waitfor.KindTimeout,
-			Msg: fmt.Sprintf("timed out waiting for machine image %s after %s", name, time.Since(start))}
+		return timedOut
 	}
 	select {
-	case <-time.After(intervalOr(cfg)):
+	case <-time.After(sleep):
 		return nil
 	case <-ctx.Done():
-		return &waitfor.Error{Kind: waitfor.KindTimeout,
-			Msg: fmt.Sprintf("timed out waiting for machine image %s after %s", name, time.Since(start))}
+		return timedOut
 	}
 }
 
