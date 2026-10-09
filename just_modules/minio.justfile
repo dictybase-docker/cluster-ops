@@ -121,12 +121,12 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
     #!/usr/bin/env bash
     set -euo pipefail
 
-    BUCKET="{{ bucket }}"
+    BUCKET={{ quote(bucket) }}
     SRC_URL={{ quote(source_url) }}
     SRC_USER={{ quote(source_user) }}
     SRC_PASSWORD={{ quote(source_password) }}
-    NS="{{ namespace }}"
-    SECRET="{{ secret }}"
+    NS={{ quote(namespace) }}
+    SECRET={{ quote(secret) }}
 
     for v in "$BUCKET" "$SRC_URL" "$SRC_USER" "$SRC_PASSWORD"; do
         if [[ -z "$v" ]]; then
@@ -142,22 +142,42 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
         exit 1
     fi
 
+    # Percent-encode for the URL userinfo: strong root passwords carry /, @,
+    # :, #, %… which would otherwise corrupt the target alias URL.
+    pct() {
+        local s="$1" out="" i c
+        for ((i = 0; i < ${#s}; i++)); do
+            c=${s:i:1}
+            case "$c" in
+                [A-Za-z0-9._~-]) out+="$c" ;;
+                *) printf -v c '%%%02X' "'$c"; out+="$c" ;;
+            esac
+        done
+        printf '%s' "$out"
+    }
+    USER_ENC=$(pct "$USER_KEY")
+    PASS_ENC=$(pct "$PASS_KEY")
+
     # Reach the cluster-internal API through a forward-held child: the Go
     # parent picks a free local port, exports FORWARD_PORT, and reconnects
     # across pod restarts. FORWARD_PORT exists only inside the child, so the
     # child builds the target alias (MC_HOST_minio_dst — the suffix is the
     # alias name, case-sensitive) from the exported root credentials: env,
-    # never argv. Source credentials come from the caller's own flags.
+    # never argv. Source credentials come from the caller's own flags and
+    # land only in a throwaway MC_CONFIG_DIR (removed on exit), never in ~/.mc.
+    MC_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mc-config.XXXXXX")"
+    export MC_CONFIG_DIR
+    trap 'rm -rf "$MC_CONFIG_DIR"' EXIT
     mc alias set minio-src "$SRC_URL" "$SRC_USER" "$SRC_PASSWORD" --quiet
-    RETRIES="{{ retries }}"
+    RETRIES={{ quote(retries) }}
     [[ "$RETRIES" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
 
-    export USER_KEY PASS_KEY BUCKET RETRIES REMOVE_FLAG=""
-    [[ "{{ remove }}" == "yes" ]] && REMOVE_FLAG="--remove"
+    export USER_ENC PASS_ENC BUCKET RETRIES REMOVE_FLAG=""
+    [[ {{ quote(remove) }} == "yes" ]] && REMOVE_FLAG="--remove"
     echo "Ensuring bucket '$BUCKET' exists on the target..."
     go run ./cmd/cluster-ops forward run --ns "$NS" --svc minio --remote-port 9000 -- \
         bash -c '
-            export MC_HOST_minio_dst="http://${USER_KEY}:${PASS_KEY}@localhost:${FORWARD_PORT}"
+            export MC_HOST_minio_dst="http://${USER_ENC}:${PASS_ENC}@localhost:${FORWARD_PORT}"
             mc mb --ignore-existing "minio_dst/$BUCKET"
 
             # HTTPS load balancers (GCP classic LB among them) reset long-lived
@@ -184,7 +204,7 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
             echo "Done. Object counts:"
             mc ls --recursive "minio_dst/$BUCKET" | wc -l
         '
-    unset USER_KEY PASS_KEY BUCKET REMOVE_FLAG RETRIES
+    unset USER_ENC PASS_ENC BUCKET REMOVE_FLAG RETRIES
 
 # Post-install check: pool, pod, PVC, Service, Secret. Exits non-zero on failure.
 # Usage: just minio verify [--namespace <ns>] [--secret <name>] [--pool <label>] [--node-count <n>]

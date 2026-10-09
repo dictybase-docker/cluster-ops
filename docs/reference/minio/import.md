@@ -20,7 +20,7 @@ just minio import-bucket \
 
 1. Reads this MinIO's root credentials from Secret `minio-root` in the namespace
 2. Wraps the whole mc flow in one `cluster-ops forward run` child to `svc/minio:9000` — a free local port exported as `FORWARD_PORT`, torn down when the child exits
-3. Registers the `mc` alias `minio-src` (explicit source credentials); the target alias `minio_dst` is built inside the forwarded child as `MC_HOST_minio_dst` from the Secret-derived credentials and `FORWARD_PORT` — env, never argv
+3. Registers the `mc` alias `minio-src` (explicit source credentials) in a throwaway `MC_CONFIG_DIR` the recipe deletes on exit; the target alias `minio_dst` is built inside the forwarded child as `MC_HOST_minio_dst` from the Secret-derived credentials and `FORWARD_PORT` — env, never argv
 4. Creates the bucket on the target if missing (`mc mb --ignore-existing`)
 5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed
 6. Retries the mirror up to `--retries` times (default 5) inside the same forward-held child — each attempt resumes, skipping objects already copied
@@ -31,7 +31,7 @@ just minio import-bucket \
 |------|----------|---------|-------|
 | `--bucket` | Yes | — | One bucket per run |
 | `--source-url` | Yes | — | Source S3 endpoint incl. scheme and port |
-| `--source-user` / `--source-password` | Yes | — | Source credentials; never stored anywhere |
+| `--source-user` / `--source-password` | Yes | — | Source credentials; kept only in the throwaway `MC_CONFIG_DIR` (deleted on exit), never in `~/.mc` |
 | `--namespace` | No | `prod` | |
 | `--secret` | No | `minio-root` | Target credentials Secret |
 | `--remove` | No | off | Deletes target objects missing at the source — dangerous, opt-in |
