@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
@@ -24,6 +25,8 @@ const deployerRolesFile = "gcs-files/roles-permissions/deployer-roles.txt"
 
 const (
 	defPoolValue     = "database"
+	defClasses       = "dictycr-balanced"
+	defProvisioner   = "pd.csi.storage.gke.io"
 	defArangoService = "arangodb"
 	defRedisName     = "redis"
 	flagPool         = "pool"
@@ -123,6 +126,16 @@ func preflightCommand() *cli.Command {
 				},
 			},
 			{
+				Name:   "storageclass",
+				Usage:  "StorageClasses this repo's databases depend on (exists + provisioner + default report)",
+				Action: storageclassAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "classes", Value: defClasses, Usage: "Comma-separated StorageClass names"},
+					&cli.StringFlag{Name: "provisioner", Value: defProvisioner, Usage: "Expected provisioner"},
+					kubeconfigFlag(),
+				},
+			},
+			{
 				Name:   "tools",
 				Usage:  "Local toolchain binaries and versions",
 				Action: toolsAction,
@@ -212,6 +225,26 @@ func toolsAction(_ *cli.Context) error {
 		runGate(toolchain.CheckTools(toolchain.DefaultToolsConfig())),
 		"toolchain check failed",
 		"\nAll required tools present.",
+	)
+}
+
+func storageclassAction(cltx *cli.Context) error {
+	clients, err := newClientsValue(cltx)
+	if err != nil {
+		return err
+	}
+	classes := []string{}
+	for raw := range strings.SplitSeq(cltx.String("classes"), ",") {
+		if class := strings.TrimSpace(raw); class != "" {
+			classes = append(classes, class)
+		}
+	}
+	return reportGate(
+		runGate(backend.CheckStorageClass(backend.StorageClassConfig{
+			Clients: clients, Classes: classes, Provisioner: cltx.String("provisioner"),
+		})),
+		"storageclass check failed",
+		"\nAll StorageClass checks passed.",
 	)
 }
 
