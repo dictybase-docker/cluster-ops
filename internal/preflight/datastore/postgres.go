@@ -86,7 +86,8 @@ func cnpgClusterPhase(clients kube.Clients, ns, cluster string) IO.IO[preflight.
 	}
 }
 
-// pvcsBoundCount counts Bound PVCs behind the selector.
+// pvcsBoundCount requires exactly want Bound PVCs behind the selector (the
+// shell gate's -eq): a leftover PVC from a deleted instance must not pass.
 func pvcsBoundCount(
 	clients kube.Clients, ns, selector string, want int, role string,
 ) IO.IO[preflight.Result] {
@@ -105,7 +106,7 @@ func pvcsBoundCount(
 			}
 		}
 		detail := fmt.Sprintf("%d Bound %s", count, role)
-		if count >= want {
+		if count == want {
 			return preflight.Result{Name: name, Detail: detail, Status: preflight.StatusPass}
 		}
 		return preflight.Result{

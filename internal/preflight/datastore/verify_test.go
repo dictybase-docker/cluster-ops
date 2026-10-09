@@ -296,6 +296,22 @@ func TestVerifyPostgres(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fi
 		require.Contains(t, phase.Detail, "Cluster in failed state")
 	})
 
+	// The shell gate required exactly one Bound PVC per instance (-eq); a
+	// leftover PVC from a deleted instance must not pass as "enough".
+	t.Run("extra Bound PVC fails", func(t *testing.T) {
+		objs := append(pgObjs(true), pvcObj(fixNS, "logto-2", "dictycr-balanced", "1Gi", "Bound",
+			map[string]string{"cnpg.io/cluster": "logto"}))
+		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(objs...)}
+		dyn := dynamicClients(
+			cnpgCluster(fixNS, "logto", "Cluster in healthy state"),
+			scheduledBackupCR(fixNS, "logto-daily"),
+		)
+		results := preflight.Run(datastore.VerifyPostgres(pgCfg(clients, dyn)))
+		pvc := findDatastoreResult(results, "Bound data PVC(s)")
+		require.Equal(t, preflight.StatusFail, pvc.Status, "%s", pvc.Detail)
+		require.Contains(t, pvc.Detail, "expected 1")
+	})
+
 	t.Run("zero ScheduledBackup fails", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(pgObjs(true)...)}
 		dyn := dynamicClients(cnpgCluster(fixNS, "logto", "Cluster in healthy state"))
