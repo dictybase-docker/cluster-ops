@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	IOE "github.com/IBM/fp-go/v2/ioeither"
@@ -22,6 +23,9 @@ type ForwardOpts struct {
 	Service    string
 	RemotePort int
 	LocalPort  int // 0 = free port
+	// OnReady, when set, is called after every successful dial (including
+	// reconnects) with the local port and the pod behind the forward.
+	OnReady func(localPort int, pod string)
 }
 
 // Session is a live port-forward. Close it exactly once (via
@@ -29,11 +33,15 @@ type ForwardOpts struct {
 type Session struct {
 	LocalPort int
 	cancel    context.CancelFunc
-	done      chan struct{}    // closed when the supervisor gives up
-	ready     chan struct{}    // closed on the first successful dial
-	failed    chan error       // final, non-retryable supervisor error
-	OnReady   func(pod string) // called after every successful dial (incl. reconnects)
+	done      chan struct{} // closed when the supervisor gives up
+	ready     chan struct{} // closed on the first successful dial
+	readyOnce sync.Once
+	failed    chan error // final, non-retryable supervisor error
 }
+
+// dialFunc dials the forward once on localPort and holds it until it ends or
+// ctx is cancelled, calling onReady(pod) once the forward is up.
+type dialFunc func(ctx context.Context, localPort int, onReady func(pod string)) error
 
 // Close stops the forward and its reconnect supervisor.
 func (s *Session) Close() {
@@ -90,11 +98,26 @@ func Forward(ctx context.Context, clients Clients, opts ForwardOpts) IOE.IOEithe
 		if err != nil {
 			return nil, err
 		}
-		return supervise(ctx, clients, opts, localPort)
+		dial := func(ctx context.Context, port int, onReady func(string)) error {
+			return dialOnce(ctx, clients, opts, port, onReady)
+		}
+		sess, err := supervise(ctx, dial, localPort, opts.OnReady, backoffSchedule(reconnectAttempts))
+		if err != nil {
+			return nil, fmt.Errorf("%s/%s:%d: %w", opts.Namespace, opts.Service, opts.RemotePort, err)
+		}
+		return sess, nil
 	})
 }
 
-func supervise(ctx context.Context, clients Clients, opts ForwardOpts, localPort int) (*Session, error) {
+// supervise starts the reconnect loop and blocks until the first dial is
+// ready, the loop fails without retry, or ctx is cancelled.
+func supervise(
+	ctx context.Context,
+	dial dialFunc,
+	localPort int,
+	onReady func(localPort int, pod string),
+	backoff []time.Duration,
+) (*Session, error) {
 	sctx, cancel := context.WithCancel(ctx)
 	s := &Session{
 		LocalPort: localPort,
@@ -103,7 +126,7 @@ func supervise(ctx context.Context, clients Clients, opts ForwardOpts, localPort
 		ready:     make(chan struct{}),
 		failed:    make(chan error, 1),
 	}
-	go s.loop(sctx, clients, opts)
+	go s.loop(sctx, dial, onReady, backoff)
 
 	// Block until the first dial is ready, the parent cancels, or the
 	// supervisor fails without retry.
@@ -120,18 +143,34 @@ func supervise(ctx context.Context, clients Clients, opts ForwardOpts, localPort
 	}
 }
 
-func (s *Session) loop(ctx context.Context, clients Clients, opts ForwardOpts) {
+// loop re-dials after every drop. The retry budget counts consecutive failed
+// dials; a dial that reached ready resets it, so a long-lived forward
+// survives any number of separate pod restarts.
+func (s *Session) loop(
+	ctx context.Context,
+	dial dialFunc,
+	onReady func(localPort int, pod string),
+	backoff []time.Duration,
+) {
 	defer close(s.done)
-	backoff := backoffSchedule(reconnectAttempts)
 	for attempt := 0; ; attempt++ {
-		err := dialOnce(ctx, clients, opts, s.LocalPort, s.OnReady)
+		connected := false
+		err := dial(ctx, s.LocalPort, func(pod string) {
+			connected = true
+			s.readyOnce.Do(func() { close(s.ready) })
+			if onReady != nil {
+				onReady(s.LocalPort, pod)
+			}
+		})
 		if ctx.Err() != nil {
 			return // parent cancelled: not an error, just shutdown
 		}
+		if connected {
+			attempt = 0
+		}
 		if !retryable(err, Classify(err)) || attempt >= len(backoff)-1 {
 			s.failed <- fmt.Errorf(
-				"port-forward %s/%s:%d after %d attempt(s): %w",
-				opts.Namespace, opts.Service, opts.RemotePort, attempt+1, err,
+				"port-forward after %d attempt(s): %w", attempt+1, err,
 			)
 			return
 		}
