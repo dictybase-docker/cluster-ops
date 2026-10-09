@@ -363,7 +363,13 @@ func TestVerifyNats(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fixtur
 				Status: appsv1.StatefulSetStatus{ReadyReplicas: 1}},
 			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats"},
 				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "nats", Port: 4222}}}},
-			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats-box"}},
+			&appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Namespace: fixNS, Name: "nats-box"},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "nats-box"}},
+				},
+			},
+			readyPod(fixNS, "nats-box-7d9f-abcde", map[string]string{"app": "nats-box"}),
 		}
 	}
 	t.Run("server ready; rtt fails on fake exec", func(t *testing.T) {
