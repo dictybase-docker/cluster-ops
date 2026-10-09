@@ -2948,7 +2948,7 @@ check-pool pool="database" node_count="3":
 
     set +e
     out=$(go run ./cmd/cluster-ops preflight pool \
-        --pool { quote(pool) } --count { quote(node_count) } --require-amd64)
+        --pool {{ quote(pool) }} --count {{ quote(node_count) }} --require-amd64)
     code=$?
     set -e
     printf '%s\n' "$out"
@@ -2957,45 +2957,6 @@ check-pool pool="database" node_count="3":
         exit "$code"
     fi
     echo "All pool checks passed. Next: just arangodb configure-backup-secrets."
-
-    # Architecture check (must be amd64 for production ArangoDB)
-    amd64_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select(.status.nodeInfo.architecture == "amd64")] | length')
-    if [[ "$amd64_count" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $amd64_count node(s) are amd64"
-    else
-        bad "$amd64_count/$node_count node(s) are amd64 — ArangoDB Cluster requires amd64"
-    fi
-
-    # Taint check
-    tainted=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.spec.taints[]? |
-        select(.key == "dedicated" and .value == "'"$POOL"'" and .effect == "NoSchedule")] | length > 0)] | length')
-    if [[ "$tainted" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $tainted node(s) carry dedicated=$POOL:NoSchedule"
-    else
-        bad "$tainted/$node_count node(s) carry dedicated=$POOL:NoSchedule"
-    fi
-
-    # Zone spread (informational)
-    zones=$(printf '%s\n' "$nodes_json" | jq -r '[.items[].metadata.labels["topology.kubernetes.io/zone"] // "unknown"] | unique | sort | join(", ")')
-    zone_count=$(printf '%s\n' "$nodes_json" | jq '[.items[].metadata.labels["topology.kubernetes.io/zone"] // "unknown"] | unique | length')
-    info "zones: $zones ($zone_count unique)"
-
-    # Ready status
-    ready_count=$(printf '%s\n' "$nodes_json" | jq '[.items[] | select([.status.conditions[] | select(.type == "Ready" and .status == "True")] | length > 0)] | length')
-    if [[ "$ready_count" -eq "$node_count" && "$node_count" -gt 0 ]]; then
-        ok "all $ready_count node(s) are Ready"
-    else
-        bad "$ready_count/$node_count node(s) are Ready"
-    fi
-
-    # Summary
-    echo
-    if [[ "$failures" -eq 0 ]]; then
-        printf '\033[32mAll pool checks passed.\033[0m Next: just arangodb configure-backup-secrets.\n'
-    else
-        printf '\033[31m%d check(s) failed.\033[0m See reference/arangodb/pool-requirements.md for fixes.\n' "$failures"
-        exit 1
-    fi
 
 # Full post-install check of the pool, operator, storage, members and jobs.
 # Prints one line per check and exits non-zero if a required check fails.
