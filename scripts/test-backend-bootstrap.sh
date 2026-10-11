@@ -43,6 +43,12 @@ EOF
 cat > "${mock_bin}/go" <<'EOF'
 #!/usr/bin/env bash
 echo "go $*" >> "${MOCK_CALLS_LOG}"
+# The composite runs the prereq gate inside deploy service now; honor the
+# injected mode at the same boundary.
+if [[ "$*" == *" deploy service "* ]] && [ "${MOCK_PREREQ_MODE:-ok}" = "fail" ]; then
+    echo "MISSING: namespace prod" >&2
+    exit 1
+fi
 exit "${MOCK_GO_EXIT:-0}"
 EOF
 cat > "${mock_bin}/kubectl" <<'EOF'
@@ -110,21 +116,11 @@ out=$("${REAL_JUST}" gcp-pulumi bootstrap-service --stack dcr-kube1 --folder "${
 printf '%s' "${out}" | grep -q "Deployed order-api-server in prod with image dictybase/modware-order:v1.0.0" \
     || fail "missing deployed line:\n${out}"
 
-gate=$(line_of "check-backend-prereqs")       || fail "gate did not run"
-ensure=$(line_of "ensure-stack")              || fail "ensure-stack did not run"
-settag=$(line_of "set-config")                || fail "set-config did not run"
-preview=$(line_of "gcp-pulumi preview")       || fail "preview did not run"
-up=$(line_of "create-resource")               || fail "create-resource did not run"
-rollout=$(line_of "wait deployment-rollout") || fail "rollout did not run"
+deploy=$(line_of "deploy service") || fail "deploy service did not run"
 image_check=$(line_of "get deploy/order-api-server -o") || fail "image check did not run"
-[ "${gate}" -lt "${ensure}" ] || fail "gate ran after ensure-stack"
-[ "${ensure}" -lt "${settag}" ] || fail "ensure-stack ran after set-config"
-[ "${settag}" -lt "${preview}" ] || fail "set-config ran after preview"
-[ "${preview}" -lt "${up}" ] || fail "preview ran after update"
-[ "${up}" -lt "${rollout}" ] || fail "update ran after rollout"
-[ "${rollout}" -lt "${image_check}" ] || fail "rollout ran after image check"
-grep -q -- "--plaintext yes" "${calls}" || fail "image-tag set without --plaintext"
-grep -q -- "--key properties.image.tag --value v1.0.0" "${calls}" || fail "image-tag key/value wrong"
-echo "  fixed order: PASS (gate → ensure → tag → preview → up → rollout → image check)"
+[ "${deploy}" -lt "${image_check}" ] || fail "image check ran before the deploy"
+grep -q -- "--image-tag v1.0.0" "${calls}" || fail "image tag not passed to the composite"
+grep -q -- "--folder ${folder}" "${calls}" || fail "folder not passed to the composite"
+echo "  deploy boundary: PASS (deploy service before image check; step order pinned by Go tests)"
 
 echo "backend bootstrap-service contract tests PASSED"
