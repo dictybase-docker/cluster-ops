@@ -447,8 +447,9 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
 
         echo "=== ${app}: bootstrap deploy ==="
         if [ -n "${want_tag}" ]; then
-            just gcp-pulumi bootstrap-service --stack "${stack_name}" \
-                --folder "${folder}" --image-tag "${want_tag}"
+            # Batch path: one `deploy backend` call after the loop deploys all
+            # services serially and stops at the first failure.
+            echo "queued for batch deploy"
         else
             just gcp-pulumi bootstrap-service --stack "${stack_name}" \
                 --folder "${folder}"
@@ -462,6 +463,13 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
         just ci render-tag-deploy --stack "${stack_name}" --app "${app}" \
             --project "${folder}" --out "bin/ci-render/${folder}-tag-build.yaml"
     done < <(printf '%s\n' "${all_services}")
+
+    if [ -n "${want_tag}" ]; then
+        echo "=== batch deploy (serial, stop on first failure) ==="
+        go run ./cmd/cluster-ops deploy backend --services-file config/services.yaml \
+            --services "{{ services }}" --stack "${stack_name}" \
+            --image-tag "${want_tag}" --arango-service "${arango_svc}"
+    fi
 
     echo "=== deployer key visibility for ${#repos[@]} repo(s) ==="
     just ci set-deploy-secret --cluster "${cluster_name}" \

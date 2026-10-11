@@ -18,7 +18,7 @@ type fakeOpener struct {
 
 func (f *fakeOpener) Select(_ context.Context, t DeployTarget) (StackAPI, error) {
 	if f.log != nil {
-		*f.log = append(*f.log, "open")
+		*f.log = append(*f.log, stepOpen)
 	}
 	f.selected = append(f.selected, t.Stack+"|"+t.Folder+"|"+t.Backend)
 	return f.returned, f.failWith
@@ -26,7 +26,7 @@ func (f *fakeOpener) Select(_ context.Context, t DeployTarget) (StackAPI, error)
 
 func (f *fakeOpener) Upsert(_ context.Context, t DeployTarget) (StackAPI, error) {
 	if f.log != nil {
-		*f.log = append(*f.log, "open")
+		*f.log = append(*f.log, stepOpen)
 	}
 	f.upserted = append(f.upserted, t.Stack+"|"+t.Folder+"|"+t.Backend)
 	return f.returned, f.failWith

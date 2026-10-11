@@ -7,6 +7,14 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 )
 
+// Shared step names for the recorded sequence logs.
+const (
+	stepPreflight = "preflight"
+	stepOpen      = "open"
+	stepPreview   = "preview"
+	stepUp        = "up"
+)
+
 // fakeStack records every call and replays canned results/events.
 type fakeStack struct {
 	name       string
@@ -28,7 +36,7 @@ func (f *fakeStack) record(step string) {
 func (f *fakeStack) Name() string { return f.name }
 
 func (f *fakeStack) Preview(_ context.Context, ch chan<- events.EngineEvent) (auto.PreviewResult, error) {
-	f.record("preview")
+	f.record(stepPreview)
 	for _, e := range f.previewEv {
 		ch <- e
 	}
@@ -36,7 +44,7 @@ func (f *fakeStack) Preview(_ context.Context, ch chan<- events.EngineEvent) (au
 }
 
 func (f *fakeStack) Up(_ context.Context, ch chan<- events.EngineEvent) (auto.UpResult, error) {
-	f.record("up")
+	f.record(stepUp)
 	for _, e := range f.upEv {
 		ch <- e
 	}

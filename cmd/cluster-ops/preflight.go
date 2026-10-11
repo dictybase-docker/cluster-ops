@@ -126,7 +126,7 @@ func preflightCommand() *cli.Command {
 						Usage:   "Pulumi stack name (defaults to PULUMI_STACK)",
 					},
 					&cli.StringFlag{
-						Name: "arango-service", Aliases: []string{"a"},
+						Name: arangoServiceFlag, Aliases: []string{"a"},
 						Value: defArangoService,
 						Usage: "ArangoDB Service name the app connects to",
 					},
@@ -554,7 +554,7 @@ func backendPrereqsAction(cltx *cli.Context) error {
 					SecretName:    in.props.ArangodbSecret.Name,
 					UserKey:       in.props.ArangodbSecret.Userkey,
 					PassKey:       in.props.ArangodbSecret.Passkey,
-					ArangoService: cltx.String("arango-service"),
+					ArangoService: cltx.String(arangoServiceFlag),
 					AppName:       in.props.AppName,
 					Port:          in.props.Port,
 				})),

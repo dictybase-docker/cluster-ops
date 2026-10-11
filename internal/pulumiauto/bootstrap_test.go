@@ -23,7 +23,7 @@ const (
 // fakePreflight records the gate and replays canned results.
 func fakePreflight(log *[]string, results ...preflight.Result) PreflightRunner {
 	return func() []preflight.Result {
-		*log = append(*log, "preflight")
+		*log = append(*log, stepPreflight)
 		return results
 	}
 }
@@ -60,7 +60,7 @@ func TestBootstrapHappy(t *testing.T) {
 	got, err := E.UnwrapError(BootstrapService(context.Background(), op, target, svc, DeployMode{})())
 	require.NoError(t, err)
 	require.Equal(t,
-		[]string{"preflight", "open", "set-config:" + imageTagKey, "preview", "up", "rollout"},
+		[]string{stepPreflight, stepOpen, "set-config:" + imageTagKey, stepPreview, stepUp, "rollout"},
 		log, "preflight → open → set-config → preview → up → rollout")
 	require.Equal(t, 1, got.Summary.Creates)
 }

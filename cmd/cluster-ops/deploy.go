@@ -24,12 +24,24 @@ func deployCommand() *cli.Command {
 		Name:  "deploy",
 		Usage: "Composite service deploys (preflight → stack → preview gate → up → rollout)",
 		Subcommands: []*cli.Command{{
+			Name:   "backend",
+			Usage:  "Deploy a set of backend service stacks (serial, stop on first failure)",
+			Action: deployBackendAction,
+			Flags: append(stackFlags(),
+				&cli.StringFlag{Name: "services-file", Value: "config/services.yaml"},
+				&cli.StringFlag{Name: "services", Usage: "Comma-separated app names (empty = all)"},
+				&cli.StringFlag{Name: "image-tag", Aliases: []string{"t"}, Required: true},
+				&cli.StringFlag{Name: arangoServiceFlag, Aliases: []string{"a"}, Value: defArangoService},
+				&cli.BoolFlag{Name: dryRunFlag},
+				&cli.BoolFlag{Name: allowProtectedFlag},
+			),
+		}, {
 			Name:   "service",
 			Usage:  "Deploy one backend service stack (bootstrap-service)",
 			Action: deployServiceAction,
 			Flags: append(stackFlags(),
 				&cli.StringFlag{Name: "image-tag", Aliases: []string{"t"}, Required: true},
-				&cli.StringFlag{Name: "arango-service", Aliases: []string{"a"}, Value: defArangoService},
+				&cli.StringFlag{Name: arangoServiceFlag, Aliases: []string{"a"}, Value: defArangoService},
 				&cli.BoolFlag{Name: dryRunFlag},
 				&cli.BoolFlag{Name: allowProtectedFlag},
 			),
@@ -59,6 +71,56 @@ func deployServiceAction(cltx *cli.Context) error {
 	return nil
 }
 
+// deployBackendAction deploys the selected services through the Go loop.
+func deployBackendAction(cltx *cli.Context) error {
+	target := targetFrom(cltx)
+	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
+	specs, err := pulumiauto.LoadServices(cltx.String("services-file"))
+	if err != nil {
+		return err
+	}
+	specs = filterServices(specs, cltx.String("services"))
+	if len(specs) == 0 {
+		return fmt.Errorf("no services selected by --services %q", cltx.String("services"))
+	}
+	for i := range specs {
+		specs[i].Stack = target.Stack
+		specs[i].ImageTag = cltx.String("image-tag")
+		specs[i].Preflight = prereqsRunner(cltx)
+		specs[i].Rollout = rolloutWaiter(cltx, specs[i].Folder, target.Stack)
+		specs[i].Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	res, err := E.UnwrapError(pulumiauto.DeployBackendServices(
+		context.Background(), pulumiauto.AutoOpener(), target, specs, mode)())
+	if err != nil {
+		return err
+	}
+	for i, r := range res {
+		printSummary(specs[i].Folder, r.Summary)
+	}
+	return nil
+}
+
+// filterServices keeps only the named apps (csv; empty = all).
+func filterServices(specs []pulumiauto.ServiceSpec, csv string) []pulumiauto.ServiceSpec {
+	if strings.TrimSpace(csv) == "" {
+		return specs
+	}
+	wanted := map[string]bool{}
+	for a := range strings.SplitSeq(csv, ",") {
+		if t := strings.TrimSpace(a); t != "" {
+			wanted[t] = true
+		}
+	}
+	kept := []pulumiauto.ServiceSpec{}
+	for _, s := range specs {
+		if wanted[s.App] {
+			kept = append(kept, s)
+		}
+	}
+	return kept
+}
+
 // prereqsRunner adapts the backend prereq checks to the composite seam.
 func prereqsRunner(cltx *cli.Context) pulumiauto.PreflightRunner {
 	return func() []preflight.Result {
@@ -74,7 +136,7 @@ func prereqsRunner(cltx *cli.Context) pulumiauto.PreflightRunner {
 			SecretName:    in.props.ArangodbSecret.Name,
 			UserKey:       in.props.ArangodbSecret.Userkey,
 			PassKey:       in.props.ArangodbSecret.Passkey,
-			ArangoService: cltx.String("arango-service"),
+			ArangoService: cltx.String(arangoServiceFlag),
 			AppName:       in.props.AppName,
 			Port:          in.props.Port,
 		}))

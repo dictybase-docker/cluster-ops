@@ -17,6 +17,7 @@ const imageTagKey = "properties.image.tag"
 
 // ServiceSpec describes one service deploy.
 type ServiceSpec struct {
+	App                     string // services.yaml app name (csv filter key)
 	Folder, Stack, ImageTag string
 	Preflight               PreflightRunner
 	Rollout                 RolloutWaiter

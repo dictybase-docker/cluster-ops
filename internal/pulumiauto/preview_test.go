@@ -71,7 +71,7 @@ func TestGateStopsBeforeUp(t *testing.T) {
 	_, err := E.UnwrapError(RunIfAllowed(context.Background(), st, mode, upCall(st, mode))())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "blocked")
-	require.NotContains(t, log, "up")
+	require.NotContains(t, log, stepUp)
 }
 
 func TestGateAllowsProtectedOverride(t *testing.T) {
@@ -80,7 +80,7 @@ func TestGateAllowsProtectedOverride(t *testing.T) {
 	mode := DeployMode{AllowProtected: true}
 	_, err := E.UnwrapError(RunIfAllowed(context.Background(), st, mode, upCall(st, mode))())
 	require.NoError(t, err)
-	require.Contains(t, log, "up")
+	require.Contains(t, log, stepUp)
 }
 
 // The collector exits on channel close: no goroutine leak, no deadlock.

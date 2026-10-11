@@ -33,6 +33,7 @@ const (
 	folderFlag         = "folder"
 	envPulumiStack     = "PULUMI_STACK"
 	allowProtectedFlag = "allow-protected"
+	arangoServiceFlag  = "arango-service"
 	createCmd          = "create"
 )
 

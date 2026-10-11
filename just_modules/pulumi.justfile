@@ -134,7 +134,7 @@ pulumi-gcs-setup-shell sa_json_path="" gcs_bucket="" lifecycle_config="" locatio
 ensure-stack folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     if [ -z "${stack_name}" ]; then
         stack_name="${PULUMI_STACK:-}"
@@ -166,7 +166,7 @@ ensure-stack folder stack="":
 set-secret folder key value stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack config set \\
@@ -183,7 +183,7 @@ set-secret folder key value stack="":
 set-config folder key value stack="" plaintext="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack config set \\
@@ -197,7 +197,7 @@ set-config folder key value stack="" plaintext="":
 preview folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack preview \\
@@ -210,7 +210,7 @@ preview folder stack="":
 new-stack folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack ensure \\
@@ -224,7 +224,7 @@ new-stack folder stack="":
 new-stack-from folder stack="" from-stack="experiments":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack ensure \\
@@ -238,7 +238,7 @@ new-stack-from folder stack="" from-stack="experiments":
 create-resource folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack up \\
@@ -251,7 +251,7 @@ create-resource folder stack="":
 remove-resource folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack destroy \\
@@ -264,7 +264,7 @@ remove-resource folder stack="":
 cleanup-resource folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} stack rm -s "${stack_name}" --preserve-config --force --yes
@@ -849,7 +849,7 @@ bootstrap-service-shell folder image_tag="" stack="" arango_service="arangodb":
 ensure-stack-shell folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     if [ -z "${stack_name}" ]; then
         stack_name="${PULUMI_STACK:-}"
@@ -884,7 +884,7 @@ ensure-stack-shell folder stack="":
 set-secret-shell folder key value stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
@@ -902,7 +902,7 @@ set-secret-shell folder key value stack="":
 set-config-shell folder key value stack="" plaintext="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     if [ -n "{{ plaintext }}" ]; then
@@ -921,7 +921,7 @@ set-config-shell folder key value stack="" plaintext="":
 preview-shell folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} -s "${stack_name}" preview
@@ -936,7 +936,7 @@ preview-shell folder stack="":
 new-stack-shell folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider ${PULUMI_SECRET_PROVIDER}
@@ -952,7 +952,7 @@ new-stack-shell folder stack="":
 new-stack-from-shell folder stack="" from-stack="experiments":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} stack init "${stack_name}" --copy-config-from {{ quote(from-stack) }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
@@ -967,7 +967,7 @@ new-stack-from-shell folder stack="" from-stack="experiments":
 create-resource-shell folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} up -s "${stack_name}" -f -y
@@ -982,7 +982,7 @@ create-resource-shell folder stack="":
 remove-resource-shell folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
-    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name="{{ stack }}"
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     pulumi -C {{ quote(folder) }} destroy -s "${stack_name}" -f -y

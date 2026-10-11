@@ -42,7 +42,7 @@ func TestUpDryRunNeverUpdates(t *testing.T) {
 	mode := DeployMode{DryRun: true}
 	_, err := E.UnwrapError(Up(context.Background(), st, mode.UpOptions(nil, nil))())
 	require.NoError(t, err)
-	require.NotContains(t, log, "up")
+	require.NotContains(t, log, stepUp)
 }
 
 func TestRedactorMasksExactValues(t *testing.T) {
