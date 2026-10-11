@@ -143,20 +143,19 @@ ensure-stack folder stack="":
         echo "ERROR: no stack name — set PULUMI_STACK (via cluster env) or pass --stack."
         exit 1
     fi
-    if pulumi -C {{ quote(folder) }} stack select "${stack_name}" &>/dev/null; then
+    # Fail closed: create only when the committed config exists (a bare init
+    # makes an empty stack that dies at preview with a missing-config error).
+    if [ -f "{{ folder }}/Pulumi.${stack_name}.yaml" ]; then
+        go run ./cmd/cluster-ops stack ensure --folder {{ quote(folder) }} --stack "${stack_name}" --create
+    elif go run ./cmd/cluster-ops stack ensure --folder {{ quote(folder) }} --stack "${stack_name}"; then
         echo "Selected existing stack '${stack_name}' in {{ folder }}."
-    elif [ -f "{{ folder }}/Pulumi.${stack_name}.yaml" ]; then
-        echo "Stack '${stack_name}' not found in {{ folder }}. Initializing from Pulumi.${stack_name}.yaml..."
-        pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
     else
         echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml to initialize it from." >&2
-        echo "       Initializing would create an empty stack and fail at preview with 'missing required configuration variable'." >&2
         echo "       Create the file first (fork a base config), or copy it from an existing stack:" >&2
         echo "         just gcp-pulumi fork-stack --to-stack ${stack_name} [--folder {{ folder }}]" >&2
         echo "         just gcp-pulumi new-stack-from --folder {{ folder }} --stack ${stack_name} --from-stack <existing-stack>" >&2
         exit 1
     fi
-
 # Set an encrypted config value on a stack (config set --path --secret).
 # Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> --value <secret> [--stack <name>]
 [arg("value", long="value", short="v", help="Secret value to store")]
@@ -170,8 +169,9 @@ set-secret folder key value stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
-
+    go run ./cmd/cluster-ops stack config set \\
+        --folder {{ quote(folder) }} --stack "${stack_name}" \\
+        --key {{ quote(key) }} --value {{ quote(value) }} --secret
 # Set a plain (unencrypted) config value on a stack (config set --path).
 # Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>] [--plaintext <yes>]
 [arg("value", long="value", short="v", help="Config value to store")]
@@ -186,12 +186,9 @@ set-config folder key value stack="" plaintext="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    if [ -n "{{ plaintext }}" ]; then
-        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --plaintext {{ quote(key) }} {{ quote(value) }}
-    else
-        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
-    fi
-
+    go run ./cmd/cluster-ops stack config set \\
+        --folder {{ quote(folder) }} --stack "${stack_name}" \\
+        --key {{ quote(key) }} --value {{ quote(value) }}
 # Preview Pulumi changes for a stack in a folder.
 # Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -201,10 +198,10 @@ preview folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} -s "${stack_name}" preview
-
+    go run ./cmd/cluster-ops stack preview \\
+        --folder {{ quote(folder) }} --stack "${stack_name}"
 # Create a new Pulumi stack in a given folder.
 # Usage: just gcp-pulumi new-stack --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="New Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -214,10 +211,10 @@ new-stack folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider ${PULUMI_SECRET_PROVIDER}
-
+    go run ./cmd/cluster-ops stack ensure \\
+        --folder {{ quote(folder) }} --stack "${stack_name}" --create
 # Create a new stack in a folder copied from an existing stack's config.
 # Usage: just gcp-pulumi new-stack-from --folder <dir> [--stack <name>] [--from-stack <name>]
 [arg("stack", long="stack", short="s", help="New Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -228,10 +225,11 @@ new-stack-from folder stack="" from-stack="experiments":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --copy-config-from {{ quote(from-stack) }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
-
+    go run ./cmd/cluster-ops stack ensure \\
+        --folder {{ quote(folder) }} --stack "${stack_name}" --create \\
+        --copy-config-from {{ quote(from-stack) }}
 # Deploy resources for a stack.
 # Usage: just gcp-pulumi create-resource --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -241,10 +239,10 @@ create-resource folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} up -s "${stack_name}" -f -y
-
+    go run ./cmd/cluster-ops stack up \\
+        --folder {{ quote(folder) }} --stack "${stack_name}"
 # Destroy resources for a stack.
 # Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -254,10 +252,10 @@ remove-resource folder stack="":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
-    stack_name="{{ stack }}"
+    stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} destroy -s "${stack_name}" -f -y
-
+    go run ./cmd/cluster-ops stack destroy \\
+        --folder {{ quote(folder) }} --stack "${stack_name}"
 # Remove a stack, preserving its config.
 # Usage: just gcp-pulumi cleanup-resource --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
@@ -791,3 +789,153 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
     fi
     echo "Deployed ${deploy} in ${namespace} with image ${running}."
     echo "Next: commit ${folder}/Pulumi.${stack_name}.yaml, push cluster-ops develop, then just ci check-deploy-credentials."
+
+
+# Rollback copy of the pre-migration ensure-stack (real pulumi CLI body; delete one release after migration).
+# Select a project's Pulumi stack, initializing it first if it does not exist yet.
+# Stack name: --stack flag, else $PULUMI_STACK (set once per cluster by create-cluster-env),
+# else the recipe fails — no silent fallback to "dev" for a name this consequential.
+# Usage: just gcp-pulumi ensure-stack --folder <dir> [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+ensure-stack-shell folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    if [ -z "${stack_name}" ]; then
+        stack_name="${PULUMI_STACK:-}"
+    fi
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — set PULUMI_STACK (via cluster env) or pass --stack."
+        exit 1
+    fi
+    if pulumi -C {{ quote(folder) }} stack select "${stack_name}" &>/dev/null; then
+        echo "Selected existing stack '${stack_name}' in {{ folder }}."
+    elif [ -f "{{ folder }}/Pulumi.${stack_name}.yaml" ]; then
+        echo "Stack '${stack_name}' not found in {{ folder }}. Initializing from Pulumi.${stack_name}.yaml..."
+        pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider "${PULUMI_SECRET_PROVIDER}"
+    else
+        echo "ERROR: stack '${stack_name}' does not exist in {{ folder }}, and there is no Pulumi.${stack_name}.yaml to initialize it from." >&2
+        echo "       Initializing would create an empty stack and fail at preview with 'missing required configuration variable'." >&2
+        echo "       Create the file first (fork a base config), or copy it from an existing stack:" >&2
+        echo "         just gcp-pulumi fork-stack --to-stack ${stack_name} [--folder {{ folder }}]" >&2
+        echo "         just gcp-pulumi new-stack-from --folder {{ folder }} --stack ${stack_name} --from-stack <existing-stack>" >&2
+        exit 1
+    fi
+
+
+# Rollback copy of the pre-migration set-secret (real pulumi CLI body; delete one release after migration).
+# Set an encrypted config value on a stack (config set --path --secret).
+# Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> --value <secret> [--stack <name>]
+[arg("value", long="value", short="v", help="Secret value to store")]
+[arg("key", long="key", short="k", help="Config key path, e.g. properties.secret.password")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+set-secret-shell folder key value stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name={{ quote(stack) }}
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
+
+
+# Rollback copy of the pre-migration set-config (real pulumi CLI body; delete one release after migration).
+# Set a plain (unencrypted) config value on a stack (config set --path).
+# Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>] [--plaintext <yes>]
+[arg("value", long="value", short="v", help="Config value to store")]
+[arg("key", long="key", short="k", help="Config key path, e.g. properties.restoreId")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("plaintext", long="plaintext", help="Pass --plaintext when the value is not a secret but the CLI would guess otherwise")]
+[no-cd]
+set-config-shell folder key value stack="" plaintext="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name={{ quote(stack) }}
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    if [ -n "{{ plaintext }}" ]; then
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --plaintext {{ quote(key) }} {{ quote(value) }}
+    else
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
+    fi
+
+
+# Rollback copy of the pre-migration preview (real pulumi CLI body; delete one release after migration).
+# Preview Pulumi changes for a stack in a folder.
+# Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+preview-shell folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" preview
+
+
+# Rollback copy of the pre-migration new-stack (real pulumi CLI body; delete one release after migration).
+# Create a new Pulumi stack in a given folder.
+# Usage: just gcp-pulumi new-stack --folder <dir> [--stack <name>]
+[arg("stack", long="stack", short="s", help="New Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+new-stack-shell folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --secrets-provider ${PULUMI_SECRET_PROVIDER}
+
+
+# Rollback copy of the pre-migration new-stack-from (real pulumi CLI body; delete one release after migration).
+# Create a new stack in a folder copied from an existing stack's config.
+# Usage: just gcp-pulumi new-stack-from --folder <dir> [--stack <name>] [--from-stack <name>]
+[arg("stack", long="stack", short="s", help="New Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("from-stack", long="from-stack", short="F", help="Stack to copy config from")]
+[no-cd]
+new-stack-from-shell folder stack="" from-stack="experiments":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} stack init "${stack_name}" --copy-config-from {{ quote(from-stack) }} --secrets-provider ${PULUMI_SECRET_PROVIDER}
+
+
+# Rollback copy of the pre-migration create-resource (real pulumi CLI body; delete one release after migration).
+# Deploy resources for a stack.
+# Usage: just gcp-pulumi create-resource --folder <dir> [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+create-resource-shell folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} up -s "${stack_name}" -f -y
+
+
+# Rollback copy of the pre-migration remove-resource (real pulumi CLI body; delete one release after migration).
+# Destroy resources for a stack.
+# Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[no-cd]
+remove-resource-shell folder stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    stack_name="{{ stack }}"
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    pulumi -C {{ quote(folder) }} destroy -s "${stack_name}" -f -y

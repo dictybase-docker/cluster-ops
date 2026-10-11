@@ -28,12 +28,16 @@ const (
 	roleFlag       = "role"
 	displayNameFlg = "display-name"
 	keyFileDefault = "key.json"
+	appName        = "cluster-ops"
+	stackFlag      = "stack"
+	folderFlag     = "folder"
+	envPulumiStack = "PULUMI_STACK"
 	createCmd      = "create"
 )
 
 func main() {
 	app := &cli.App{
-		Name:  "cluster-ops",
+		Name:  appName,
 		Usage: "Unified cluster lifecycle management",
 		Commands: []*cli.Command{
 			kopsCommand(),
@@ -42,6 +46,7 @@ func main() {
 			forwardCommand(),
 			waitCommand(),
 			bucketCommand(),
+			stackCommand(),
 			iamCommand(),
 			envCommand(),
 			apiCommand(),

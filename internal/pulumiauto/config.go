@@ -59,3 +59,25 @@ func outputValue(key string) func(auto.OutputMap) E.Either[error, string] {
 		return E.Of[error](fmt.Sprint(v.Value))
 	}
 }
+
+// CopyConfig copies every config value from one stack to another (the
+// --copy-config-from flow). Secret flags are preserved; values never log.
+func CopyConfig(ctx context.Context, from, to StackAPI) IOE.IOEither[error, []string] {
+	return F.Pipe1(
+		IOE.TryCatchError(func() (auto.ConfigMap, error) { return from.GetAllConfig(ctx) }),
+		IOE.Chain(copyEach(ctx, to)),
+	)
+}
+
+func copyEach(ctx context.Context, to StackAPI) func(auto.ConfigMap) IOE.IOEither[error, []string] {
+	return func(cfg auto.ConfigMap) IOE.IOEither[error, []string] {
+		keys := make([]string, 0, len(cfg))
+		for k, v := range cfg {
+			if err := to.SetConfig(ctx, k, v); err != nil {
+				return IOE.Left[[]string](fmt.Errorf("copy config %s: %w", k, err))
+			}
+			keys = append(keys, k)
+		}
+		return IOE.Of[error](keys)
+	}
+}

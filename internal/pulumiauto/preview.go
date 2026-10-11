@@ -28,6 +28,19 @@ func SummaryFrom(change map[apitype.OpType]int) PreviewSummary {
 	}
 }
 
+// SummaryFromResourceChanges converts the UpResult summary shape
+// (*map[string]int) into PreviewSummary counts.
+func SummaryFromResourceChanges(rc *map[string]int) PreviewSummary {
+	if rc == nil {
+		return PreviewSummary{}
+	}
+	change := map[apitype.OpType]int{}
+	for k, v := range *rc {
+		change[apitype.OpType(k)] = v
+	}
+	return SummaryFrom(change)
+}
+
 // ProtectedChange is one blocked delete/replace on a protected type.
 type ProtectedChange struct {
 	URN, Type string

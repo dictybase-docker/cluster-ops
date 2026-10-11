@@ -41,7 +41,7 @@ func TestDeployerAccessClusterFromEnv(t *testing.T) {
 }
 
 func TestBackendPrereqsNeedsStack(t *testing.T) {
-	t.Setenv("PULUMI_STACK", "")
+	t.Setenv(envPulumiStack, "")
 	err := runPreflight(t, "backend-prereqs", "--folder", "modware-order")
 	require.ErrorIs(t, err, errNoStack)
 }

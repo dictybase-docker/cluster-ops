@@ -121,8 +121,8 @@ func preflightCommand() *cli.Command {
 						Usage:    "Service project folder (stack config source)",
 					},
 					&cli.StringFlag{
-						Name: "stack", Aliases: []string{"s"},
-						EnvVars: []string{"PULUMI_STACK"},
+						Name: stackFlag, Aliases: []string{"s"},
+						EnvVars: []string{envPulumiStack},
 						Usage:   "Pulumi stack name (defaults to PULUMI_STACK)",
 					},
 					&cli.StringFlag{
@@ -523,9 +523,9 @@ func readStackProperties(in prereqsInput) E.Either[error, prereqsInput] {
 }
 
 func loadPrereqsInput(cltx *cli.Context) E.Either[error, prereqsInput] {
-	folder := filepath.Clean(cltx.String("folder"))
+	folder := filepath.Clean(cltx.String(folderFlag))
 	return F.Pipe4(
-		prereqsInput{folder: folder, stack: cltx.String("stack"), project: filepath.Base(folder)},
+		prereqsInput{folder: folder, stack: cltx.String(stackFlag), project: filepath.Base(folder)},
 		E.FromPredicate(func(in prereqsInput) bool { return in.stack != "" }, func(prereqsInput) error { return errNoStack }),
 		E.Chain(readStackProperties),
 		E.Chain(func(in prereqsInput) E.Either[error, prereqsInput] {

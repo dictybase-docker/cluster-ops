@@ -40,7 +40,9 @@ func (a autoStack) Destroy(ctx context.Context) error {
 }
 
 func (a autoStack) SetConfig(ctx context.Context, key string, val auto.ConfigValue) error {
-	return a.stack.SetConfig(ctx, key, val)
+	// Path semantics: every replaced recipe used `config set --path` on keys
+	// like properties.secret.password. A non-path write would flatten them.
+	return a.stack.SetConfigWithOptions(ctx, key, val, &auto.ConfigOptions{Path: true})
 }
 
 func (a autoStack) GetAllConfig(ctx context.Context) (auto.ConfigMap, error) {
@@ -50,6 +52,9 @@ func (a autoStack) GetAllConfig(ctx context.Context) (auto.ConfigMap, error) {
 func (a autoStack) Outputs(ctx context.Context) (auto.OutputMap, error) {
 	return a.stack.Outputs(ctx)
 }
+
+// AutoOpener returns the production opener.
+func AutoOpener() StackOpener { return autoOpener{} }
 
 // autoOpener opens stacks through the Automation API bound to the target.
 type autoOpener struct{}
