@@ -48,22 +48,22 @@ func stackCommand() *cli.Command {
 				Usage:  "Preview with structured diff and the protected-resource gate",
 				Action: stackPreviewAction,
 				Flags: append(stackFlags(),
-					&cli.BoolFlag{Name: "allow-protected"}),
+					&cli.BoolFlag{Name: allowProtectedFlag}),
 			},
 			{
 				Name:   "up",
 				Usage:  "Update with secret-safe event logging",
 				Action: stackUpAction,
 				Flags: append(stackFlags(),
-					&cli.BoolFlag{Name: "dry-run"},
-					&cli.BoolFlag{Name: "allow-protected"}),
+					&cli.BoolFlag{Name: dryRunFlag},
+					&cli.BoolFlag{Name: allowProtectedFlag}),
 			},
 			{
 				Name:   "destroy",
 				Usage:  "Destroy the stack resources",
 				Action: stackDestroyAction,
 				Flags: append(stackFlags(),
-					&cli.BoolFlag{Name: "dry-run"}),
+					&cli.BoolFlag{Name: dryRunFlag}),
 			},
 			{
 				Name:   "outputs",
@@ -172,7 +172,7 @@ func stackPreviewAction(cltx *cli.Context) error {
 	for _, b := range gate.Blocked {
 		fmt.Fprintf(os.Stderr, "BLOCKED %s %s (%s)\n", b.URN, b.Type, b.Op)
 	}
-	if len(gate.Blocked) > 0 && !cltx.Bool("allow-protected") {
+	if len(gate.Blocked) > 0 && !cltx.Bool(allowProtectedFlag) {
 		return cli.Exit(
 			"preview blocked by protected changes — re-run with --allow-protected to accept", 1)
 	}
@@ -180,7 +180,7 @@ func stackPreviewAction(cltx *cli.Context) error {
 }
 
 func stackUpAction(cltx *cli.Context) error {
-	mode := deployModeFrom(cltx.Bool("dry-run"), cltx.Bool("allow-protected"))
+	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
 	s, _, err := openTarget(cltx, false)
 	if err != nil {
 		return err
@@ -202,7 +202,7 @@ func stackUpAction(cltx *cli.Context) error {
 }
 
 func stackDestroyAction(cltx *cli.Context) error {
-	mode := deployModeFrom(cltx.Bool("dry-run"), false)
+	mode := deployModeFrom(cltx.Bool(dryRunFlag), false)
 	s, _, err := openTarget(cltx, false)
 	if err != nil {
 		return err

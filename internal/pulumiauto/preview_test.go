@@ -21,6 +21,10 @@ func resourceEvent(op apitype.OpType, urn, typ string) events.EngineEvent {
 	}}
 }
 
+func previewChanges(change map[apitype.OpType]int) auto.PreviewResult {
+	return auto.PreviewResult{ChangeSummary: change}
+}
+
 func statefulSetReplaceEvent() events.EngineEvent {
 	return resourceEvent(apitype.OpReplace, "urn:pulumi:s::p::k8s::sts",
 		"kubernetes:apps/v1:StatefulSet")

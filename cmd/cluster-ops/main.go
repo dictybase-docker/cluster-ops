@@ -20,19 +20,20 @@ import (
 )
 
 const (
-	projectFlag    = "project"
-	nameFlag       = "name"
-	bucketFlag     = "bucket"
-	credFileFlag   = "cred-file"
-	dryRunFlag     = "dry-run"
-	roleFlag       = "role"
-	displayNameFlg = "display-name"
-	keyFileDefault = "key.json"
-	appName        = "cluster-ops"
-	stackFlag      = "stack"
-	folderFlag     = "folder"
-	envPulumiStack = "PULUMI_STACK"
-	createCmd      = "create"
+	projectFlag        = "project"
+	nameFlag           = "name"
+	bucketFlag         = "bucket"
+	credFileFlag       = "cred-file"
+	dryRunFlag         = "dry-run"
+	roleFlag           = "role"
+	displayNameFlg     = "display-name"
+	keyFileDefault     = "key.json"
+	appName            = "cluster-ops"
+	stackFlag          = "stack"
+	folderFlag         = "folder"
+	envPulumiStack     = "PULUMI_STACK"
+	allowProtectedFlag = "allow-protected"
+	createCmd          = "create"
 )
 
 func main() {
@@ -47,6 +48,7 @@ func main() {
 			waitCommand(),
 			bucketCommand(),
 			stackCommand(),
+			deployCommand(),
 			iamCommand(),
 			envCommand(),
 			apiCommand(),

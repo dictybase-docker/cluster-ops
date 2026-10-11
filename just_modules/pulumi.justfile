@@ -750,6 +750,53 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
     app=$(yq -r ".config.\"${project}:properties\".appName" "${folder}/Pulumi.${stack_name}.yaml")
     namespace=$(yq -r ".config.\"${project}:properties\".namespace" "${folder}/Pulumi.${stack_name}.yaml")
 
+    deploy="${app}-api-server"
+    if kubectl -n "${namespace}" get "deploy/${deploy}" >/dev/null 2>&1; then
+        running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
+        if [ "${running}" = "dictybase/${project}:${tag}" ]; then
+            echo "Deployment already runs ${running} — verifying rollout only (idempotent skip)."
+            go run ./cmd/cluster-ops wait deployment-rollout \
+                --namespace "${namespace}" --name "${deploy}" --timeout 300
+            exit 0
+        fi
+        echo "Deployment runs ${running}; converging to dictybase/${project}:${tag}."
+    fi
+
+    go run ./cmd/cluster-ops deploy service \
+        --folder "${folder}" --stack "${stack_name}" --image-tag "${tag}" \
+        --arango-service {{ quote(arango_service) }}
+
+    running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
+    if [ "${running}" != "dictybase/${project}:${tag}" ]; then
+        echo "ERROR: running image '${running}' does not match the requested tag '${tag}'." >&2
+        exit 1
+    fi
+    echo "Deployed ${deploy} in ${namespace} with image ${running}."
+    echo "Next: commit ${folder}/Pulumi.${stack_name}.yaml, push cluster-ops develop, then just ci check-deploy-credentials."
+
+# Rollback copy of the pre-migration bootstrap-service (real pulumi CLI body; delete one release after migration).
+bootstrap-service-shell folder image_tag="" stack="" arango_service="arangodb":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+    folder="{{ folder }}"
+    folder="${folder%/}"
+    tag="{{ image_tag }}"
+    project="$(basename "${folder}")"
+    if [ -z "${tag}" ]; then
+        tag=$(just ci latest-tag --repo "dictybase/${project}")
+        echo "Resolved image tag from repo tags: ${tag}"
+    fi
+    app=$(yq -r ".config.\"${project}:properties\".appName" "${folder}/Pulumi.${stack_name}.yaml")
+    namespace=$(yq -r ".config.\"${project}:properties\".namespace" "${folder}/Pulumi.${stack_name}.yaml")
+
     gate_args=(--stack "${stack_name}" --folder "${folder}")
     [ -n "{{ arango_service }}" ] && gate_args+=(--arango-service "{{ arango_service }}")
 

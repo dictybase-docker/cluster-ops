@@ -1,0 +1,129 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	E "github.com/IBM/fp-go/v2/either"
+	"github.com/dictybase-docker/cluster-ops/internal/preflight"
+	"github.com/dictybase-docker/cluster-ops/internal/preflight/backend"
+	"github.com/dictybase-docker/cluster-ops/internal/pulumiauto"
+	"github.com/dictybase-docker/cluster-ops/internal/waitfor"
+	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v3"
+)
+
+// deployCommand deploys services through the Pulumi Automation API.
+func deployCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "deploy",
+		Usage: "Composite service deploys (preflight → stack → preview gate → up → rollout)",
+		Subcommands: []*cli.Command{{
+			Name:   "service",
+			Usage:  "Deploy one backend service stack (bootstrap-service)",
+			Action: deployServiceAction,
+			Flags: append(stackFlags(),
+				&cli.StringFlag{Name: "image-tag", Aliases: []string{"t"}, Required: true},
+				&cli.StringFlag{Name: "arango-service", Aliases: []string{"a"}, Value: defArangoService},
+				&cli.BoolFlag{Name: dryRunFlag},
+				&cli.BoolFlag{Name: allowProtectedFlag},
+			),
+		}},
+	}
+}
+
+// deployServiceAction runs the BootstrapService composite.
+func deployServiceAction(cltx *cli.Context) error {
+	target := targetFrom(cltx)
+	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
+	svc := pulumiauto.ServiceSpec{
+		Folder:    target.Folder,
+		Stack:     target.Stack,
+		ImageTag:  cltx.String("image-tag"),
+		Preflight: prereqsRunner(cltx),
+		Rollout:   rolloutWaiter(cltx, target.Folder, target.Stack),
+		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	res, err := E.UnwrapError(pulumiauto.BootstrapService(
+		context.Background(), pulumiauto.AutoOpener(), target, svc, mode)())
+	if err != nil {
+		return err
+	}
+	printSummary(target.Stack, res.Summary)
+	fmt.Println("rollout:", res.Rollout)
+	return nil
+}
+
+// prereqsRunner adapts the backend prereq checks to the composite seam.
+func prereqsRunner(cltx *cli.Context) pulumiauto.PreflightRunner {
+	return func() []preflight.Result {
+		in, err := E.UnwrapError(loadPrereqsInput(cltx))
+		if err != nil {
+			return []preflight.Result{{
+				Name: "backend prereqs", Detail: err.Error(), Status: preflight.StatusFail,
+			}}
+		}
+		return runGate(backend.PrereqsChecks(backend.PrereqsConfig{
+			Clients:       in.clients,
+			Namespace:     in.entry.Namespace,
+			SecretName:    in.props.ArangodbSecret.Name,
+			UserKey:       in.props.ArangodbSecret.Userkey,
+			PassKey:       in.props.ArangodbSecret.Passkey,
+			ArangoService: cltx.String("arango-service"),
+			AppName:       in.props.AppName,
+			Port:          in.props.Port,
+		}))
+	}
+}
+
+// rolloutWaiter waits for the service Deployment (the recipe derives
+// "<appName>-api-server" in the stack's namespace).
+func rolloutWaiter(cltx *cli.Context, folder, stack string) pulumiauto.RolloutWaiter {
+	return func(ctx context.Context) (string, error) {
+		app, namespace, err := readServiceProps(folder, stack)
+		if err != nil {
+			return "", err
+		}
+		clients, err := newClientsValue(cltx)
+		if err != nil {
+			return "", err
+		}
+		deploy := app + "-api-server"
+		cond := waitfor.DeploymentRolloutCondition{Namespace: namespace, Name: deploy}
+		cfg := waitfor.WaitConfig{Timeout: 5 * time.Minute}
+		if err := ioErr(waitfor.DeploymentRollout(ctx, clients, cfg, cond)); err != nil {
+			return "", err
+		}
+		return deploy + " ready in " + namespace, nil
+	}
+}
+
+// readServiceProps reads appName/namespace from the stack's committed config
+// (the recipe's yq reads on Pulumi.<stack>.yaml).
+func readServiceProps(folder, stack string) (app, namespace string, err error) {
+	project := filepath.Base(strings.TrimSuffix(folder, "/"))
+	data, err := os.ReadFile(filepath.Join(folder, "Pulumi."+stack+".yaml"))
+	if err != nil {
+		return "", "", fmt.Errorf("read stack config: %w", err)
+	}
+	var raw struct {
+		Config map[string]map[string]string `yaml:"config"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return "", "", fmt.Errorf("parse stack config: %w", err)
+	}
+	props, ok := raw.Config[project+":properties"]
+	if !ok {
+		return "", "", fmt.Errorf("stack config has no %s:properties section", project)
+	}
+	app, namespace = props["appName"], props["namespace"]
+	if app == "" || namespace == "" {
+		return "", "", fmt.Errorf("stack config %s:properties lacks appName/namespace", project)
+	}
+	return app, namespace, nil
+}

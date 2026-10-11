@@ -13,27 +13,34 @@ type fakeOpener struct {
 	upserted []string
 	failWith error
 	returned *fakeStack
+	log      *[]string // shared sequence log
 }
 
 func (f *fakeOpener) Select(_ context.Context, t DeployTarget) (StackAPI, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, "open")
+	}
 	f.selected = append(f.selected, t.Stack+"|"+t.Folder+"|"+t.Backend)
 	return f.returned, f.failWith
 }
 
 func (f *fakeOpener) Upsert(_ context.Context, t DeployTarget) (StackAPI, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, "open")
+	}
 	f.upserted = append(f.upserted, t.Stack+"|"+t.Folder+"|"+t.Backend)
 	return f.returned, f.failWith
 }
 
 func TestOpenStackBindsRegistryEntry(t *testing.T) {
-	op := &fakeOpener{returned: &fakeStack{name: "experiments"}}
-	target := DeployTarget{Folder: "modware-annotation", Stack: "experiments", //nolint:gosec // fixture
+	op := &fakeOpener{returned: &fakeStack{name: testStack}}
+	target := DeployTarget{Folder: "modware-annotation", Stack: testStack, //nolint:gosec // fixture
 		Backend: "gs://pulumi-state-proj", Secrets: "gcpkms://projects/p/keys/pulumi"}
 	s, err := OpenStack(context.Background(), op, target, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{"experiments|modware-annotation|gs://pulumi-state-proj"}, op.selected)
 	require.Empty(t, op.upserted, "select must not create")
-	require.Equal(t, "experiments", s.Name())
+	require.Equal(t, testStack, s.Name())
 }
 
 func TestOpenStackCreatesWhenAsked(t *testing.T) {
