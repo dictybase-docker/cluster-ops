@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	IOE "github.com/IBM/fp-go/v2/ioeither"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
@@ -75,11 +74,4 @@ func OpenStack(ctx context.Context, opener StackOpener, t DeployTarget, create b
 		return nil, fmt.Errorf("pulumi open stack %s in %s: %w", t.Stack, t.Folder, err)
 	}
 	return s, nil
-}
-
-// ConfigWrite is the SetConfig flow step (Task 3 shape, used by Task 7).
-func ConfigWrite(ctx context.Context, s StackAPI, key, value string, secret bool) IOE.IOEither[error, struct{}] {
-	return IOE.TryCatchError(func() (struct{}, error) {
-		return struct{}{}, s.SetConfig(ctx, key, auto.ConfigValue{Value: value, Secret: secret})
-	})
 }
