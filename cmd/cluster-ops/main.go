@@ -34,6 +34,8 @@ const (
 	envPulumiStack     = "PULUMI_STACK"
 	allowProtectedFlag = "allow-protected"
 	arangoServiceFlag  = "arango-service"
+	destroyCmd         = "destroy"
+	confirmYes         = "yes"
 	createCmd          = "create"
 )
 

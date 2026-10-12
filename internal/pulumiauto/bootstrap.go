@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
@@ -50,13 +51,19 @@ func BootstrapService(
 
 // runPreflight runs the gate checks and fails the flow when any of them fail.
 func (w bootstrapWork) runPreflight() IOE.IOEither[error, struct{}] {
-	return IOE.TryCatchError(func() (struct{}, error) {
-		results := w.svc.Preflight()
-		if preflight.Failed(results) {
-			return struct{}{}, fmt.Errorf("preflight failed: %d check(s) — fix the FAIL lines above", countFails(results))
-		}
-		return struct{}{}, nil
-	})
+	return F.Pipe1(
+		IOE.TryCatchError(func() ([]preflight.Result, error) { return w.svc.Preflight(), nil }),
+		IOE.ChainEitherK(requirePreflight),
+	)
+}
+
+// requirePreflight turns gate results into the flow verdict (named, pure).
+func requirePreflight(results []preflight.Result) E.Either[error, struct{}] {
+	if preflight.Failed(results) {
+		return E.Left[struct{}](fmt.Errorf(
+			"preflight failed: %d check(s) — fix the FAIL lines above", countFails(results)))
+	}
+	return E.Of[error](struct{}{})
 }
 
 func countFails(results []preflight.Result) int {
@@ -91,7 +98,7 @@ func (w bootstrapWork) gateAndUpdate(
 ) func(struct{}) IOE.IOEither[error, BootstrapResult] {
 	return func(struct{}) IOE.IOEither[error, BootstrapResult] {
 		return F.Pipe1(
-			PreviewGate(ctx, s, nil),
+			PreviewGate(ctx, s, PolicyFrom(w.mode)),
 			IOE.Chain(w.fromGate(ctx, s)),
 		)
 	}
@@ -107,52 +114,58 @@ func (w bootstrapWork) fromGate(
 			return IOE.Left[BootstrapResult](blockedError(gate.Blocked))
 		}
 		if w.mode.DryRun || zeroChanges(gate.Summary) {
+			CleanupPlan(gate.PlanPath)
 			return IOE.Of[error](BootstrapResult{Summary: gate.Summary, Rollout: "unchanged"})
 		}
-		return w.upThenRollout(ctx, s, gate.Summary)
+		return w.upThenRollout(ctx, s, gate)
 	}
 }
 
-func zeroChanges(s PreviewSummary) bool {
-	return s.Creates+s.Updates+s.Deletes+s.Replaces == 0
-}
-
 func (w bootstrapWork) upThenRollout(
-	ctx context.Context, s StackAPI, summary PreviewSummary,
+	ctx context.Context, s StackAPI, gate GateResult,
 ) IOE.IOEither[error, BootstrapResult] {
 	return F.Pipe1(
-		w.runUp(ctx, s),
-		IOE.Chain(w.rollout(summary)),
+		w.runUp(ctx, s, gate),
+		IOE.Chain(w.rollout(ctx, gate.Summary)),
 	)
 }
 
-func (w bootstrapWork) runUp(ctx context.Context, s StackAPI) IOE.IOEither[error, struct{}] {
-	return F.Pipe1(
+func (w bootstrapWork) runUp(ctx context.Context, s StackAPI, gate GateResult) IOE.IOEither[error, struct{}] {
+	return F.Pipe2(
 		SecretValues(ctx, s),
-		IOE.Chain(w.upWithSecrets(ctx, s)),
+		IOE.Chain(w.upWithSecrets(ctx, s, gate)),
+		IOE.Map[error](dropUpResult),
 	)
 }
 
 func (w bootstrapWork) upWithSecrets(
-	ctx context.Context, s StackAPI,
-) func([]string) IOE.IOEither[error, struct{}] {
-	return func(secrets []string) IOE.IOEither[error, struct{}] {
+	ctx context.Context, s StackAPI, gate GateResult,
+) func([]string) IOE.IOEither[error, auto.UpResult] {
+	return func(secrets []string) IOE.IOEither[error, auto.UpResult] {
 		opts := w.mode.UpOptions(w.svc.Logger, secrets)
-		return F.Pipe1(
-			Up(ctx, s, opts),
-			IOE.Map[error](func(auto.UpResult) struct{} { return struct{}{} }),
+		opts.PlanPath = gate.PlanPath
+		return Up(ctx, s, opts)
+	}
+}
+
+func dropUpResult(auto.UpResult) struct{} { return struct{}{} }
+
+func (w bootstrapWork) rollout(
+	ctx context.Context, summary PreviewSummary,
+) func(struct{}) IOE.IOEither[error, BootstrapResult] {
+	return func(struct{}) IOE.IOEither[error, BootstrapResult] {
+		return F.Pipe2(
+			IOE.TryCatchError(func() (string, error) { return w.svc.Rollout(ctx) }),
+			IOE.MapLeft[string](wrapRolloutErr),
+			IOE.Map[error](toBootstrapResult(summary)),
 		)
 	}
 }
 
-func (w bootstrapWork) rollout(summary PreviewSummary) func(struct{}) IOE.IOEither[error, BootstrapResult] {
-	return func(struct{}) IOE.IOEither[error, BootstrapResult] {
-		return IOE.TryCatchError(func() (BootstrapResult, error) {
-			state, err := w.svc.Rollout(context.Background())
-			if err != nil {
-				return BootstrapResult{}, fmt.Errorf("rollout wait: %w", err)
-			}
-			return BootstrapResult{Summary: summary, Rollout: state}, nil
-		})
+func wrapRolloutErr(err error) error { return fmt.Errorf("rollout wait: %w", err) }
+
+func toBootstrapResult(summary PreviewSummary) func(string) BootstrapResult {
+	return func(state string) BootstrapResult {
+		return BootstrapResult{Summary: summary, Rollout: state}
 	}
 }

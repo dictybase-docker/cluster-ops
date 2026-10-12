@@ -2,10 +2,12 @@ package pulumiauto
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
@@ -30,9 +32,10 @@ func (r Redactor) Redact(s string) string {
 // UpOptions governs one Update run. Logger nil = silent. Secrets feed the
 // redactor. DryRun never reaches the update seam.
 type UpOptions struct {
-	DryRun  bool
-	Logger  *slog.Logger
-	Secrets []string
+	DryRun   bool
+	Logger   *slog.Logger
+	Secrets  []string
+	PlanPath string // saved plan from the gate; "" = no plan binding
 }
 
 // UpOptions builds the run options from the mode.
@@ -49,9 +52,20 @@ func Up(ctx context.Context, s StackAPI, opts UpOptions) IOE.IOEither[error, aut
 	if opts.DryRun {
 		return IOE.Of[error](auto.UpResult{})
 	}
-	return IOE.TryCatchError(func() (auto.UpResult, error) {
-		return runUp(ctx, s, opts)
-	})
+	return F.Pipe1(
+		IOE.TryCatchError(func() (auto.UpResult, error) {
+			return runUp(ctx, s, opts)
+		}),
+		IOE.MapLeft[auto.UpResult](redactErrs(Redactor{secrets: opts.Secrets})),
+	)
+}
+
+// redactErrs masks secret values in any failure text (engine errors can
+// embed secret diagnostics).
+func redactErrs(r Redactor) func(error) error {
+	return func(err error) error {
+		return errors.New(r.Redact(err.Error()))
+	}
 }
 
 // runUp is the update edge: up + concurrent event collection.
@@ -59,7 +73,7 @@ func runUp(ctx context.Context, s StackAPI, opts UpOptions) (auto.UpResult, erro
 	ch := make(chan events.EngineEvent)
 	done := make(chan struct{})
 	go logEvents(ch, done, opts)
-	res, err := s.Up(ctx, ch)
+	res, err := s.Up(ctx, ch, opts.PlanPath)
 	close(ch)
 	<-done
 	if err != nil {

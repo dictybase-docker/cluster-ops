@@ -61,7 +61,7 @@ func TestBootstrapHappy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t,
 		[]string{stepPreflight, stepOpen, "set-config:" + imageTagKey, stepPreview, stepUp, "rollout"},
-		log, "preflight → open → set-config → preview → up → rollout")
+		stepNames(log), "preflight → open → set-config → preview → up → rollout")
 	require.Equal(t, 1, got.Summary.Creates)
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -59,7 +60,7 @@ func stackCommand() *cli.Command {
 					&cli.BoolFlag{Name: allowProtectedFlag}),
 			},
 			{
-				Name:   "destroy",
+				Name:   destroyCmd,
 				Usage:  "Destroy the stack resources",
 				Action: stackDestroyAction,
 				Flags: append(stackFlags(),
@@ -87,34 +88,84 @@ func stackFlags() []cli.Flag {
 
 // deployModeFrom maps the CLI switches onto the flow mode.
 func deployModeFrom(dryRun, allowProtected bool) pulumiauto.DeployMode {
-	return pulumiauto.DeployMode{DryRun: dryRun, AllowProtected: allowProtected}
+	return pulumiauto.DeployMode{
+		DryRun: dryRun, AllowProtected: allowProtected,
+		ProtectDeployIn: splitCSV(os.Getenv("PROTECT_DEPLOY_NS")),
+	}
 }
 
-// targetFrom builds the deploy target: the registry entry binds the backend
-// and secrets provider when the stack is a registered cluster; otherwise the
-// PULUMI_* environment binds it (local and folder stacks keep working).
-func targetFrom(cltx *cli.Context) pulumiauto.DeployTarget {
-	stack := cltx.String(stackFlag)
+// targetEnv is the ambient PULUMI_* environment (the fallback bindings for
+// unregistered local/folder stacks).
+type targetEnv struct {
+	Folder, Stack        string
+	Backend, Secrets     string
+	CredFile, Passphrase string
+}
+
+// newOpener is the production opener seam (tests swap it).
+var newOpener = pulumiauto.AutoOpener
+
+// pulumiCredential is the Pulumi identity: the deployer key from
+// PULUMI_GCP_CREDENTIALS. The ambient GOOGLE_APPLICATION_CREDENTIALS is the
+// kops-creator key in a cluster shell and must never be used here.
+func pulumiCredential() string {
+	return os.Getenv("PULUMI_GCP_CREDENTIALS")
+}
+
+// targetFrom builds the deploy target from the registry entry, falling back
+// to the environment ONLY on a typed registry miss. The Pulumi credential is
+// PULUMI_GCP_CREDENTIALS (the deployer key) — never the ambient
+// GOOGLE_APPLICATION_CREDENTIALS, which cluster-env sets to the kops key.
+func targetFrom(cltx *cli.Context) (pulumiauto.DeployTarget, error) {
+	return targetFromEnv(context.Background(),
+		registry.LoadByStack(cltx.String("registry-dir"), cltx.String(stackFlag)),
+		targetEnv{
+			Folder:     cltx.String(folderFlag),
+			Stack:      cltx.String(stackFlag),
+			Backend:    os.Getenv("PULUMI_BACKEND_URL"),
+			Secrets:    os.Getenv("PULUMI_SECRET_PROVIDER"),
+			CredFile:   pulumiCredential(),
+			Passphrase: os.Getenv("PULUMI_CONFIG_PASSPHRASE"),
+		})
+}
+
+// targetFromEnv resolves the bindings: registry entry wins; a typed miss may
+// fall back to the environment but only with complete bindings; any other
+// registry error fails closed.
+func targetFromEnv(
+	_ context.Context, entry E.Either[error, registry.Entry], env targetEnv,
+) (pulumiauto.DeployTarget, error) {
 	t := pulumiauto.DeployTarget{
-		Folder:     cltx.String(folderFlag),
-		Stack:      stack,
-		Backend:    os.Getenv("PULUMI_BACKEND_URL"),
-		Secrets:    os.Getenv("PULUMI_SECRET_PROVIDER"),
-		CredFile:   os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-		Passphrase: os.Getenv("PULUMI_CONFIG_PASSPHRASE"),
+		Folder:     env.Folder,
+		Stack:      env.Stack,
+		CredFile:   env.CredFile,
+		Passphrase: env.Passphrase,
 	}
-	entry, err := E.UnwrapError(registry.LoadByStack(cltx.String("registry-dir"), stack))
-	if err == nil {
-		t.Backend = entry.PulumiState
-		t.Secrets = entry.KMSSecretsProvider
+	resolved, err := E.UnwrapError(entry)
+	switch {
+	case err == nil:
+		t.Backend = resolved.PulumiState
+		t.Secrets = resolved.KMSSecretsProvider
+	case errors.Is(err, registry.ErrEntryNotFound):
+		t.Backend, t.Secrets = env.Backend, env.Secrets
+	default:
+		return pulumiauto.DeployTarget{}, err
 	}
-	return t
+	if t.Backend == "" || t.Secrets == "" {
+		return pulumiauto.DeployTarget{}, fmt.Errorf(
+			"stack %s: no registry entry and PULUMI_BACKEND_URL/PULUMI_SECRET_PROVIDER are not both set",
+			env.Stack)
+	}
+	return t, nil
 }
 
 // openTarget opens (or creates) the stack behind the CLI target.
 func openTarget(cltx *cli.Context, create bool) (pulumiauto.StackAPI, pulumiauto.DeployTarget, error) {
-	t := targetFrom(cltx)
-	s, err := pulumiauto.OpenStack(context.Background(), pulumiauto.AutoOpener(), t, create)
+	t, err := targetFrom(cltx)
+	if err != nil {
+		return nil, t, err
+	}
+	s, err := pulumiauto.OpenStack(context.Background(), newOpener(), t, create)
 	return s, t, err
 }
 
@@ -164,10 +215,12 @@ func stackPreviewAction(cltx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	gate, err := E.UnwrapError(pulumiauto.PreviewGate(context.Background(), s, nil)())
+	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
+	gate, err := E.UnwrapError(pulumiauto.PreviewGate(context.Background(), s, pulumiauto.PolicyFrom(mode))())
 	if err != nil {
 		return err
 	}
+	pulumiauto.CleanupPlan(gate.PlanPath)
 	printSummary(s.Name(), gate.Summary)
 	for _, b := range gate.Blocked {
 		fmt.Fprintf(os.Stderr, "BLOCKED %s %s (%s)\n", b.URN, b.Type, b.Op)
@@ -190,14 +243,12 @@ func stackUpAction(cltx *cli.Context) error {
 		return err
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	run := func() IOE.IOEither[error, auto.UpResult] {
-		return pulumiauto.Up(context.Background(), s, mode.UpOptions(logger, secrets))
-	}
-	res, err := E.UnwrapError(pulumiauto.RunIfAllowed(context.Background(), s, mode, run)())
+	run := upRunner(context.Background(), s, mode.UpOptions(logger, secrets))
+	outcome, err := E.UnwrapError(pulumiauto.RunIfAllowed(context.Background(), s, mode, run)())
 	if err != nil {
 		return err
 	}
-	printSummary(s.Name(), pulumiauto.SummaryFromResourceChanges(res.Summary.ResourceChanges))
+	printSummary(s.Name(), outcome.Summary)
 	return nil
 }
 
@@ -206,6 +257,9 @@ func stackDestroyAction(cltx *cli.Context) error {
 	s, _, err := openTarget(cltx, false)
 	if err != nil {
 		return err
+	}
+	if cltx.String("confirm") != confirmYes {
+		return fmt.Errorf("%s: confirmation required — re-run with --confirm yes", s.Name())
 	}
 	if mode.DryRun {
 		fmt.Printf("DRY RUN %s destroy\n", s.Name())
@@ -229,6 +283,16 @@ func stackOutputsAction(cltx *cli.Context) error {
 	}
 	fmt.Println(v)
 	return nil
+}
+
+// upRunner is the Update step the gate runs with its saved plan.
+func upRunner(
+	ctx context.Context, s pulumiauto.StackAPI, opts pulumiauto.UpOptions,
+) func(string) IOE.IOEither[error, auto.UpResult] {
+	return func(planPath string) IOE.IOEither[error, auto.UpResult] {
+		opts.PlanPath = planPath
+		return pulumiauto.Up(ctx, s, opts)
+	}
 }
 
 // printSummary renders the one-line change summary.

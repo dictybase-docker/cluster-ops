@@ -25,6 +25,9 @@ type DeployTarget struct {
 type DeployMode struct {
 	DryRun         bool
 	AllowProtected bool
+	// ProtectDeployIn names the namespaces whose Deployments count as
+	// protected (the database namespaces).
+	ProtectDeployIn []string
 }
 
 // StackOpener opens stacks against a FULL target. The production opener
@@ -40,8 +43,8 @@ type StackOpener interface {
 // the call returns and its collector goroutine exits on close.
 type StackAPI interface {
 	Name() string
-	Preview(ctx context.Context, events chan<- events.EngineEvent) (auto.PreviewResult, error)
-	Up(ctx context.Context, events chan<- events.EngineEvent) (auto.UpResult, error)
+	Preview(ctx context.Context, events chan<- events.EngineEvent, planPath string) (auto.PreviewResult, error)
+	Up(ctx context.Context, events chan<- events.EngineEvent, planPath string) (auto.UpResult, error)
 	Destroy(ctx context.Context) error
 	SetConfig(ctx context.Context, key string, val auto.ConfigValue) error
 	GetAllConfig(ctx context.Context) (auto.ConfigMap, error)

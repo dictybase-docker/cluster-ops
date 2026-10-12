@@ -29,18 +29,18 @@ func stackHelp(t *testing.T, args ...string) string {
 	app := stackTestApp()
 	var buf bytes.Buffer
 	app.Writer = &buf
-	require.NoError(t, app.Run(append([]string{appName, "stack"}, args...)))
+	require.NoError(t, app.Run(append([]string{appName, stackFlag}, args...)))
 	return buf.String()
 }
 
 // Review Focus: the flag contracts the wrappers pass argv against.
 func TestStackTreeFlagContract(t *testing.T) {
 	for sub, flags := range map[string][]string{
-		"ensure":  {dashFolder, dashStack, "--create", "--copy-config-from"},
-		"preview": {dashFolder, dashStack, "--allow-protected"},
-		"up":      {dashFolder, dashStack, "--dry-run", "--allow-protected"},
-		"destroy": {dashFolder, dashStack, "--dry-run"},
-		"outputs": {dashFolder, dashStack, "--key"},
+		"ensure":   {dashFolder, dashStack, "--create", "--copy-config-from"},
+		"preview":  {dashFolder, dashStack, "--allow-protected"},
+		"up":       {dashFolder, dashStack, "--dry-run", "--allow-protected"},
+		destroyCmd: {dashFolder, dashStack, "--dry-run"},
+		"outputs":  {dashFolder, dashStack, "--key"},
 	} {
 		out := stackHelp(t, sub, "--help")
 		for _, flag := range flags {

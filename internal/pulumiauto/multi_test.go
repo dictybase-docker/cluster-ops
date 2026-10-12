@@ -61,7 +61,7 @@ func TestDeployServicesSerialOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	want := append(serviceSteps("order"), serviceSteps("annotation")...)
-	require.Equal(t, want, log, "service A completes before service B starts")
+	require.Equal(t, want, stepNames(log), "service A completes before service B starts")
 }
 
 // A failing service stops the loop: later services never run.
@@ -74,7 +74,7 @@ func TestDeployServicesStopsOnFirstFailure(t *testing.T) {
 	}
 	_, err := E.UnwrapError(DeployBackendServices(context.Background(), op, target, services, DeployMode{})())
 	require.Error(t, err)
-	require.NotContains(t, log, "preflight:annotation", "the second service never starts")
+	require.NotContains(t, stepNames(log), "preflight:annotation", "the second service never starts")
 }
 
 // LoadServices reads config/services.yaml in list order.

@@ -46,15 +46,15 @@ func secretValues(cfg auto.ConfigMap) []string {
 func StackOutput(ctx context.Context, s StackAPI, key string) IOE.IOEither[error, string] {
 	return F.Pipe1(
 		IOE.TryCatchError(func() (auto.OutputMap, error) { return s.Outputs(ctx) }),
-		IOE.ChainEitherK(outputValue(key)),
+		IOE.ChainEitherK(outputValue(key, s)),
 	)
 }
 
-func outputValue(key string) func(auto.OutputMap) E.Either[error, string] {
+func outputValue(key string, s StackAPI) func(auto.OutputMap) E.Either[error, string] {
 	return func(outs auto.OutputMap) E.Either[error, string] {
 		v, ok := outs[key]
 		if !ok {
-			return E.Left[string](fmt.Errorf("%q: %w", key, errOutputNotFound))
+			return E.Left[string](fmt.Errorf("output %q not set on stack %s: %w", key, s.Name(), errOutputNotFound))
 		}
 		return E.Of[error](fmt.Sprint(v.Value))
 	}

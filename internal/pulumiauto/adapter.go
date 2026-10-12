@@ -26,12 +26,28 @@ type autoStack struct {
 
 func (a autoStack) Name() string { return a.stack.Name() }
 
-func (a autoStack) Preview(ctx context.Context, ev chan<- events.EngineEvent) (auto.PreviewResult, error) {
-	return a.stack.Preview(ctx, optpreview.Diff(), optpreview.EventStreams(ev), optpreview.ProgressStreams(io.Discard))
+func (a autoStack) Preview(
+	ctx context.Context, ev chan<- events.EngineEvent, planPath string,
+) (auto.PreviewResult, error) {
+	return a.stack.Preview(ctx,
+		optpreview.Diff(),
+		optpreview.EventStreams(ev),
+		optpreview.ProgressStreams(io.Discard),
+		optpreview.SuppressOutputs(),
+		optpreview.Plan(planPath),
+	)
 }
 
-func (a autoStack) Up(ctx context.Context, ev chan<- events.EngineEvent) (auto.UpResult, error) {
-	return a.stack.Up(ctx, optup.EventStreams(ev), optup.ProgressStreams(io.Discard))
+func (a autoStack) Up(
+	ctx context.Context, ev chan<- events.EngineEvent, planPath string,
+) (auto.UpResult, error) {
+	return a.stack.Up(ctx,
+		optup.EventStreams(ev),
+		optup.ProgressStreams(io.Discard),
+		optup.ShowSecrets(false),
+		optup.SuppressOutputs(),
+		optup.Plan(planPath),
+	)
 }
 
 func (a autoStack) Destroy(ctx context.Context) error {

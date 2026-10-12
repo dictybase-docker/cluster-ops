@@ -17,11 +17,15 @@ engine output never reaches logs. Read-only except `up`, `destroy` and
 2. `stack config set` writes one key. `--secret` marks it for the secrets
    provider. Keys are path keys (`properties.x.y`).
 3. `stack preview` prints `creates/updates/deletes/replaces` counts and
-   blocks `delete`/`replace` on protected types. `--allow-protected` accepts
-   them.
+   blocks `delete`/`replace` on protected types (PVC, StatefulSet, Database;
+   Deployments only in the `PROTECT_DEPLOY_NS` namespaces). `--allow-protected`
+   accepts them. The preview writes a saved plan file; the update applies that
+   exact plan.
 4. `stack up` runs the same gate, then updates. `--dry-run` stops at the
-   preview. Secret config values are masked in every log line.
-5. `stack destroy` destroys resources; `--dry-run` reports only.
+   preview and reports its counts. Secret config values are masked in every
+   log line and in update errors.
+5. `stack destroy` destroys resources only with `--confirm yes`; without it
+   the command fails closed and mutates nothing.
 6. `stack outputs --key <k>` prints one output value.
 
 ## Flags

@@ -522,10 +522,10 @@ func readStackProperties(in prereqsInput) E.Either[error, prereqsInput] {
 	return E.Right[error](in)
 }
 
-func loadPrereqsInput(cltx *cli.Context) E.Either[error, prereqsInput] {
-	folder := filepath.Clean(cltx.String(folderFlag))
+func loadPrereqsInput(cltx *cli.Context, folder, stack string) E.Either[error, prereqsInput] {
+	folder = filepath.Clean(folder)
 	return F.Pipe4(
-		prereqsInput{folder: folder, stack: cltx.String(stackFlag), project: filepath.Base(folder)},
+		prereqsInput{folder: folder, stack: stack, project: filepath.Base(folder)},
 		E.FromPredicate(func(in prereqsInput) bool { return in.stack != "" }, func(prereqsInput) error { return errNoStack }),
 		E.Chain(readStackProperties),
 		E.Chain(func(in prereqsInput) E.Either[error, prereqsInput] {
@@ -545,7 +545,7 @@ func loadPrereqsInput(cltx *cli.Context) E.Either[error, prereqsInput] {
 
 func backendPrereqsAction(cltx *cli.Context) error {
 	return F.Pipe1(
-		loadPrereqsInput(cltx),
+		loadPrereqsInput(cltx, cltx.String(folderFlag), cltx.String(stackFlag)),
 		E.Fold(F.Identity[error], func(in prereqsInput) error {
 			return reportGate(
 				runGate(backend.PrereqsChecks(backend.PrereqsConfig{

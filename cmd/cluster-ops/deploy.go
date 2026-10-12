@@ -18,6 +18,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// prereqsRunnerFn and rolloutWaiterFn are the runner seams (tests swap them).
+var (
+	prereqsRunnerFn = prereqsRunner
+	rolloutWaiterFn = rolloutWaiter
+)
+
+// bindingFlags are the cluster bindings WITHOUT --folder: each service
+// carries its own folder (the batch deploy never passes one).
+func bindingFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: stackFlag, Aliases: []string{"s"}, Required: true, EnvVars: []string{envPulumiStack}},
+		registryDirFlag(),
+	}
+}
+
 // deployCommand deploys services through the Pulumi Automation API.
 func deployCommand() *cli.Command {
 	return &cli.Command{
@@ -27,7 +42,7 @@ func deployCommand() *cli.Command {
 			Name:   "backend",
 			Usage:  "Deploy a set of backend service stacks (serial, stop on first failure)",
 			Action: deployBackendAction,
-			Flags: append(stackFlags(),
+			Flags: append(bindingFlags(),
 				&cli.StringFlag{Name: "services-file", Value: "config/services.yaml"},
 				&cli.StringFlag{Name: "services", Usage: "Comma-separated app names (empty = all)"},
 				&cli.StringFlag{Name: "image-tag", Aliases: []string{"t"}, Required: true},
@@ -51,18 +66,21 @@ func deployCommand() *cli.Command {
 
 // deployServiceAction runs the BootstrapService composite.
 func deployServiceAction(cltx *cli.Context) error {
-	target := targetFrom(cltx)
+	target, err := targetFrom(cltx)
+	if err != nil {
+		return err
+	}
 	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
 	svc := pulumiauto.ServiceSpec{
 		Folder:    target.Folder,
 		Stack:     target.Stack,
 		ImageTag:  cltx.String("image-tag"),
-		Preflight: prereqsRunner(cltx),
-		Rollout:   rolloutWaiter(cltx, target.Folder, target.Stack),
+		Preflight: prereqsRunnerFn(cltx, target.Folder, target.Stack),
+		Rollout:   rolloutWaiterFn(cltx, target.Folder, target.Stack),
 		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	res, err := E.UnwrapError(pulumiauto.BootstrapService(
-		context.Background(), pulumiauto.AutoOpener(), target, svc, mode)())
+		context.Background(), newOpener(), target, svc, mode)())
 	if err != nil {
 		return err
 	}
@@ -73,7 +91,10 @@ func deployServiceAction(cltx *cli.Context) error {
 
 // deployBackendAction deploys the selected services through the Go loop.
 func deployBackendAction(cltx *cli.Context) error {
-	target := targetFrom(cltx)
+	target, err := targetFrom(cltx)
+	if err != nil {
+		return err
+	}
 	mode := deployModeFrom(cltx.Bool(dryRunFlag), cltx.Bool(allowProtectedFlag))
 	specs, err := pulumiauto.LoadServices(cltx.String("services-file"))
 	if err != nil {
@@ -86,12 +107,12 @@ func deployBackendAction(cltx *cli.Context) error {
 	for i := range specs {
 		specs[i].Stack = target.Stack
 		specs[i].ImageTag = cltx.String("image-tag")
-		specs[i].Preflight = prereqsRunner(cltx)
-		specs[i].Rollout = rolloutWaiter(cltx, specs[i].Folder, target.Stack)
+		specs[i].Preflight = prereqsRunnerFn(cltx, specs[i].Folder, target.Stack)
+		specs[i].Rollout = rolloutWaiterFn(cltx, specs[i].Folder, target.Stack)
 		specs[i].Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	res, err := E.UnwrapError(pulumiauto.DeployBackendServices(
-		context.Background(), pulumiauto.AutoOpener(), target, specs, mode)())
+		context.Background(), newOpener(), target, specs, mode)())
 	if err != nil {
 		return err
 	}
@@ -121,10 +142,11 @@ func filterServices(specs []pulumiauto.ServiceSpec, csv string) []pulumiauto.Ser
 	return kept
 }
 
-// prereqsRunner adapts the backend prereq checks to the composite seam.
-func prereqsRunner(cltx *cli.Context) pulumiauto.PreflightRunner {
+// prereqsRunner adapts the backend prereq checks to the composite seam; each
+// service's own folder/stack drives its gate.
+func prereqsRunner(cltx *cli.Context, folder, stack string) pulumiauto.PreflightRunner {
 	return func() []preflight.Result {
-		in, err := E.UnwrapError(loadPrereqsInput(cltx))
+		in, err := E.UnwrapError(loadPrereqsInput(cltx, folder, stack))
 		if err != nil {
 			return []preflight.Result{{
 				Name: "backend prereqs", Detail: err.Error(), Status: preflight.StatusFail,
