@@ -2250,6 +2250,15 @@ register-cluster env="" cluster="" namespace="" ci_env="" kops_state="":
         exit 1
     fi
 
+    # Refuse the overwrite before validating any sources: the guard must fire
+    # even when the env file is absent (CI and fresh clones have none).
+    entry="config/clusters/${name}.yaml"
+    if [ -e "${entry}" ]; then
+        echo "ERROR: ${entry} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
     env_file=".env.${env_name}.${name}"
     if [ ! -f "${env_file}" ]; then
         echo "ERROR: env file not found: ${env_file}" >&2
@@ -2295,13 +2304,6 @@ register-cluster env="" cluster="" namespace="" ci_env="" kops_state="":
     [ -z "${prefix}" ] && prefix=$(printf '%s' "${env_name}" | tr '[:lower:]' '[:upper:]')
     st="{{ kops_state }}"
     [ -z "${st}" ] && st="gs://kops-state-${name}"
-
-    entry="config/clusters/${name}.yaml"
-    if [ -e "${entry}" ]; then
-        echo "ERROR: ${entry} already exists — refusing to overwrite (describe-then-create)." >&2
-        echo "       Edit it by hand, or delete it only if you own it." >&2
-        exit 1
-    fi
 
     tmp=$(mktemp)
     trap 'rm -f "${tmp}"' EXIT
