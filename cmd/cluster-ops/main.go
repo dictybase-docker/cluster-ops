@@ -20,20 +20,28 @@ import (
 )
 
 const (
-	projectFlag    = "project"
-	nameFlag       = "name"
-	bucketFlag     = "bucket"
-	credFileFlag   = "cred-file"
-	dryRunFlag     = "dry-run"
-	roleFlag       = "role"
-	displayNameFlg = "display-name"
-	keyFileDefault = "key.json"
-	createCmd      = "create"
+	projectFlag        = "project"
+	nameFlag           = "name"
+	bucketFlag         = "bucket"
+	credFileFlag       = "cred-file"
+	dryRunFlag         = "dry-run"
+	roleFlag           = "role"
+	displayNameFlg     = "display-name"
+	keyFileDefault     = "key.json"
+	appName            = "cluster-ops"
+	stackFlag          = "stack"
+	folderFlag         = "folder"
+	envPulumiStack     = "PULUMI_STACK"
+	allowProtectedFlag = "allow-protected"
+	arangoServiceFlag  = "arango-service"
+	destroyCmd         = "destroy"
+	confirmYes         = "yes"
+	createCmd          = "create"
 )
 
 func main() {
 	app := &cli.App{
-		Name:  "cluster-ops",
+		Name:  appName,
 		Usage: "Unified cluster lifecycle management",
 		Commands: []*cli.Command{
 			kopsCommand(),
@@ -42,6 +50,8 @@ func main() {
 			forwardCommand(),
 			waitCommand(),
 			bucketCommand(),
+			stackCommand(),
+			deployCommand(),
 			iamCommand(),
 			envCommand(),
 			apiCommand(),

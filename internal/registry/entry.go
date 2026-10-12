@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,10 @@ import (
 	F "github.com/IBM/fp-go/v2/function"
 	"gopkg.in/yaml.v3"
 )
+
+// ErrEntryNotFound names a stack that has no registry entry (typed miss:
+// only this case may fall back to the PULUMI_* environment).
+var ErrEntryNotFound = errors.New("no registry entry")
 
 // Entry represents a cluster registry entry from config/clusters/<name>.yaml
 type Entry struct {
@@ -57,7 +62,7 @@ func findEntryByStack(dir, stack string) E.Either[error, string] {
 			return E.Right[error](path)
 		}
 	}
-	return E.Left[string](fmt.Errorf("no registry entry with stack '%s' (checked %s/*.yaml)", stack, dir))
+	return E.Left[string](fmt.Errorf("no registry entry with stack %q in %s: %w", stack, dir, ErrEntryNotFound))
 }
 
 func loadEntry(path string) E.Either[error, Entry] {
