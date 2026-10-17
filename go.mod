@@ -241,7 +241,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.10.0
-	cloud.google.com/go/iam v1.12.0
+	cloud.google.com/go/iam v1.14.0
 	cloud.google.com/go/serviceusage v1.16.0
 	github.com/IBM/fp-go/v2 v2.5.0
 	github.com/gruntwork-io/terratest v1.0.1
