@@ -2,6 +2,7 @@ encryptionsalt: v1:kghnT+FJEQc=:v1:W8+4Yu2uTCStBWu8:6KetomczMo9qDk7g46Jr9SRKvzGg
 config:
   arangodb-single:namespace: dev
   arangodb-single:properties:
+    architecture: arm64
     namespace: dev
     secret:
       name: arangodb-root

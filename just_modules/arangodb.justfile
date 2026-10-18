@@ -443,6 +443,7 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
 
     echo "Setting arangodb-single config..."
     pulumi -C arangodb-single config set-all --stack "{{ stack }}" --path \
+        --plaintext "arangodb-single:properties.architecture=arm64" \
         --plaintext "arangodb-single:properties.namespace=dev" \
         --plaintext "arangodb-single:properties.version=3.11.6" \
         --plaintext "arangodb-single:properties.storage.class=dictycr-balanced" \
@@ -455,6 +456,46 @@ deploy-local-arangodb stack="local" storage_size="20Gi" cluster_name=`echo ${K3D
 
     echo "Deploying arangodb-single..."
     just local-pulumi create-resource --folder arangodb-single --stack {{ quote(stack) }} --pass-entry {{ quote(pass_entry) }}
+
+# Adopt existing single-instance ArangoDB Secret and ArangoDeployment into a
+# Pulumi stack without applying changes, then run preview.
+# Usage: just arangodb adopt-single [--stack <name>] [--namespace <ns>] [--secret <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace")]
+[arg("secret", long="secret", short="c", help="Root password Secret name")]
+[group('arangodb')]
+[no-cd]
+adopt-single stack="" namespace="dev" secret="arangodb-pass":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="arangodb-single"
+    NS={{ quote(namespace) }}
+    SECRET_NAME={{ quote(secret) }}
+    STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    kubectl get secret -n "$NS" "$SECRET_NAME" >/dev/null
+    kubectl get arangodeployment.database.arangodb.com -n "$NS" arangodb >/dev/null
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+
+    STATE_JSON=$(pulumi -C "$FOLDER" stack export --stack "$STACK")
+    if ! printf '%s\n' "$STATE_JSON" | jq -e '.deployment.resources[]? | select(.type == "kubernetes:core/v1:Secret" and (.urn | endswith("::arangodb-secret")))' >/dev/null; then
+        pulumi -C "$FOLDER" import --stack "$STACK" --yes --protect=false --skip-preview --generate-code=false \
+            kubernetes:core/v1:Secret arangodb-secret "${NS}/${SECRET_NAME}"
+    fi
+    if ! printf '%s\n' "$STATE_JSON" | jq -e '.deployment.resources[]? | select(.type == "kubernetes:database.arangodb.com/v1:ArangoDeployment" and (.urn | endswith("::arangodb")))' >/dev/null; then
+        pulumi -C "$FOLDER" import --stack "$STACK" --yes --protect=false --skip-preview --generate-code=false \
+            kubernetes:database.arangodb.com/v1:ArangoDeployment arangodb "${NS}/arangodb"
+    fi
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
 
 # Internal: read-only preflight for a single-database restore. Validates the
 # name, proves the snapshot holds /arangodump/<db>, and fails closed on an

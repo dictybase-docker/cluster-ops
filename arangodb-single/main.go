@@ -18,8 +18,9 @@ type (
 )
 
 type ArangoDeploymentConfig struct {
-	Namespace string
-	Storage   struct {
+	Namespace    string
+	Architecture string
+	Storage      struct {
 		Class string
 		Size  string
 	}
@@ -54,6 +55,7 @@ func NewArangoDeployment(config *ArangoDeploymentConfig) *ArangoDeployment {
 
 func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 	secret, err := corev1.NewSecret(ctx, "arangodb-secret", &corev1.SecretArgs{
+		Type: pulumi.String("Opaque"),
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(adp.Config.Secret.Name),
 			Namespace: pulumi.String(adp.Config.Namespace),
@@ -69,6 +71,27 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 		return fmt.Errorf("error creating Secret: %w", err)
 	}
 
+	// kube-arangodb's bootstrap.passwordSecretNames reader requires the
+	// `username` key alongside `password`; patching via SecretPatch uses
+	// Server-Side Apply in-place so an imported Secret is never replaced.
+	secretPatch, err := corev1.NewSecretPatch(
+		ctx,
+		"arangodb-secret-username",
+		&corev1.SecretPatchArgs{
+			Metadata: &metav1.ObjectMetaPatchArgs{
+				Name:      pulumi.String(adp.Config.Secret.Name),
+				Namespace: pulumi.String(adp.Config.Namespace),
+			},
+			StringData: pulumi.StringMap{
+				"username": pulumi.String("root"),
+			},
+		},
+		pulumi.DependsOn([]pulumi.Resource{secret}),
+	)
+	if err != nil {
+		return fmt.Errorf("error patching Secret username: %w", err)
+	}
+
 	arango, err := databasev1.NewArangoDeployment(
 		ctx,
 		"arangodb",
@@ -76,7 +99,7 @@ func (adp *ArangoDeployment) Install(ctx *pulumi.Context) error {
 			Metadata: adp.createMetadata(),
 			Spec:     adp.createArangoSpec(),
 		},
-		pulumi.DependsOn([]pulumi.Resource{secret}),
+		pulumi.DependsOn([]pulumi.Resource{secret, secretPatch}),
 	)
 	if err != nil {
 		return fmt.Errorf("error creating ArangoDeployment: %w", err)
@@ -98,15 +121,12 @@ func (adp *ArangoDeployment) createMetadata() *metav1.ObjectMetaArgs {
 }
 
 func (adp *ArangoDeployment) createArangoSpec() *databasev1.ArangoDeploymentSpecArgs {
-	return &databasev1.ArangoDeploymentSpecArgs{
+	spec := &databasev1.ArangoDeploymentSpecArgs{
 		Mode:            pulumi.String("Single"),
 		Image:           adp.createImageSpec(),
 		ImagePullPolicy: pulumi.String("IfNotPresent"),
 		Environment:     pulumi.String("Development"),
-		Architecture: pulumi.StringArray{
-			pulumi.String("arm64"),
-		},
-		Single: adp.createSingleSpec(),
+		Single:          adp.createSingleSpec(),
 		ExternalAccess: &databasev1.ArangoDeploymentSpecExternalAccessArgs{
 			Type: pulumi.String("NodePort"),
 		},
@@ -119,6 +139,12 @@ func (adp *ArangoDeployment) createArangoSpec() *databasev1.ArangoDeploymentSpec
 			},
 		},
 	}
+	if adp.Config.Architecture != "" {
+		spec.Architecture = pulumi.StringArray{
+			pulumi.String(adp.Config.Architecture),
+		}
+	}
+	return spec
 }
 
 func (adp *ArangoDeployment) createImageSpec() pulumi.StringInput {
@@ -127,6 +153,9 @@ func (adp *ArangoDeployment) createImageSpec() pulumi.StringInput {
 
 func (adp *ArangoDeployment) createSingleSpec() *databasev1.ArangoDeploymentSpecSingleArgs {
 	return &databasev1.ArangoDeploymentSpecSingleArgs{
+		Args: pulumi.StringArray{
+			pulumi.String("--rocksdb.block-cache-shard-bits=4"),
+		},
 		VolumeClaimTemplate: &VolumeClaimTemplateSpec{
 			Spec: adp.createVolumeClaimTemplateSpec(),
 		},
