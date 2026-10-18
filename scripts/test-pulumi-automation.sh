@@ -90,4 +90,17 @@ secret_line=$(echo "${plan}" | grep -n "set-deploy-secret" | head -1 | cut -d: -
 [ "${deploy_line}" -lt "${secret_line}" ] || fail "deploy backend must run before the deployer-secret publish"
 echo "  batch order: PASS"
 
+echo "=== 5. stack preview and create-resource pass --folder and --stack ==="
+: > "${calls}"
+just gcp-pulumi preview --folder arangodb-single --stack s1 >/dev/null 2>&1 \
+    || fail "preview failed: $(cat "${calls}")"
+grep -q "stack preview --folder arangodb-single --stack s1" "${calls}" \
+    || fail "stack preview argv wrong: $(cat "${calls}")"
+: > "${calls}"
+just gcp-pulumi create-resource --folder arangodb-single --stack s1 >/dev/null 2>&1 \
+    || fail "create-resource failed: $(cat "${calls}")"
+grep -q "stack up --folder arangodb-single --stack s1" "${calls}" \
+    || fail "stack up argv wrong: $(cat "${calls}")"
+echo "  preview/create-resource argv: PASS"
+
 echo "pulumi automation contract tests PASSED"
