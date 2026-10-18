@@ -173,14 +173,14 @@ set-secret folder key value="" stack="":
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     secret_value={{ quote(value) }}
     if [ -n "${secret_value}" ]; then
-        go run ./cmd/cluster-ops stack config set \\
-            --folder {{ quote(folder) }} --stack "${stack_name}" \\
+        go run ./cmd/cluster-ops stack config set \
+            --folder {{ quote(folder) }} --stack "${stack_name}" \
             --key {{ quote(key) }} --value "${secret_value}" --secret
     else
         read -rsp "Secret value (input hidden): " secret_value
         echo
-        printf '%s' "${secret_value}" | go run ./cmd/cluster-ops stack config set \\
-            --folder {{ quote(folder) }} --stack "${stack_name}" \\
+        printf '%s' "${secret_value}" | go run ./cmd/cluster-ops stack config set \
+            --folder {{ quote(folder) }} --stack "${stack_name}" \
             --key {{ quote(key) }} --secret
     fi
 # Set a plain (unencrypted) config value on a stack (config set --path).
@@ -197,8 +197,8 @@ set-config folder key value stack="" plaintext="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack config set \\
-        --folder {{ quote(folder) }} --stack "${stack_name}" \\
+    go run ./cmd/cluster-ops stack config set \
+        --folder {{ quote(folder) }} --stack "${stack_name}" \
         --key {{ quote(key) }} --value {{ quote(value) }}
 # Preview Pulumi changes for a stack in a folder.
 # Usage: just gcp-pulumi preview --folder <dir> [--stack <name>]
@@ -211,7 +211,7 @@ preview folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack preview \\
+    go run ./cmd/cluster-ops stack preview \
         --folder {{ quote(folder) }} --stack "${stack_name}"
 # Create a new Pulumi stack in a given folder.
 # Usage: just gcp-pulumi new-stack --folder <dir> [--stack <name>]
@@ -224,7 +224,7 @@ new-stack folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack ensure \\
+    go run ./cmd/cluster-ops stack ensure \
         --folder {{ quote(folder) }} --stack "${stack_name}" --create
 # Create a new stack in a folder copied from an existing stack's config.
 # Usage: just gcp-pulumi new-stack-from --folder <dir> [--stack <name>] [--from-stack <name>]
@@ -238,8 +238,8 @@ new-stack-from folder stack="" from-stack="experiments":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack ensure \\
-        --folder {{ quote(folder) }} --stack "${stack_name}" --create \\
+    go run ./cmd/cluster-ops stack ensure \
+        --folder {{ quote(folder) }} --stack "${stack_name}" --create \
         --copy-config-from {{ quote(from-stack) }}
 # Deploy resources for a stack.
 # Usage: just gcp-pulumi create-resource --folder <dir> [--stack <name>]
@@ -252,7 +252,7 @@ create-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack up \\
+    go run ./cmd/cluster-ops stack up \
         --folder {{ quote(folder) }} --stack "${stack_name}"
 # Destroy resources for a stack.
 # Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>]
@@ -265,7 +265,7 @@ remove-resource folder stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    go run ./cmd/cluster-ops stack destroy \\
+    go run ./cmd/cluster-ops stack destroy \
         --folder {{ quote(folder) }} --stack "${stack_name}"
 # Remove a stack, preserving its config.
 # Usage: just gcp-pulumi cleanup-resource --folder <dir> [--stack <name>]
