@@ -113,6 +113,22 @@ func TestGateCollectorExitsOnClose(t *testing.T) {
 	}
 }
 
+func TestPipeEventsHandlesSDKClosedAndUnclosedChannel(t *testing.T) {
+	dst := make(chan events.EngineEvent, 2)
+	raw, wait := pipeEvents(dst)
+	raw <- createEvent()
+	close(raw) // simulate Pulumi SDK tailLogs.Close() closing the EventStreams channel
+	wait()
+	close(dst)
+	require.Len(t, dst, 1)
+
+	// Also verify wait() does not block if the SDK errors before closing raw.
+	dstEarly := make(chan events.EngineEvent, 1)
+	_, waitEarly := pipeEvents(dstEarly)
+	waitEarly()
+	close(dstEarly)
+}
+
 // upCall stands in for the named Update step RunIfAllowed guards (the real Up
 // lands in Task 5; here the step only records itself on the shared log).
 func upCall(st *fakeStack, _ DeployMode) func(string) IOE.IOEither[error, auto.UpResult] {
