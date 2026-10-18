@@ -26,12 +26,37 @@ type autoStack struct {
 
 func (a autoStack) Name() string { return a.stack.Name() }
 
+// pipeEvents bridges an internal channel closed by the Pulumi SDK's tailLogs
+// to the caller-owned event channel, so the caller can safely close ev after
+// Preview/Up returns without a double-close panic.
+func closeIfOpen(ch chan events.EngineEvent) {
+	defer func() { _ = recover() }()
+	close(ch)
+}
+
+func pipeEvents(dst chan<- events.EngineEvent) (chan events.EngineEvent, func()) {
+	raw := make(chan events.EngineEvent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range raw {
+			dst <- e
+		}
+	}()
+	return raw, func() {
+		closeIfOpen(raw)
+		<-done
+	}
+}
+
 func (a autoStack) Preview(
 	ctx context.Context, ev chan<- events.EngineEvent, planPath string,
 ) (auto.PreviewResult, error) {
+	raw, wait := pipeEvents(ev)
+	defer wait()
 	return a.stack.Preview(ctx,
 		optpreview.Diff(),
-		optpreview.EventStreams(ev),
+		optpreview.EventStreams(raw),
 		optpreview.ProgressStreams(io.Discard),
 		optpreview.SuppressOutputs(),
 		optpreview.Plan(planPath),
@@ -41,8 +66,10 @@ func (a autoStack) Preview(
 func (a autoStack) Up(
 	ctx context.Context, ev chan<- events.EngineEvent, planPath string,
 ) (auto.UpResult, error) {
+	raw, wait := pipeEvents(ev)
+	defer wait()
 	return a.stack.Up(ctx,
-		optup.EventStreams(ev),
+		optup.EventStreams(raw),
 		optup.ProgressStreams(io.Discard),
 		optup.ShowSecrets(false),
 		optup.SuppressOutputs(),
