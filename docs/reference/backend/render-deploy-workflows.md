@@ -51,6 +51,29 @@ opens pull requests ready for review and merge.
 Rollback after go-live: `gh run rerun <run-id>` on the previous tag's run —
 same ref, same image, same stack, no stack file edit.
 
+## One-Time Workflow Changes for Automated Tag Deploys
+
+Automated production deploys on tag push require two one-time workflow updates
+(rendered by `render-composite-deploy` and `render-tag-deploy`, and opened as
+PRs by `pr-deploy-workflows`):
+
+1. **`dictyBase/workflows` (`.github/workflows/composite-deploy.yaml`):**
+   - `credentials_json` selects `secrets.<CI_ENV>_DEPLOY_SA_KEY` when
+     `inputs.environment == 'production'` (falling back to `secrets.DEPLOY_SA_KEY`
+     for `develop` push deploys).
+   - `--pulumi-state` selects `vars.<CI_ENV>_PULUMI_STATE_STORAGE` when
+     `inputs.environment == 'production'` (falling back to
+     `vars.PULUMI_STATE_STORAGE` for `develop` push deploys).
+2. **Each service repo (`.github/workflows/tag-build.yaml`):**
+   - Replaces the old image-only `build-publish-image.yaml` workflow with the
+     full `test` + `lint` + `composite-deploy.yaml` pipeline passing
+     `environment: production`, `stack: <stack>`, and `<CI_ENV>_*` repo
+     variables (`PROD_CLUSTER`, `PROD_KOPS_STATE_STORAGE`, `PROD_KOPS_VERSION`,
+     `PROD_KUBECTL_VERSION`, `PROD_PULUMI_VERSION`).
+   - Deletes obsolete `.github/workflows/staging-build.yaml`.
+
+Merge the `dictyBase/workflows` PR first, then merge each service repo's PR.
+
 ## Template Shape
 
 The rendered file mirrors `ci.yml`: the existing test job, a lint job, then

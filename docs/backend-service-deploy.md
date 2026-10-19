@@ -1,12 +1,13 @@
 # Backend Service Deploy
 
-Production procedure for a modware gRPC service on any cluster in this repo.
-Run the recipes in a `cluster-env` shell of the target cluster. The recipes
-read the cluster identity from the shell (`CLUSTER_NAME`, `CLUSTER_ENV`,
-`PULUMI_STACK`).
+One-time setup for modware gRPC services (`order`, `annotation`, `stock`,
+`content`) on a target cluster: performs the first cluster deploy and wires
+automated GitHub Actions tag deploys. Run the recipes in a `cluster-env` shell
+of the target cluster (`CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`).
 
-The flow is composite recipes. The individual recipes behind them are
-available for single-service runs and diagnostics — [section 6](#6-individual-recipes).
+The flow uses composite recipes. You can run `deploy-backend-services` for all
+services at once or one service at a time with `--services <app>`; individual
+step recipes are in [section 6](#6-individual-recipes).
 
 ## Table of Contents
 - [Quick Reference](#quick-reference)
@@ -39,10 +40,16 @@ just ci pr-deploy-workflows                     # 5. open PRs in dictyBase/workf
 # then: merge the PRs and cut tags
 ```
 
-Single-service or step-by-step runs — [section 6](#6-individual-recipes):
+Single-service rollout (recommended on a first cluster setup — run in
+`config/services.yaml` order: `order`, `annotation`, `stock`, `content`, then
+finish with an unfiltered `just ci deploy-backend-services` to confirm all four
+converged) or step-by-step diagnostics — [section 6](#6-individual-recipes):
 
 ```bash
-just ci deploy-backend-services --services order   # one service only
+just ci deploy-backend-services --services order
+just ci deploy-backend-services --services annotation
+just ci deploy-backend-services --services stock
+just ci deploy-backend-services --services content
 ```
 
 ## 1. Create the deployer key
@@ -59,10 +66,11 @@ just ci create-deploy-key
 
 ## 2. Prepare the composite deploy workflow
 
-The recipe publishes the org variable `PROD_PULUMI_STATE_STORAGE` from the
-cluster registry and renders `bin/ci-render/composite-deploy.yaml` so
-`dictyBase/workflows` routes `PROD_DEPLOY_SA_KEY` and `PROD_PULUMI_STATE_STORAGE`
-when `environment: production` is passed.
+One-time setup for automated GitHub Actions deploys: publishes org variable
+`PROD_PULUMI_STATE_STORAGE` and renders `bin/ci-render/composite-deploy.yaml`
+so `dictyBase/workflows` selects `PROD_DEPLOY_SA_KEY` and the production Pulumi
+state bucket when `environment: production` is passed (leaving `develop` push
+deploys on the dev defaults).
 → [Workflow render details](reference/backend/render-deploy-workflows.md)
 
 ```bash
@@ -74,9 +82,12 @@ just ci render-composite-deploy
 **WARNING: Push cluster-ops `develop` before any service tag.** CI deploys
 read cluster-ops from `develop`. An unpushed stack file deploys nothing.
 
-The recipe runs the full chain per service. The services come from
-`config/services.yaml`. The recipe is idempotent — a re-run completes the
-missing steps only.
+Runs scaffold, prerequisite gate, first deploy, repo variables, tag-workflow
+render (`bin/ci-render/<folder>-tag-build.yaml`), and `PROD_DEPLOY_SA_KEY`
+repo visibility for every service in `config/services.yaml` (idempotent —
+skips completed steps). For a conservative first rollout, pass
+`--services <app>` one service at a time (`order` → `annotation` → `stock` →
+`content`), then run once without `--services`.
 → [Aggregate deploy details](reference/backend/deploy-services.md)
 
 ```bash
@@ -95,10 +106,12 @@ git add modware-*/Pulumi.dcr-kube1.yaml && git commit -m "stacks for <cluster>" 
 
 ## 5. Open workflow pull requests
 
-The recipe clones `dictyBase/workflows` and each service repository in a
-temporary directory, applies the rendered workflow files from `bin/ci-render/`
-(removing obsolete `staging-build.yaml`), pushes the branches, and opens pull
-requests ready to merge.
+One-time PR automation for GitHub Actions: updates
+`.github/workflows/composite-deploy.yaml` in `dictyBase/workflows` and replaces
+`.github/workflows/tag-build.yaml` (test + lint + `composite-deploy`, deleting
+obsolete `staging-build.yaml`) in each service repo. Merge `dictyBase/workflows`
+first, then the service repo PRs — every subsequent release tag deploys
+automatically.
 → [Workflow render details](reference/backend/render-deploy-workflows.md)
 
 ```bash

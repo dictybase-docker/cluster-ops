@@ -5,10 +5,24 @@ Back to: [Backend Service Deploy Guide](../../backend-service-deploy.md)
 ## What It Does
 
 `just ci deploy-backend-services` runs the full backend service chain for
-every entry in `config/services.yaml` against one cluster, in one run. The
+every entry in `config/services.yaml` against one cluster, performing the
+initial cluster deploy and preparing automated GitHub Actions tag deploys. The
 individual recipes (scaffold, prereq gate, bootstrap, variables, render) stay
 usable solo; the aggregate composes them. Idempotent: a re-run converges —
 it skips prior progress instead of failing on it.
+
+### All-at-once vs One-by-one Rollout
+
+- **Conservative first rollout (`--services <app>`):** On a new cluster, run one
+  service at a time in manifest order (`order` → `annotation` → `stock` →
+  `content`). If `order` is already deployed, start with `--services annotation`,
+  then `--services stock`, then `--services content`. Each run isolates that
+  service's database/Secret check, stack file scaffold, and first rollout. Finish
+  with an unfiltered `just ci deploy-backend-services` to confirm all four
+  services and repo secret grants have converged.
+- **Unfiltered (`just ci deploy-backend-services`):** Processes every service in
+  `config/services.yaml` serially; already-deployed services skip straight to
+  rollout verification.
 
 ## Behavior
 
