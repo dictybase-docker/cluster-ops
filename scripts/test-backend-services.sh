@@ -102,13 +102,13 @@ stack="${cluster}"
 entry="config/clusters/${cluster}.yaml"
 created_files=""
 cleanup() {
+    mv "${tmp}/services.yaml.bak" config/services.yaml 2>/dev/null || true
     rm -rf "${tmp}"
     rm -f "${entry}" credentials/${cluster}/deployer.json
     rmdir credentials/${cluster} 2>/dev/null || true
     for f in modware-order/Pulumi.${stack}.yaml modware-annotation/Pulumi.${stack}.yaml; do
         [ -f "${f}" ] && [ "${f}" != *dcr-kube1* ] && rm -f "${f}"
     done
-    mv "${tmp}/services.yaml.bak" config/services.yaml 2>/dev/null || true
 }
 trap cleanup EXIT
 
