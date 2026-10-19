@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	kms "cloud.google.com/go/kms/apiv1"
@@ -21,6 +25,8 @@ import (
 	"google.golang.org/api/option"
 	authv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 // deployerKeyCheck names the key-project check.
@@ -45,7 +51,7 @@ type ClientsFactory func(kubeconfig string) IOE.IOEither[error, kube.Clients]
 func DeployerChecks(cfg DeployerConfig) []IO.IO[preflight.Result] {
 	return []IO.IO[preflight.Result]{
 		CheckKeyProject(cfg),
-		CheckDeploymentPermission(cfg, KopsExport, KubeClients),
+		CheckDeploymentPermission(cfg, withReachableAPI(KopsExport), KubeClients),
 		CheckKMSRoundTrip(cfg),
 	}
 }
@@ -123,7 +129,7 @@ func CheckDeploymentPermission(
 				return IO.Of(preflight.Result{
 					Name:   name,
 					Detail: err.Error(),
-					Fix:    "grant the deployer SA the roles in gcs-files/roles-permissions/deployer-roles.txt",
+					Fix:    deploymentAccessFix(err),
 					Status: preflight.StatusFail,
 				})
 			},
@@ -169,6 +175,103 @@ func canUpdateDeployments(namespace string) func(kube.Clients) IOE.IOEither[erro
 			return resp.Status.Allowed, nil
 		})
 	}
+}
+
+// withReachableAPI keeps the admin credentials from kops export, but
+// points the server at the load balancer address already in KUBECONFIG.
+// Gossip clusters with dns type None publish api.<name>.k8s.local, and
+// that name does not resolve. The access review then fails before it can
+// prove the API is reachable.
+func withReachableAPI(export KubeconfigExporter) KubeconfigExporter {
+	return func(cfg DeployerConfig) IOE.IOEither[error, string] {
+		return F.Pipe1(export(cfg), IOE.Chain(alignExportedAPI(cfg.Entry.Cluster)))
+	}
+}
+
+func alignExportedAPI(cluster string) func(string) IOE.IOEither[error, string] {
+	return func(path string) IOE.IOEither[error, string] {
+		return IOE.TryCatchError(func() (string, error) {
+			if err := alignAPIServer(path, cluster+"-k8s.local", os.Getenv("KUBECONFIG")); err != nil {
+				return "", err
+			}
+			return path, nil
+		})
+	}
+}
+
+func alignAPIServer(exportedPath, clusterName, kubeconfigList string) error {
+	exported, err := clientcmd.LoadFromFile(exportedPath)
+	if err != nil {
+		return fmt.Errorf("read exported kubeconfig: %w", err)
+	}
+	current, ok := exported.Clusters[clusterName]
+	if !ok || current == nil || hostResolves(current.Server) {
+		return nil
+	}
+	alt, ok := reachableCluster(kubeconfigList, clusterName, exportedPath)
+	if !ok {
+		return nil
+	}
+	current.Server = alt.Server
+	if alt.TLSServerName != "" {
+		current.TLSServerName = alt.TLSServerName
+	}
+	return clientcmd.WriteToFile(*exported, exportedPath)
+}
+
+func reachableCluster(kubeconfigList, clusterName, skipPath string) (*clientcmdapi.Cluster, bool) {
+	for _, path := range filepath.SplitList(kubeconfigList) {
+		if path == "" || samePath(path, skipPath) {
+			continue
+		}
+		loaded, err := clientcmd.LoadFromFile(path)
+		if err != nil {
+			continue
+		}
+		cluster, ok := loaded.Clusters[clusterName]
+		if !ok || cluster == nil || !hostResolves(cluster.Server) {
+			continue
+		}
+		return cluster, true
+	}
+	return nil, false
+}
+
+func hostResolves(server string) bool {
+	host := serverHost(server)
+	if host == "" {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	_, err := net.LookupHost(host)
+	return err == nil
+}
+
+func serverHost(server string) string {
+	parsed, err := url.Parse(server)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+func samePath(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return aa == bb
+}
+
+func deploymentAccessFix(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "no such host") || strings.Contains(msg, "dial tcp") {
+		return "API name does not resolve. Run inside cluster-env so KUBECONFIG has the load balancer address."
+	}
+	return "grant the deployer SA the roles in gcs-files/roles-permissions/deployer-roles.txt"
 }
 
 // KopsExport runs `kops export kubeconfig --admin` against the registry
