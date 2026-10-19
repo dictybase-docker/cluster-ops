@@ -177,6 +177,13 @@ func TestTargetFromFailsOnRegistryError(t *testing.T) {
 	require.NotErrorIs(t, err, registry.ErrEntryNotFound)
 }
 
+func TestReadServicePropsIgnoresNestedMaps(t *testing.T) {
+	app, ns, err := readServiceProps("../../modware-annotation", "dcr-kube1")
+	require.NoError(t, err)
+	require.Equal(t, "annotation", app)
+	require.Equal(t, "prod", ns)
+}
+
 // A typed registry miss may fall back to the environment, but only with
 // complete bindings.
 func TestTargetFromRequiresBindingsOnFallback(t *testing.T) {

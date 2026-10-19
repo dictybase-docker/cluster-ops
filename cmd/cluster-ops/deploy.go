@@ -187,6 +187,11 @@ func rolloutWaiter(cltx *cli.Context, folder, stack string) pulumiauto.RolloutWa
 	}
 }
 
+type serviceProps struct {
+	AppName   string `yaml:"appName"`
+	Namespace string `yaml:"namespace"`
+}
+
 // readServiceProps reads appName/namespace from the stack's committed config
 // (the recipe's yq reads on Pulumi.<stack>.yaml).
 func readServiceProps(folder, stack string) (app, namespace string, err error) {
@@ -196,7 +201,7 @@ func readServiceProps(folder, stack string) (app, namespace string, err error) {
 		return "", "", fmt.Errorf("read stack config: %w", err)
 	}
 	var raw struct {
-		Config map[string]map[string]string `yaml:"config"`
+		Config map[string]serviceProps `yaml:"config"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return "", "", fmt.Errorf("parse stack config: %w", err)
@@ -205,7 +210,7 @@ func readServiceProps(folder, stack string) (app, namespace string, err error) {
 	if !ok {
 		return "", "", fmt.Errorf("stack config has no %s:properties section", project)
 	}
-	app, namespace = props["appName"], props["namespace"]
+	app, namespace = props.AppName, props.Namespace
 	if app == "" || namespace == "" {
 		return "", "", fmt.Errorf("stack config %s:properties lacks appName/namespace", project)
 	}
