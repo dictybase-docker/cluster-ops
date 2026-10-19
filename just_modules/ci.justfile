@@ -477,6 +477,11 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
             --project "${folder}" --out "bin/ci-render/${folder}-tag-build.yaml"
     done < <(printf '%s\n' "${all_services}")
 
+    if [ "${#repos[@]}" -eq 0 ]; then
+        echo "ERROR: no services matched --services '${wanted}' in config/services.yaml." >&2
+        exit 1
+    fi
+
     if [ -n "${want_tag}" ]; then
         echo "=== batch deploy (serial, stop on first failure) ==="
         go run ./cmd/cluster-ops deploy backend --services-file config/services.yaml \
