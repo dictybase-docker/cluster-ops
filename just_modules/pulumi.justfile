@@ -611,10 +611,10 @@ apply-namespaces stack="":
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("folder", long="folder", short="f", help="Service project folder (e.g. modware-order)")]
 [arg("port", long="port", short="p", help="gRPC server port")]
-[arg("secret_name", long="secret-name", help="ArangoDB credentials Secret name (default: appName — one Secret per service)")]
+[arg("secret_name", long="secret-name", help="ArangoDB credentials Secret name (default: backend)")]
 [group('pulumi-management')]
 [no-cd]
-scaffold-backend-stack folder stack="" port="9250" secret_name="":
+scaffold-backend-stack folder stack="" port="9250" secret_name="backend":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -653,7 +653,7 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="":
     kms=$(yq -r '.kms_secrets_provider' "${entry}")
 
     sec_name="{{ secret_name }}"
-    [ -z "${sec_name}" ] && sec_name="${app}"
+    [ -z "${sec_name}" ] && sec_name="backend"
 
     cfg="${folder}/Pulumi.${stack_name}.yaml"
     if [ -e "${cfg}" ]; then

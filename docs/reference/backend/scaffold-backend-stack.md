@@ -16,8 +16,8 @@ never overwritten; operator-tuned config stays intact.
    no stack→namespace table hides in recipe code.
 2. Derives from `--folder`: `appName` (folder suffix after `modware-`),
    image name (`dictybase/<folder>`), config key prefix (`<folder>:`), and the
-   default `arangodbSecret.name` (= appName — one Secret per service, not a
-   shared credential).
+   default `arangodbSecret.name` (`backend` — the shared app-credentials Secret
+   maintained by the `create-arangodb-databases` stack).
 3. `pulumi stack init --secrets-provider <kms>` in the folder — registers the
    stack and writes the `secretsprovider` + `encryptedkey` lines.
 4. Renders the config block from `config/templates/backend-stack.yaml.tmpl`
@@ -49,7 +49,7 @@ prod stack for production posture (defaults preserve lab behavior):
 | `--folder` / `-f` | Yes | — | Service project folder (for example `modware-order`) |
 | `--stack` / `-s` | Yes* | `$PULUMI_STACK` | Must match a registry entry's `stack` |
 | `--port` / `-p` | No | `9250` | gRPC server port |
-| `--secret-name` | No | appName | Override when a service genuinely needs an existing Secret |
+| `--secret-name` | No | `backend` | Override when a service uses a custom ArangoDB Secret name |
 
 *Or `$PULUMI_STACK` set inside `cluster-env`.
 
