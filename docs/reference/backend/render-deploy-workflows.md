@@ -4,12 +4,37 @@ Back to: [Backend Service Deploy Guide](../../backend-service-deploy.md)
 
 ## What It Does
 
+`just ci render-composite-deploy` publishes the org variable
+`<CI_ENV>_PULUMI_STATE_STORAGE` from the cluster registry and renders
+`dictyBase/workflows/.github/workflows/composite-deploy.yaml` to
+`bin/ci-render/composite-deploy.yaml` so `inputs.environment == 'production'`
+selects `secrets.<CI_ENV>_DEPLOY_SA_KEY` and `vars.<CI_ENV>_PULUMI_STATE_STORAGE`.
+
 `just ci render-tag-deploy` renders the complete `tag-build.yaml` for a
 service repo — test, lint, then the composite deploy — from the repo template.
-The file lands on disk; the PR, review, and merge in the service repo stay
-manual cross-repo steps.
+
+`just ci pr-deploy-workflows` clones `dictyBase/workflows` and each target
+service repo into a temporary directory, applies the rendered workflow files
+(removing obsolete `staging-build.yaml`), pushes the branches over HTTPS, and
+opens pull requests ready for review and merge.
 
 ## Behavior
+
+`render-composite-deploy`:
+
+1. Resolves the cluster through the [registry](cluster-registry.md) from
+   `--cluster` (or `$CLUSTER_NAME`).
+2. Sets org variable `<CI_ENV>_PULUMI_STATE_STORAGE` (for example
+   `PROD_PULUMI_STATE_STORAGE=gs://pulumi-state-dcr-kube1`) on org `dictyBase`.
+3. Fetches `dictyBase/workflows/.github/workflows/composite-deploy.yaml` at
+   `--workflow-ref` and rewrites `credentials_json` and `--pulumi-state` to
+   select `<CI_ENV>_DEPLOY_SA_KEY` and `<CI_ENV>_PULUMI_STATE_STORAGE` when
+   `inputs.environment == 'production'`.
+4. Writes to `--out` (default `bin/ci-render/composite-deploy.yaml`) and tells
+   the operator whether upstream already matches or needs a one-time PR to
+   `dictyBase/workflows`.
+
+`render-tag-deploy`:
 
 1. Resolves the cluster through the [registry](cluster-registry.md) from
    `--stack` → `<CI_ENV>_*` variable names.

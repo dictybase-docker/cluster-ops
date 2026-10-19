@@ -17,7 +17,8 @@ prefix (`<CI_ENV>_*`); the prod deployer key is a separate org secret
 | `just ci create-deploy-key` | Create/reuse the deployer SA and key, then verify with `check-deploy-credentials` |
 | `just ci check-deploy-credentials` | Standalone read-only preflight of the deployer SA key against the registry |
 | `just ci set-deploy-secret` | Publish the key JSON to org secret `PROD_DEPLOY_SA_KEY` |
-| `just ci sync-deploy-vars` | Set `<CI_ENV>_*` repo variables and verify secret visibility |
+| `just ci sync-deploy-vars` | Set `<CI_ENV>_*` repo variables, org `<CI_ENV>_PULUMI_STATE_STORAGE`, and verify secret visibility |
+| `just ci render-composite-deploy` | Publish org `<CI_ENV>_PULUMI_STATE_STORAGE` and render `dictyBase/workflows` `composite-deploy.yaml` |
 | `just ci latest-tag` | Highest semver tag of a repo, verbatim — the default image-tag source |
 | `just ci deploy-backend-services` | The aggregate: all services, all steps — see [aggregate details](deploy-services.md) |
 
@@ -61,8 +62,10 @@ on-disk file. Needs an org-admin `gh` token.
 | `PROD_KUBECTL_VERSION` | `kubectl_version` | `1.35.8` |
 | `PROD_PULUMI_VERSION` | `pulumi_version` | `3.255.0` |
 
-Org secret `PULUMI_STATE_STORAGE` (the Pulumi backend bucket) already exists
-and is only verified, never set.
+| `PROD_PULUMI_STATE_STORAGE` (org) | `pulumi_state` | `gs://pulumi-state-dcr-kube1` |
+
+Org variable `PULUMI_STATE_STORAGE` (the dev Pulumi backend bucket) already exists
+and is verified alongside `<CI_ENV>_PULUMI_STATE_STORAGE`.
 
 ## Secrets Inventory
 
