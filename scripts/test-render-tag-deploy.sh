@@ -69,6 +69,13 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.DEPLOY_SA_KEY }}
+      - run: |
+          just deploy-backend \
+            --pulumi-state ${{ vars.PULUMI_STATE_STORAGE }}
 YAML
 sed '/kops_version:/,+2d' "${composite_full}" > "${composite_drift}"
 
@@ -96,7 +103,16 @@ else
     cat "${src}"
 fi
 EOF
-chmod +x "${mock_bin}/curl"
+cat > "${mock_bin}/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "gh $*" >> "${MOCK_CALLS_LOG}"
+case "$1 $2" in
+    "variable list") echo "PULUMI_STATE_STORAGE	gs://org-bucket" ;;
+    "variable set") exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "${mock_bin}/curl" "${mock_bin}/gh"
 export MOCK_CALLS_LOG="${tmp}/curl.log"
 export MOCK_COMPOSITE_FULL="${composite_full}"
 export MOCK_COMPOSITE_DRIFT="${composite_drift}"
@@ -151,5 +167,18 @@ if out=$(just ci render-tag-deploy --stack nope --app order --project modware-or
 fi
 printf '%s' "${out}" | grep -q "no registry entry with stack 'nope'" || fail "stack failure unnamed:\n${out}"
 echo "  unknown stack: PASS"
+
+echo "=== 5. render-composite-deploy publishes PROD_PULUMI_STATE_STORAGE and routes prod secret/state ==="
+composite_out="${tmp}/composite-deploy.yaml"
+: > "${MOCK_CALLS_LOG}"
+CLUSTER_NAME=dcr-kube1 just ci render-composite-deploy --out "${composite_out}" >/dev/null \
+    || fail "render-composite-deploy failed"
+grep -q "gh variable set PROD_PULUMI_STATE_STORAGE --org dictyBase --visibility all --body gs://pulumi-state-dcr-kube1" "${MOCK_CALLS_LOG}" \
+    || fail "org variable PROD_PULUMI_STATE_STORAGE not set:\n$(cat "${MOCK_CALLS_LOG}")"
+grep -q "secrets.PROD_DEPLOY_SA_KEY || secrets.DEPLOY_SA_KEY" "${composite_out}" \
+    || fail "PROD_DEPLOY_SA_KEY routing missing in rendered composite-deploy.yaml"
+grep -q "vars.PROD_PULUMI_STATE_STORAGE || vars.PULUMI_STATE_STORAGE" "${composite_out}" \
+    || fail "PROD_PULUMI_STATE_STORAGE routing missing in rendered composite-deploy.yaml"
+echo "  render-composite-deploy: PASS"
 
 echo "render-tag-deploy contract tests PASSED"

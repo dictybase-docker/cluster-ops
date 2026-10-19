@@ -158,11 +158,16 @@ sync-deploy-vars cluster="" repos:
     ci_env=$(yq -r '.ci_env' "${entry}")
     cluster_val=$(yq -r '.cluster' "${entry}")
     kops_state=$(yq -r '.kops_state' "${entry}")
+    pulumi_state=$(yq -r '.pulumi_state' "${entry}")
     kops_ver=$(yq -r '.kops_version' "${entry}")
     kubectl_ver=$(yq -r '.kubectl_version' "${entry}")
     pulumi_ver=$(yq -r '.pulumi_version' "${entry}")
 
     echo "Publishing variables for ${name} (prefix ${ci_env}):"
+    org_var="${ci_env}_PULUMI_STATE_STORAGE"
+    org_before=$(gh variable list --org dictyBase 2>/dev/null | grep "^${org_var}\s" | awk '{print $2}') || true
+    gh variable set "${org_var}" --org dictyBase --visibility all --body "${pulumi_state}"
+    echo "  org dictyBase: ${org_var}=${pulumi_state} (was: ${org_before:-unset})"
     for r in "${repos[@]}"; do
         for kv in \
             "${ci_env}_CLUSTER=${cluster_val}" \
@@ -295,6 +300,212 @@ render-tag-deploy stack app project out workflow_ref="develop":
     cp "${tmp}" "${out_file}"
     echo "Rendered ${out_file} (stack ${stack_name}, prefix ${ci_env}, workflow ref {{ workflow_ref }})."
     echo "Next: PR the file into the service repo, delete its staging-build.yaml, and merge."
+
+# Publish the org variable <CI_ENV>_PULUMI_STATE_STORAGE from the cluster
+# registry and render dictyBase/workflows composite-deploy.yaml with
+# production secret (<CI_ENV>_DEPLOY_SA_KEY) and Pulumi state
+# (<CI_ENV>_PULUMI_STATE_STORAGE) selection for inputs.environment == 'production'.
+# Idempotent: if composite-deploy.yaml at --workflow-ref already carries both
+# selections, the rendered file matches upstream and the recipe reports no PR
+# is needed.
+# Usage: just ci render-composite-deploy [--cluster <name>] [--out <file>] [--workflow-ref <ref>]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("out", long="out", short="o", help="Output file path for the rendered composite-deploy.yaml (default bin/ci-render/composite-deploy.yaml)")]
+[arg("workflow_ref", long="workflow-ref", short="w", help="Git ref of dictyBase/workflows to fetch (default develop)")]
+[group('ci-management')]
+[no-cd]
+render-composite-deploy cluster="" out="bin/ci-render/composite-deploy.yaml" workflow_ref="develop":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    name="{{ cluster }}"
+    [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    if [ -z "${name}" ]; then
+        echo "ERROR: no cluster name — pass --cluster or set CLUSTER_NAME (via cluster env)." >&2
+        exit 1
+    fi
+    entry="config/clusters/${name}.yaml"
+    if [ ! -f "${entry}" ]; then
+        echo "ERROR: no registry entry for cluster '${name}' — expected ${entry}." >&2
+        exit 1
+    fi
+    ci_env=$(yq -r '.ci_env' "${entry}")
+    pulumi_state=$(yq -r '.pulumi_state' "${entry}")
+    out_file="{{ out }}"
+
+    org_var="${ci_env}_PULUMI_STATE_STORAGE"
+    before=$(gh variable list --org dictyBase 2>/dev/null | grep "^${org_var}\s" | awk '{print $2}') || true
+    gh variable set "${org_var}" --org dictyBase --visibility all --body "${pulumi_state}"
+    echo "Published org variable ${org_var}=${pulumi_state} (was: ${before:-unset})."
+
+    wtmp=$(mktemp)
+    tmp=$(mktemp)
+    trap 'rm -f "${wtmp}" "${tmp}"' EXIT
+    if ! curl -fsSL "https://raw.githubusercontent.com/dictyBase/workflows/{{ workflow_ref }}/.github/workflows/composite-deploy.yaml" -o "${wtmp}"; then
+        echo "ERROR: could not fetch composite-deploy.yaml at ref '{{ workflow_ref }}' (network or bad ref)." >&2
+        exit 1
+    fi
+    if [ ! -s "${wtmp}" ]; then
+        echo "ERROR: could not fetch composite-deploy.yaml at ref '{{ workflow_ref }}'." >&2
+        exit 1
+    fi
+
+    sed \
+        -e "s|credentials_json: \${{{{ secrets.DEPLOY_SA_KEY }}|credentials_json: \${{{{ inputs.environment == 'production' \&\& secrets.${ci_env}_DEPLOY_SA_KEY \|\| secrets.DEPLOY_SA_KEY }}|g" \
+        -e "s|--pulumi-state \${{{{ vars.PULUMI_STATE_STORAGE }}|--pulumi-state \${{{{ inputs.environment == 'production' \&\& vars.${org_var} \|\| vars.PULUMI_STATE_STORAGE }}|g" \
+        "${wtmp}" > "${tmp}"
+
+    yq -r '.' "${tmp}" >/dev/null
+    if ! grep -q "secrets.${ci_env}_DEPLOY_SA_KEY" "${tmp}" || ! grep -q "vars.${org_var}" "${tmp}"; then
+        echo "ERROR: rendered composite-deploy.yaml is missing ${ci_env}_DEPLOY_SA_KEY or ${org_var} routing." >&2
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "${out_file}")"
+    cp "${tmp}" "${out_file}"
+    if cmp -s "${wtmp}" "${tmp}"; then
+        echo "composite-deploy.yaml@{{ workflow_ref }} already routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} (no PR needed)."
+    else
+        echo "Rendered ${out_file} (routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} when environment == 'production')."
+        echo "Next: just ci pr-deploy-workflows --stack ${name}"
+    fi
+
+# Open (or update) pull requests in dictyBase/workflows and each selected
+# service repo from the rendered files in bin/ci-render/. Renders any missing
+# file first; clones each target repo into a throwaway directory, writes
+# .github/workflows/composite-deploy.yaml (in dictyBase/workflows) and
+# .github/workflows/tag-build.yaml (plus removes staging-build.yaml in each
+# service repo), pushes the branch over HTTPS via gh git-credential, and opens
+# the PR against --base. Idempotent: skips repos with no diff and reuses any
+# open PR for the branch.
+# Usage: just ci pr-deploy-workflows [--stack <name>] [--services <a,b>] [--render-dir <dir>] [--base <branch>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("services", long="services", help="Comma-separated subset of apps from config/services.yaml (default: all)")]
+[arg("render_dir", long="render-dir", help="Directory holding rendered workflow files (default bin/ci-render)")]
+[arg("base", long="base", short="b", help="Base branch for PRs (default develop)")]
+[group('ci-management')]
+[no-cd]
+pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develop":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        exit 1
+    fi
+    cluster_name=$(yq -r '.cluster' "${entry}")
+
+    rdir={{ quote(render_dir) }}
+    base_branch={{ quote(base) }}
+    wanted="{{ services }}"
+
+    all_services=$(yq -r '.services[] | .app + " " + .folder' config/services.yaml)
+    if [ -z "${all_services}" ]; then
+        echo "ERROR: no services in config/services.yaml." >&2
+        exit 1
+    fi
+
+    work_dir=$(mktemp -d /tmp/ci-pr-XXXXXX)
+    trap 'rm -rf "${work_dir}"' EXIT
+
+    git_https() {
+        git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"
+    }
+
+    open_or_reuse_pr() {
+        local repo="$1" head_branch="$2" target_base="$3" title="$4" body="$5"
+        local existing_url=""
+        existing_url=$(gh pr list --repo "${repo}" --head "${head_branch}" --state open --json url -q '.[0].url' 2>/dev/null || true)
+        if [ -n "${existing_url}" ]; then
+            echo "  PR (existing): ${existing_url}"
+        else
+            local new_url=""
+            new_url=$(gh pr create --repo "${repo}" --base "${target_base}" --head "${head_branch}" --title "${title}" --body "${body}")
+            echo "  PR (created):  ${new_url}"
+        fi
+    }
+
+    # 1. dictyBase/workflows composite-deploy.yaml
+    comp_file="${rdir}/composite-deploy.yaml"
+    if [ ! -f "${comp_file}" ]; then
+        just ci render-composite-deploy --cluster "${cluster_name}" --out "${comp_file}" --workflow-ref "${base_branch}"
+    fi
+    echo "=== dictyBase/workflows ==="
+    wf_dir="${work_dir}/workflows"
+    git_https clone --depth 1 --branch "${base_branch}" "https://github.com/dictyBase/workflows.git" "${wf_dir}" >/dev/null 2>&1
+    mkdir -p "${wf_dir}/.github/workflows"
+    cp "${comp_file}" "${wf_dir}/.github/workflows/composite-deploy.yaml"
+    if [ -z "$(git -C "${wf_dir}" status --porcelain)" ]; then
+        echo "  composite-deploy.yaml already up to date on ${base_branch} — skipping PR."
+    else
+        wf_branch="ci/prod-deploy-${stack_name}"
+        git -C "${wf_dir}" checkout -B "${wf_branch}" >/dev/null 2>&1
+        git -C "${wf_dir}" add .github/workflows/composite-deploy.yaml
+        git -C "${wf_dir}" commit -m "ci(deploy): route production secret and pulumi state for ${stack_name}" >/dev/null
+        git_https -C "${wf_dir}" push -u origin "${wf_branch}" --force-with-lease >/dev/null 2>&1
+        open_or_reuse_pr "dictyBase/workflows" "${wf_branch}" "${base_branch}" \
+            "ci(deploy): route production secret and pulumi state (${stack_name})" \
+            "Routes \`PROD_DEPLOY_SA_KEY\` and \`PROD_PULUMI_STATE_STORAGE\` when \`inputs.environment == 'production'\`."
+    fi
+
+    # 2. Each selected service repo tag-build.yaml (+ remove staging-build.yaml)
+    matched=0
+    while read -r app folder; do
+        [ -z "${app}" ] && continue
+        if [ -n "${wanted}" ]; then
+            case ",${wanted}," in
+                *",${app},"*) : ;;
+                *) continue ;;
+            esac
+        fi
+        matched=$((matched + 1))
+        tag_file="${rdir}/${folder}-tag-build.yaml"
+        if [ ! -f "${tag_file}" ]; then
+            just ci render-tag-deploy --stack "${stack_name}" --app "${app}" \
+                --project "${folder}" --out "${tag_file}" --workflow-ref "${base_branch}"
+        fi
+        echo "=== dictyBase/${folder} ==="
+        svc_dir="${work_dir}/${folder}"
+        git_https clone --depth 1 --branch "${base_branch}" "https://github.com/dictyBase/${folder}.git" "${svc_dir}" >/dev/null 2>&1
+        mkdir -p "${svc_dir}/.github/workflows"
+        cp "${tag_file}" "${svc_dir}/.github/workflows/tag-build.yaml"
+        rm -f "${svc_dir}/.github/workflows/staging-build.yaml"
+        if [ -z "$(git -C "${svc_dir}" status --porcelain)" ]; then
+            echo "  tag-build.yaml already up to date on ${base_branch} — skipping PR."
+        else
+            svc_branch="ci/tag-deploy-${stack_name}"
+            git -C "${svc_dir}" checkout -B "${svc_branch}" >/dev/null 2>&1
+            git -C "${svc_dir}" add -A .github/workflows
+            git -C "${svc_dir}" commit -m "ci(deploy): add production tag deploy workflow for ${stack_name}" >/dev/null
+            git_https -C "${svc_dir}" push -u origin "${svc_branch}" --force-with-lease >/dev/null 2>&1
+            open_or_reuse_pr "dictyBase/${folder}" "${svc_branch}" "${base_branch}" \
+                "ci(deploy): add production tag deploy workflow (${stack_name})" \
+                "Replaces \`tag-build.yaml\` with test + lint + \`composite-deploy\` targeting \`${stack_name}\` and removes obsolete \`staging-build.yaml\`."
+        fi
+    done < <(printf '%s\n' "${all_services}")
+
+    if [ "${matched}" -eq 0 ]; then
+        echo "ERROR: no services matched --services '${wanted}' in config/services.yaml." >&2
+        exit 1
+    fi
+    echo "All workflow PRs ready for ${stack_name}. Merge them, push cluster-ops develop first, then cut tags."
 
 # Print the highest semver tag of a repository, verbatim (v-prefix or bare).
 # Fetches all tags, normalizes the prefix only for ordering, sorts

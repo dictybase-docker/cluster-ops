@@ -103,6 +103,10 @@ entry="config/clusters/${cluster}.yaml"
 created_files=""
 cleanup() {
     mv "${tmp}/services.yaml.bak" config/services.yaml 2>/dev/null || true
+    rm -rf bin/ci-render
+    if [ -d "${tmp}/ci-render.bak" ]; then
+        mv "${tmp}/ci-render.bak" bin/ci-render
+    fi
     rm -rf "${tmp}"
     rm -f "${entry}" credentials/${cluster}/deployer.json
     rmdir credentials/${cluster} 2>/dev/null || true
@@ -113,6 +117,9 @@ cleanup() {
 trap cleanup EXIT
 
 cp config/services.yaml "${tmp}/services.yaml.bak"
+if [ -d bin/ci-render ]; then
+    cp -R bin/ci-render "${tmp}/ci-render.bak"
+fi
 cat > config/services.yaml <<'YAML'
 services:
   - app: order
