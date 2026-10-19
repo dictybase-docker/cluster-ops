@@ -230,14 +230,14 @@ t=$("${REAL_JUST}" ci latest-tag --repo dictyBase/modware-stock)
 [ "${t}" = "v1.1.0" ] || fail "stock highest tie = ${t}, want v1.1.0 (verbatim on tie)"
 echo "  tag resolution: PASS (1.2.1 > v0.1.0 ordering, verbatim output)"
 
-echo "=== 7. create-deploy-key: reuse + standard folder ==="
-mkdir -p credentials/dcr-kube1
-printf '{"project_id":"dcr-kube1","type":"service_account"}' > credentials/dcr-kube1/deployer.json
-out=$(CLUSTER_NAME=dcr-kube1 "${REAL_JUST}" ci create-deploy-key) \
+echo "=== 7. create-deploy-key: reuse + standard folder + check-deploy-credentials ==="
+: > "${calls}"
+out=$(CLUSTER_NAME="${cluster}" "${REAL_JUST}" ci create-deploy-key) \
     || fail "create-deploy-key via CLUSTER_NAME failed:\n${out}"
-printf '%s' "${out}" | grep -q "Reusing existing key: credentials/dcr-kube1/deployer.json" \
+printf '%s' "${out}" | grep -q "Reusing existing key: credentials/${cluster}/deployer.json" \
     || fail "reuse path wrong:\n${out}"
-rm -f credentials/dcr-kube1/deployer.json
-echo "  key reuse: PASS (standard credentials/<cluster>/ path)"
+grep -q "ci check-deploy-credentials --cluster ${cluster} --sa-key credentials/${cluster}/deployer.json" "${calls}" \
+    || fail "create-deploy-key did not run check-deploy-credentials:\n$(cat "${calls}")"
+echo "  key reuse: PASS (standard credentials/<cluster>/ path + check-deploy-credentials)"
 
 echo "backend services orchestration contract tests PASSED"

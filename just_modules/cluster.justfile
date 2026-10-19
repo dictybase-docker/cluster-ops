@@ -2202,22 +2202,24 @@ registry-show cluster="":
 # tag deploys need (update deployments in the registry namespace) and a KMS
 # encrypt/decrypt round-trip on the registry's secrets key. Fails closed
 # naming the missing permission; never prints key material.
-# Usage: just gcp-cluster verify-deployer-access --cluster <name> --sa-key <path>
+# Usage: just gcp-cluster verify-deployer-access [--cluster <name>] [--sa-key <path>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
+[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path (defaults to credentials/<cluster>/deployer.json)")]
 [group('cluster-management')]
 [no-cd]
-verify-deployer-access cluster="" sa_key:
+verify-deployer-access cluster="" sa_key="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name={{ quote(cluster) }}
     [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    key={{ quote(sa_key) }}
+    [ -z "${key}" ] && [ -n "${name}" ] && key="credentials/${name}/deployer.json"
 
     go run ./cmd/cluster-ops preflight deployer-access \
         --cluster "${name}" \
-        --sa-key {{ quote(sa_key) }}
+        --sa-key "${key}"
 
 # Create the registry entry for a cluster from its bootstrap artifacts.
 # Reads the per-cluster env file (.env.<env>.<cluster>, created by

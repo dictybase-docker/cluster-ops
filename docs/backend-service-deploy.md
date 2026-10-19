@@ -28,7 +28,7 @@ available for single-service runs and diagnostics — [section 4](#4-individual-
 
 ```bash
 # once per cluster:
-just ci create-deploy-key                       # 1. SA + key (idempotent)
+just ci create-deploy-key                       # 1. SA + key + preflight (idempotent)
 # every service run — scaffold → gate → deploy → vars → render:
 just ci deploy-backend-services                 # 2. all services in config/services.yaml
 git add modware-*/Pulumi.dcr-kube1.yaml && git commit && git push   # 3. stack files BEFORE any tag
@@ -44,8 +44,9 @@ just ci deploy-backend-services --services order   # one service only
 ## 1. Create the deployer key
 
 The recipe creates the deployer service account and its key at the standard
-path `credentials/<cluster>/deployer.json`. An existing key file stays in use —
-the recipe does not create a second key.
+path `credentials/<cluster>/deployer.json`, then verifies the key with
+`check-deploy-credentials`. An existing key file stays in use — the recipe does
+not create a second key.
 → [Deploy credential details](reference/backend/ci-credentials.md)
 
 ```bash
@@ -134,7 +135,7 @@ The recipes do these steps: key preflight, org-secret publish, and the
 → [CI variables details](reference/backend/ci-variables.md)
 
 ```bash
-just ci check-deploy-credentials --sa-key credentials/dcr-kube1/deployer.json
+just ci check-deploy-credentials
 ```
 
 ### 4.6 Render the tag workflow

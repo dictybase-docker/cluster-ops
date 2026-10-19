@@ -7,37 +7,39 @@
 # Checks, in order: key parses as GCP SA JSON; key project matches the
 # registry gcp_project; kubeconfig export from the kops state bucket works
 # (same code path as verify-deployer-access); KMS encrypt/decrypt round-trip
-# on the registry secrets key. Zero mutations; fails closed naming every
-# failure; never prints key material.
-# Usage: just ci check-deploy-credentials --cluster <name> --sa-key <path>
+# on the registry secrets key; IAM permissions of deployer-roles.txt.
+# Zero mutations; fails closed naming every failure; never prints key material.
+# Usage: just ci check-deploy-credentials [--cluster <name>] [--sa-key <path>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
+[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path (defaults to credentials/<cluster>/deployer.json)")]
 [group('ci-management')]
 [no-cd]
-check-deploy-credentials cluster="" sa_key:
+check-deploy-credentials cluster="" sa_key="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     name={{ quote(cluster) }}
     [ -z "${name}" ] && name="${CLUSTER_NAME:-}"
+    key={{ quote(sa_key) }}
+    [ -z "${key}" ] && [ -n "${name}" ] && key="credentials/${name}/deployer.json"
 
     go run ./cmd/cluster-ops preflight deploy-credentials \
         --cluster "${name}" \
-        --sa-key {{ quote(sa_key) }}
+        --sa-key "${key}"
 
 # Publish the deployer SA key to the org secret PROD_DEPLOY_SA_KEY.
 # One idempotent upsert (gh secret set) that stores the key and sets repo
 # visibility (selected repositories) in a single call. Refuses a missing or
 # unreadable key; never echoes key material; prints the rm reminder for the
 # on-disk file. Needs an org-admin gh token (Actions secrets write).
-# Usage: just ci set-deploy-secret --cluster <name> --sa-key <path> --repos <owner/name>[,<owner/name>...]
+# Usage: just ci set-deploy-secret [--cluster <name>] [--sa-key <path>] --repos <owner/name>[,<owner/name>...]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
-[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path")]
+[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path (defaults to credentials/<cluster>/deployer.json)")]
 [arg("repos", long="repos", short="r", help="Target repositories, owner/name form, comma-separated")]
 [group('ci-management')]
 [no-cd]
-set-deploy-secret cluster="" sa_key repos:
+set-deploy-secret cluster="" sa_key="" repos="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -49,6 +51,7 @@ set-deploy-secret cluster="" sa_key repos:
         exit 1
     fi
     key="{{ sa_key }}"
+    [ -z "${key}" ] && key="credentials/${name}/deployer.json"
     IFS=, read -r -a repos <<< "{{ repos }}"
     if [ "${#repos[@]}" -eq 0 ]; then
         echo "ERROR: pass --repos <owner/name>[,<owner/name>...]." >&2
@@ -311,18 +314,21 @@ latest-tag repo:
     fi
     echo "${best}"
 
-# Create (or reuse) the deployer service account and key for a cluster.
-# Key lands at the standard credentials/<cluster>/deployer.json path.
+# Create (or reuse) the deployer service account and key for a cluster,
+# then verify the key with check-deploy-credentials.
+# Key lands at the standard credentials/<cluster>/deployer.json path (or --sa-key).
 # Idempotent: an existing key file is reused (SA keys cap at 10 — never
 # re-mint when the file is present); a missing SA is created with the
-# deployer-roles.txt role set. Run inside the cluster-env shell (gcloud
-# identity comes from it).
-# Usage: just ci create-deploy-key --cluster <name> [--sa-name <name>]
+# deployer-roles.txt role set. Ends by running check-deploy-credentials so
+# the key is verified before returning. Run inside the cluster-env shell
+# (gcloud identity comes from it).
+# Usage: just ci create-deploy-key [--cluster <name>] [--sa-name <name>] [--sa-key <path>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
 [arg("sa_name", long="sa-name", short="s", help="Deployer service account name (default deployer)")]
+[arg("sa_key", long="sa-key", short="k", help="Deployer service account key JSON path (defaults to credentials/<cluster>/deployer.json)")]
 [group('ci-management')]
 [no-cd]
-create-deploy-key cluster="" sa_name="deployer":
+create-deploy-key cluster="" sa_name="deployer" sa_key="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -341,33 +347,33 @@ create-deploy-key cluster="" sa_name="deployer":
     fi
     project=$(yq -r '.gcp_project' "${entry}")
 
-    key_file="credentials/${name}/deployer.json"
+    key_file="{{ sa_key }}"
+    [ -z "${key_file}" ] && key_file="credentials/${name}/deployer.json"
     if [ -f "${key_file}" ]; then
-        if jq -e '.project_id' "${key_file}" >/dev/null 2>&1; then
-            echo "Reusing existing key: ${key_file} (never re-mint — SA keys cap at 10)."
-            echo "Next: just ci check-deploy-credentials --cluster ${name} --sa-key ${key_file}"
-            exit 0
+        if ! jq -e '.project_id' "${key_file}" >/dev/null 2>&1; then
+            echo "ERROR: ${key_file} exists but is not a GCP SA key JSON — remove it if you own it." >&2
+            exit 1
         fi
-        echo "ERROR: ${key_file} exists but is not a GCP SA key JSON — remove it if you own it." >&2
-        exit 1
-    fi
-
-    sa_email="${sa}@${project}.iam.gserviceaccount.com"
-    if gcloud iam service-accounts describe "${sa_email}" --project "${project}" >/dev/null 2>&1; then
-        echo "Service account ${sa_email} exists — reusing."
+        echo "Reusing existing key: ${key_file} (never re-mint — SA keys cap at 10)."
     else
-        just gcp-sa create-sa --project "${project}" --sa-name "${sa}" \
-            --roles-file gcs-files/roles-permissions/deployer-roles.txt
+        sa_email="${sa}@${project}.iam.gserviceaccount.com"
+        if gcloud iam service-accounts describe "${sa_email}" --project "${project}" >/dev/null 2>&1; then
+            echo "Service account ${sa_email} exists — reusing."
+        else
+            just gcp-sa create-sa --project "${project}" --sa-name "${sa}" \
+                --roles-file gcs-files/roles-permissions/deployer-roles.txt
+        fi
+
+        mkdir -p "$(dirname "${key_file}")"
+        just gcp-sa create-sa-key --project "${project}" --sa-name "${sa}" --key-file "${key_file}"
+        if ! jq -e '.project_id' "${key_file}" >/dev/null 2>&1; then
+            echo "ERROR: ${key_file} is not a valid SA key JSON after minting." >&2
+            exit 1
+        fi
+        echo "Deployer key ready: ${key_file} (SA ${sa_email}, project ${project})."
     fi
 
-    mkdir -p "credentials/${name}"
-    just gcp-sa create-sa-key --project "${project}" --sa-name "${sa}" --key-file "${key_file}"
-    if ! jq -e '.project_id' "${key_file}" >/dev/null 2>&1; then
-        echo "ERROR: ${key_file} is not a valid SA key JSON after minting." >&2
-        exit 1
-    fi
-    echo "Deployer key ready: ${key_file} (SA ${sa_email}, project ${project})."
-    echo "Next: just ci check-deploy-credentials --cluster ${name} --sa-key ${key_file}"
+    just ci check-deploy-credentials --cluster "${name}" --sa-key "${key_file}"
 
 # Deploy every backend service in config/services.yaml to a cluster, in one
 # run. Per service: scaffold (skipped when the stack file exists), prereq

@@ -10,6 +10,7 @@ import (
 	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IO "github.com/IBM/fp-go/v2/io"
+	O "github.com/IBM/fp-go/v2/option"
 	S "github.com/IBM/fp-go/v2/string"
 	"github.com/dictybase-docker/cluster-ops/internal/custodian"
 	"github.com/dictybase-docker/cluster-ops/internal/kops"
@@ -97,8 +98,7 @@ func clusterFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name: "sa-key", Aliases: []string{"k"},
-			Required: true,
-			Usage:    "Deployer service account key JSON path",
+			Usage: "Deployer service account key JSON path (defaults to credentials/<cluster>/deployer.json)",
 		},
 		registryDirFlag(),
 	}
@@ -430,6 +430,14 @@ func createAction(cltx *cli.Context) error {
 
 // ---------- deployer-access / deploy-credentials ----------
 
+func defaultDeployerKeyPath(clusterName, keyPath string) string {
+	return F.Pipe2(
+		keyPath,
+		O.FromPredicate(S.IsNonEmpty),
+		O.GetOrElse(F.Constant(filepath.Join("credentials", clusterName, "deployer.json"))),
+	)
+}
+
 func loadDeployerConfig(cltx *cli.Context) E.Either[error, backend.DeployerConfig] {
 	return F.Pipe3(
 		cltx.String("cluster"),
@@ -438,7 +446,10 @@ func loadDeployerConfig(cltx *cli.Context) E.Either[error, backend.DeployerConfi
 			return registry.LoadByName(cltx.String("registry-dir"), name)
 		}),
 		E.Map[error](func(entry registry.Entry) backend.DeployerConfig {
-			return backend.DeployerConfig{Entry: entry, SAKeyPath: cltx.String("sa-key")}
+			return backend.DeployerConfig{
+				Entry:     entry,
+				SAKeyPath: defaultDeployerKeyPath(entry.Cluster, cltx.String("sa-key")),
+			}
 		}),
 	)
 }

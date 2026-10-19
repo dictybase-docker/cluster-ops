@@ -245,6 +245,7 @@ func hostResolves(server string) bool {
 	if net.ParseIP(host) != nil {
 		return true
 	}
+	//nolint:gosec // G704: host comes from local kubeconfig server URL
 	_, err := net.LookupHost(host)
 	return err == nil
 }

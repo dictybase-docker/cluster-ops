@@ -87,7 +87,12 @@ grep -q -- "go run ./cmd/cluster-ops preflight deploy-credentials --cluster dcr-
 CLUSTER_NAME=dcr-kube1 "${REAL_JUST}" ci check-deploy-credentials --sa-key "${sa_key}" >/dev/null \
     || fail "CLUSTER_NAME default failed"
 grep -q -- "--cluster dcr-kube1" "${calls}" || fail "CLUSTER_NAME not used as the --cluster default: $(cat "${calls}")"
-echo "  happy path: PASS (flags + CLUSTER_NAME default)"
+: > "${calls}"
+CLUSTER_NAME=dcr-kube1 "${REAL_JUST}" ci check-deploy-credentials >/dev/null \
+    || fail "default --sa-key failed"
+grep -q -- "go run ./cmd/cluster-ops preflight deploy-credentials --cluster dcr-kube1 --sa-key credentials/dcr-kube1/deployer.json" "${calls}" \
+    || fail "default --sa-key not resolved from cluster: $(cat "${calls}")"
+echo "  happy path: PASS (flags + CLUSTER_NAME + default --sa-key)"
 
 echo "=== 3. set-deploy-secret: upsert carries selected visibility ==="
 : > "${calls}"

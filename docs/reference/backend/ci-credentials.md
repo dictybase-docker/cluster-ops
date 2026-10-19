@@ -13,7 +13,7 @@ publishes the key to the org secret.
 
 ## Key Source
 
-**Mint a dedicated deployer** — one recipe, standard path, idempotent:
+**Mint a dedicated deployer** — one composite recipe, standard path, idempotent:
 
 ```bash
 just ci create-deploy-key --cluster dcr-kube1
@@ -22,8 +22,9 @@ just ci create-deploy-key --cluster dcr-kube1
 Behavior: SA `deployer` created with the `deployer-roles.txt` role set when
 missing (reused otherwise); key minted at `credentials/<cluster>/deployer.json`
 — the standard per-cluster credentials folder — only when the file is absent
-(SA keys cap at 10; an existing key file is always reused, never re-minted).
-Then the preflight below.
+(SA keys cap at 10; an existing key file is always reused, never re-minted);
+ends by running `check-deploy-credentials` over the key so every permission,
+kubeconfig export, and KMS round-trip is verified before returning.
 
 `deployer-roles.txt` holds the exact roles deploys need — kOps state bucket
 read (kubeconfig export), Pulumi state bucket read/write, and
@@ -31,14 +32,17 @@ read (kubeconfig export), Pulumi state bucket read/write, and
 dedicated SA keeps a separate audit trail and can be revoked without touching
 cluster management.
 
-**Reuse an existing key** — pass `--sa-key credentials/<cluster>/deployer.json` to the recipes below. Valid
-only when that SA holds every permission `check-deploy-credentials` requires;
-it reports missing permissions, but **never excess grants** — least privilege
-is enforced at minting time (the role set above), not by the gate.
+**Reuse an existing key** — place it at `credentials/<cluster>/deployer.json`
+(default) or pass `--sa-key <path>` to the recipes below. Valid only when that
+SA holds every permission `check-deploy-credentials` requires; it reports
+missing permissions, but **never excess grants** — least privilege is enforced
+at minting time (the role set above), not by the gate.
 
 ## check-deploy-credentials
 
-Read-only, zero mutations, fails closed listing every failure:
+Runs at the end of `create-deploy-key` and remains usable standalone
+(`just ci check-deploy-credentials`). Read-only, zero mutations, fails closed
+listing every failure:
 
 1. Key file parses as GCP SA JSON; its `project_id` equals the registry's
    `gcp_project` — a dev key against a prod registry fails here.
@@ -63,8 +67,9 @@ prints the `rm` reminder for the on-disk file. Needs an org-admin `gh` token.
 
 | Flag | Applies to | Required | Default | Notes |
 |------|-----------|----------|---------|-------|
-| `--cluster` / `-c` | both | Yes* | `$CLUSTER_NAME` | Registry cluster name |
-| `--sa-key` / `-k` | both | Yes | — | Deployer SA key JSON path |
+| `--cluster` / `-c` | create, check, set | Yes* | `$CLUSTER_NAME` | Registry cluster name |
+| `--sa-name` / `-s` | create | No | `deployer` | Service account short name |
+| `--sa-key` / `-k` | create, check, set | No | `credentials/<cluster>/deployer.json` | Deployer SA key JSON path |
 | `--repos` / `-r` | set | Yes | — | Target repositories, `owner/name` comma-separated |
 
 *Or `$CLUSTER_NAME` set inside `cluster-env`.

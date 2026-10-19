@@ -14,7 +14,8 @@ prefix (`<CI_ENV>_*`); the prod deployer key is a separate org secret
 
 | Recipe | Purpose |
 |--------|---------|
-| `just ci check-deploy-credentials` | Read-only preflight of the deployer SA key against the registry |
+| `just ci create-deploy-key` | Create/reuse the deployer SA and key, then verify with `check-deploy-credentials` |
+| `just ci check-deploy-credentials` | Standalone read-only preflight of the deployer SA key against the registry |
 | `just ci set-deploy-secret` | Publish the key JSON to org secret `PROD_DEPLOY_SA_KEY` |
 | `just ci sync-deploy-vars` | Set `<CI_ENV>_*` repo variables and verify secret visibility |
 | `just ci latest-tag` | Highest semver tag of a repo, verbatim — the default image-tag source |
@@ -85,8 +86,8 @@ The develop path passes no `environment` input and is unchanged.
 
 | Flag | Applies to | Required | Default | Notes |
 |------|-----------|----------|---------|-------|
-| `--cluster` / `-c` | all three | Yes* | `$CLUSTER_NAME` | Registry cluster name |
-| `--sa-key` / `-k` | check, set | Yes | — | Deployer SA key JSON path |
+| `--cluster` / `-c` | create, check, set, sync | Yes* | `$CLUSTER_NAME` | Registry cluster name |
+| `--sa-key` / `-k` | create, check, set | No | `credentials/<cluster>/deployer.json` | Deployer SA key JSON path |
 | `--repos` / `-r` | set, sync | Yes | — | Target repositories, `owner/name` comma-separated |
 
 *Or the corresponding env var set inside `cluster-env`.

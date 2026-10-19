@@ -40,6 +40,13 @@ func TestDeployerAccessClusterFromEnv(t *testing.T) {
 	require.NotErrorIs(t, err, errNoCluster, "CLUSTER_NAME must default --cluster")
 }
 
+func TestDefaultDeployerKeyPath(t *testing.T) {
+	require.Equal(t, filepath.Join("credentials", "dcr-kube1", "deployer.json"),
+		defaultDeployerKeyPath("dcr-kube1", ""))
+	require.Equal(t, "/custom/key.json",
+		defaultDeployerKeyPath("dcr-kube1", "/custom/key.json"))
+}
+
 func TestBackendPrereqsNeedsStack(t *testing.T) {
 	t.Setenv(envPulumiStack, "")
 	err := runPreflight(t, "backend-prereqs", "--folder", "modware-order")
