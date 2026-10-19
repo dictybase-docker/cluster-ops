@@ -35,6 +35,10 @@ cat > "${mock_bin}/gh" <<'EOF'
 echo "gh $*" >> "${MOCK_CALLS_LOG}"
 case "${MOCK_GH_MODE:-ok}:$1 $2" in
     "noauth:org list") exit 1 ;;
+    "missingsecret:api "*)
+        echo '{"message":"Not Found","status":"404"}'
+        exit 1
+        ;;
 esac
 case "$1 $2" in
     "org list") echo "dictyBase" ;;
@@ -98,10 +102,15 @@ echo "=== 3. set-deploy-secret: upsert carries selected visibility ==="
 : > "${calls}"
 out=$("${REAL_JUST}" ci set-deploy-secret --cluster dcr-kube1 --sa-key "${sa_key}" --repos dictyBase/modware-order) \
     || fail "set-deploy-secret failed: ${out}"
-grep -q -- "gh secret set PROD_DEPLOY_SA_KEY --org dictyBase --visibility selected" "${calls}" \
+grep -q -- "gh secret set PROD_DEPLOY_SA_KEY --org dictyBase --visibility selected --repos modware-order" "${calls}" \
     || fail "upsert call wrong: $(grep 'secret set' "${calls}")"
 printf '%s' "${out}" | grep -q "rm ${sa_key}" || fail "rm reminder missing"
-echo "  upsert: PASS (org + selected visibility + rm reminder)"
+: > "${calls}"
+MOCK_GH_MODE=missingsecret "${REAL_JUST}" ci set-deploy-secret --cluster dcr-kube1 --sa-key "${sa_key}" --repos dictyBase/modware-annotation >/dev/null \
+    || fail "set-deploy-secret failed when secret does not exist yet (404)"
+grep -q -- "gh secret set PROD_DEPLOY_SA_KEY --org dictyBase --visibility selected --repos modware-annotation$" "${calls}" \
+    || fail "404 JSON leaked into --repos: $(grep 'secret set' "${calls}")"
+echo "  upsert: PASS (org + selected visibility + repo name + 404-safe + rm reminder)"
 
 echo "=== 4. set-deploy-secret: bad repo name and no-auth gh both fail ==="
 if out=$("${REAL_JUST}" ci set-deploy-secret --cluster dcr-kube1 --sa-key "${sa_key}" --repos "bad name" 2>&1); then

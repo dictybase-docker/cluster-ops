@@ -36,9 +36,10 @@ Read-only, zero mutations, fails closed listing every failure:
 ## set-deploy-secret
 
 Runs `gh secret set PROD_DEPLOY_SA_KEY --org dictyBase --visibility selected
---repos <repo-ids>` — one idempotent upsert that stores the key and sets repo
-visibility. Refuses a missing or unreadable key file; never echoes the key;
-prints the `rm` reminder for the on-disk file. Needs an org-admin `gh` token.
+--repos <repo-names>` — one idempotent upsert that stores the key and merges the
+target repos into the secret's selected-repository list. Refuses a missing or
+unreadable key file; never echoes the key; prints the `rm` reminder for the
+on-disk file. Needs an org-admin `gh` token.
 
 ## sync-deploy-vars
 

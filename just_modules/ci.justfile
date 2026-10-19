@@ -79,15 +79,17 @@ set-deploy-secret cluster="" sa_key="" repos="":
         exit 1
     fi
 
-    # Map repo names to ids in one listing call; name every unknown repo.
-    ids=()
+    # Verify every repo exists, then merge with any repos already selected on
+    # PROD_DEPLOY_SA_KEY so single-service runs never revoke prior repos.
+    # gh secret set --org <org> --repos expects bare repo names (not GraphQL IDs).
+    names=()
     unknown=()
     for r in "${repos[@]}"; do
         id=$(gh repo view "${r}" --json id -q .id 2>/dev/null) || true
         if [ -z "${id}" ]; then
             unknown+=("${r}")
         else
-            ids+=("${id}")
+            names+=("${r#*/}")
         fi
     done
     if [ "${#unknown[@]}" -gt 0 ]; then
@@ -95,9 +97,19 @@ set-deploy-secret cluster="" sa_key="" repos="":
         printf '       %s\n' "${unknown[@]}" >&2
         exit 1
     fi
+    existing=""
+    if raw_repos=$(gh api "orgs/dictyBase/actions/secrets/PROD_DEPLOY_SA_KEY/repositories" 2>/dev/null); then
+        existing=$(printf '%s\n' "${raw_repos}" | jq -r '.repositories[]?.name // empty' 2>/dev/null) || true
+    fi
+    for ex in ${existing}; do
+        case " ${names[*]} " in
+            *" ${ex} "*) ;;
+            *) names+=("${ex}") ;;
+        esac
+    done
 
     gh secret set PROD_DEPLOY_SA_KEY --org dictyBase \
-        --visibility selected --repos "$(IFS=,; echo "${ids[*]}")" < "${key}"
+        --visibility selected --repos "$(IFS=,; echo "${names[*]}")" < "${key}"
 
     echo "Published PROD_DEPLOY_SA_KEY (org dictyBase, selected repositories) for ${name}."
     echo "  The key file on disk is secret material — delete it when done:"
@@ -166,14 +178,19 @@ sync-deploy-vars cluster="" repos:
         done
 
         # Secret visibility per repo: print the exact fix when absent.
-        if ! gh api "orgs/dictyBase/actions/secrets/PROD_DEPLOY_SA_KEY/repositories" \
-            --jq ".repositories[].name" 2>/dev/null | grep -qx "$(basename "${r}")"; then
+        sec_repos=""
+        if sec_raw=$(gh api "orgs/dictyBase/actions/secrets/PROD_DEPLOY_SA_KEY/repositories" 2>/dev/null); then
+            sec_repos=$(printf '%s\n' "${sec_raw}" | jq -r '.repositories[]?.name // empty' 2>/dev/null) || true
+        fi
+        if ! printf '%s\n' "${sec_repos}" | grep -qx "$(basename "${r}")"; then
             echo "WARN: PROD_DEPLOY_SA_KEY not visible to ${r} — fix:" >&2
             echo "      just ci set-deploy-secret --cluster ${name} --sa-key <path> --repos ${r}" >&2
         fi
 
         # Org var visibility: warn only — it already exists org-wide.
-        if ! gh variable list --repo "${r}" 2>/dev/null | grep -q "^PULUMI_STATE_STORAGE\s"; then
+        repo_vars=$(gh variable list --repo "${r}" 2>/dev/null || true)
+        org_vars=$(gh variable list --org dictyBase 2>/dev/null || true)
+        if ! printf '%s\n%s\n' "${repo_vars}" "${org_vars}" | grep -q "^PULUMI_STATE_STORAGE\s"; then
             echo "WARN: PULUMI_STATE_STORAGE not visible to ${r} — check the org variable's visibility." >&2
         fi
     done
