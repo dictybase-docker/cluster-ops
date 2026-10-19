@@ -2,7 +2,9 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/dictybase-docker/cluster-ops/internal/preflight"
 	"github.com/dictybase-docker/cluster-ops/internal/registry"
 	"google.golang.org/api/cloudresourcemanager/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/option"
 )
@@ -36,8 +39,18 @@ type CredentialsConfig struct {
 // RoleExpander returns the permissions a role grants.
 type RoleExpander func(role string) IOE.IOEither[error, []string]
 
-// PermissionTester returns the subset of a batch the caller holds.
-type PermissionTester func(batch []string) IOE.IOEither[error, []string]
+// PermissionProbe is one testIamPermissions batch.
+// Skipped permissions are not valid for a project resource. They are not
+// missing grants. roles/storage.objectViewer includes
+// resourcemanager.projects.list, and projects.testIamPermissions rejects
+// that permission with HTTP 400 for the whole batch.
+type PermissionProbe struct {
+	Granted []string
+	Skipped []string
+}
+
+// PermissionTester returns the held and untestable permissions in a batch.
+type PermissionTester func(batch []string) IOE.IOEither[error, PermissionProbe]
 
 // CheckIAMPermissions verifies the deployer SA holds every permission its
 // roles grant. testIamPermissions runs AS the deployer key, so grants via
@@ -131,11 +144,23 @@ func missingPermissions(test PermissionTester) func([]string) IOE.IOEither[error
 		return F.Pipe2(
 			slices.Collect(slices.Chunk(perms, testIamBatchSize)),
 			IOE.TraverseArray(test),
-			IOE.Map[error](func(granted [][]string) permissionReport {
-				held := Arr.Flatten(granted)
+			IOE.Map[error](func(probes []PermissionProbe) permissionReport {
+				held := F.Pipe2(
+					probes,
+					Arr.Map(func(p PermissionProbe) []string { return p.Granted }),
+					Arr.Flatten[string],
+				)
+				skipped := F.Pipe2(
+					probes,
+					Arr.Map(func(p PermissionProbe) []string { return p.Skipped }),
+					Arr.Flatten[string],
+				)
+				testable := F.Pipe1(perms, Arr.Filter(func(p string) bool {
+					return !slices.Contains(skipped, p)
+				}))
 				return permissionReport{
-					wanted: len(perms),
-					missing: F.Pipe1(perms, Arr.Filter(func(p string) bool {
+					wanted: len(testable),
+					missing: F.Pipe1(testable, Arr.Filter(func(p string) bool {
 						return !slices.Contains(held, p)
 					})),
 				}
@@ -164,23 +189,60 @@ func iamRoleExpander(saKeyPath string) RoleExpander {
 }
 
 func crmPermissionTester(cfg CredentialsConfig) PermissionTester {
-	return func(batch []string) IOE.IOEither[error, []string] {
-		return IOE.TryCatchError(func() ([]string, error) {
+	return func(batch []string) IOE.IOEither[error, PermissionProbe] {
+		return IOE.TryCatchError(func() (PermissionProbe, error) {
 			svc, err := cloudresourcemanager.NewService(
 				context.Background(),
 				option.WithAuthCredentialsFile(option.ServiceAccount, cfg.SAKeyPath),
 			)
 			if err != nil {
-				return nil, fmt.Errorf("resource manager client: %w", err)
+				return PermissionProbe{}, fmt.Errorf("resource manager client: %w", err)
 			}
-			resp, err := svc.Projects.TestIamPermissions(
-				cfg.Entry.GCPProject,
-				&cloudresourcemanager.TestIamPermissionsRequest{Permissions: batch},
-			).Do()
+			held, skipped, err := probeProjectPermissions(svc, cfg.Entry.GCPProject, batch)
 			if err != nil {
-				return nil, fmt.Errorf("testIamPermissions on %s: %w", cfg.Entry.GCPProject, err)
+				return PermissionProbe{}, err
 			}
-			return resp.Permissions, nil
+			return PermissionProbe{Granted: held, Skipped: skipped}, nil
 		})
 	}
+}
+
+// probeProjectPermissions calls projects.testIamPermissions. A permission
+// the project resource rejects (HTTP 400) is removed and the call is
+// repeated. One invalid permission otherwise fails the whole batch.
+func probeProjectPermissions(
+	svc *cloudresourcemanager.Service, project string, batch []string,
+) ([]string, []string, error) {
+	remaining := slices.Clone(batch)
+	var skipped []string
+	for len(remaining) > 0 {
+		resp, err := svc.Projects.TestIamPermissions(
+			project,
+			&cloudresourcemanager.TestIamPermissionsRequest{Permissions: remaining},
+		).Do()
+		if err == nil {
+			return resp.Permissions, skipped, nil
+		}
+		perm, ok := permissionInvalidForResource(err)
+		if !ok || !slices.Contains(remaining, perm) {
+			return nil, nil, fmt.Errorf("testIamPermissions on %s: %w", project, err)
+		}
+		skipped = append(skipped, perm)
+		remaining = slices.DeleteFunc(remaining, func(p string) bool { return p == perm })
+	}
+	return nil, skipped, nil
+}
+
+func permissionInvalidForResource(err error) (string, bool) {
+	var gerr *googleapi.Error
+	if !errors.As(err, &gerr) || gerr.Code != http.StatusBadRequest {
+		return "", false
+	}
+	const prefix = "Permission "
+	const suffix = " is not valid for this resource."
+	msg := gerr.Message
+	if !strings.HasPrefix(msg, prefix) || !strings.HasSuffix(msg, suffix) {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(msg, prefix), suffix), true
 }

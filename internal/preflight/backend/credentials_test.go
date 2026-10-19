@@ -35,7 +35,7 @@ func expandTo(n int) backend.RoleExpander {
 // holdAllBut is a PermissionTester that records batch sizes and grants
 // everything except the listed permissions.
 func holdAllBut(batchSizes *[]int, denied ...string) backend.PermissionTester {
-	return func(batch []string) IOE.IOEither[error, []string] {
+	return func(batch []string) IOE.IOEither[error, backend.PermissionProbe] {
 		*batchSizes = append(*batchSizes, len(batch))
 		granted := []string{}
 		for _, p := range batch {
@@ -43,7 +43,7 @@ func holdAllBut(batchSizes *[]int, denied ...string) backend.PermissionTester {
 				granted = append(granted, p)
 			}
 		}
-		return IOE.Of[error](granted)
+		return IOE.Of[error](backend.PermissionProbe{Granted: granted})
 	}
 }
 
@@ -79,8 +79,8 @@ func TestIAMDeduplicatesOverlappingRoles(t *testing.T) {
 
 func TestIAMReportsAPIError(t *testing.T) {
 	cfg := rolesFile(t, "roles/x\n")
-	failing := func(_ []string) IOE.IOEither[error, []string] {
-		return IOE.Left[[]string](errors.New("testIamPermissions on dcr-kube1: 403"))
+	failing := func(_ []string) IOE.IOEither[error, backend.PermissionProbe] {
+		return IOE.Left[backend.PermissionProbe](errors.New("testIamPermissions on dcr-kube1: 403"))
 	}
 
 	result := backend.CheckIAMPermissionsWith(cfg, expandTo(1), failing)()
@@ -101,6 +101,23 @@ func TestIAMMissingRolesFile(t *testing.T) {
 
 // Regression: an empty or comment-only roles file tested nothing and passed
 // the gate ("0 permissions held") — a fail-open IAM gate.
+func TestIAMIgnoresPermissionsInvalidForProject(t *testing.T) {
+	var sizes []int
+	cfg := rolesFile(t, "roles/x\n")
+	skip := func(batch []string) IOE.IOEither[error, backend.PermissionProbe] {
+		sizes = append(sizes, len(batch))
+		return IOE.Of[error](backend.PermissionProbe{
+			Granted: []string{"roles/x.perm000"},
+			Skipped: []string{"roles/x.perm001"},
+		})
+	}
+
+	result := backend.CheckIAMPermissionsWith(cfg, expandTo(2), skip)()
+
+	require.Equal(t, preflight.StatusPass, result.Status)
+	require.Equal(t, "1 permissions held", result.Detail)
+}
+
 func TestIAMRejectsEmptyRolesFile(t *testing.T) {
 	var sizes []int
 	cfg := rolesFile(t, "\n# nothing yet\n")
