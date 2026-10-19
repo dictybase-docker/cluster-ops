@@ -1,0 +1,19 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIMsMegxDPvN/66Y3+JLcpu/Zf1PAP4y9EjR8/QHKG2gSSQDjx5R/rwMiNKo9f8jZR7brwIwVueaURxSaF15l41hUwljXPygTCSL8I4dMdTn84ErvsqdnLC7UfdJYxMGHwOXxYWY6CA8jznw=
+# Template for a backend service stack config.
+# Rendered by `just gcp-pulumi scaffold-backend-stack` — the config block is
+# appended to Pulumi.<stack>.yaml AFTER `pulumi stack init --secrets-provider`
+# has written the secretsprovider + encryptedkey lines. Never copy by hand.
+config:
+  modware-content:properties:
+    appName: content
+    arangodbSecret:
+      name: backend
+      passkey: password
+      userkey: user
+    command: start-server
+    image:
+      name: dictybase/modware-content
+      tag: 0.5.0
+    namespace: prod
+    port: 9250
