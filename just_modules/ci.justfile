@@ -256,12 +256,19 @@ render-tag-deploy stack app project out workflow_ref="develop":
         exit 1
     fi
     with_keys=$(sed -n '/^    with:/,/^$/p' "${tmp}" | grep -E '^      [a-z_]+:' | sed 's/^\s*//;s/:.*//')
+    # Do not pipe yq into grep -q. pipefail plus grep -q closes the pipe.
+    # yq 4 then gets SIGPIPE and the guard reports a false input-drift error.
+    input_keys=$(yq -r '.on.workflow_call.inputs | keys | .[]' "${wtmp}")
+    nl=$(printf '\n')
     for key in ${with_keys}; do
-        if ! yq -r '.on.workflow_call.inputs | keys | .[]' "${wtmp}" 2>/dev/null | grep -qx "${key}"; then
-            echo "ERROR: input-drift — '${key}' is not an input of composite-deploy.yaml@{{ workflow_ref }}." >&2
-            echo "       Update the template or pin --workflow-ref to the last compatible ref." >&2
-            exit 1
-        fi
+        case "${nl}${input_keys}${nl}" in
+            *"${nl}${key}${nl}"*) ;;
+            *)
+                echo "ERROR: input-drift — '${key}' is not an input of composite-deploy.yaml@{{ workflow_ref }}." >&2
+                echo "       Update the template or pin --workflow-ref to the last compatible ref." >&2
+                exit 1
+                ;;
+        esac
     done
 
     mkdir -p "$(dirname "${out_file}")"
