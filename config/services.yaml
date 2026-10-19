@@ -5,9 +5,3 @@ services:
   - app: annotation
     folder: modware-annotation
     port: 9250
-  - app: stock
-    folder: modware-stock
-    port: 9345
-  - app: content
-    folder: modware-content
-    port: 9250
