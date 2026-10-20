@@ -25,6 +25,7 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Deploy production MinIO (standalone S3) | [`docs/minio-deploy.md`](docs/minio-deploy.md) |
 | Deploy production Redis 8 (standalone) | [`docs/redis-deploy.md`](docs/redis-deploy.md) |
 | Deploy modware gRPC backend services | [`docs/backend-service-deploy.md`](docs/backend-service-deploy.md) |
+| Deploy GraphQL server (`graphql-server`) | [`docs/graphql-deploy.md`](docs/graphql-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |
 
 Run them in that order for a greenfield project. Each guide opens with a Quick Reference block if you have done it before.
