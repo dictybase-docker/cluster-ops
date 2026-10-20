@@ -206,7 +206,7 @@ sync-deploy-vars cluster="" repos:
     echo "Variables published for ${#repos[@]} repo(s)."
     echo "Next: just ci render-tag-deploy --stack {{ cluster }} --app <app> --project <project> --out tag-build.yaml"
 
-# Render the complete tag workflow for a service repo: test + lint, then the
+# Render the complete tag workflow for a service repo: deploy-only via the
 # composite deploy, pointed at a production cluster through the <CI_ENV>_*
 # variables. Static values come from the registry entry whose 'stack' key
 # matches --stack. Also runs the input-drift guard: fetches composite-deploy.yaml
@@ -501,7 +501,7 @@ pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develo
             git_https -C "${svc_dir}" push -u origin "${svc_branch}" --force-with-lease >/dev/null 2>&1
             open_or_reuse_pr "dictyBase/${folder}" "${svc_branch}" "${base_branch}" \
                 "ci(deploy): add production tag deploy workflow (${stack_name})" \
-                "Replaces \`tag-build.yaml\` with test + lint + \`composite-deploy\` targeting \`${stack_name}\` and removes obsolete \`staging-build.yaml\`."
+                "Replaces \`tag-build.yaml\` with \`composite-deploy\` targeting \`${stack_name}\` and removes obsolete \`staging-build.yaml\`."
         fi
     done < <(printf '%s\n' "${all_services}")
 

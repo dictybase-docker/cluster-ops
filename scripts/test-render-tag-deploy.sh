@@ -3,7 +3,7 @@
 #
 # curl is mocked on PATH so the input-drift guard runs against fixture copies
 # of composite-deploy.yaml (hermetic — no network in `just check`). Asserts:
-# tags-only trigger, deploy needs [test, lint], PROD_* variable routing,
+# tags-only trigger, deploy-only (no test/lint jobs), PROD_* variable routing,
 # docker_image is the full repo name, --workflow-ref pinning, input-drift
 # failure naming the missing key, unknown-stack failure, zero 'staging'.
 set -euo pipefail
@@ -128,7 +128,8 @@ yq -r '.' "${out_file}" >/dev/null || fail "rendered file does not parse"
 
 grep -A1 '^  push:' "${out_file}" | grep -q "tags: \['\*'\]" \
     || fail "trigger is not tags-only"
-grep -q 'needs: \[test, lint\]' "${out_file}" || fail "deploy job lacks the test+lint gate"
+grep -q '^  test:' "${out_file}" && fail "rendered file should not contain test job"
+grep -q '^  lint:' "${out_file}" && fail "rendered file should not contain lint job"
 grep -q 'uses: dictyBase/workflows/.github/workflows/composite-deploy.yaml@develop' "${out_file}" \
     || fail "workflow ref not pinned to develop"
 [ "$(grep -c 'vars\.PROD_' "${out_file}")" -ge 5 ] || fail "missing PROD_* variable routing"
@@ -139,8 +140,9 @@ grep -q 'docker_image: modware-order' "${out_file}" || fail "docker_image must b
 grep -q 'stack: dcr-kube1' "${out_file}" || fail "static stack wrong"
 grep -q 'app: order' "${out_file}" || fail "app wrong"
 grep -q 'environment: production' "${out_file}" || fail "environment input wrong"
+grep -q 'runner: backend' "${out_file}" || fail "runner input wrong"
 grep -qi 'staging' "${out_file}" && fail "staging leaked into the rendered file"
-echo "  happy path: PASS (tags-only, gated, 5 PROD_* vars, full image name)"
+echo "  happy path: PASS (tags-only, deploy-only, 5 PROD_* vars, full image name, runner: backend)"
 
 echo "=== 2. --workflow-ref v1 pins the ref ==="
 just ci render-tag-deploy --stack dcr-kube1 --app order --project modware-order \
