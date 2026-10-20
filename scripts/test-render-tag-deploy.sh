@@ -183,4 +183,13 @@ grep -q "vars.PROD_PULUMI_STATE_STORAGE || vars.PULUMI_STATE_STORAGE" "${composi
     || fail "PROD_PULUMI_STATE_STORAGE routing missing in rendered composite-deploy.yaml"
 echo "  render-composite-deploy: PASS"
 
+echo "=== 6. graphql_server project maps docker_image to graphql-server and defaults --stack from PULUMI_STACK ==="
+gql_out="${tmp}/graphql-tag-build.yaml"
+PULUMI_STACK=dcr-kube1 just ci render-tag-deploy --app graphql-server --project graphql_server \
+    --out "${gql_out}" >/dev/null || fail "graphql_server render failed"
+grep -q 'project: graphql_server' "${gql_out}" || fail "project must be graphql_server"
+grep -q 'docker_image: graphql-server' "${gql_out}" || fail "docker_image must be graphql-server"
+grep -q 'app: graphql-server' "${gql_out}" || fail "app must be graphql-server"
+echo "  graphql_server mapping: PASS"
+
 echo "render-tag-deploy contract tests PASSED"

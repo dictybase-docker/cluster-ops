@@ -209,28 +209,37 @@ sync-deploy-vars cluster="" repos:
 # Render the complete tag workflow for a service repo: deploy-only via the
 # composite deploy, pointed at a production cluster through the <CI_ENV>_*
 # variables. Static values come from the registry entry whose 'stack' key
-# matches --stack. Also runs the input-drift guard: fetches composite-deploy.yaml
-# at --workflow-ref and fails when any rendered 'with:' key is missing from
-# its workflow_call inputs — a caller/reusable-workflow mismatch dies here,
-# not in a production deploy run. Writes to --out; never edits the service
-# repo in place. The PR and merge in the service repo stay manual.
-# Usage: just ci render-tag-deploy --stack <name> --app <app> --project <project> --out <file> [--workflow-ref <ref>]
-[arg("stack", long="stack", short="s", help="Pulumi stack name; must match a registry entry's stack key")]
-[arg("app", long="app", short="a", help="Application name passed to the composite (e.g. order)")]
-[arg("project", long="project", short="p", help="cluster-ops Pulumi project folder (= service repo name)")]
+# matches --stack (or $PULUMI_STACK). Also runs the input-drift guard: fetches
+# composite-deploy.yaml at --workflow-ref and fails when any rendered 'with:'
+# key is missing from its workflow_call inputs — a caller/reusable-workflow
+# mismatch dies here, not in a production deploy run. Writes to --out; never
+# edits the service repo in place. The PR and merge in the service repo stay
+# manual.
+# Usage: just ci render-tag-deploy [--stack <name>] --app <app> --project <project> [--docker-image <name>] --out <file> [--workflow-ref <ref>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("app", long="app", short="a", help="Application name passed to the composite (e.g. order, graphql-server)")]
+[arg("project", long="project", short="p", help="cluster-ops Pulumi project folder (e.g. modware-order, graphql_server)")]
+[arg("docker_image", long="docker-image", short="d", help="Docker Hub image name (defaults to --project with '_' replaced by '-')")]
 [arg("out", long="out", short="o", help="Output file path for the rendered tag-build.yaml")]
 [arg("workflow_ref", long="workflow-ref", short="w", help="Git ref of dictyBase/workflows to pin in the output (default develop)")]
 [group('ci-management')]
 [no-cd]
-render-tag-deploy stack app project out workflow_ref="develop":
+render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docker_image="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
 
     stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
     app_name="{{ app }}"
     project="{{ project }}"
     out_file="{{ out }}"
+    image_name="{{ docker_image }}"
+    [ -z "${image_name}" ] && image_name="${project//_/-}"
 
     if [ -z "${app_name}" ] || [ -z "${project}" ] || [ -z "${out_file}" ]; then
         echo "ERROR: --app, --project and --out are required." >&2
@@ -251,13 +260,14 @@ render-tag-deploy stack app project out workflow_ref="develop":
     fi
     ci_env=$(yq -r '.ci_env' "${entry}")
 
-    tmp=$(mktemp)
-    trap 'rm -f "${tmp}"' EXIT
+    tmp=$(mktemp /tmp/tag-build-XXXXXX)
+    wtmp=$(mktemp /tmp/composite-XXXXXX)
+    trap 'rm -f "${tmp}" "${wtmp}"' EXIT
     sed \
         -e "s|__APP__|${app_name}|g" \
         -e "s|__PROJECT__|${project}|g" \
         -e "s|__STACK__|${stack_name}|g" \
-        -e "s|__DOCKER_IMAGE__|${project}|g" \
+        -e "s|__DOCKER_IMAGE__|${image_name}|g" \
         -e "s|__CI_ENV__|${ci_env}|g" \
         -e "s|__WORKFLOW_REF__|{{ workflow_ref }}|g" \
         config/templates/tag-build-deploy.yaml.tmpl > "${tmp}"
@@ -275,7 +285,6 @@ render-tag-deploy stack app project out workflow_ref="develop":
 
     # Input-drift guard: every with: key must exist in composite-deploy.yaml's
     # workflow_call inputs at the pinned ref. Mismatch fails here, not in prod.
-    wtmp=$(mktemp)
     if ! curl -fsSL "https://raw.githubusercontent.com/dictyBase/workflows/{{ workflow_ref }}/.github/workflows/composite-deploy.yaml" -o "${wtmp}"; then
         echo "ERROR: could not fetch composite-deploy.yaml at ref '{{ workflow_ref }}' (network or bad ref)." >&2
         exit 1
