@@ -157,6 +157,10 @@ sync-deploy-vars cluster="" repos:
     fi
     ci_env=$(yq -r '.ci_env' "${entry}")
     cluster_val=$(yq -r '.cluster' "${entry}")
+    case "${cluster_val}" in
+        *.local) kops_cluster="${cluster_val}" ;;
+        *)       kops_cluster="${cluster_val}-k8s.local" ;;
+    esac
     kops_state=$(yq -r '.kops_state' "${entry}")
     pulumi_state=$(yq -r '.pulumi_state' "${entry}")
     kops_ver=$(yq -r '.kops_version' "${entry}")
@@ -170,7 +174,7 @@ sync-deploy-vars cluster="" repos:
     echo "  org dictyBase: ${org_var}=${pulumi_state} (was: ${org_before:-unset})"
     for r in "${repos[@]}"; do
         for kv in \
-            "${ci_env}_CLUSTER=${cluster_val}" \
+            "${ci_env}_CLUSTER=${kops_cluster}" \
             "${ci_env}_KOPS_STATE_STORAGE=${kops_state}" \
             "${ci_env}_KOPS_VERSION=${kops_ver}" \
             "${ci_env}_KUBECTL_VERSION=${kubectl_ver}" \

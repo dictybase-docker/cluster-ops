@@ -56,7 +56,7 @@ on-disk file. Needs an org-admin `gh` token.
 
 | Variable | Source key | Example (dcr-kube1) |
 |----------|-----------|---------------------|
-| `PROD_CLUSTER` | `cluster` | `dcr-kube1` |
+| `PROD_CLUSTER` | `cluster` (`<cluster>-k8s.local`) | `dcr-kube1-k8s.local` |
 | `PROD_KOPS_STATE_STORAGE` | `kops_state` | `gs://kops-state-dcr-kube1` |
 | `PROD_KOPS_VERSION` | `kops_version` | `1.36.1` |
 | `PROD_KUBECTL_VERSION` | `kubectl_version` | `1.35.8` |

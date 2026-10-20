@@ -131,7 +131,7 @@ echo "=== 5. sync-deploy-vars: names derive from ci_env, values from registry ==
 out=$("${REAL_JUST}" ci sync-deploy-vars --cluster dcr-kube1 --repos dictyBase/modware-order) \
     || fail "sync-deploy-vars failed: ${out}"
 for var_val in \
-    "PROD_CLUSTER=dcr-kube1" \
+    "PROD_CLUSTER=dcr-kube1-k8s.local" \
     "PROD_KOPS_STATE_STORAGE=gs://kops-state-dcr-kube1" \
     "PROD_KOPS_VERSION=1.36.1" \
     "PROD_KUBECTL_VERSION=1.35.8" \
