@@ -58,6 +58,8 @@ spec:
     anonymousAuth: false
   kubernetesApiAccess:
   - 73.58.107.39/32
+  - 57.156.22.112/28
+  - 57.162.77.176/28
   kubernetesVersion: 1.35.8
   metricsServer:
     enabled: true
