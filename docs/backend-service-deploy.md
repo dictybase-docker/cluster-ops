@@ -9,6 +9,11 @@ The flow uses composite recipes. You can run `deploy-backend-services` for all
 services at once or one service at a time with `--services <app>`; individual
 step recipes are in [section 6](#6-individual-recipes).
 
+**Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do
+not edit the lab `experiments`/`local` stacks of `modware-order`,
+`modware-annotation`, `modware-stock`, `modware-content`, or the lab-only
+`modware-annotation-feature` project.
+
 ## Table of Contents
 - [Quick Reference](#quick-reference)
 - [1. Create the deployer key](#1-create-the-deployer-key)
@@ -108,7 +113,7 @@ git add modware-*/Pulumi.dcr-kube1.yaml && git commit -m "stacks for <cluster>" 
 
 One-time PR automation for GitHub Actions: updates
 `.github/workflows/composite-deploy.yaml` in `dictyBase/workflows` and replaces
-`.github/workflows/tag-build.yaml` (test + lint + `composite-deploy`, deleting
+`.github/workflows/tag-build.yaml` (one `composite-deploy` call, deleting
 obsolete `staging-build.yaml`) in each service repo. Merge `dictyBase/workflows`
 first, then the service repo PRs — every subsequent release tag deploys
 automatically.
@@ -181,8 +186,9 @@ just ci check-deploy-credentials
 
 ### 6.6 Render the tag workflow
 
-The recipe makes the complete `tag-build.yaml` — test, lint, then the
-composite deploy — and removes the dead `staging-build.yaml` in the same PR.
+The recipe renders the deploy-only `tag-build.yaml` — one `composite-deploy`
+call pointed at the production cluster; the PR that lands it also removes the
+dead `staging-build.yaml`.
 → [Workflow render details](reference/backend/render-deploy-workflows.md)
 
 ```bash
@@ -205,6 +211,7 @@ kubectl -n prod get deploy order-api-server -o jsonpath='{.spec.template.spec.co
 
 ## 9. Related Documents
 
+- [GraphQL server deploy guide](graphql-deploy.md)
 - [Aggregate deploy details](reference/backend/deploy-services.md)
 - [Upstream deploy refactor plan](plans/upstream-deploy-refactor.md)
 - [Modware service plan](plans/modware-service-any-cluster.md)
