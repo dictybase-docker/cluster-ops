@@ -1,3 +1,4 @@
-roles/storage.objectViewer
+roles/storage.objectAdmin
+roles/compute.viewer
 roles/cloudkms.cryptoKeyEncrypterDecrypter
 roles/iam.serviceAccountUser
