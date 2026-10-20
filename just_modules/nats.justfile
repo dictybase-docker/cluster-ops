@@ -111,35 +111,6 @@ verify namespace="prod":
         exit "$code"
     fi
     echo "All checks passed."
-    port=$(kubectl get svc -n "$NS" nats -o jsonpath='{.spec.ports[?(@.name=="nats")].port}' 2>/dev/null | head -n1 || true)
-    if [[ "$port" == "4222" ]]; then
-        ok "Service nats exposes 4222"
-    else
-        bad "Service nats missing or client port not 4222"
-    fi
-
-    # Client handshake via the chart's nats-box (carries the nats CLI):
-    # the server is unauthenticated, so a successful rtt proves the wire end
-    # to end. Only runs when the server is ready.
-    if [[ "${sts_ready:-0}" -ge 1 ]]; then
-        if ! kubectl get deployment -n "$NS" nats-box >/dev/null 2>&1; then
-            bad "nats-box deployment missing in $NS (handshake skipped)"
-        else
-            if kubectl exec -n "$NS" deploy/nats-box -- \
-                nats --server "nats://nats.$NS.svc.cluster.local:4222" rtt >/dev/null 2>&1; then
-                ok "client rtt succeeded"
-            else
-                bad "client rtt failed — see reference/nats/troubleshooting.md"
-            fi
-        fi
-    fi
-
-    echo
-    if [[ "$failures" -ne 0 ]]; then
-        printf '%d check(s) failed. See reference/nats/troubleshooting.md.\n' "$failures"
-        exit 1
-    fi
-    printf 'All checks passed.\n'
 
 # Destroy the NATS stack: the Helm release with the server, nats-box, and the
 # config. Core pub/sub keeps no message persistence, so nothing else survives

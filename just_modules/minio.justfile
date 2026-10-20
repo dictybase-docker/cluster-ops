@@ -230,43 +230,6 @@ verify namespace="prod" secret="minio-root" pool="database" node_count="3":
         exit "$code"
     fi
     echo "All checks passed."
-    pods_ready=$(kubectl get pods -n "$NS" -l app.kubernetes.io/name=minio -o json \
-        | jq '[.items[] | select(.status.phase == "Running")
-        | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)] | length')
-    if [[ "$pods_ready" -ge 1 ]]; then
-        ok "$pods_ready MinIO pod(s) Running and ready"
-    else
-        bad "no ready MinIO pod in $NS"
-    fi
-
-    pvc_bound=$(kubectl get pvc -n "$NS" -o json \
-        | jq '[.items[] | select(.status.phase == "Bound")
-        | select(.metadata.name | startswith("minio"))] | length')
-    if [[ "$pvc_bound" -ge 1 ]]; then
-        ok "$pvc_bound Bound minio PVC(s)"
-    else
-        bad "no Bound minio PVC in $NS"
-    fi
-
-    port=$(kubectl get svc -n "$NS" minio -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "")
-    if [[ "$port" == "9000" ]]; then
-        ok "Service minio exposes 9000"
-    else
-        bad "Service minio missing or not on 9000"
-    fi
-
-    if kubectl get secret -n "$NS" "$SECRET" >/dev/null 2>&1; then
-        ok "Secret $SECRET present"
-    else
-        bad "Secret $SECRET missing in $NS"
-    fi
-
-    echo
-    if [[ "$failures" -ne 0 ]]; then
-        printf '%d check(s) failed. See reference/minio/troubleshooting.md.\n' "$failures"
-        exit 1
-    fi
-    printf 'All checks passed.\n'
 
 # Destroy the MinIO stack. Removes the Helm release and Secret; the data PVC
 # is deleted too when --delete-pvc yes is passed.

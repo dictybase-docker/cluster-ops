@@ -118,48 +118,6 @@ verify name="redis" namespace="prod" pool="database" node_count="3":
         exit "$code"
     fi
     echo "All checks passed."
-    pods_ready=$(kubectl get pods -n "$NS" -l "app=${NAME}" -o json \
-        | jq '[.items[] | select(.status.phase == "Running")
-        | select([.status.containerStatuses[]? | select(.ready | not)] | length == 0)] | length')
-    if [[ "$pods_ready" -ge 1 ]]; then
-        ok "$pods_ready Redis pod(s) Running and ready"
-    else
-        bad "no ready Redis pod in $NS"
-    fi
-
-    pvc_bound=$(kubectl get pvc -n "$NS" "${NAME}-data" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-    if [[ "$pvc_bound" == "Bound" ]]; then
-        ok "PVC ${NAME}-data Bound"
-    else
-        bad "PVC ${NAME}-data not Bound (status: ${pvc_bound:-missing})"
-    fi
-
-    port=$(kubectl get svc -n "$NS" "$NAME" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "")
-    if [[ "$port" == "6379" ]]; then
-        ok "Service $NAME exposes 6379"
-    else
-        bad "Service $NAME missing or not on 6379"
-    fi
-
-    # PING handshake: the server is unauthenticated, so a bare PING must
-    # return PONG — a failure is a real connectivity problem.
-    if [[ "$pods_ready" -ge 1 ]]; then
-        POD=$(kubectl get pods -n "$NS" -l "app=${NAME}" --no-headers -o custom-columns=":metadata.name" | head -n1)
-        pong=$(kubectl exec -n "$NS" "$POD" -- sh -c \
-            "redis-cli PING" 2>/dev/null || echo "")
-        if [[ "$pong" == "PONG" ]]; then
-            ok "PING returned PONG"
-        else
-            bad "PING failed (got: ${pong:-<no output>})"
-        fi
-    fi
-
-    echo
-    if [[ "$failures" -ne 0 ]]; then
-        printf '%d check(s) failed. See reference/redis/troubleshooting.md.\n' "$failures"
-        exit 1
-    fi
-    printf 'All checks passed.\n'
 
 # Destroy the Redis stack. Removes the Deployment and Service; the data PVC
 # is deleted too when --delete-pvc yes is passed.

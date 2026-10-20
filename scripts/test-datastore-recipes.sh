@@ -128,4 +128,16 @@ grep '^mc mirror' "${calls}" | grep -q 'MC_HOST_minio_dst=http://ro%40ot:p%40ss%
     || fail "credentials must be URL-encoded: $(grep '^mc mirror' "${calls}")"
 echo "  percent-encoding: PASS"
 
+echo "=== 8. verify recipes delegate to Go preflight and exit cleanly ==="
+for module in minio redis nats postgres arangodb; do
+    : > "${calls}"
+    out=$(just "${module}" verify 2>&1) || fail "${module} verify failed: ${out}"
+    grep -q -- "preflight ${module}" "${calls}" \
+        || fail "${module} verify did not call preflight ${module}: $(cat "${calls}")"
+    if MOCK_GO_EXIT=1 just "${module}" verify >/dev/null 2>&1; then
+        fail "${module} verify exited 0 although preflight failed"
+    fi
+done
+echo "  verify recipes: PASS"
+
 echo "datastore recipe contract tests PASSED"
