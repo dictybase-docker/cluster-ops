@@ -1,0 +1,34 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIHsCFzP8Ql2jUn+BUkBtwkGVcrAa8YS4Gg7sJ9UkDQ8SSQDjx5R/Vo0jLNTXmKkcWw2/u6wtPz7qcmMPXRdIYYg7Y+XCDK4OgbFO8M5gsL5fLk73WA4f9j0/fIt5F6HunPOrFsjMwddLHro=
+config:
+  graphql_server:properties:
+    authEnabled: false
+    allowedOrigins:
+      - http://localhost:*
+      - https://*.dictybase.org
+      - https://dictybase.org
+      - https://*.dictycr.org
+      - https://dictycr.org
+      - http://*.dictybase.dev
+      - http://dictybase.dev*
+    endpoints:
+      organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
+      publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+      store: https://storage.dictybase.dev
+    image:
+      name: dictybase/graphql-server
+      tag: develop-5afc6ba
+    ingress:
+      enabled: false
+    logLevel: error
+    name: graphql
+    namespace: prod
+    port: 8080
+    s3Bucket:
+      name: editor
+      path: assets
+    secrets:
+      minio:
+        name: minio-root
+        passKey: rootPassword
+        userKey: rootUser

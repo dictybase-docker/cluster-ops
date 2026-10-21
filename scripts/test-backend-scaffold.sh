@@ -118,4 +118,31 @@ cfg2="${folder2}/Pulumi.dcr-kube1.yaml"
     || fail "port override not applied"
 echo "  overrides: PASS"
 
+echo "=== 5. scaffold-graphql-stack renders graphql_server config with minio-root ==="
+: > "${calls}"
+gql_cfg="graphql_server/Pulumi.dcr-kube1.yaml"
+gql_bak=""
+if [ -f "${gql_cfg}" ]; then
+    gql_bak="${tmp}/Pulumi.dcr-kube1.yaml.bak"
+    mv "${gql_cfg}" "${gql_bak}"
+fi
+out=$(just gcp-pulumi scaffold-graphql-stack --stack dcr-kube1 2>&1) || {
+    [ -n "${gql_bak}" ] && mv "${gql_bak}" "${gql_cfg}"
+    fail "scaffold-graphql-stack failed:\n${out}"
+}
+[ -f "${gql_cfg}" ] || fail "graphql_server stack file not created"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".name')" = "graphql" ] || fail "name wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".namespace')" = "prod" ] || fail "namespace wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".authEnabled')" = "false" ] || fail "authEnabled wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".ingress.enabled')" = "false" ] || fail "ingress.enabled wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".secrets.minio.name')" = "minio-root" ] || fail "minio.name wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".secrets.minio.userKey')" = "rootUser" ] || fail "minio.userKey wrong"
+[ "$(yq_get "${gql_cfg}" '.config."graphql_server:properties".secrets.minio.passKey')" = "rootPassword" ] || fail "minio.passKey wrong"
+if [ -n "${gql_bak}" ]; then
+    mv "${gql_bak}" "${gql_cfg}"
+else
+    rm -f "${gql_cfg}"
+fi
+echo "  scaffold-graphql-stack: PASS"
+
 echo "backend scaffold contract tests PASSED"

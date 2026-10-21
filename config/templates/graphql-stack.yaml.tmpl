@@ -1,0 +1,36 @@
+# Template for a graphql_server stack config.
+# Rendered by `just gcp-pulumi scaffold-graphql-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `ensure-stack` / `new-stack` writes the
+# secretsprovider + encryptedkey lines.
+config:
+  graphql_server:properties:
+    authEnabled: false
+    allowedOrigins:
+      - http://localhost:*
+      - https://*.dictybase.org
+      - https://dictybase.org
+      - https://*.dictycr.org
+      - https://dictycr.org
+      - http://*.dictybase.dev
+      - http://dictybase.dev*
+    endpoints:
+      organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
+      publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
+      store: __STORE_ENDPOINT__
+    image:
+      name: dictybase/graphql-server
+      tag: bootstrap
+    ingress:
+      enabled: false
+    logLevel: error
+    name: graphql
+    namespace: __NAMESPACE__
+    port: __PORT__
+    s3Bucket:
+      name: editor
+      path: assets
+    secrets:
+      minio:
+        name: __MINIO_SECRET__
+        passKey: __MINIO_PASS_KEY__
+        userKey: __MINIO_USER_KEY__

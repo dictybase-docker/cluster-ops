@@ -691,8 +691,104 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="backend":
     fi
 
     echo "Scaffolded ${cfg}"
-    echo "  appName=${app} image=dictybase/${project}:bootstrap namespace=${namespace} secret=${sec_name} port={{ port }}"
+    echo "  appName=${app} image=dictybase/${repo_name}:bootstrap namespace=${namespace} secret=${sec_name} port={{ port }}"
     echo "Next: just gcp-pulumi check-backend-prereqs --stack ${stack_name} --folder ${folder}"
+
+# Scaffold a graphql_server stack config from the cluster registry + template.
+# Initializes the stack with the registry KMS secrets provider when absent, and
+# appends the baseline config block (authEnabled: false, ingress.enabled: false)
+# when `config:` is not yet present in graphql_server/Pulumi.<stack>.yaml.
+# Derives MinIO Secret name and keys from minio/Pulumi.<stack>.yaml when
+# present, else defaults to minio-root / rootUser / rootPassword.
+# Usage: just gcp-pulumi scaffold-graphql-stack [--stack <name>] [--store-endpoint <url>] [--port <n>] [--secret-name <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("store_endpoint", long="store-endpoint", help="Public S3 storage endpoint URL (default: https://storage.dictybase.dev)")]
+[arg("port", long="port", short="p", help="GraphQL HTTP server port (default 8080)")]
+[arg("secret_name", long="secret-name", help="MinIO credentials Secret name (defaults to minio/Pulumi.<stack>.yaml secret.name, else minio-root)")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-graphql-stack stack="" store_endpoint="https://storage.dictybase.dev" port="8080" secret_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name="{{ stack }}"
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    folder="graphql_server"
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+
+    sec_name="{{ secret_name }}"
+    user_key="rootUser"
+    pass_key="rootPassword"
+    minio_cfg="minio/Pulumi.${stack_name}.yaml"
+    if [ -f "${minio_cfg}" ]; then
+        if [ -z "${sec_name}" ]; then
+            cand=$(yq -r '.config."minio:properties".secret | select(.name | type == "!!str") | .name // ""' "${minio_cfg}" 2>/dev/null || true)
+            [ -n "${cand}" ] && [ "${cand}" != "null" ] && sec_name="${cand}"
+        fi
+        uk=$(yq -r '.config."minio:properties".secret | select(.userKey | type == "!!str") | .userKey // ""' "${minio_cfg}" 2>/dev/null || true)
+        [ -n "${uk}" ] && [ "${uk}" != "null" ] && user_key="${uk}"
+        pk=$(yq -r '.config."minio:properties".secret | select(.passKey | type == "!!str") | .passKey // ""' "${minio_cfg}" 2>/dev/null || true)
+        [ -n "${pk}" ] && [ "${pk}" != "null" ] && pass_key="${pk}"
+    fi
+    [ -z "${sec_name}" ] && sec_name="minio-root"
+
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ]; then
+        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+
+    tmp=$(mktemp /tmp/graphql-stack-XXXXXX)
+    trap 'rm -f "${tmp}"' EXIT
+    sed \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        -e "s|__PORT__|{{ port }}|g" \
+        -e "s|__STORE_ENDPOINT__|{{ store_endpoint }}|g" \
+        -e "s|__MINIO_SECRET__|${sec_name}|g" \
+        -e "s|__MINIO_USER_KEY__|${user_key}|g" \
+        -e "s|__MINIO_PASS_KEY__|${pass_key}|g" \
+        config/templates/graphql-stack.yaml.tmpl > "${tmp}"
+    cat "${tmp}" >> "${cfg}"
+
+    yq -r '.config' "${cfg}" >/dev/null
+    got_name=$(yq -r '.config."graphql_server:properties".name' "${cfg}")
+    got_ns=$(yq -r '.config."graphql_server:properties".namespace' "${cfg}")
+    if [ "${got_name}" != "graphql" ] || [ "${got_ns}" != "${namespace}" ]; then
+        echo "ERROR: rendered config failed validation (name=${got_name}, namespace=${got_ns})." >&2
+        exit 1
+    fi
+    if grep -q ':latest' "${cfg}"; then
+        echo "ERROR: rendered config contains :latest — prod stacks must never carry a mutable tag." >&2
+        exit 1
+    fi
+
+    echo "Scaffolded ${cfg}"
+    echo "  name=graphql image=dictybase/graphql-server:bootstrap namespace=${namespace} minioSecret=${sec_name} port={{ port }}"
+    echo "Next: just gcp-pulumi preview --folder graphql_server"
 
 # Composite read-only prerequisite gate for a backend service deploy.
 # Checks, in order: registry entry (by stack), namespace exists, ArangoDB

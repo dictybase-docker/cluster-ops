@@ -48,7 +48,7 @@ Each upstream Service must exist in the target namespace before the `graphql-api
 | `nginx` controller and `kcert` | Ingress controller and TLS issuer | Public HTTPS. **Only when `ingress.enabled` is `true`.** | — |
 | Logto | Public OIDC and JWKS endpoint | JWT checks and management API. Only when `authEnabled` is `true`. | [`logto-deploy.md`](../../logto-deploy.md) |
 
-Each backend project names its Service `<appName>-api`. The project `modware-annotation-feature` has no production stack file in this repository, so `anno-feat-api` needs a new stack file before the first production deploy.
+Each backend project names its Service `<appName>-api`. Deploy all five services with `just ci deploy-backend-services` ([`backend-service-deploy.md`](../../backend-service-deploy.md)), or deploy the feature annotation server alone with `just ci deploy-backend-services --services anno-feat`.
 
 ### Check the Prerequisites
 
@@ -88,30 +88,24 @@ kubectl -n <namespace> rollout restart deployment/graphql-api-server
 
 ## Create the Stack
 
-The repository ships the lab stack file `Pulumi.experiments.yaml` and a retired `Pulumi.dev.yaml`. The program does not read the retired schema. No production stack file exists yet, so a new cluster needs these three steps.
-
-**1. Create the stack.** This recipe needs no stack file. The backend bucket and the KMS key come from `config/clusters/<cluster>.yaml`.
+Run `scaffold-graphql-stack` to create a new cluster stack file from `config/templates/graphql-stack.yaml.tmpl` and the cluster registry entry (`config/clusters/<cluster>.yaml`).
 
 ```bash
-just gcp-pulumi new-stack --folder graphql_server
+just gcp-pulumi scaffold-graphql-stack
 ```
 
-**2. Write the `config:` block** into `graphql_server/Pulumi.<stack>.yaml`. Use the template below. Keep the `secretsprovider:` and `encryptedkey:` lines at the top of the file. Edit the file by hand, because each `set-config` call writes one leaf key only.
+The recipe performs these actions:
 
-**3. Encrypt the name of the MinIO Secret.** Only `set-secret` can write the encrypted block.
+1. Reads `namespace` and `kms_secrets_provider` from the registry entry matching `--stack` (`$PULUMI_STACK`).
+2. Reads the MinIO Secret name (`minio-root`) and key names (`rootUser`, `rootPassword`) from `minio/Pulumi.<stack>.yaml`.
+3. Refuses to overwrite an existing `graphql_server/Pulumi.<stack>.yaml`.
+4. Initializes the stack with `pulumi stack init --secrets-provider` and appends the rendered `config:` block (`authEnabled: false`, `ingress.enabled: false`).
+
+When `graphql_server/Pulumi.<stack>.yaml` already exists, select the stack with:
 
 ```bash
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name --value minio-root
+just gcp-pulumi ensure-stack --folder graphql_server
 ```
-
-Then go back to the guide for the authentication mode, the Ingress mode, `preview`, and `create-resource`.
-
-`ensure-stack` cannot do step 1. It creates a stack only when `graphql_server/Pulumi.<stack>.yaml` is already on disk. Without that file it fails with `there is no Pulumi.<stack>.yaml to initialize it from`. The two recipes in that error message also fail across GCP projects:
-
-- `fork-stack` copies `Pulumi.experiments.yaml`. The copy keeps the `dcr-experiments` KMS header and every encrypted value, and the target cluster cannot decrypt them.
-- `new-stack-from` reads the source stack through the target backend. The `experiments` stack is in a different backend, so the read fails with `no stack named 'experiments' found`.
-
-Both recipes stay useful inside one GCP project and one backend.
 
 ### Baseline Stack File
 
@@ -139,6 +133,7 @@ config:
       path: assets
     secrets:
       minio:
+        name: minio-root
         passKey: rootPassword
         userKey: rootUser
 ```
@@ -236,20 +231,14 @@ just gcp-pulumi preview --folder graphql_server
 
 ## MinIO Secret Keys
 
-The program injects two environment variables into the container from one Kubernetes Secret. Both variables read the Secret named in `properties.secrets.minio.name`: `minio` on the lab cluster, `minio-root` on production.
+The program injects two environment variables into the container from one Kubernetes Secret via `secretKeyRef`. At pod runtime, Kubernetes reads the Secret named in `properties.secrets.minio.name` (`minio-root` on production, `minio` on the lab cluster) and injects the credential values into the container.
 
-| Container variable | Config key for the Secret key | Lab value | Production value |
-|--------------------|-------------------------------|-----------|------------------|
+| Container variable | Config key for the Secret key | Lab value (`minio`) | Production value (`minio-root`) |
+|--------------------|-------------------------------|---------------------|---------------------------------|
 | `ACCESS_KEY` | `properties.secrets.minio.userKey` | `user` | `rootUser` |
 | `SECRET_KEY` | `properties.secrets.minio.passKey` | `pass` | `rootPassword` |
 
-```bash
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name --value minio-root
-just gcp-pulumi set-config --folder graphql_server --key properties.secrets.minio.userKey --value rootUser
-just gcp-pulumi set-config --folder graphql_server --key properties.secrets.minio.passKey --value rootPassword
-```
-
-All three values are names, not credentials. The credentials stay in the Kubernetes Secret that the `minio` stack writes ([MinIO deploy](../../minio-deploy.md)). Encrypted storage and plain storage both work, because the program only copies the names into the pod specification.
+All three config values (`name`, `userKey`, `passKey`) are Kubernetes Secret and key **names**, not credentials. Keep them as plain text in `Pulumi.<stack>.yaml` (same as `minio/Pulumi.dcr-kube1.yaml` and `modware-*/Pulumi.dcr-kube1.yaml`). The actual credentials stay inside the Kubernetes Secret created by the `minio` stack ([MinIO deploy](../../minio-deploy.md)).
 
 ---
 
@@ -341,8 +330,8 @@ The log line reads `going to start graphql server with authentication enabled <t
 
 | Symptom | Cause | Action |
 |---------|-------|--------|
-| `ERROR: stack '<stack>' does not exist in graphql_server, and there is no Pulumi.<stack>.yaml to initialize it from` | First deploy on this cluster. `ensure-stack` creates a stack only from a stack file that exists. | Run `just gcp-pulumi new-stack --folder graphql_server`, then write the `config:` block ([create the stack](#create-the-stack)). Ignore the `fork-stack` and `new-stack-from` hints in the message. |
-| `failed to read graphql config: missing required configuration variable 'graphql_server:properties'` | The stack exists in the backend, but the stack file has no `config:` block. | Paste the [baseline stack file](#baseline-stack-file) under the `secretsprovider:` header. Run `preview` again. |
+| `ERROR: stack '<stack>' does not exist in graphql_server, and there is no Pulumi.<stack>.yaml to initialize it from` | First deploy on this cluster. `ensure-stack` creates a stack only from a stack file that exists. | Run `just gcp-pulumi scaffold-graphql-stack` ([create the stack](#create-the-stack)). |
+| `graphql_server:properties is missing namespace, image.tag, endpoints.store, secrets.minio.name, secrets.minio.userKey, secrets.minio.passKey` | The stack file was created with `new-stack` + `set-config` only, leaving required fields empty. | Run `just gcp-pulumi scaffold-graphql-stack` (or populate the [baseline stack file](#baseline-stack-file)), then run `preview` again. |
 | `ingress.enabled=true but ingress is missing hosts, path, tlsSecret`, or any subset of those names | `ingress.enabled` is `true`, and one of the three keys is empty. | Set the named keys, or set `properties.ingress.enabled` to `false` ([ingress mode](#ingress-mode)). |
 | `preview` plans to delete `graphql-ingress` | An operator set `ingress.enabled` to `false`, or removed the `ingress:` block. | This is correct only when a Gateway route replaces the Ingress. Otherwise set `ingress.enabled` back to `true` before you apply ([turn the ingress off](#turn-the-ingress-off)). |
 | The Ingress apply fails on an invalid `metadata.labels` key | `ingress.enabled` is `true`, and `ingress.label.name` is empty. | Set `properties.ingress.label.name` to `kcert.dev/ingress` and `properties.ingress.label.value` to `managed`. |
@@ -350,7 +339,7 @@ The log line reads `going to start graphql server with authentication enabled <t
 | Pod `CrashLoopBackOff` with `--auth-api-endpoint is required when auth is enabled` | `authEnabled` is `true`, and `properties.endpoints.auth` is empty. The Pulumi check does not look at that key. | Set `properties.endpoints.auth` to the Logto URL and apply again. |
 | Pod `CrashLoopBackOff` with `Required flag "stock-grpc-host" not set`, or the same error for `order`, `annotation`, `feature-annotation`, or `content` | One gRPC Service did not exist when the pod started. | Deploy the missing Service, then run `kubectl -n <namespace> rollout restart deployment/graphql-api-server`. |
 | Pod `CrashLoopBackOff` with `flag provided but not defined: -auth-enabled` | The image is older than the `--auth-enabled` flag. | Set `properties.image.tag` to a current image from `develop`. |
-| Pod `CreateContainerConfigError` on Secret `minio` or `minio-root` | `properties.secrets.minio.name`, `userKey`, or `passKey` does not match the Secret in the namespace. | Run `kubectl -n <namespace> get secret`. On production, use `minio-root` with the keys `rootUser` and `rootPassword` ([MinIO secret keys](#minio-secret-keys)). |
+| Pod `CreateContainerConfigError` on Secret `minio` or `minio-root` | `properties.secrets.minio.name`, `userKey`, or `passKey` does not match the Secret in the namespace. | Set `name: minio-root`, `userKey: rootUser`, and `passKey: rootPassword` in `Pulumi.<stack>.yaml`, then apply the stack again ([MinIO secret keys](#minio-secret-keys)). |
 | Pod `CrashLoopBackOff` on the Redis connection | Service `redis` was absent when the pod started, or Redis is down. | Run `just redis verify`, then restart the Deployment. |
 | `502 Bad Gateway` on a slow strain or stock query | The query exceeded the server write deadline, or ArangoDB is slow. | Run `just arangodb verify`. Then make the query smaller, or raise the deadline in the server image. |
 | A CI deploy ignores a recent cluster-ops change | The cluster-ops change is local, or it is on an unmerged branch. CI always clones `cluster-ops@develop`. | Merge and push cluster-ops `develop`, then run the workflow again. |
