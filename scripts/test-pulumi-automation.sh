@@ -41,6 +41,7 @@ cat > "${mock_bin}/yq" <<'MOCK'
 case "$*" in
     *appName*) echo "order" ;;
     *namespace*) echo "dev" ;;
+    *image.name*) echo "dictybase/${MOCK_PROJECT:-modware-order}" ;;
     *) echo "t1" ;;
 esac
 MOCK
