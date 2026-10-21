@@ -2,401 +2,246 @@
 
 Back to: [GraphQL Server Deploy Guide](../../graphql-deploy.md)
 
-Reference for the `graphql_server/` Pulumi program (`graphql_server/*.go`),
-in-cluster service discovery, configuration schema, optional Logto
-authentication (`authEnabled`), CI deploy mechanics, and troubleshooting.
+This document gives the details for the `graphql_server/` Pulumi project: the resources, the prerequisites, the configuration keys, the optional Ingress, the optional Logto authentication, the CI path, and the error messages.
 
 ## Table of Contents
 
-- [What It Does](#what-it-does)
+- [What the Project Creates](#what-the-project-creates)
 - [Prerequisites](#prerequisites)
-  - [Checking Them](#checking-them)
 - [In-Cluster Service Discovery](#in-cluster-service-discovery)
-- [Stack Configuration](#stack-configuration)
-  - [Creating a New Stack File](#creating-a-new-stack-file)
-  - [Full Configuration Shape](#full-configuration-shape)
-- [Authentication Modes](#authentication-modes)
-  - [Default: Auth Disabled](#default-auth-disabled)
-  - [Configuration Keys](#configuration-keys)
-  - [Argument Mapping](#argument-mapping)
-  - [Configure Without Auth](#configure-without-auth)
-  - [Configure With Auth](#configure-with-auth)
-  - [Fail-Closed Validation](#fail-closed-validation)
-  - [Single-Argument Boolean Flag](#single-argument-boolean-flag)
-- [Secrets and MinIO Wiring](#secrets-and-minio-wiring)
+- [Create the Stack](#create-the-stack)
+- [Authentication Mode](#authentication-mode)
+- [Ingress Mode](#ingress-mode)
+- [MinIO Secret Keys](#minio-secret-keys)
 - [Deploy Behavior](#deploy-behavior)
-  - [Flags](#flags)
-- [GitHub Actions CI Deployment](#github-actions-ci-deployment)
-  - [Wiring Production Tag Deploys](#wiring-production-tag-deploys)
+- [CI Deployment](#ci-deployment)
+- [Tag Deploy Setup](#tag-deploy-setup)
 - [Verification](#verification)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## What It Does
+## What the Project Creates
 
-The `graphql_server/` Pulumi program (`graphql_server/main.go`) creates three
-Kubernetes resources in the configured `namespace`, all derived from
-`properties.name` (`graphql`):
+The program creates two resources in the namespace, and one more resource when you turn the Ingress on. Each name comes from `properties.name`, which is `graphql` on every shipped stack.
 
-1. **Deployment `graphql-api-server`** (`graphql_server/deployment.go`) — pod
-   label `app: graphql-api-server`, container `graphql-container` listening on
-   TCP port `8080` (`graphql-api`), HTTP server write timeout `60s` to match
-   the `nginx` ingress proxy read timeout.
-2. **Service `graphql-api`** (`graphql_server/service.go`) — `type: NodePort`,
-   port `8080` → targetPort `8080`, selector `app: graphql-api-server`,
-   created with `DependsOn` on the Deployment.
-3. **Ingress `graphql-ingress`** (`graphql_server/ingress.go`) —
-   `ingressClassName: nginx`, label from `ingress.label` (typically
-   `kcert.dev/ingress: managed`), TLS secret `ingress.tlsSecret`, routing each
-   host in `ingress.hosts` at `ingress.path` (`Prefix`) to `graphql-api:8080`.
+| Order | Resource | Name | Details |
+|-------|----------|------|---------|
+| 1 | Deployment | `graphql-api-server` | Pod label `app: graphql-api-server`. One container `graphql-container`. TCP port `8080`. |
+| 2 | Service | `graphql-api` | Type `NodePort`. Port `8080` to target port `8080`. Depends on the Deployment. |
+| 3 | Ingress | `graphql-ingress` | **Optional.** The program creates it only when `properties.ingress.enabled` is `true`. See [ingress mode](#ingress-mode). |
 
-The program creates **no Namespace** and **no Kubernetes Secret** — the
-namespace comes from `namespace-bootstrap` ([shared namespaces](../pulumi/namespaces.md)),
-and the MinIO credentials Secret is created by the `minio` stack
-([MinIO install](../minio/install.md)).
+The program creates no Namespace and no Kubernetes Secret. The `namespace-bootstrap` project creates the namespace ([shared namespaces](../pulumi/namespaces.md)). The `minio` project creates the MinIO credentials Secret ([MinIO install](../minio/install.md)).
 
 ---
 
 ## Prerequisites
 
-All upstream Services must exist in the target namespace **before** the
-`graphql-api-server` pod starts:
+Each upstream Service must exist in the target namespace before the `graphql-api-server` pod starts.
 
-| Component | Required Resource in Namespace | Purpose | Guide |
-|-----------|--------------------------------|---------|-------|
-| Namespace | `dev` or `prod` | Target application namespace | [`pulumi-setup.md`](../../pulumi-setup.md) |
-| Redis | Service `redis` (`:6379`) | Caching and dataloader store | [`redis-deploy.md`](../../redis-deploy.md) |
-| MinIO | Service `minio` (`:9000`) + Secret (`minio-root` or `minio`) + bucket (`editor`) | S3 asset storage | [`minio-deploy.md`](../../minio-deploy.md) |
-| Stock gRPC | Service `stock-api` (`:9345`) | Stock and strain queries | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Order gRPC | Service `order-api` (`:9250`) | Stock center order queries | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Annotation gRPC | Service `annotation-api` (`:9250`) | Tagged annotation queries | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Feature Annotation gRPC | Service `anno-feat-api` (`:9250`) | Sequence feature queries (`modware-annotation-feature`) | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Content gRPC | Service `content-api` (`:9250`) | CMS page content queries | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Ingress + TLS | `ingress-controller` (`nginx`) + `kcert` | Public HTTPS termination | — |
-| Logto *(only when `authEnabled: true`)* | Public OIDC/JWKS endpoint | JWT validation and management API | [`logto-deploy.md`](../../logto-deploy.md) |
+| Component | Resource in the namespace | Purpose | Guide |
+|-----------|---------------------------|---------|-------|
+| Namespace | `dev` or `prod` | Target namespace | [`pulumi-setup.md`](../../pulumi-setup.md) |
+| Redis | Service `redis` (`:6379`) | Cache and dataloader store | [`redis-deploy.md`](../../redis-deploy.md) |
+| MinIO | Service `minio` (`:9000`), one Secret, bucket `editor` | S3 asset storage | [`minio-deploy.md`](../../minio-deploy.md) |
+| modware gRPC | Services `stock-api` (`:9345`), `order-api`, `annotation-api`, `anno-feat-api`, and `content-api` (all `:9250`) | Stock, order, annotation, feature, and content queries | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
+| `nginx` controller and `kcert` | Ingress controller and TLS issuer | Public HTTPS. **Only when `ingress.enabled` is `true`.** | — |
+| Logto | Public OIDC and JWKS endpoint | JWT checks and management API. Only when `authEnabled` is `true`. | [`logto-deploy.md`](../../logto-deploy.md) |
 
-### Checking Them
+Each backend project names its Service `<appName>-api`. The project `modware-annotation-feature` has no production stack file in this repository, so `anno-feat-api` needs a new stack file before the first production deploy.
 
-Redis and MinIO have verify recipes; the five gRPC Services have none, so probe
-them directly (an absent Service is reported by name):
+### Check the Prerequisites
+
+Redis and MinIO have verify recipes. The five gRPC Services have none, so query them with `kubectl`.
 
 ```bash
 just redis verify
 just minio verify
-kubectl -n prod get svc stock-api order-api annotation-api anno-feat-api content-api
+kubectl -n <namespace> get svc stock-api order-api annotation-api anno-feat-api content-api
 ```
 
-Both verify recipes default to `--namespace prod`, Secret `minio-root`, and
-node pool `--pool database --node-count 3` — on the lab `experiments` cluster
-pass `--namespace dev` (plus `--secret minio` for MinIO) and the pool flags
-that match that cluster. Deploy missing gRPC Services with
-[`backend-service-deploy.md`](../../backend-service-deploy.md)
-(`just ci deploy-backend-services`), and the `editor` bucket with
-[MinIO import](../minio/import.md) if it is absent.
+Both verify recipes default to `--namespace prod`, Secret `minio-root`, and `--pool database --node-count 3`. On the lab `experiments` cluster, pass `--namespace dev` and `--secret minio`. Deploy a missing gRPC Service with `just ci deploy-backend-services`. Create a missing `editor` bucket with [MinIO import](../minio/import.md).
 
 ---
 
 ## In-Cluster Service Discovery
 
-`graphql_server/container.go` does **not** pass `--stock-grpc-host`,
-`--redis-master-service-host`, or `--s3-server` CLI flags. Instead, the
-`graphql-server` binary (`cmd/graphql-server/main.go`) reads standard
-Kubernetes service-discovery environment variables injected into the pod at
-startup:
+Pulumi passes no host or port arguments to the container. The `graphql-server` binary reads the standard Kubernetes service-discovery variables instead.
 
-| Flag in `graphql-server` | Environment Variable Read | Kubernetes Service Name |
-|--------------------------|---------------------------|-------------------------|
-| `--stock-grpc-host` / `--stock-grpc-port` | `STOCK_API_SERVICE_HOST` / `STOCK_API_SERVICE_PORT` | `stock-api` |
-| `--order-grpc-host` / `--order-grpc-port` | `ORDER_API_SERVICE_HOST` / `ORDER_API_SERVICE_PORT` | `order-api` |
-| `--annotation-grpc-host` / `--annotation-grpc-port` | `ANNOTATION_API_SERVICE_HOST` / `ANNOTATION_API_SERVICE_PORT` | `annotation-api` |
-| `--feature-annotation-grpc-host` / `--feature-annotation-grpc-port` | `ANNO_FEAT_API_SERVICE_HOST` / `ANNO_FEAT_API_SERVICE_PORT` | `anno-feat-api` |
-| `--content-grpc-host` / `--content-grpc-port` | `CONTENT_API_SERVICE_HOST` / `CONTENT_API_SERVICE_PORT` | `content-api` |
-| `--redis-master-service-host` / `--redis-master-service-port` | `REDIS_SERVICE_HOST` / `REDIS_SERVICE_PORT` | `redis` |
-| `--s3-server` / `--s3-server-port` | `MINIO_SERVICE_HOST` / `MINIO_SERVICE_PORT` | `minio` |
+| Service | Environment variables the binary reads | Flag that gets the value |
+|---------|---------------------------------------|--------------------------|
+| `stock-api` | `STOCK_API_SERVICE_HOST` / `STOCK_API_SERVICE_PORT` | `--stock-grpc-host` / `--stock-grpc-port` |
+| `order-api` | `ORDER_API_SERVICE_HOST` / `ORDER_API_SERVICE_PORT` | `--order-grpc-host` / `--order-grpc-port` |
+| `annotation-api` | `ANNOTATION_API_SERVICE_HOST` / `ANNOTATION_API_SERVICE_PORT` | `--annotation-grpc-host` / `--annotation-grpc-port` |
+| `anno-feat-api` | `ANNO_FEAT_API_SERVICE_HOST` / `ANNO_FEAT_API_SERVICE_PORT` | `--feature-annotation-grpc-host` / `--feature-annotation-grpc-port` |
+| `content-api` | `CONTENT_API_SERVICE_HOST` / `CONTENT_API_SERVICE_PORT` | `--content-grpc-host` / `--content-grpc-port` |
+| `redis` | `REDIS_SERVICE_HOST` / `REDIS_SERVICE_PORT` | `--redis-master-service-host` / `--redis-master-service-port` |
+| `minio` | `MINIO_SERVICE_HOST` / `MINIO_SERVICE_PORT` | `--s3-server` / `--s3-server-port` |
 
-Kubernetes only injects `<SVC>_SERVICE_HOST` and `<SVC>_SERVICE_PORT` when the
-Service exists in the **same namespace** before the pod is created. If any of
-the five gRPC Services is created *after* `graphql-api-server`, the pod starts
-without that variable and exits with `Required flag ... not set`. Fix by
-restarting the deployment after the Service exists:
+Kubernetes writes these variables into a pod only when the Service exists in the same namespace before the pod starts. If a Service starts later, the pod exits with `Required flag ... not set`. Restart the Deployment after the Service exists.
 
 ```bash
-kubectl -n prod rollout restart deployment/graphql-api-server
+kubectl -n <namespace> rollout restart deployment/graphql-api-server
 ```
 
 ---
 
-## Stack Configuration
+## Create the Stack
 
-`ReadConfig` (`graphql_server/config.go`) reads `graphql_server:properties`.
-Use `graphql_server/Pulumi.experiments.yaml` as the canonical reference
-(`Pulumi.dev.yaml` uses a retired `configMap`/`authKeys` structure that the Go
-program no longer reads).
+The repository ships the lab stack file `Pulumi.experiments.yaml` and a retired `Pulumi.dev.yaml`. The program does not read the retired schema. No production stack file exists yet, so a new cluster needs these three steps.
 
-### Creating a New Stack File
+**1. Create the stack.** This recipe needs no stack file. The backend bucket and the KMS key come from `config/clusters/<cluster>.yaml`.
 
-The repository ships `Pulumi.dev.yaml` (retired schema) and
-`Pulumi.experiments.yaml` (lab, namespace `dev`, KMS key
-`projects/dcr-experiments/.../cryptoKeys/pulumi`) only — **no production stack
-file exists yet**. There is no scaffold recipe for this
-project: `just gcp-pulumi scaffold-backend-stack` renders the modware gRPC
-template (`appName`/`arangodb` keys), which this program does not read.
+```bash
+just gcp-pulumi new-stack --folder graphql_server
+```
 
-Copy `Pulumi.experiments.yaml` by hand, drop the `secure:` blocks and the
-`encryptedkey`/`secretsprovider` header, then run
-`just gcp-pulumi ensure-stack --folder graphql_server` to register the stack
-under the target cluster's KMS provider, and re-encrypt each secret with
-`just gcp-pulumi set-secret`.
+**2. Write the `config:` block** into `graphql_server/Pulumi.<stack>.yaml`. Use the template below. Keep the `secretsprovider:` and `encryptedkey:` lines at the top of the file. Edit the file by hand, because each `set-config` call writes one leaf key only.
 
-`just gcp-pulumi new-stack-from --folder graphql_server --from-stack experiments`
-also copies config, but `CopyConfig` (`internal/pulumiauto/config.go`) reads
-every source value decrypted before re-encrypting it — it works only for an
-operator holding `decrypt` on the *source* cluster's KMS key
-(`dcr-experiments`), which a production deployer normally does not.
+**3. Encrypt the name of the MinIO Secret.** Only `set-secret` can write the encrypted block.
 
-Keys that must change per cluster:
+```bash
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name --value minio-root
+```
 
-| Key | Lab (`experiments`) | Production (`<prod-stack>`) |
-|-----|---------------------|----------------------------|
-| `namespace` | `dev` | `prod` |
-| `ingress.hosts` | `graphql.dictybase.dev` | the production host |
-| `ingress.tlsSecret` | `graphql-tls-secret` | per-cluster TLS Secret |
-| `endpoints.auth` / `endpoints.store` | `*.dictybase.dev` | production Logto and storage hosts |
-| `allowedOrigins` | `*.dictybase.dev` | production front-end origins |
-| `secrets.minio.*` | `minio` / `user` / `pass` | `minio-root` / `rootUser` / `rootPassword` |
-| `image.tag` | whatever CI last deployed | an immutable `develop-<sha>` or release tag |
+Then go back to the guide for the authentication mode, the Ingress mode, `preview`, and `create-resource`.
 
-### Full Configuration Shape
+`ensure-stack` cannot do step 1. It creates a stack only when `graphql_server/Pulumi.<stack>.yaml` is already on disk. Without that file it fails with `there is no Pulumi.<stack>.yaml to initialize it from`. The two recipes in that error message also fail across GCP projects:
 
-The auth-enabled shape, as shipped in `Pulumi.experiments.yaml`. For the
-no-auth variant drop `endpoints.auth` and `secrets.auth` and set
-`authEnabled: false` ([authentication modes](#authentication-modes)).
+- `fork-stack` copies `Pulumi.experiments.yaml`. The copy keeps the `dcr-experiments` KMS header and every encrypted value, and the target cluster cannot decrypt them.
+- `new-stack-from` reads the source stack through the target backend. The `experiments` stack is in a different backend, so the read fails with `no stack named 'experiments' found`.
+
+Both recipes stay useful inside one GCP project and one backend.
+
+### Baseline Stack File
+
+This template has **no `ingress:` block** and no auth keys, so the stack creates the Deployment and the Service only. Replace each `<...>` value. The production hostnames are an operator input, because no file in this repository records one.
 
 ```yaml
 config:
   graphql_server:properties:
-    authEnabled: true
+    authEnabled: false
     allowedOrigins:
-      - http://localhost:*
-      - http://*.dictybase.dev
-      - http://dictybase.dev*
+      - https://<frontend-host>
     endpoints:
-      auth: https://logto.dictybase.dev
       organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
       publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
-      store: https://storage.dictybase.dev
+      store: https://<storage-host>
     image:
       name: dictybase/graphql-server
-      tag: develop-615c758
-    ingress:
-      hosts:
-        - graphql.dictybase.dev
-      label:
-        name: kcert.dev/ingress
-        value: managed
-      path: /
-      tlsSecret: graphql-tls-secret
+      tag: <immutable-tag>
     logLevel: error
     name: graphql
-    namespace: dev
+    namespace: prod
     port: 8080
     s3Bucket:
       name: editor
       path: assets
     secrets:
-      auth:
-        appId:
-          secure: <kms-encrypted>
-        appSecret:
-          secure: <kms-encrypted>
-        jwksURI:
-          secure: <kms-encrypted>
-        jwtAudience:
-          secure: <kms-encrypted>
-        jwtIssuer:
-          secure: <kms-encrypted>
       minio:
-        name:
-          secure: <kms-encrypted-secret-name>
-        passKey: pass
-        userKey:
-          secure: <kms-encrypted-user-key-name>
+        passKey: rootPassword
+        userKey: rootUser
 ```
+
+For the full shape with auth on and Ingress on, read `graphql_server/Pulumi.experiments.yaml`.
+
+### Keys That Change per Cluster
+
+| Key | Lab (`experiments`) | Production |
+|-----|---------------------|------------|
+| `namespace` | `dev` | `prod` |
+| `ingress.enabled` | `true` | omitted, so `false` |
+| `ingress.hosts` | `graphql.dictybase.dev` | the production host, when the Ingress is on |
+| `ingress.tlsSecret` | `graphql-tls-secret` | the per-cluster TLS Secret |
+| `endpoints.auth` and `endpoints.store` | `*.dictybase.dev` | the production Logto and storage hosts |
+| `allowedOrigins` | `*.dictybase.dev` | the production front-end origins |
+| `secrets.minio.*` | `minio` / `user` / `pass` | `minio-root` / `rootUser` / `rootPassword` |
+| `image.tag` | the last tag from CI | an immutable `develop-<sha>` tag or a release tag |
+
+**The lab stack file sets `authEnabled: true` and `ingress.enabled: true`.** A stack file that you copy from it starts with auth on and Ingress on, not with the defaults.
 
 ---
 
-## Authentication Modes
+## Authentication Mode
 
-Two layers decide the authentication state, and both fail closed: the Pulumi
-program turns `properties.authEnabled` into container arguments (`authFlags()`,
-`graphql_server/container.go`), and the `graphql-server` binary re-validates
-those arguments at startup (`validateAuthFlags()`,
-`internal/app/server/server.go` in `dictyBase/graphql-server`). `authFlags()`
-and `validate()` are the only readers of `endpoints.auth` and
-`secrets.auth.*` in the Pulumi program.
+The default value of `properties.authEnabled` is **`false`**. An absent key also gives `false`. **An absent key is a supported configuration, not an incomplete one.**
 
-### Default: Auth Disabled
+With `authEnabled: false` the container gets one authentication argument, `--auth-enabled=false`. The server then adds no JWT handler, so each request reaches the resolvers without a token. A resolver that calls the Logto management API returns the GraphQL error `authentication is disabled`. The program reads no value from `endpoints.auth` or `secrets.auth.*`, so a stale value does no harm, and the cluster needs no Logto deployment.
 
-`AuthEnabled` is a plain `bool` on `GraphqlServerConfig`
-(`graphql_server/config.go`), filled by `conf.TryObject("properties", ...)`, so
-an absent `authEnabled` key leaves the Go zero value — **`false`**. The
-`graphql-server` CLI agrees: `--auth-enabled` is a `cli.BoolFlag`
-(`cmd/graphql-server/main.go`, `authFlags()`) declared with no `Value:`, so it
-is `false` unless passed. **Omitting the key is a supported configuration, not
-an incomplete one.**
+| Key | Required when `authEnabled` is `true` | Set it with | Purpose |
+|-----|---------------------------------------|-------------|---------|
+| `authEnabled` | — (this key is the switch) | `set-config` | Turns the JWT handler and the Logto client on |
+| `endpoints.auth` | Yes | `set-config` | Base HTTP URL of the Logto API |
+| `secrets.auth.appId` | Yes | `set-secret` | API identifier of the Logto application |
+| `secrets.auth.appSecret` | Yes | `set-secret` | Secret for access to the Logto API |
+| `secrets.auth.jwksURI` | Yes | `set-secret` | URL of the JWK public key set |
+| `secrets.auth.jwtIssuer` | Yes | `set-secret` | Expected issuer of the token |
+| `secrets.auth.jwtAudience` | Yes | `set-secret` | Expected audience of the token |
 
-With `authEnabled: false` the container receives exactly one auth argument,
-`--auth-enabled=false`, and:
+`set-config` writes the value with `pulumi config set --path`, which keeps the scalar type. The value `true` becomes the YAML boolean `true`, not the string `"true"`. No recipe removes a key, so delete an unwanted key from the stack file by hand.
 
-- `middleware.NewJWTAuth` is never constructed and the JWT handler is never
-  added to the chi router — every request reaches the resolvers unauthenticated;
-- the registry gets `authentication.NoopClient{}`, whose every method returns
-  `authentication is disabled`, so resolvers that call the Logto management API
-  surface that text as a regular GraphQL error and need no conditional logic;
-- `endpoints.auth` and all five `secrets.auth.*` values are never read, so
-  stale or absent entries are harmless;
-- no Logto deployment is required ([`logto-deploy.md`](../../logto-deploy.md)).
+Set the endpoint and the five secrets **before** you set `authEnabled` to `true`. Two checks fail closed, and they do not cover the same keys:
 
-The shipped lab stack `Pulumi.experiments.yaml` sets `authEnabled: true` — a
-stack file copied from it inherits auth-on, not the default.
+| Check | When it runs | Condition | Result |
+|-------|--------------|-----------|--------|
+| Pulumi config check | each `preview` and `create-resource`, before any resource | `authEnabled` is `true` and one of the five `secrets.auth.*` values is empty | `authEnabled=true but secrets.auth is missing <names>`. The program makes no plan. |
+| Container startup check | when the pod starts, before the router | `--auth-enabled=true` and one of the six auth arguments is empty | `--<flag> is required when auth is enabled` and exit code 2. The pod goes to `CrashLoopBackOff`. |
 
-### Configuration Keys
+The Pulumi check does not look at `endpoints.auth`. A stack with `authEnabled: true` and an empty `endpoints.auth` applies cleanly, and then the pod goes to `CrashLoopBackOff`. Set the endpoint in the same change as the secrets.
 
-All keys live under `graphql_server:properties`. "Purpose" quotes the usage
-string of the matching `graphql-server` flag.
+Pulumi always passes the boolean as one argument, `--auth-enabled=true` or `--auth-enabled=false`. The binary uses `urfave/cli` v1, which reads a space-separated value as a positional argument. Pulumi passes the argument in both modes, so an old image without the flag fails at startup with `flag provided but not defined: -auth-enabled`.
 
-| Key | Required when `authEnabled: true` | Set with | Purpose |
-|-----|-----------------------------------|----------|---------|
-| `authEnabled` | — (the switch itself) | `set-config` with `--value true` / `--value false` | Enables the JWT middleware and the real Logto management client |
-| `endpoints.auth` | Yes | `set-config` (public URL, not a secret) | "base http url of logto authentication api endpoint" |
-| `secrets.auth.appId` | Yes | `set-secret` | "api identifier" of the Logto application |
-| `secrets.auth.appSecret` | Yes | `set-secret` | "secret to access the authentication api" |
-| `secrets.auth.jwksURI` | Yes | `set-secret` | "url to retrieve JWK public key set" |
-| `secrets.auth.jwtIssuer` | Yes | `set-secret` | "expected jwt issuer of the token" |
-| `secrets.auth.jwtAudience` | Yes | `set-secret` | "expect jwt audience of the token" |
+---
 
-`set-config` writes through `pulumi config set --path`, which infers scalar
-types: `--value false` lands in `Pulumi.<stack>.yaml` as the YAML boolean
-`authEnabled: false`, not the string `"false"`. There is no recipe that removes
-a config key — delete unwanted `secrets.auth.*` entries from the stack file by
-hand.
+## Ingress Mode
 
-### Argument Mapping
+`properties.ingress.enabled` decides if this project owns the external routing. The default value is **`false`**. An absent `ingress.enabled` key gives `false`, and an absent `ingress:` block also gives `false`. **An absent `ingress:` block is a supported configuration, not an incomplete one.**
 
-`authFlags()` emits these container arguments; the env-var column is the CLI's
-own fallback, which this Deployment never uses — `ContainerEnvArgsArray()`
-injects only `ACCESS_KEY` and `SECRET_KEY`, so auth values always arrive as
-arguments.
+| `ingress.enabled` | Resources the stack creates | Who routes the external traffic | Keys the program reads |
+|-------------------|-----------------------------|---------------------------------|------------------------|
+| absent or `false` (default) | Deployment `graphql-api-server` and Service `graphql-api` (`:8080`) | a central Gateway stack, in front of `graphql-api:8080` | none, so a stale `ingress.*` value does no harm |
+| `true` | the two resources above and Ingress `graphql-ingress` | this stack, through the `nginx` controller with a `kcert` TLS Secret | `hosts`, `path`, `tlsSecret` (required), and `label` |
 
-| Key | Container Argument | `graphql-server` Flag | Env Var Fallback |
-|-----|--------------------|-----------------------|------------------|
-| `authEnabled` | `--auth-enabled=true` / `--auth-enabled=false` (always emitted) | `--auth-enabled` | `AUTH_ENABLED` |
-| `endpoints.auth` | `--auth-api-endpoint <value>` | `--auth-api-endpoint` | `AUTH_ENDPOINT` |
-| `secrets.auth.appId` | `--app-id <value>` | `--app-id` | `APPLICATION_ID` |
-| `secrets.auth.appSecret` | `--app-secret <value>` | `--app-secret` | `APPLICATION_SECRET` |
-| `secrets.auth.jwksURI` | `--jwks-uri <value>` | `--jwks-uri` | `JWKS_PUBLIC_URI` |
-| `secrets.auth.jwtIssuer` | `--jwt-issuer <value>` | `--jwt-issuer` | `JWT_ISSUER` |
-| `secrets.auth.jwtAudience` | `--jwt-audience <value>` | `--jwt-audience` | `JWT_AUDIENCE` |
+**The central Gateway stack is not in this repository.** The `ingress/` project renders its `frontend` block only, and no Gateway API program exists here. With `ingress.enabled: false`, nothing in cluster-ops routes external traffic to `graphql-api`. In-cluster clients still reach the Service at `graphql-api.<namespace>.svc:8080`.
 
-The six auth-mode arguments after `--auth-enabled=true` are emitted **only** in
-that mode. `graphql-server` also has an `--api-resource` flag with the built-in
-default `https://default.logto.app/api`, which the Pulumi program does not
-emit — the Logto management client therefore runs with that default API
-resource. Changing it requires a code change in `authFlags()`, not a config key.
+### Turn the Ingress On
 
-### Configure Without Auth
+Set `hosts`, `path`, and `tlsSecret` **before** you set `enabled` to `true`. The config check fails closed with `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` and names only the empty keys.
 
-One recipe call; the auth endpoint and secrets may stay unset.
+The program does not check `label`, but it always writes one label `<label.name>: <label.value>` on the Ingress. An empty `label.name` sends an empty label key, and the API server rejects it at apply time. Set `kcert.dev/ingress: managed` so that `kcert` issues the TLS Secret named in `tlsSecret`.
 
 ```bash
-just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled --value false
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts[0] --value <graphql-host>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.path --value /
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.tlsSecret --value <graphql-tls-secret>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.name --value kcert.dev/ingress
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.value --value managed
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value true
 just gcp-pulumi preview --folder graphql_server
 just gcp-pulumi create-resource --folder graphql_server
 ```
 
-### Configure With Auth
+The Ingress sends each host in `hosts` at `path` with path type `Prefix` to Service `graphql-api` on port `8080`. The ingress class is `nginx`.
 
-Set the endpoint and all five secrets **before** flipping `authEnabled` — any
-`preview` run between the flip and the last secret fails closed (see below).
-`set-secret` without `--value` prompts with hidden input, keeping the value out
-of shell history and process arguments.
+### Turn the Ingress Off
+
+**CAUTION: This deletes the Ingress. The public hostnames no longer point to this Service.** On a stack that has `graphql-ingress`, a change of `properties.ingress.enabled` to `false` makes the next plan delete the Ingress. Put the replacement Gateway route in place first. Read the `preview` output before you apply it.
 
 ```bash
-# 1. Logto API endpoint (public URL, stored plain)
-just gcp-pulumi set-config --folder graphql_server --key properties.endpoints.auth --value https://logto.dictybase.dev
-
-# 2. The five Logto secrets, each at a hidden prompt
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.appId
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.appSecret
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.jwksURI
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.jwtIssuer
-just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.jwtAudience
-
-# 3. Flip the switch last
-just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled --value true
-
-# 4. Apply
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value false
 just gcp-pulumi preview --folder graphql_server
-just gcp-pulumi create-resource --folder graphql_server
 ```
-
-Switching modes rewrites the container arguments, so `create-resource` rolls
-the Deployment; confirm the new state in the startup log line
-([verification](#verification)).
-
-### Fail-Closed Validation
-
-| Gate | Runs At | Trips When | Result |
-|------|---------|------------|--------|
-| `validate()` (`graphql_server/config.go`, called by `ReadConfig`) | every `preview` and `create-resource`, before any resource is declared | `authEnabled: true` and any of `appId`, `appSecret`, `jwksURI`, `jwtIssuer`, `jwtAudience` is empty | `authEnabled=true but secrets.auth is missing <names>` — the program exits, no plan is produced |
-| `validateAuthFlags()` (`internal/app/server/server.go`) | container startup, before the router is built | `--auth-enabled=true` and any of `jwks-uri`, `jwt-issuer`, `jwt-audience`, `auth-api-endpoint`, `app-id`, `app-secret` is empty | `--<flag> is required when auth is enabled` with exit code 2 — pod `CrashLoopBackOff` |
-
-The code comment on `validate()` states the intent: a half-configured stack
-would otherwise deploy a container that cannot boot.
-
-**The two gates do not cover the same set.** `validate()` checks the five
-secrets only; `endpoints.auth` is checked by the server alone. A stack with
-`authEnabled: true` and an empty `endpoints.auth` therefore previews and
-applies cleanly, then crash-loops with
-`--auth-api-endpoint is required when auth is enabled`. Set the endpoint in the
-same change as the secrets.
-
-### Single-Argument Boolean Flag
-
-`authFlags()` passes the boolean as one argument — `--auth-enabled=true` or
-`--auth-enabled=false` — and passes it in **both** modes:
-
-- `graphql-server` uses `urfave/cli` v1 (`github.com/urfave/cli`), where
-  `--auth-enabled false` leaves the boolean `true` and treats `false` as a
-  positional argument. The `=` form is the only safe way to pass it.
-- Emitting it even when disabled makes an image predating the flag fail loudly
-  on startup (`flag provided but not defined: -auth-enabled`, see
-  [troubleshooting](#troubleshooting)) instead of booting with the wrong
-  authentication state.
 
 ---
 
-## Secrets and MinIO Wiring
+## MinIO Secret Keys
 
-`ContainerEnvArgsArray()` (`graphql_server/container.go`) injects `ACCESS_KEY`
-and `SECRET_KEY` into the container via `secretKeyRef`:
+The program injects two environment variables into the container from one Kubernetes Secret. Both variables read the Secret named in `properties.secrets.minio.name`: `minio` on the lab cluster, `minio-root` on production.
 
-| Container Env Var | Kubernetes Secret Name | Secret Key |
-|-------------------|------------------------|------------|
-| `ACCESS_KEY` | `properties.secrets.minio.name` | `properties.secrets.minio.userKey` |
-| `SECRET_KEY` | `properties.secrets.minio.name` | `properties.secrets.minio.passKey` |
-
-Note the difference between the lab (`experiments`) and production MinIO
-secrets:
-
-| Environment | MinIO Secret Name (`secrets.minio.name`) | User Key (`userKey`) | Password Key (`passKey`) |
-|-------------|------------------------------------------|----------------------|--------------------------|
-| `experiments` (`dev`) | `minio` | `user` | `pass` |
-| Production (`prod`, [`minio-deploy.md`](../../minio-deploy.md)) | `minio-root` | `rootUser` | `rootPassword` |
-
-To set the values on the active stack (the Logto authentication secrets are
-separate — see [configure with auth](#configure-with-auth)):
+| Container variable | Config key for the Secret key | Lab value | Production value |
+|--------------------|-------------------------------|-----------|------------------|
+| `ACCESS_KEY` | `properties.secrets.minio.userKey` | `user` | `rootUser` |
+| `SECRET_KEY` | `properties.secrets.minio.passKey` | `pass` | `rootPassword` |
 
 ```bash
 just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name --value minio-root
@@ -404,85 +249,46 @@ just gcp-pulumi set-config --folder graphql_server --key properties.secrets.mini
 just gcp-pulumi set-config --folder graphql_server --key properties.secrets.minio.passKey --value rootPassword
 ```
 
-All three values are Secret and key **names**, not credentials — the
-credentials live in the Kubernetes Secret written by the `minio` stack. The lab
-stack encrypts `name` and `userKey` but leaves `passKey: pass` plain; either
-storage form works, because the program only interpolates them into
-`secretKeyRef`.
+All three values are names, not credentials. The credentials stay in the Kubernetes Secret that the `minio` stack writes ([MinIO deploy](../../minio-deploy.md)). Encrypted storage and plain storage both work, because the program only copies the names into the pod specification.
 
 ---
 
 ## Deploy Behavior
 
-`create-resource` drives the Pulumi Automation API (`cluster-ops stack up`,
-`internal/pulumiauto/up.go`), not the interactive CLI: no confirmation prompt,
-engine output discarded, and secret config values redacted from logs and error
-text. `RunIfAllowed` (`internal/pulumiauto/preview.go`) previews first and
-then:
+`create-resource` drives the Pulumi Automation API, not the interactive CLI. It asks for no confirmation, and it hides secret values in the logs and in the error text. The recipe previews the change first, and then it does one of three things:
 
-- aborts, listing the URNs, when the plan changes a **protected** resource
-  (the recipe passes no `--allow-protected`);
-- skips the update entirely on a zero-change plan;
-- applies the **saved plan** from that preview, so the applied plan is the
-  reviewed plan.
+- It stops and lists the URNs when the plan changes a protected resource.
+- It makes no update when the plan has no change.
+- It applies the saved plan from that preview, so the applied plan is the plan that you read.
 
-It creates Deployment `graphql-api-server`, NodePort Service `graphql-api`
-(port `8080`, `DependsOn` the Deployment), and Ingress `graphql-ingress`.
-Nothing waits for the rollout — the checks in [Verification](#verification) are
-the operator's job. Upgrades are the same two commands after changing
-`properties.image.tag`.
+No recipe waits for the rollout. Run the commands in [Verification](#verification) yourself. For an upgrade, change `properties.image.tag` and run `preview` and `create-resource` again.
 
-Manual deployment uses the standard `gcp-pulumi` recipes:
-
-```bash
-just gcp-pulumi ensure-stack --folder graphql_server
-just gcp-pulumi preview --folder graphql_server
-just gcp-pulumi create-resource --folder graphql_server
-```
-
-### Flags
+### Recipe Flags
 
 | Recipe | Flag | Required | Default | Notes |
 |--------|------|----------|---------|-------|
-| `ensure-stack` | `--folder` / `-f` | Yes | — | Pass `graphql_server` |
-| `ensure-stack` | `--stack` / `-s` | No | `$PULUMI_STACK` | Creates the stack when `Pulumi.<stack>.yaml` exists; otherwise only selects an existing stack and fails when there is none |
-| `set-config` | `--plaintext` | No | unset | Accepted but **unused** on the live recipe — `set-config` never passes `--secret`, so values are already stored plain (only the legacy `set-config-shell` honors it) |
-| `set-config` / `set-secret` | `--folder` / `-f` | Yes | — | Pass `graphql_server` |
-| `set-config` / `set-secret` | `--key` / `-k` | Yes | — | Path under `graphql_server:`, e.g. `properties.image.tag` |
-| `set-config` / `set-secret` | `--value` / `-v` | Yes (`set-config`) / No (`set-secret`) | Hidden prompt (`set-secret`) | Omit `--value` on `set-secret` to avoid shell history |
-| `preview` / `create-resource` | `--folder` / `-f` | Yes | — | Pass `graphql_server` |
-| `preview` / `create-resource` | `--stack` / `-s` | No | `$PULUMI_STACK` | Runs inside `just cluster-env` |
+| all | `--folder` / `-f` | Yes | — | Pass `graphql_server` |
+| all | `--stack` / `-s` | No | `$PULUMI_STACK` | Every recipe except `ensure-stack` falls back to the literal `dev` outside a cluster shell. `ensure-stack` fails instead. |
+| `ensure-stack` | `--stack` / `-s` | No | `$PULUMI_STACK` | Creates the stack when `Pulumi.<stack>.yaml` exists. Otherwise it only selects a stack that exists, and it fails when there is none. |
+| `set-config` / `set-secret` | `--key` / `-k` | Yes | — | Path under `graphql_server:`, for example `properties.image.tag` |
+| `set-config` / `set-secret` | `--value` / `-v` | Yes for `set-config`, no for `set-secret` | hidden prompt on `set-secret` | Omit it on `set-secret` to keep the value out of the shell history |
+| `set-config` | `--plaintext` | No | unset | Accepted but unused. `set-config` always stores the value plain. Only the retired `set-config-shell` reads the flag. |
 
 ---
 
-## GitHub Actions CI Deployment
+## CI Deployment
 
-In `dictyBase/graphql-server`:
+A push to `develop` in `dictyBase/graphql-server` starts `.github/workflows/ci.yml`. That workflow runs the unit tests and then calls the composite deploy workflow with `app: graphql-server`, `project: graphql_server`, `stack: experiments`, and `docker_image: graphql-server`. The composite workflow builds `dictybase/graphql-server:<ref>-<sha>`, clones cluster-ops at branch **`develop`**, sets `properties.image.tag`, and runs `pulumi up`.
 
-1. Pushing to `develop` triggers `.github/workflows/ci.yml`: runs unit tests
-   against a Redis service container, then calls
-   `dictyBase/workflows/.github/workflows/composite-deploy.yaml@develop` with:
-   - `app: graphql-server`
-   - `project: graphql_server`
-   - `stack: experiments`
-   - `docker_image: graphql-server`
-2. The composite workflow checks out `dictybase-docker/dagger-of-dcr@develop`
-   and runs `just deploy-backend`, which:
-   - Builds and publishes `dictybase/graphql-server:<ref>-<sha>` to Docker Hub.
-   - Clones `dictybase-docker/cluster-ops` at branch **`develop`**.
-   - Runs `pulumi config set --path properties.image.tag <tag>` in
-     `graphql_server/` and executes `pulumi up`.
+**Push order: send each change to `graphql_server/*.go` or `graphql_server/Pulumi.<stack>.yaml` to cluster-ops `develop` before you merge or tag `dictyBase/graphql-server`.** Otherwise the CI run clones the old tree and deploys stale config.
 
-### Wiring Production Tag Deploys
+The workflow files in the service repository are not in this repository, so this section reports the contract, not a verified file state.
 
-The CI path above targets the lab `experiments` stack from a `develop` push;
-production rollouts are manual (`just gcp-pulumi create-resource`) until the
-service repo carries a tag workflow. `graphql-server` has **no** entry in
-`config/services.yaml`, so the aggregate recipes skip it —
-`just ci deploy-backend-services` and `just ci pr-deploy-workflows` iterate
-that file and exit with `no services matched` for this repo. Wire it with the
-three single-repo recipes instead, from the production `cluster-env` sub-shell
-(`CLUSTER_NAME` and `PULUMI_STACK` supply `--cluster` and `--stack`):
+---
+
+## Tag Deploy Setup
+
+The CI path above deploys the lab `experiments` stack only. Production rollouts stay manual until the service repository carries a tag workflow. `graphql-server` has no entry in `config/services.yaml`, so `just ci deploy-backend-services` and `just ci pr-deploy-workflows` exit with `no services matched` for this repository. Use the three single-repository recipes from the production cluster-env sub-shell.
 
 ```bash
 just ci set-deploy-secret --repos dictyBase/graphql-server
@@ -490,99 +296,44 @@ just ci sync-deploy-vars --repos dictyBase/graphql-server
 just ci render-tag-deploy --app graphql-server --project graphql_server --out bin/ci-render/graphql-server-tag-build.yaml
 ```
 
-| Step | What it changes | Blast radius | Details |
-|------|-----------------|--------------|---------|
-| `set-deploy-secret` | Adds `graphql-server` to the selected-repository list of org secret `PROD_DEPLOY_SA_KEY`, uploading `credentials/<cluster>/deployer.json` | Merges with the repos already selected (`ci.justfile` reads the current list and re-sends it), so a single-repo run never revokes the modware repos | [CI variables](../backend/ci-variables.md#set-deploy-secret) |
-| `sync-deploy-vars` | Sets the five `PROD_*` repo variables (`PROD_CLUSTER`, `PROD_KOPS_STATE_STORAGE`, `PROD_KOPS_VERSION`, `PROD_KUBECTL_VERSION`, `PROD_PULUMI_VERSION`) on `dictyBase/graphql-server` from the registry entry | Idempotent upsert per variable; warns (does not fail) when `PROD_DEPLOY_SA_KEY` is not yet visible to the repo | [CI variables](../backend/ci-variables.md#sync-deploy-vars) |
-| `render-tag-deploy` | Writes `bin/ci-render/graphql-server-tag-build.yaml` in **cluster-ops**, nothing in the service repo | None until the PR below is merged | [workflow render](../backend/render-deploy-workflows.md) |
+| Recipe | What it changes | Risk | Details |
+|--------|-----------------|--------------|---------|
+| `set-deploy-secret` | Adds `graphql-server` to the repository list of the org secret `PROD_DEPLOY_SA_KEY` and uploads `credentials/<cluster>/deployer.json` | The recipe reads the current list and sends it again, so one run never removes the modware repositories | [CI variables](../backend/ci-variables.md#set-deploy-secret) |
+| `sync-deploy-vars` | Sets the five `PROD_*` repository variables from the registry entry | One upsert per variable. It warns, and it does not fail, when the repository cannot see `PROD_DEPLOY_SA_KEY`. | [CI variables](../backend/ci-variables.md#sync-deploy-vars) |
+| `render-tag-deploy` | Writes `bin/ci-render/graphql-server-tag-build.yaml` in cluster-ops only | None until you merge the pull request below | [workflow render](../backend/render-deploy-workflows.md) |
 
-**Project to image-name mapping.** `render-tag-deploy` derives the Docker Hub
-image from the Pulumi project folder: `image_name="${project//_/-}"`
-(`just_modules/ci.justfile`). `--project graphql_server` therefore renders
-`docker_image: graphql-server`, matching what `ci.yml` passes on the develop
-path — no extra flag needed. Pass `--docker-image` / `-d` only when the image
-name is not the dashed project folder. `--stack` defaults to `$PULUMI_STACK`
-and must match the `stack:` key of a registry entry under
-`config/clusters/*.yaml`, otherwise the recipe fails with
-`no registry entry with stack '<name>'`.
+`render-tag-deploy` builds the Docker Hub image name from the project folder and replaces `_` with `-`. The value `graphql_server` gives `graphql-server`, so the `--docker-image` flag is not necessary. `--stack` defaults to `$PULUMI_STACK` and must match a `stack:` key in `config/clusters/*.yaml`. A wrong value fails with `no registry entry with stack '<name>'`. The template writes `dockerfile: build/package/Dockerfile` and `environment: production` as fixed values, so check the Dockerfile path in the service repository.
 
-**Rendered inputs** (from `config/templates/tag-build-deploy.yaml.tmpl`, stack
-`dcr-kube1`, `ci_env: PROD`):
+To finish the setup, open a pull request against `dictyBase/graphql-server`:
 
-| `with:` key | Rendered value | Source |
-|-------------|----------------|--------|
-| `app` | `graphql-server` | `--app` |
-| `project` | `graphql_server` | `--project` (the cluster-ops folder, underscore kept) |
-| `docker_image` | `graphql-server` | `--project` with `_` → `-`, or `--docker-image` |
-| `stack` | `dcr-kube1` | `--stack` / `$PULUMI_STACK` |
-| `dockerfile` | `build/package/Dockerfile` | hardcoded in the template; not verified against `dictyBase/graphql-server` — confirm the path before merging the PR |
-| `cluster`, `cluster_state_storage`, `kops_version`, `kubectl_version`, `pulumi_version` | `${{ vars.PROD_* }}` | the variables `sync-deploy-vars` publishes |
-| `environment` | `production` | hardcoded — selects `PROD_DEPLOY_SA_KEY` inside `composite-deploy.yaml` |
+1. Copy `bin/ci-render/graphql-server-tag-build.yaml` to `.github/workflows/tag-build.yaml`. Replace the tag workflow that is there, because the composite workflow builds the image itself.
+2. Delete `.github/workflows/staging-build.yaml` in the same pull request. There is no staging environment.
+3. Do not change `.github/workflows/ci.yml`. It keeps the develop path on the `experiments` stack.
 
-**PR it into the service repo.** `pr-deploy-workflows` cannot do this for
-`graphql-server` (not in `config/services.yaml`), so the PR against
-`dictyBase/graphql-server` is manual:
-
-1. Copy `bin/ci-render/graphql-server-tag-build.yaml` to
-   `.github/workflows/tag-build.yaml`, replacing whatever tag workflow is
-   there — the composite builds and publishes the image itself, so keeping an
-   older `build-publish-image.yaml` call would build every tag twice.
-2. Delete `.github/workflows/staging-build.yaml` in the same PR — there is no
-   staging environment, and the render refuses any output mentioning it.
-3. Leave `.github/workflows/ci.yml` untouched: it keeps deploying `develop`
-   pushes to the `experiments` stack with the dev `DEPLOY_SA_KEY`.
-
-Two preconditions have to hold before a tag actually deploys, and neither is
-checked by these three recipes:
-
-- `dictyBase/workflows` `composite-deploy.yaml` must already select
-  `secrets.PROD_DEPLOY_SA_KEY` and `vars.PROD_PULUMI_STATE_STORAGE` for
-  `inputs.environment == 'production'`
-  ([workflow render](../backend/render-deploy-workflows.md)); without it the
-  tag run authenticates with the dev key and fails.
-- `graphql_server/Pulumi.<prod-stack>.yaml` must exist and be pushed to
-  cluster-ops `develop` ([creating a new stack file](#creating-a-new-stack-file)) —
-  the repository ships no production stack file, so a tag deploy would reach
-  `pulumi up` with no stack config.
-
-The render itself is covered by `scripts/test-render-tag-deploy.sh`, which
-asserts the `graphql_server` → `graphql-server` mapping and the
-`$PULUMI_STACK` default. The end-to-end tag deploy for this repository has not
-been exercised; treat the first production tag as a supervised run.
-
-**Ordering rule:** Any change to `graphql_server/*.go` or
-`graphql_server/Pulumi.<stack>.yaml` in `cluster-ops` **must be committed and
-pushed to `develop` before** merging or tagging `dictyBase/graphql-server`.
-Otherwise the CI run clones the old `cluster-ops` tree and deploys with stale
-flags or config.
+Two conditions must hold before a tag deploys, and these recipes check neither one. First, the composite workflow must select `secrets.PROD_DEPLOY_SA_KEY` and `vars.PROD_PULUMI_STATE_STORAGE` for `inputs.environment == 'production'`. Second, `graphql_server/Pulumi.<prod-stack>.yaml` must exist on cluster-ops `develop`. `scripts/test-render-tag-deploy.sh` covers the render only. No operator ran a full tag deploy for this repository, so watch the first production tag.
 
 ---
 
 ## Verification
 
-The `cluster-env` sub-shell exports `KUBECONFIG` but sets no default namespace
-on the context (`.env.<env>.<cluster>` carries no namespace variable), so every
-command below needs `-n <namespace>` — `prod` on production, `dev` on the lab
-`experiments` stack.
+The cluster-env sub-shell exports `KUBECONFIG`, but it sets no default namespace. Give `-n <namespace>` to each command: `prod` on production, `dev` on the lab `experiments` stack.
 
-1. **Rollout and running image** (the image tag must match
-   `properties.image.tag` on the stack):
-   ```bash
-   kubectl -n prod rollout status deployment/graphql-api-server
-   kubectl -n prod get deploy graphql-api-server -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-   ```
-2. **Startup logs (confirm `authEnabled` state):**
-   ```bash
-   kubectl -n prod logs deployment/graphql-api-server --tail=20
-   ```
-   Expect:
-   `going to start graphql server with authentication enabled <true|false>, jwt-audience ... and jwt-issuer ...`
-3. **Service and Ingress** (the Ingress must show the `ingress.hosts` entries
-   and an address from the `nginx` controller):
-   ```bash
-   kubectl -n prod get svc graphql-api
-   kubectl -n prod get ingress graphql-ingress
-   ```
+```bash
+# 1. Rollout and image. The tag must match properties.image.tag.
+kubectl -n <namespace> rollout status deployment/graphql-api-server
+kubectl -n <namespace> get deploy graphql-api-server -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+
+# 2. Startup log. It reports the authentication state.
+kubectl -n <namespace> logs deployment/graphql-api-server --tail=20
+
+# 3. Service. graphql-api on port 8080 is always present.
+kubectl -n <namespace> get svc graphql-api
+
+# 4. Ingress. Run this only when the stack sets ingress.enabled to true.
+kubectl -n <namespace> get ingress graphql-ingress
+```
+
+The log line reads `going to start graphql server with authentication enabled <true|false>, jwt-audience ... and jwt-issuer ...`. With the Ingress on, step 4 must list the `ingress.hosts` entries and an address from the `nginx` controller. With the default `ingress.enabled: false`, step 4 returns `NotFound`, and you verify the external route on the Gateway stack instead.
 
 ---
 
@@ -590,11 +341,16 @@ command below needs `-n <namespace>` — `prod` on production, `dev` on the lab
 
 | Symptom | Cause | Action |
 |---------|-------|--------|
-| `authEnabled=true but secrets.auth is missing ...` during `preview` / `up` | `authEnabled` is `true` in `Pulumi.<stack>.yaml`, but one or more `secrets.auth.*` keys are unset | Set all five `properties.secrets.auth.*` secrets with `just gcp-pulumi set-secret`, or set `authEnabled: false` ([auth modes](#authentication-modes)) |
-| Pod `CrashLoopBackOff` with `--auth-api-endpoint is required when auth is enabled` (exit code 2) | `authEnabled: true` with an empty `properties.endpoints.auth` — the Pulumi `validate()` gate does not check that key | `just gcp-pulumi set-config --folder graphql_server --key properties.endpoints.auth --value <logto-url>`, then re-apply |
-| Pod `CrashLoopBackOff` with `Required flag "stock-grpc-host" not set` (or `order`, `annotation`, `feature-annotation`, `content`) | One of the five gRPC Services did not exist in the namespace when the pod started | Deploy the missing gRPC Service (`stock-api`, `order-api`, `annotation-api`, `anno-feat-api`, `content-api`), then run `kubectl -n <ns> rollout restart deployment/graphql-api-server` |
-| Pod `CrashLoopBackOff` with `flag provided but not defined: -auth-enabled` | Deployed `dictybase/graphql-server` image predates the `--auth-enabled` flag | Update `properties.image.tag` to a current image built from `develop` |
-| Pod `CreateContainerConfigError` referencing Secret `minio` or `minio-root` | `properties.secrets.minio.name` or its `userKey`/`passKey` does not match the Secret in the namespace | Check `kubectl -n <ns> get secret` in the namespace; on prod (`minio-deploy.md`) use Secret `minio-root` with keys `rootUser` and `rootPassword` |
-| Pod `CrashLoopBackOff` on Redis connection (`REDIS_SERVICE_HOST` empty or connection refused) | Service `redis` was absent when the pod started or Redis is down | Run `just redis verify`, then `kubectl -n <ns> rollout restart deployment/graphql-api-server` |
-| CI deploy on `graphql-server` ignores recent `cluster-ops` changes | `cluster-ops` changes are local or on an unmerged branch (`dagger-of-dcr` always clones `cluster-ops@develop`) | Merge and push `cluster-ops` `develop` first, then re-run the GitHub Actions workflow |
-| Upstream `502 Bad Gateway` on slow strain/stock queries | Query exceeded server write deadline or ArangoDB I/O bottleneck | Ensure image includes the `60s` `graphqlServerWriteTimeout` and verify ArangoDB health (`just arangodb verify`) |
+| `ERROR: stack '<stack>' does not exist in graphql_server, and there is no Pulumi.<stack>.yaml to initialize it from` | First deploy on this cluster. `ensure-stack` creates a stack only from a stack file that exists. | Run `just gcp-pulumi new-stack --folder graphql_server`, then write the `config:` block ([create the stack](#create-the-stack)). Ignore the `fork-stack` and `new-stack-from` hints in the message. |
+| `failed to read graphql config: missing required configuration variable 'graphql_server:properties'` | The stack exists in the backend, but the stack file has no `config:` block. | Paste the [baseline stack file](#baseline-stack-file) under the `secretsprovider:` header. Run `preview` again. |
+| `ingress.enabled=true but ingress is missing hosts, path, tlsSecret`, or any subset of those names | `ingress.enabled` is `true`, and one of the three keys is empty. | Set the named keys, or set `properties.ingress.enabled` to `false` ([ingress mode](#ingress-mode)). |
+| `preview` plans to delete `graphql-ingress` | An operator set `ingress.enabled` to `false`, or removed the `ingress:` block. | This is correct only when a Gateway route replaces the Ingress. Otherwise set `ingress.enabled` back to `true` before you apply ([turn the ingress off](#turn-the-ingress-off)). |
+| The Ingress apply fails on an invalid `metadata.labels` key | `ingress.enabled` is `true`, and `ingress.label.name` is empty. | Set `properties.ingress.label.name` to `kcert.dev/ingress` and `properties.ingress.label.value` to `managed`. |
+| `authEnabled=true but secrets.auth is missing ...` | `authEnabled` is `true`, and one of the five `secrets.auth.*` keys is empty. | Set all five secrets with `just gcp-pulumi set-secret`, or set `authEnabled` to `false` ([authentication mode](#authentication-mode)). |
+| Pod `CrashLoopBackOff` with `--auth-api-endpoint is required when auth is enabled` | `authEnabled` is `true`, and `properties.endpoints.auth` is empty. The Pulumi check does not look at that key. | Set `properties.endpoints.auth` to the Logto URL and apply again. |
+| Pod `CrashLoopBackOff` with `Required flag "stock-grpc-host" not set`, or the same error for `order`, `annotation`, `feature-annotation`, or `content` | One gRPC Service did not exist when the pod started. | Deploy the missing Service, then run `kubectl -n <namespace> rollout restart deployment/graphql-api-server`. |
+| Pod `CrashLoopBackOff` with `flag provided but not defined: -auth-enabled` | The image is older than the `--auth-enabled` flag. | Set `properties.image.tag` to a current image from `develop`. |
+| Pod `CreateContainerConfigError` on Secret `minio` or `minio-root` | `properties.secrets.minio.name`, `userKey`, or `passKey` does not match the Secret in the namespace. | Run `kubectl -n <namespace> get secret`. On production, use `minio-root` with the keys `rootUser` and `rootPassword` ([MinIO secret keys](#minio-secret-keys)). |
+| Pod `CrashLoopBackOff` on the Redis connection | Service `redis` was absent when the pod started, or Redis is down. | Run `just redis verify`, then restart the Deployment. |
+| `502 Bad Gateway` on a slow strain or stock query | The query exceeded the server write deadline, or ArangoDB is slow. | Run `just arangodb verify`. Then make the query smaller, or raise the deadline in the server image. |
+| A CI deploy ignores a recent cluster-ops change | The cluster-ops change is local, or it is on an unmerged branch. CI always clones `cluster-ops@develop`. | Merge and push cluster-ops `develop`, then run the workflow again. |

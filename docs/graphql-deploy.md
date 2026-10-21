@@ -1,57 +1,64 @@
 # GraphQL Server Deploy
 
-Deployment guide for **graphql-server** (`dictybase/graphql-server`) via the `graphql_server/` Pulumi project: Deployment `graphql-api-server`, NodePort Service `graphql-api`, and public TLS Ingress `graphql-ingress`, fed by Redis, MinIO, and five in-cluster gRPC Services.
+The `graphql_server/` Pulumi project deploys **graphql-server** (`dictybase/graphql-server`) into one namespace. The project creates the Deployment `graphql-api-server` and the NodePort Service `graphql-api` on port `8080`. The server reads from Redis, MinIO, and five in-cluster gRPC Services.
 
-**Status**: Production procedure. The program reads `graphql_server/Pulumi.$PULUMI_STACK.yaml` — the repository ships only the lab `Pulumi.experiments.yaml` (namespace `dev`) and a retired `Pulumi.dev.yaml` the program no longer reads, so write the stack file for any other cluster before `ensure-stack`.
+**The per-app TLS Ingress is optional, and it is off by default.** With the default, the stack creates the Deployment and the Service only, and a central Gateway routes the external traffic. [Section 4](#4-configure-ingress-mode-optional) gives the procedure to turn the Ingress on.
+
+**Status**: Production procedure. The repository contains the lab stack file `graphql_server/Pulumi.experiments.yaml` (namespace `dev`) only. A new cluster needs `just gcp-pulumi new-stack` and a `config:` block that you write by hand.
 
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)
-- [1. Verify Upstream Services](#1-verify-upstream-services)
-- [2. Configure the Stack](#2-configure-the-stack)
-- [3. Select the Authentication Mode](#3-select-the-authentication-mode)
-- [4. Encrypt the MinIO Secret](#4-encrypt-the-minio-secret)
-- [5. Preview and Deploy](#5-preview-and-deploy)
-- [6. Push the Stack File](#6-push-the-stack-file)
-- [7. Verify](#7-verify)
-- [8. Wire Production Tag Deploys](#8-wire-production-tag-deploys)
-- [9. Troubleshooting](#9-troubleshooting)
-- [10. Related Documents](#10-related-documents)
+- [1. Verify the Upstream Services](#1-verify-the-upstream-services)
+- [2. Create or Select the Stack](#2-create-or-select-the-stack)
+- [3. Configure Authentication Mode](#3-configure-authentication-mode)
+- [4. Configure Ingress Mode (Optional)](#4-configure-ingress-mode-optional)
+- [5. Encrypt the MinIO Secret](#5-encrypt-the-minio-secret)
+- [6. Preview and Deploy](#6-preview-and-deploy)
+- [7. Push the Stack File](#7-push-the-stack-file)
+- [8. Verify the Rollout](#8-verify-the-rollout)
+- [9. Enable Production Tag Deploys](#9-enable-production-tag-deploys)
+- [10. Troubleshooting](#10-troubleshooting)
+- [11. Related Documents](#11-related-documents)
 
 ---
 
 ## Quick Reference
 
-For experienced users. Full details in sections below.
+For experienced users. Full details in the sections below.
 
 ```bash
-# Enter cluster environment first
+# Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. Verify the upstream datastores (the five gRPC Services must exist too)
+# 1. Verify the datastores. The five gRPC Services must also exist.
 just redis verify
 just minio verify
 
-# 2. Write graphql_server/Pulumi.<stack>.yaml, then select the stack
+# 2. Create the stack, or select it, then write graphql_server/Pulumi.${PULUMI_STACK}.yaml
+just gcp-pulumi new-stack --folder graphql_server
 just gcp-pulumi ensure-stack --folder graphql_server
 
-# 3. Pick the authentication mode (false is the default when the key is absent)
+# 3. Set the authentication mode. The default is false.
 just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled --value false
 
-# 4. Encrypt the MinIO Secret pointer
+# 4. Optional. Set the Ingress mode. The default is false (no Ingress).
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value false
+
+# 5. Encrypt the name of the MinIO Secret
 just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name
 
-# 5. Read the plan, then apply
+# 6. Read the plan, then apply it
 just gcp-pulumi preview --folder graphql_server
 just gcp-pulumi create-resource --folder graphql_server
 
-# 6. Push the stack file before any graphql-server merge or tag
+# 7. Push the stack file before each graphql-server merge or tag
 git add "graphql_server/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "graphql_server: stack config" && git push
 
-# 7. Verify the rollout (the cluster-env shell sets no default namespace)
+# 8. Verify the rollout. The sub-shell sets no default namespace.
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 
-# 8. One-time: make release tags deploy (then PR the rendered file by hand)
+# 9. Optional, one time per cluster. Let release tags deploy.
 just ci set-deploy-secret --repos dictyBase/graphql-server
 just ci sync-deploy-vars --repos dictyBase/graphql-server
 just ci render-tag-deploy --app graphql-server --project graphql_server --out bin/ci-render/graphql-server-tag-build.yaml
@@ -59,17 +66,17 @@ just ci render-tag-deploy --app graphql-server --project graphql_server --out bi
 
 ---
 
-**Everything below runs inside the cluster-env sub-shell.**
+**All of the commands below run in the cluster-env sub-shell.**
 
-- Enter it with `just cluster-env --env <env> --cluster <cluster>`. The sub-shell sources `.env.<env>.<cluster>` and exports `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID`, and `KUBECONFIG`.
-- Recipes default `--stack` to `$PULUMI_STACK`, so no recipe below needs the flag.
-- Outside the sub-shell recipes fail with `Error: no stack name`.
+- Enter the sub-shell with `just cluster-env --env <env> --cluster <cluster>`. The sub-shell reads `.env.<env>.<cluster>` and exports `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID`, and `KUBECONFIG`.
+- Each recipe defaults `--stack` to `$PULUMI_STACK`. No command below needs the flag.
+- Outside the sub-shell the recipes fail with `Error: no stack name`.
 - Leave the sub-shell with `exit` or Ctrl-D.
 
-## 1. Verify Upstream Services
+## 1. Verify the Upstream Services
 
-Redis, MinIO, and the five modware gRPC Services must already exist in the namespace — Kubernetes injects their `*_SERVICE_HOST` variables only into pods created after them, and the container exits when one is missing.
-→ [Prerequisites](reference/graphql/deployment.md#prerequisites) · [service discovery](reference/graphql/deployment.md#in-cluster-service-discovery)
+Redis, MinIO, and the five modware gRPC Services must exist in the namespace before the pod starts. Kubernetes gives the `*_SERVICE_HOST` variables only to a pod that starts after the Service, and the container exits when one variable is absent.
+→ [Prerequisites](reference/graphql/deployment.md#prerequisites) · [Service discovery](reference/graphql/deployment.md#in-cluster-service-discovery)
 
 ```bash
 just redis verify
@@ -78,27 +85,31 @@ just minio verify
 
 ---
 
-## 2. Configure the Stack
+## 2. Create or Select the Stack
 
-`ensure-stack` fails closed unless `graphql_server/Pulumi.${PULUMI_STACK}.yaml` exists — write it first from the `Pulumi.experiments.yaml` shape.
-→ [Stack configuration](reference/graphql/deployment.md#stack-configuration)
+On a new cluster, run `new-stack` first, then write the `config:` block into `graphql_server/Pulumi.${PULUMI_STACK}.yaml`. When the stack file is in Git, run `ensure-stack` to select the stack.
+→ [Create the stack](reference/graphql/deployment.md#create-the-stack)
 
 ```bash
+# New cluster. Write graphql_server/Pulumi.${PULUMI_STACK}.yaml after this command.
+just gcp-pulumi new-stack --folder graphql_server
+
+# The stack file is in Git
 just gcp-pulumi ensure-stack --folder graphql_server
 ```
 
 ---
 
-## 3. Select the Authentication Mode
+## 3. Configure Authentication Mode
 
-`properties.authEnabled` defaults to **`false`** when the key is absent — the container runs with `--auth-enabled=false`, no JWT middleware, and no Logto dependency. `true` additionally requires `properties.endpoints.auth` and all five `properties.secrets.auth.*` values; set them **before** flipping the flag, because `preview` then fails closed with `authEnabled=true but secrets.auth is missing ...`.
-→ [Authentication modes](reference/graphql/deployment.md#authentication-modes)
+The key `properties.authEnabled` defaults to `false`, and the server then accepts each request without a JWT. To use Logto, set `properties.endpoints.auth` and the five `properties.secrets.auth.*` values first. Then set the key to `true`.
+→ [Authentication mode](reference/graphql/deployment.md#authentication-mode)
 
 ```bash
-# Without auth (default)
+# Keep authentication off (default)
 just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled --value false
 
-# With auth: endpoint, then the five Logto secrets at a hidden prompt, flag last
+# Turn authentication on. Set the endpoint and the five secrets first.
 just gcp-pulumi set-config --folder graphql_server --key properties.endpoints.auth --value <logto-url>
 just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.appId
 just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.auth.appSecret
@@ -110,10 +121,32 @@ just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled 
 
 ---
 
-## 4. Encrypt the MinIO Secret
+## 4. Configure Ingress Mode (Optional)
 
-Store the pointer to the MinIO credentials Secret created by the `minio` stack; `userKey` and `passKey` are plain config. Omit `--value` to enter the value at a hidden prompt.
-→ [Secrets and MinIO wiring](reference/graphql/deployment.md#secrets-and-minio-wiring)
+**Optional. The default is off. Skip this section to keep the Ingress off.**
+
+The key `properties.ingress.enabled` defaults to `false`. With `false`, the stack creates the Deployment and the Service only, and a central Gateway routes the external traffic. To create the per-app `nginx` Ingress `graphql-ingress`, set `hosts`, `path`, `tlsSecret`, and `label` first. Then set the key to `true`.
+→ [Ingress mode](reference/graphql/deployment.md#ingress-mode)
+
+```bash
+# Keep the Ingress off (default). You can also do nothing and omit the key.
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value false
+
+# Turn the Ingress on. Set the four keys first.
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts[0] --value <graphql-host>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.path --value /
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.tlsSecret --value <graphql-tls-secret>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.name --value kcert.dev/ingress
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.value --value managed
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value true
+```
+
+---
+
+## 5. Encrypt the MinIO Secret
+
+The key `properties.secrets.minio.name` holds the name of the Kubernetes Secret that the `minio` stack creates. Omit `--value` to type the value at a hidden prompt.
+→ [MinIO secret keys](reference/graphql/deployment.md#minio-secret-keys)
 
 ```bash
 just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.minio.name
@@ -121,9 +154,9 @@ just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.mini
 
 ---
 
-## 5. Preview and Deploy
+## 6. Preview and Deploy
 
-Read the plan, then apply it — the apply is non-interactive and aborts by itself on a protected resource. Re-run both for upgrades after changing `properties.image.tag`.
+Read the plan, then apply it. The apply is not interactive, and it stops by itself when the plan changes a protected resource. For an upgrade, change `properties.image.tag` and run both commands again.
 → [Deploy behavior](reference/graphql/deployment.md#deploy-behavior)
 
 ```bash
@@ -133,10 +166,10 @@ just gcp-pulumi create-resource --folder graphql_server
 
 ---
 
-## 6. Push the Stack File
+## 7. Push the Stack File
 
-**WARNING: Push cluster-ops `develop` before merging or tagging `dictyBase/graphql-server`.** CI clones cluster-ops at `develop`, so an unpushed stack file deploys nothing.
-→ [CI deployment details](reference/graphql/deployment.md#github-actions-ci-deployment)
+**CAUTION: Push cluster-ops `develop` before you merge or tag `dictyBase/graphql-server`.** CI clones cluster-ops at `develop`, so a stack file that you did not push deploys nothing.
+→ [CI deployment](reference/graphql/deployment.md#ci-deployment)
 
 ```bash
 git add "graphql_server/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "graphql_server: stack config" && git push
@@ -144,10 +177,10 @@ git add "graphql_server/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "graphql_s
 
 ---
 
-## 7. Verify
+## 8. Verify the Rollout
 
-No recipe covers this project — check the rollout with `kubectl`. The sub-shell sets no default namespace, so `-n <namespace>` (the stack's `properties.namespace`) is required.
-→ [Verification details](reference/graphql/deployment.md#verification)
+No recipe covers this project, so use `kubectl`. The sub-shell sets no default namespace, so give `-n <namespace>` with the value of `properties.namespace`.
+→ [Verification](reference/graphql/deployment.md#verification)
 
 ```bash
 kubectl -n <namespace> rollout status deployment/graphql-api-server
@@ -155,12 +188,12 @@ kubectl -n <namespace> rollout status deployment/graphql-api-server
 
 ---
 
-## 8. Wire Production Tag Deploys
+## 9. Enable Production Tag Deploys
 
-**One-time per cluster. Skip while production deploys stay manual.**
+**Optional. Do this one time for each cluster. Skip it while production deploys stay manual.**
 
-Grants `PROD_DEPLOY_SA_KEY` visibility to `dictyBase/graphql-server`, publishes the `<CI_ENV>_*` repo variables, and renders `tag-build.yaml` for the repo — which stays inert until it is PR'd in as `.github/workflows/tag-build.yaml`.
-→ [Tag deploy wiring](reference/graphql/deployment.md#wiring-production-tag-deploys)
+These three recipes give `dictyBase/graphql-server` access to `PROD_DEPLOY_SA_KEY`, publish the `<CI_ENV>_*` repository variables, and render a tag workflow file. The rendered file does nothing until you add it to the service repository with a pull request.
+→ [Tag deploy setup](reference/graphql/deployment.md#tag-deploy-setup)
 
 ```bash
 just ci set-deploy-secret --repos dictyBase/graphql-server
@@ -170,20 +203,20 @@ just ci render-tag-deploy --app graphql-server --project graphql_server --out bi
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 → [Troubleshooting table](reference/graphql/deployment.md#troubleshooting)
 
 ---
 
-## 10. Related Documents
+## 11. Related Documents
 
 **Reference details for this guide:**
 - [GraphQL server deployment details](reference/graphql/deployment.md)
 
-**Other documentation:**
+**Other documents:**
 - gRPC backends behind this server: [`backend-service-deploy.md`](backend-service-deploy.md)
 - Redis: [`redis-deploy.md`](redis-deploy.md)
 - MinIO and the asset bucket: [`minio-deploy.md`](minio-deploy.md)
-- Logto (only when `authEnabled: true`): [`logto-deploy.md`](logto-deploy.md)
+- Logto, for `authEnabled: true` only: [`logto-deploy.md`](logto-deploy.md)
 - Shared namespaces: [`reference/pulumi/namespaces.md`](reference/pulumi/namespaces.md)
