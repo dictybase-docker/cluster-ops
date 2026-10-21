@@ -8,11 +8,15 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// createIngress creates a new Ingress resource with the given configuration.
+// CreateIngress creates a new Ingress resource when ingress.enabled is true.
+// Disabled by default so new clusters can manage routing via a central Gateway.
 func (gs *GraphqlServer) CreateIngress(
 	ctx *pulumi.Context,
 ) error {
 	config := gs.Config
+	if !config.Ingress.Enabled {
+		return nil
+	}
 	_, err := networkingv1.NewIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", config.Name),

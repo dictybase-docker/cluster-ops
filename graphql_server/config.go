@@ -35,9 +35,10 @@ type ImageConfig struct {
 }
 
 type IngressConfig struct {
-	Hosts []string
-	Path  string
-	Label struct {
+	Enabled bool
+	Hosts   []string
+	Path    string
+	Label   struct {
 		Name  string
 		Value string
 	}
@@ -84,27 +85,60 @@ func ReadConfig(ctx *pulumi.Context) (*GraphqlServerConfig, error) {
 	return graphqlConfig, nil
 }
 
-// validate fails closed when auth is enabled without its logto secrets; a
-// half-configured stack would otherwise deploy a container that cannot boot.
+// validate fails closed when auth or ingress is enabled without its required
+// fields; a half-configured stack would otherwise deploy a broken resource.
 func (c *GraphqlServerConfig) validate() error {
+	if err := c.validateAuth(); err != nil {
+		return err
+	}
+	return c.validateIngress()
+}
+
+func (c *GraphqlServerConfig) validateAuth() error {
 	if !c.AuthEnabled {
 		return nil
 	}
 	missing := []string{}
-	for name, val := range map[string]string{
-		"appId":       c.Secrets.Auth.AppId,
-		"appSecret":   c.Secrets.Auth.AppSecret,
-		"jwksURI":     c.Secrets.Auth.JwksURI,
-		"jwtIssuer":   c.Secrets.Auth.JwtIssuer,
-		"jwtAudience": c.Secrets.Auth.JwtAudience,
+	for _, field := range []struct {
+		name string
+		val  string
+	}{
+		{"appId", c.Secrets.Auth.AppId},
+		{"appSecret", c.Secrets.Auth.AppSecret},
+		{"jwksURI", c.Secrets.Auth.JwksURI},
+		{"jwtIssuer", c.Secrets.Auth.JwtIssuer},
+		{"jwtAudience", c.Secrets.Auth.JwtAudience},
 	} {
-		if val == "" {
-			missing = append(missing, name)
+		if field.val == "" {
+			missing = append(missing, field.name)
 		}
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf(
 			"authEnabled=true but secrets.auth is missing %s",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
+}
+
+func (c *GraphqlServerConfig) validateIngress() error {
+	if !c.Ingress.Enabled {
+		return nil
+	}
+	missing := []string{}
+	if len(c.Ingress.Hosts) == 0 {
+		missing = append(missing, "hosts")
+	}
+	if c.Ingress.Path == "" {
+		missing = append(missing, "path")
+	}
+	if c.Ingress.TLSSecret == "" {
+		missing = append(missing, "tlsSecret")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf(
+			"ingress.enabled=true but ingress is missing %s",
 			strings.Join(missing, ", "),
 		)
 	}

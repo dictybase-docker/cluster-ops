@@ -16,6 +16,7 @@ config:
       name: dictybase/graphql-server
       tag: develop-615c758
     ingress:
+      enabled: true
       hosts:
         - graphql.dictybase.dev
       label:
