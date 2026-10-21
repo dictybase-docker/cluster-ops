@@ -801,6 +801,87 @@ scaffold-graphql-stack stack="" store_endpoint="https://storage.dictybase.dev" p
     echo "  name=graphql image=dictybase/graphql-server:bootstrap namespace=${namespace} minioSecret=${sec_name} port={{ port }}"
     echo "Next: just gcp-pulumi preview --folder graphql_server"
 
+# Scaffold an event-messenger stack config from the cluster registry + template.
+# Initializes the stack with the registry KMS secrets provider when absent, and
+# appends the baseline config block (`email-event`, `issue-event`,
+# `OrderService.Create`, `logLevel: error`) into event-messenger/Pulumi.<stack>.yaml.
+# Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
+# Usage: just gcp-pulumi scaffold-event-messenger-stack [--stack <name>] [--nats-subject <subject>] [--ncbi-email <email>] [--ncbi-tool <tool>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("nats_subject", long="nats-subject", help="NATS subject to subscribe to (default: OrderService.Create)")]
+[arg("ncbi_email", long="ncbi-email", help="Optional NCBI developer contact email (default: siddhartha-basu@northwestern.edu)")]
+[arg("ncbi_tool", long="ncbi-tool", help="Optional NCBI tool identifier (default: eventmessenger)")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-event-messenger-stack stack="" nats_subject="OrderService.Create" ncbi_email="siddhartha-basu@northwestern.edu" ncbi_tool="eventmessenger":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    folder="event-messenger"
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ]; then
+        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+
+    tmp=$(mktemp /tmp/event-messenger-stack-XXXXXX)
+    trap 'rm -f "${tmp}"' EXIT
+    subj={{ quote(nats_subject) }}
+    ncbi_mail={{ quote(ncbi_email) }}
+    ncbi_tl={{ quote(ncbi_tool) }}
+    sed \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        -e "s|__NATS_SUBJECT__|${subj}|g" \
+        -e "s|__NCBI_EMAIL__|${ncbi_mail}|g" \
+        -e "s|__NCBI_TOOL__|${ncbi_tl}|g" \
+        config/templates/event-messenger-stack.yaml.tmpl > "${tmp}"
+    cat "${tmp}" >> "${cfg}"
+
+    yq -r '.config' "${cfg}" >/dev/null
+    got_ns=$(yq -r '.config."event-messenger:properties".namespace' "${cfg}")
+    got_email_name=$(yq -r '.config."event-messenger:properties".emailDeployment.name' "${cfg}")
+    got_issue_name=$(yq -r '.config."event-messenger:properties".issueDeployment.name' "${cfg}")
+    if [ "${got_ns}" != "${namespace}" ] || [ "${got_email_name}" != "event-messenger-email" ] || [ "${got_issue_name}" != "event-messenger-issue" ]; then
+        echo "ERROR: rendered config failed validation (namespace=${got_ns}, email=${got_email_name}, issue=${got_issue_name})." >&2
+        exit 1
+    fi
+    if grep -q ':latest' "${cfg}"; then
+        echo "ERROR: rendered config contains :latest — prod stacks must never carry a mutable tag." >&2
+        exit 1
+    fi
+
+    echo "Scaffolded ${cfg}"
+    echo "  emailDeployment=event-messenger-email issueDeployment=event-messenger-issue image=dictybase/event-messenger:bootstrap namespace=${namespace} subject=${subj}"
+    echo "Next: just gcp-pulumi set-secret --folder event-messenger --key <path>"
+
 # Composite read-only prerequisite gate for a backend service deploy.
 # Checks, in order: registry entry (by stack), namespace exists, ArangoDB
 # credentials Secret exists with the configured keys, the application

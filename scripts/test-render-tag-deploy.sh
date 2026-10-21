@@ -203,4 +203,13 @@ grep -q 'project: modware-annotation-feature' "${anno_out}" || fail "call-buildl
 grep -q 'app: anno-feat' "${anno_out}" || fail "call-buildless-deploy missing app: anno-feat"
 echo "  modware-annotation dual deploy: PASS"
 
+echo "=== 8. event-messenger project renders tag-build.yaml ==="
+em_out="${tmp}/event-messenger-tag-build.yaml"
+PULUMI_STACK=dcr-kube1 just ci render-tag-deploy --app event-messenger --project event-messenger \
+    --out "${em_out}" >/dev/null || fail "event-messenger render failed"
+grep -q 'project: event-messenger' "${em_out}" || fail "project must be event-messenger"
+grep -q 'docker_image: event-messenger' "${em_out}" || fail "docker_image must be event-messenger"
+grep -q 'app: event-messenger' "${em_out}" || fail "app must be event-messenger"
+echo "  event-messenger mapping: PASS"
+
 echo "render-tag-deploy contract tests PASSED"

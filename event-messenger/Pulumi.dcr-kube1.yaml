@@ -1,0 +1,67 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIHANR1j/vyfLyUyNNFm4PU2Y0jWzfXCJhIukwE7iSxUSSQDjx5R/JBVZ7wLdrjFaIIW2sSAHkF6p+OhCEh7/A2L/itX/Tkk/Y67Wfb+3BxuqumG2O1E30gJEKSgRRp1ihUx68l/ZrOXvgZs=
+# Template for an event-messenger stack config.
+# Rendered by `just gcp-pulumi scaffold-event-messenger-stack` — the config
+# block is appended to Pulumi.<stack>.yaml after `pulumi stack init` writes
+# the secretsprovider + encryptedkey lines.
+#
+# All `secrets.name` and `secrets.keys.*` entries are Kubernetes Secret and key
+# names (pointers resolved at pod runtime) — keep them plaintext.
+# Only `secrets.values.ncbiEmail` and `secrets.values.ncbiTool` have non-secret
+# defaults; populate the remaining `secrets.values.*` credentials with
+# `just gcp-pulumi set-secret --folder event-messenger --key <path>` before
+# running `preview` and `create-resource`.
+config:
+  event-messenger:properties:
+    emailDeployment:
+      name: event-messenger-email
+      secrets:
+        keys:
+          cc: eventMessenger.email.cc
+          domain: eventMessenger.email.domain
+          mailgunApiKey: eventMessenger.email.apiKey
+          ncbiApiKey: eventMessenger.email.ncbiApiKey
+          ncbiEmail: eventMessenger.email.ncbiEmail
+          ncbiTool: eventMessenger.email.ncbiTool
+          sender: eventMessenger.email.sender
+          senderName: eventMessenger.email.senderName
+        name: email-event
+        values:
+          ncbiEmail:
+            secure: v1:H+UUKxZEp2RIxXns:4cXy0kE2V2coi/YkPQ5RELhkruUO5AYzQntEsyJmV9cgQO7RqOBemv1k8mE/iPtK
+          ncbiTool:
+            secure: v1:3HxBep68rSe62ZhQ:ysx9Hu46oSpgEiy3ftp3QeOOTDShtkPOt22eps88JuXsbDk=
+          domain:
+            secure: v1:ysrgnj+sF5KJUUMn:8PLeIwVsO5B7wq6I5ZCXNRKbXKNcU3xFXJx14hinHyU=
+          mailgunApiKey:
+            secure: v1:9jScznJN4ufCXfhT:+6zbCG4Shbb7pQOnHYv1B957Ws0HU/zmsunZcvQXJAJ/gIkApYZXUjlLXYteVh/4BInttBelkDfGnOEc/HYV0q9R
+          sender:
+            secure: v1:iDsLz01R1+sUQ7WB:163kB/MrbaDqw8A9SY5x7lHL85WJdZvM5GkaM/NrFbW1P9/yxXbXhg==
+          senderName:
+            secure: v1:qCMTGJNtnGkmt/Kk:PdZgIPUb+Al6HYzLsWJjKFQ9DUej/lslCC2oKyx3J/VKAQ==
+          cc:
+            secure: v1:RrJm7dDTswAWeAX+:31baUu7E0MG61doyWRqBiicvBCHo520wc2tJDhDVQRBgOEECeR9pf4Qio7A6QJ/I
+          ncbiApiKey:
+            secure: v1:Rk9NiYh+ue78YwAM:JVoGeNqLHkkDlX10BSG42bFK9Dg1LZn9R9OR0t/ZiCSaCkm60ZmOcABONkbxX0WOc9rcdw==
+    image:
+      name: dictybase/event-messenger
+      tag: develop-a91cf3e
+    issueDeployment:
+      name: event-messenger-issue
+      secrets:
+        keys:
+          owner: eventMessenger.github.owner
+          repository: eventMessenger.github.repository
+          token: eventMessenger.github.token
+        name: issue-event
+        values:
+          owner:
+            secure: v1:jxs9GWUxwhdXLbnd:ZKq8Sjl0sQNNsbvLI+Xj9UupmtEdWUvCTA==
+          repository:
+            secure: v1:Zzj/qgXNRpWldxlj:JjgRVml/j9W5OkiShcLztrCfnvvJE1u4qE5j2Zz8hAnkBd0=
+          token:
+            secure: v1:nTc2LlGCb+aDFqJv:Vl2ODPMfncKEqL8lskgUTlpulkNVKvpjT+bKS/9+KIteoifsLQVh9rFfh+RXrvjYgKsM6BDDcVA=
+    logLevel: error
+    namespace: prod
+    nats:
+      subject: OrderService.Create

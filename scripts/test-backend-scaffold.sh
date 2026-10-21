@@ -160,4 +160,35 @@ cfg3="${folder3}/Pulumi.dcr-kube1.yaml"
     || fail "image.name must be dictybase/modware-annotation"
 echo "  modware-annotation-feature scaffold: PASS"
 
+echo "=== 7. scaffold-event-messenger-stack renders event-messenger config with email-event and issue-event ==="
+: > "${calls}"
+em_cfg="event-messenger/Pulumi.dcr-kube1.yaml"
+em_bak=""
+if [ -f "${em_cfg}" ]; then
+    em_bak="${tmp}/event-messenger-Pulumi.dcr-kube1.yaml.bak"
+    mv "${em_cfg}" "${em_bak}"
+fi
+out=$(just gcp-pulumi scaffold-event-messenger-stack --stack dcr-kube1 2>&1) || {
+    [ -n "${em_bak}" ] && mv "${em_bak}" "${em_cfg}"
+    fail "scaffold-event-messenger-stack failed:\n${out}"
+}
+[ -f "${em_cfg}" ] || fail "event-messenger stack file not created"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".namespace')" = "prod" ] || fail "namespace wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".logLevel')" = "error" ] || fail "logLevel wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".nats.subject')" = "OrderService.Create" ] || fail "nats.subject wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".image.name')" = "dictybase/event-messenger" ] || fail "image.name wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".image.tag')" = "bootstrap" ] || fail "image.tag wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".emailDeployment.name')" = "event-messenger-email" ] || fail "emailDeployment.name wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".emailDeployment.secrets.name')" = "email-event" ] || fail "emailDeployment.secrets.name wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".emailDeployment.secrets.values.ncbiTool')" = "eventmessenger" ] || fail "ncbiTool wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.name')" = "event-messenger-issue" ] || fail "issueDeployment.name wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.secrets.name')" = "issue-event" ] || fail "issueDeployment.secrets.name wrong"
+grep -q ':latest' "${em_cfg}" && fail "mutable :latest tag in rendered config"
+if [ -n "${em_bak}" ]; then
+    mv "${em_bak}" "${em_cfg}"
+else
+    rm -f "${em_cfg}"
+fi
+echo "  scaffold-event-messenger-stack: PASS"
+
 echo "backend scaffold contract tests PASSED"
