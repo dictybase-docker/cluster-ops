@@ -10,6 +10,19 @@ Before creating or editing any file under `docs/`, read
 - Never duplicate content between docs — link instead.
 - Commands show minimal invocation; defaults come from `just cluster-env`.
 - Keep TOC, Quick Reference, and cross-doc anchors in sync on every edit.
+- **Always use `just` recipes, never raw `kubectl` or manual YAML assembly.**
+  If a project lacks a `scaffold-*-stack` or `verify` recipe, build the recipe
+  and template first, then document the recipe.
+- **Write for human operators in ASD-STE100 style.** Never dump Go internal
+  function names (`conf.TryObject`, `openTarget`, call chains, file/line
+  citations) into `docs/`.
+- **Surface optional modes (`authEnabled`, `ingress.enabled`) as top-level
+  numbered sections** in the guide TOC and Quick Reference, stating the default
+  (`false`) in the first line.
+- **Never `set-secret` on Kubernetes `secretKeyRef` pointers.** Secret names
+  (`minio-root`, `backend`) and key names (`rootUser`, `rootPassword`) are
+  pointers resolved at pod runtime — keep them plain text in
+  `Pulumi.<stack>.yaml`.
 
 ## Infrastructure change checklist
 

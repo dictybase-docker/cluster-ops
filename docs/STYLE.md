@@ -83,6 +83,19 @@ guide, not per section.
   table.
 - One composite recipe per operator action. If a step needs several commands,
   fold them into one recipe instead of lengthening the guide.
+- **Build missing recipes before documenting.** Never tell the operator to run
+  raw `kubectl` commands, `new-stack` + hand-paste YAML, or manual workarounds
+  when a `just` recipe (`scaffold-*-stack`, `verify`, `deploy-backend-services`)
+  belongs there. Create the recipe and template first, then document the
+  recipe.
+- **Keep `secretKeyRef` pointers plain text.** Kubernetes Secret names
+  (`minio-root`, `backend`) and key names (`rootUser`, `rootPassword`) are
+  resolved at pod runtime — never tell the operator to run `set-secret` on a
+  Secret or key name.
+- **Surface optional modes as numbered sections.** Mode switches (`authEnabled`,
+  `ingress.enabled`) get their own numbered section in the guide TOC and Quick
+  Reference, opening with `**Optional. The default is off.**` and showing the
+  `set-config` / `set-secret` recipe block.
 
 ## 4. Guide Skeleton
 
@@ -124,7 +137,13 @@ buried sentence:
 
 ## 7. Writing Voice
 
-- Terse, present tense, operator-facing. Fragments are fine.
+- Terse, present tense, operator-facing (ASD-STE100 style: active voice,
+  imperative verbs in procedures, simple present in descriptions, one
+  instruction per sentence). Fragments are fine.
+- **Write for a human operator, never narrate Go internals.** Do not dump
+  internal Go function names (`conf.TryObject`, `openTarget`, `RunIfAllowed`),
+  call chains, or file/line citations into reference docs. Explain what the
+  recipe does, what keys to set, what defaults apply, and how to fix errors.
 - Name the failure the reader will hit and its cause
   ("Outside the sub-shell recipes fail with `Error: no stack name`"), not
   abstract advice.
