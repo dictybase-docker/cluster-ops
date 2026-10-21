@@ -416,22 +416,31 @@ render-composite-deploy cluster="" out="bin/ci-render/composite-deploy.yaml" wor
     # Also render deploy-buildless-backend.yaml alongside composite-deploy.yaml when available.
     buildless_out="$(dirname "${out_file}")/deploy-buildless-backend.yaml"
     if curl -fsSL "https://raw.githubusercontent.com/dictyBase/workflows/{{ workflow_ref }}/.github/workflows/deploy-buildless-backend.yaml" -o "${btmp}" 2>/dev/null && [ -s "${btmp}" ]; then
-        sed \
+        awk '
+            /^      environment:/ { in_env=1 }
+            in_env && /^        description:/ {
+                print
+                print "      runner:"
+                print "        type: string"
+                print "        default: ubuntu-latest"
+                print "        description: \"Runner for the job\""
+                in_env=0
+                next
+            }
+            { print }
+        ' "${btmp}" | sed \
             -e "s|credentials_json: \${{{{ secrets.DEPLOY_SA_KEY }}|credentials_json: \${{{{ inputs.environment == 'production' \&\& secrets.${ci_env}_DEPLOY_SA_KEY \|\| secrets.DEPLOY_SA_KEY }}|g" \
             -e "s|--pulumi-state \${{{{ vars.PULUMI_STATE_STORAGE }}|--pulumi-state \${{{{ inputs.environment == 'production' \&\& vars.${org_var} \|\| vars.PULUMI_STATE_STORAGE }}|g" \
             -e "s|runs-on: ubuntu-latest|runs-on: \${{{{ inputs.runner }}|g" \
-            "${btmp}" > "${bnew}"
-        if ! grep -q '^      runner:' "${bnew}"; then
-            yq -i '.on.workflow_call.inputs.runner = {"type": "string", "default": "ubuntu-latest", "description": "Runner for the job"}' "${bnew}"
-        fi
+            > "${bnew}"
         yq -r '.' "${bnew}" >/dev/null
         cp "${bnew}" "${buildless_out}"
     fi
 
-    if cmp -s "${wtmp}" "${tmp}"; then
+    if cmp -s "${wtmp}" "${tmp}" && { [ ! -f "${buildless_out}" ] || cmp -s "${btmp}" "${buildless_out}"; }; then
         echo "composite-deploy.yaml@{{ workflow_ref }} already routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} (no PR needed)."
     else
-        echo "Rendered ${out_file} (routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} when environment == 'production')."
+        echo "Rendered ${out_file} and ${buildless_out} (routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} when environment == 'production')."
         echo "Next: just ci pr-deploy-workflows --stack ${name}"
     fi
 
