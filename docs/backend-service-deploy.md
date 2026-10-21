@@ -1,9 +1,9 @@
 # Backend Service Deploy
 
-One-time setup for modware gRPC services (`order`, `annotation`, `stock`,
-`content`) on a target cluster: performs the first cluster deploy and wires
-automated GitHub Actions tag deploys. Run the recipes in a `cluster-env` shell
-of the target cluster (`CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`).
+One-time setup for modware gRPC services (`order`, `annotation`, `anno-feat`,
+`stock`, `content`) on a target cluster: performs the first cluster deploy and
+wires automated GitHub Actions tag deploys. Run the recipes in a `cluster-env`
+shell of the target cluster (`CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`).
 
 The flow uses composite recipes. You can run `deploy-backend-services` for all
 services at once or one service at a time with `--services <app>`; individual
@@ -11,8 +11,8 @@ step recipes are in [section 6](#6-individual-recipes).
 
 **Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do
 not edit the lab `experiments`/`local` stacks of `modware-order`,
-`modware-annotation`, `modware-stock`, `modware-content`, or the lab-only
-`modware-annotation-feature` project.
+`modware-annotation`, `modware-annotation-feature`, `modware-stock`, or
+`modware-content`.
 
 ## Table of Contents
 - [Quick Reference](#quick-reference)
@@ -46,13 +46,15 @@ just ci pr-deploy-workflows                     # 5. open PRs in dictyBase/workf
 ```
 
 Single-service rollout (recommended on a first cluster setup — run in
-`config/services.yaml` order: `order`, `annotation`, `stock`, `content`, then
-finish with an unfiltered `just ci deploy-backend-services` to confirm all four
-converged) or step-by-step diagnostics — [section 6](#6-individual-recipes):
+`config/services.yaml` order: `order`, `annotation`, `anno-feat`, `stock`,
+`content`, then finish with an unfiltered `just ci deploy-backend-services` to
+confirm all five converged) or step-by-step diagnostics —
+[section 6](#6-individual-recipes):
 
 ```bash
 just ci deploy-backend-services --services order
 just ci deploy-backend-services --services annotation
+just ci deploy-backend-services --services anno-feat
 just ci deploy-backend-services --services stock
 just ci deploy-backend-services --services content
 ```
@@ -91,8 +93,8 @@ Runs scaffold, prerequisite gate, first deploy, repo variables, tag-workflow
 render (`bin/ci-render/<folder>-tag-build.yaml`), and `PROD_DEPLOY_SA_KEY`
 repo visibility for every service in `config/services.yaml` (idempotent —
 skips completed steps). For a conservative first rollout, pass
-`--services <app>` one service at a time (`order` → `annotation` → `stock` →
-`content`), then run once without `--services`.
+`--services <app>` one service at a time (`order` → `annotation` → `anno-feat` →
+`stock` → `content`), then run once without `--services`.
 → [Aggregate deploy details](reference/backend/deploy-services.md)
 
 ```bash

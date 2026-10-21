@@ -53,17 +53,21 @@ Per service (order fixed by the contract test):
 
 ## Service Manifest
 
-`config/services.yaml` — the four modware services and their ports:
+`config/services.yaml` — the five modware services and their ports:
 
-| app | folder | port |
-|-----|--------|------|
-| order | modware-order | 9250 |
-| annotation | modware-annotation | 9250 |
-| stock | modware-stock | 9345 |
-| content | modware-content | 9250 |
+| app | folder | repo | command | database | port |
+|-----|--------|------|---------|----------|------|
+| order | modware-order | modware-order | start-server | order | 9250 |
+| annotation | modware-annotation | modware-annotation | start-server | annotation | 9250 |
+| anno-feat | modware-annotation-feature | modware-annotation | start-feature-server | annofeature | 9250 |
+| stock | modware-stock | modware-stock | start-server | stock | 9345 |
+| content | modware-content | modware-content | start-server | content | 9250 |
 
-Ports trace to the frozen lab stacks (`modware-*/Pulumi.experiments.yaml`);
-change a port here in the same change as the service's stack files.
+`anno-feat` shares the `dictyBase/modware-annotation` repository and Docker
+image (`dictybase/modware-annotation`), running `start-feature-server` against
+the `annofeature` database. `render-tag-deploy` renders both `call-build-deploy`
+(`modware-annotation`) and `call-buildless-deploy` (`modware-annotation-feature`,
+`needs: call-build-deploy`) into `modware-annotation`'s `tag-build.yaml`.
 
 ## Flags
 

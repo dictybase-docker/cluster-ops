@@ -497,12 +497,33 @@ func deployCredentialsAction(cltx *cli.Context) error {
 // stackProperties is the slice of <project>:properties the gate needs.
 type stackProperties struct {
 	AppName        string `yaml:"appName"`
+	Command        string `yaml:"command"`
 	Port           int    `yaml:"port"`
 	ArangodbSecret struct {
 		Name    string `yaml:"name"`
 		Userkey string `yaml:"userkey"`
 		Passkey string `yaml:"passkey"`
 	} `yaml:"arangodbSecret"`
+}
+
+func isFeatureAnnotation(p stackProperties) bool {
+	return p.AppName == "anno-feat" || p.Command == "start-feature-server"
+}
+
+func defaultDatabaseName(props stackProperties) func() string {
+	return func() string { return props.AppName }
+}
+
+func featureDatabaseName(_ stackProperties) string {
+	return "annofeature"
+}
+
+func databaseNameForService(props stackProperties) string {
+	return F.Pipe2(
+		props,
+		O.FromPredicate(isFeatureAnnotation),
+		O.Fold(defaultDatabaseName(props), featureDatabaseName),
+	)
 }
 
 // prereqsInput threads the resolved inputs through the loading pipeline.
@@ -566,7 +587,7 @@ func backendPrereqsAction(cltx *cli.Context) error {
 					UserKey:       in.props.ArangodbSecret.Userkey,
 					PassKey:       in.props.ArangodbSecret.Passkey,
 					ArangoService: cltx.String(arangoServiceFlag),
-					AppName:       in.props.AppName,
+					AppName:       databaseNameForService(in.props),
 					Port:          in.props.Port,
 				})),
 				"prerequisite gate failed",

@@ -634,6 +634,16 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="backend":
     fi
     project="$(basename "${folder}")"
     app="${project#modware-}"
+    repo_name="${project}"
+    cmd_name="start-server"
+    if [ -f "config/services.yaml" ]; then
+        svc_app=$(yq -r ".services[] | select(.folder == \"${project}\") | .app // \"\"" config/services.yaml)
+        [ -n "${svc_app}" ] && [ "${svc_app}" != "null" ] && app="${svc_app}"
+        svc_repo=$(yq -r ".services[] | select(.folder == \"${project}\") | .repo // \"\"" config/services.yaml)
+        [ -n "${svc_repo}" ] && [ "${svc_repo}" != "null" ] && repo_name="${svc_repo}"
+        svc_cmd=$(yq -r ".services[] | select(.folder == \"${project}\") | .command // \"\"" config/services.yaml)
+        [ -n "${svc_cmd}" ] && [ "${svc_cmd}" != "null" ] && cmd_name="${svc_cmd}"
+    fi
 
     # Registry lookup by stack key — data-driven, no stack->namespace table here.
     entry=""
@@ -670,8 +680,9 @@ scaffold-backend-stack folder stack="" port="9250" secret_name="backend":
     sed \
         -e "s|__PROJECT__|${project}|g" \
         -e "s|__APP__|${app}|g" \
-        -e "s|__IMAGE_REPO__|${project}|g" \
+        -e "s|__IMAGE_REPO__|${repo_name}|g" \
         -e "s|__SECRET_NAME__|${sec_name}|g" \
+        -e "s|__COMMAND__|${cmd_name}|g" \
         -e "s|__NAMESPACE__|${namespace}|g" \
         -e "s|__PORT__|{{ port }}|g" \
         config/templates/backend-stack.yaml.tmpl > "${tmp}"
@@ -850,23 +861,25 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
     folder="${folder%/}"
     tag="{{ image_tag }}"
     project="$(basename "${folder}")"
-    if [ -z "${tag}" ]; then
-        tag=$(just ci latest-tag --repo "dictybase/${project}")
-        echo "Resolved image tag from repo tags: ${tag}"
-    fi
     app=$(yq -r ".config.\"${project}:properties\".appName" "${folder}/Pulumi.${stack_name}.yaml")
     namespace=$(yq -r ".config.\"${project}:properties\".namespace" "${folder}/Pulumi.${stack_name}.yaml")
+    image_name=$(yq -r ".config.\"${project}:properties\".image.name // \"dictybase/${project}\"" "${folder}/Pulumi.${stack_name}.yaml")
+    repo_name="${image_name#dictybase/}"
+    if [ -z "${tag}" ]; then
+        tag=$(just ci latest-tag --repo "dictybase/${repo_name}")
+        echo "Resolved image tag from repo tags: ${tag}"
+    fi
 
     deploy="${app}-api-server"
     if kubectl -n "${namespace}" get "deploy/${deploy}" >/dev/null 2>&1; then
         running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
-        if [ "${running}" = "dictybase/${project}:${tag}" ]; then
+        if [ "${running}" = "${image_name}:${tag}" ]; then
             echo "Deployment already runs ${running} — verifying rollout only (idempotent skip)."
             go run ./cmd/cluster-ops wait deployment-rollout \
                 --namespace "${namespace}" --name "${deploy}" --timeout 300
             exit 0
         fi
-        echo "Deployment runs ${running}; converging to dictybase/${project}:${tag}."
+        echo "Deployment runs ${running}; converging to ${image_name}:${tag}."
     fi
 
     go run ./cmd/cluster-ops deploy service \
@@ -874,7 +887,7 @@ bootstrap-service folder image_tag="" stack="" arango_service="arangodb":
         --arango-service {{ quote(arango_service) }}
 
     running=$(kubectl -n "${namespace}" get "deploy/${deploy}" -o jsonpath='{.spec.template.spec.containers[0].image}')
-    if [ "${running}" != "dictybase/${project}:${tag}" ]; then
+    if [ "${running}" != "${image_name}:${tag}" ]; then
         echo "ERROR: running image '${running}' does not match the requested tag '${tag}'." >&2
         exit 1
     fi

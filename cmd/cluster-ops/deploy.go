@@ -159,7 +159,7 @@ func prereqsRunner(cltx *cli.Context, folder, stack string) pulumiauto.Preflight
 			UserKey:       in.props.ArangodbSecret.Userkey,
 			PassKey:       in.props.ArangodbSecret.Passkey,
 			ArangoService: cltx.String(arangoServiceFlag),
-			AppName:       in.props.AppName,
+			AppName:       databaseNameForService(in.props),
 			Port:          in.props.Port,
 		}))
 	}

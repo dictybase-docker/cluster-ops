@@ -5,6 +5,12 @@ services:
   - app: annotation
     folder: modware-annotation
     port: 9250
+  - app: anno-feat
+    folder: modware-annotation-feature
+    repo: modware-annotation
+    command: start-feature-server
+    database: annofeature
+    port: 9250
   - app: stock
     folder: modware-stock
     port: 9345

@@ -192,4 +192,15 @@ grep -q 'docker_image: graphql-server' "${gql_out}" || fail "docker_image must b
 grep -q 'app: graphql-server' "${gql_out}" || fail "app must be graphql-server"
 echo "  graphql_server mapping: PASS"
 
+echo "=== 7. modware-annotation renders both call-build-deploy and call-buildless-deploy (anno-feat) ==="
+anno_out="${tmp}/modware-annotation-tag-build.yaml"
+PULUMI_STACK=dcr-kube1 just ci render-tag-deploy --app annotation --project modware-annotation \
+    --out "${anno_out}" >/dev/null || fail "modware-annotation render failed"
+grep -q '^  call-build-deploy:' "${anno_out}" || fail "missing call-build-deploy job"
+grep -q '^  call-buildless-deploy:' "${anno_out}" || fail "missing call-buildless-deploy job"
+grep -q 'needs: call-build-deploy' "${anno_out}" || fail "call-buildless-deploy missing needs: call-build-deploy"
+grep -q 'project: modware-annotation-feature' "${anno_out}" || fail "call-buildless-deploy missing project: modware-annotation-feature"
+grep -q 'app: anno-feat' "${anno_out}" || fail "call-buildless-deploy missing app: anno-feat"
+echo "  modware-annotation dual deploy: PASS"
+
 echo "render-tag-deploy contract tests PASSED"

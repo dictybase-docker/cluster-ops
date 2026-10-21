@@ -272,6 +272,38 @@ render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docke
         -e "s|__WORKFLOW_REF__|{{ workflow_ref }}|g" \
         config/templates/tag-build-deploy.yaml.tmpl > "${tmp}"
 
+    # When another service in config/services.yaml shares this repository as a
+    # secondary deployment (e.g. modware-annotation-feature inside
+    # modware-annotation), append a call-buildless-deploy job that deploys that
+    # stack with the image built by call-build-deploy.
+    if [ -f "config/services.yaml" ]; then
+        secondary=$(yq -r ".services[] | select(.repo == \"${project}\" and .folder != \"${project}\") | .app + \" \" + .folder" config/services.yaml 2>/dev/null || true)
+        while read -r sec_app sec_folder; do
+            [ -z "${sec_app}" ] && continue
+            {
+                echo "  call-buildless-deploy:"
+                echo "    needs: call-build-deploy"
+                echo "    uses: dictyBase/workflows/.github/workflows/deploy-buildless-backend.yaml@{{ workflow_ref }}"
+                echo "    secrets: inherit"
+                echo "    with:"
+                echo "      app: ${sec_app}"
+                echo "      project: ${sec_folder}"
+                echo "      stack: ${stack_name}"
+                echo "      repository: \${{{{ github.repository }}"
+                echo "      ref: \${{{{ github.ref_name }}"
+                echo "      dockerfile: build/package/Dockerfile"
+                echo "      docker_image: ${image_name}"
+                echo "      cluster: \${{{{ vars.${ci_env}_CLUSTER }}"
+                echo "      cluster_state_storage: \${{{{ vars.${ci_env}_KOPS_STATE_STORAGE }}"
+                echo "      kops_version: \${{{{ vars.${ci_env}_KOPS_VERSION }}"
+                echo "      kubectl_version: \${{{{ vars.${ci_env}_KUBECTL_VERSION }}"
+                echo "      pulumi_version: \${{{{ vars.${ci_env}_PULUMI_VERSION }}"
+                echo "      environment: production"
+                echo "      runner: backend"
+            } >> "${tmp}"
+        done < <(printf '%s\n' "${secondary}")
+    fi
+
     if grep -q '__[A-Z_]*__' "${tmp}"; then
         echo "ERROR: unsubstituted placeholder in rendered output:" >&2
         grep '__[A-Z_]*__' "${tmp}" >&2
@@ -315,11 +347,12 @@ render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docke
     echo "Next: PR the file into the service repo, delete its staging-build.yaml, and merge."
 
 # Publish the org variable <CI_ENV>_PULUMI_STATE_STORAGE from the cluster
-# registry and render dictyBase/workflows composite-deploy.yaml with
-# production secret (<CI_ENV>_DEPLOY_SA_KEY) and Pulumi state
-# (<CI_ENV>_PULUMI_STATE_STORAGE) selection for inputs.environment == 'production'.
-# Idempotent: if composite-deploy.yaml at --workflow-ref already carries both
-# selections, the rendered file matches upstream and the recipe reports no PR
+# registry and render dictyBase/workflows composite-deploy.yaml (and
+# deploy-buildless-backend.yaml) with production secret (<CI_ENV>_DEPLOY_SA_KEY)
+# and Pulumi state (<CI_ENV>_PULUMI_STATE_STORAGE) selection for
+# inputs.environment == 'production'.
+# Idempotent: if the workflow files at --workflow-ref already carry both
+# selections, the rendered files match upstream and the recipe reports no PR
 # is needed.
 # Usage: just ci render-composite-deploy [--cluster <name>] [--out <file>] [--workflow-ref <ref>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
@@ -352,9 +385,11 @@ render-composite-deploy cluster="" out="bin/ci-render/composite-deploy.yaml" wor
     gh variable set "${org_var}" --org dictyBase --visibility all --body "${pulumi_state}"
     echo "Published org variable ${org_var}=${pulumi_state} (was: ${before:-unset})."
 
-    wtmp=$(mktemp)
-    tmp=$(mktemp)
-    trap 'rm -f "${wtmp}" "${tmp}"' EXIT
+    wtmp=$(mktemp /tmp/comp-orig-XXXXXX)
+    tmp=$(mktemp /tmp/comp-new-XXXXXX)
+    btmp=$(mktemp /tmp/buildless-orig-XXXXXX)
+    bnew=$(mktemp /tmp/buildless-new-XXXXXX)
+    trap 'rm -f "${wtmp}" "${tmp}" "${btmp}" "${bnew}"' EXIT
     if ! curl -fsSL "https://raw.githubusercontent.com/dictyBase/workflows/{{ workflow_ref }}/.github/workflows/composite-deploy.yaml" -o "${wtmp}"; then
         echo "ERROR: could not fetch composite-deploy.yaml at ref '{{ workflow_ref }}' (network or bad ref)." >&2
         exit 1
@@ -377,6 +412,22 @@ render-composite-deploy cluster="" out="bin/ci-render/composite-deploy.yaml" wor
 
     mkdir -p "$(dirname "${out_file}")"
     cp "${tmp}" "${out_file}"
+
+    # Also render deploy-buildless-backend.yaml alongside composite-deploy.yaml when available.
+    buildless_out="$(dirname "${out_file}")/deploy-buildless-backend.yaml"
+    if curl -fsSL "https://raw.githubusercontent.com/dictyBase/workflows/{{ workflow_ref }}/.github/workflows/deploy-buildless-backend.yaml" -o "${btmp}" 2>/dev/null && [ -s "${btmp}" ]; then
+        sed \
+            -e "s|credentials_json: \${{{{ secrets.DEPLOY_SA_KEY }}|credentials_json: \${{{{ inputs.environment == 'production' \&\& secrets.${ci_env}_DEPLOY_SA_KEY \|\| secrets.DEPLOY_SA_KEY }}|g" \
+            -e "s|--pulumi-state \${{{{ vars.PULUMI_STATE_STORAGE }}|--pulumi-state \${{{{ inputs.environment == 'production' \&\& vars.${org_var} \|\| vars.PULUMI_STATE_STORAGE }}|g" \
+            -e "s|runs-on: ubuntu-latest|runs-on: \${{{{ inputs.runner }}|g" \
+            "${btmp}" > "${bnew}"
+        if ! grep -q '^      runner:' "${bnew}"; then
+            yq -i '.on.workflow_call.inputs.runner = {"type": "string", "default": "ubuntu-latest", "description": "Runner for the job"}' "${bnew}"
+        fi
+        yq -r '.' "${bnew}" >/dev/null
+        cp "${bnew}" "${buildless_out}"
+    fi
+
     if cmp -s "${wtmp}" "${tmp}"; then
         echo "composite-deploy.yaml@{{ workflow_ref }} already routes ${ci_env}_DEPLOY_SA_KEY and ${org_var} (no PR needed)."
     else
@@ -429,7 +480,7 @@ pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develo
     base_branch={{ quote(base) }}
     wanted="{{ services }}"
 
-    all_services=$(yq -r '.services[] | .app + " " + .folder' config/services.yaml)
+    all_services=$(yq -r '.services[] | .app + " " + .folder + " " + (.repo // .folder)' config/services.yaml)
     if [ -z "${all_services}" ]; then
         echo "ERROR: no services in config/services.yaml." >&2
         exit 1
@@ -465,12 +516,15 @@ pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develo
     git_https clone --depth 1 --branch "${base_branch}" "https://github.com/dictyBase/workflows.git" "${wf_dir}" >/dev/null 2>&1
     mkdir -p "${wf_dir}/.github/workflows"
     cp "${comp_file}" "${wf_dir}/.github/workflows/composite-deploy.yaml"
+    buildless_file="${rdir}/deploy-buildless-backend.yaml"
+    [ -f "${buildless_file}" ] && cp "${buildless_file}" "${wf_dir}/.github/workflows/deploy-buildless-backend.yaml"
     if [ -z "$(git -C "${wf_dir}" status --porcelain)" ]; then
-        echo "  composite-deploy.yaml already up to date on ${base_branch} — skipping PR."
+        echo "  workflows already up to date on ${base_branch} — skipping PR."
     else
         wf_branch="ci/prod-deploy-${stack_name}"
         git -C "${wf_dir}" checkout -B "${wf_branch}" >/dev/null 2>&1
         git -C "${wf_dir}" add .github/workflows/composite-deploy.yaml
+        [ -f "${wf_dir}/.github/workflows/deploy-buildless-backend.yaml" ] && git -C "${wf_dir}" add .github/workflows/deploy-buildless-backend.yaml
         git -C "${wf_dir}" commit -m "ci(deploy): route production secret and pulumi state for ${stack_name}" >/dev/null
         git_https -C "${wf_dir}" push -u origin "${wf_branch}" --force-with-lease >/dev/null 2>&1
         open_or_reuse_pr "dictyBase/workflows" "${wf_branch}" "${base_branch}" \
@@ -480,7 +534,7 @@ pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develo
 
     # 2. Each selected service repo tag-build.yaml (+ remove staging-build.yaml)
     matched=0
-    while read -r app folder; do
+    while read -r app folder repo_name; do
         [ -z "${app}" ] && continue
         if [ -n "${wanted}" ]; then
             case ",${wanted}," in
@@ -489,6 +543,9 @@ pr-deploy-workflows stack="" services="" render_dir="bin/ci-render" base="develo
             esac
         fi
         matched=$((matched + 1))
+        # Secondary services that share a repo (e.g. modware-annotation-feature)
+        # are rendered inside the primary repo's tag-build.yaml.
+        [ "${repo_name}" != "${folder}" ] && continue
         tag_file="${rdir}/${folder}-tag-build.yaml"
         if [ ! -f "${tag_file}" ]; then
             just ci render-tag-deploy --stack "${stack_name}" --app "${app}" \
@@ -665,8 +722,8 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
         exit 1
     fi
 
-    # Service manifest: app, folder, port triplets.
-    all_services=$(yq -r '.services[] | .app + " " + .folder + " " + (.port | tostring)' config/services.yaml)
+    # Service manifest: app, folder, port, repo_name tuples.
+    all_services=$(yq -r '.services[] | .app + " " + .folder + " " + (.port | tostring) + " " + (.repo // .folder)' config/services.yaml)
     if [ -z "${all_services}" ]; then
         echo "ERROR: no services in config/services.yaml." >&2
         exit 1
@@ -674,9 +731,8 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
     wanted="{{ services }}"
     want_tag="{{ image_tag }}"
     arango_svc="{{ arango_service }}"
-    arango_svc="{{ arango_service }}"
     repos=()
-    while read -r app folder port; do
+    while read -r app folder port repo_name; do
         [ -z "${app}" ] && continue
         if [ -n "${wanted}" ]; then
             case ",${wanted}," in
@@ -684,7 +740,10 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
                 *) continue ;;
             esac
         fi
-        repos+=("dictyBase/${folder}")
+        case " ${repos[*]+"${repos[*]}"} " in
+            *" dictyBase/${repo_name} "*) ;;
+            *) repos+=("dictyBase/${repo_name}") ;;
+        esac
 
         cfg="${folder}/Pulumi.${stack_name}.yaml"
         if [ -f "${cfg}" ]; then
@@ -709,13 +768,15 @@ deploy-backend-services stack="" image_tag="" services="" arango_service="arango
                 --folder "${folder}"
         fi
 
-        echo "=== ${app}: variables ==="
-        just ci sync-deploy-vars --cluster "${cluster_name}" --repos "dictyBase/${folder}"
+        if [ "${repo_name}" = "${folder}" ]; then
+            echo "=== ${app}: variables ==="
+            just ci sync-deploy-vars --cluster "${cluster_name}" --repos "dictyBase/${repo_name}"
 
-        echo "=== ${app}: tag workflow render ==="
-        mkdir -p bin/ci-render
-        just ci render-tag-deploy --stack "${stack_name}" --app "${app}" \
-            --project "${folder}" --out "bin/ci-render/${folder}-tag-build.yaml"
+            echo "=== ${app}: tag workflow render ==="
+            mkdir -p bin/ci-render
+            just ci render-tag-deploy --stack "${stack_name}" --app "${app}" \
+                --project "${folder}" --out "bin/ci-render/${folder}-tag-build.yaml"
+        fi
     done < <(printf '%s\n' "${all_services}")
 
     if [ "${#repos[@]}" -eq 0 ]; then

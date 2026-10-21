@@ -145,4 +145,19 @@ else
 fi
 echo "  scaffold-graphql-stack: PASS"
 
+echo "=== 6. scaffold-backend-stack uses services.yaml overrides for modware-annotation-feature ==="
+: > "${calls}"
+folder3="${tmp}/modware-annotation-feature"
+mkdir -p "${folder3}"
+run_scaffold "${folder3}" --stack dcr-kube1 --port 9250 \
+    || fail "modware-annotation-feature scaffold failed"
+cfg3="${folder3}/Pulumi.dcr-kube1.yaml"
+[ "$(yq_get "${cfg3}" '.config."modware-annotation-feature:properties".appName')" = "anno-feat" ] \
+    || fail "appName must be anno-feat"
+[ "$(yq_get "${cfg3}" '.config."modware-annotation-feature:properties".command')" = "start-feature-server" ] \
+    || fail "command must be start-feature-server"
+[ "$(yq_get "${cfg3}" '.config."modware-annotation-feature:properties".image.name')" = "dictybase/modware-annotation" ] \
+    || fail "image.name must be dictybase/modware-annotation"
+echo "  modware-annotation-feature scaffold: PASS"
+
 echo "backend scaffold contract tests PASSED"
