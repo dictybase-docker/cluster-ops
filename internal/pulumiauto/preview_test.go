@@ -45,6 +45,16 @@ func createEvent() events.EngineEvent {
 		"kubernetes:core/v1:ConfigMap")
 }
 
+// deletedPVCEvent mimics a delete pre-event as the engine sends it:
+// "new" is null, and the namespace-bearing ID lives only on Old. A restore
+// stack preview always deletes the previous run's Job/PVC (fresh restoreId).
+func deletedPVCEvent() events.EngineEvent {
+	ev := resourceEvent(apitype.OpDelete, "urn:pulumi:s::p::k8s::pvc",
+		"kubernetes:core/v1:PersistentVolumeClaim")
+	ev.ResourcePreEvent.Metadata.Old = &apitype.StepEventStateMetadata{ID: "prod/arangodb-restore-scratch"}
+	return ev
+}
+
 func TestSummaryFrom(t *testing.T) {
 	got := SummaryFrom(map[apitype.OpType]int{
 		apitype.OpCreate: 2, apitype.OpUpdate: 1, apitype.OpDelete: 1,
@@ -98,6 +108,29 @@ func TestGateAllowsProtectedOverride(t *testing.T) {
 }
 
 // The collector exits on channel close: no goroutine leak, no deadlock.
+func TestGateHandlesNullNewState(t *testing.T) {
+	// Delete pre-event: New is nil, ID lives on Old. The gate must read the
+	// namespace from Old instead of panicking, and a protected delete blocks.
+	ch := make(chan events.EngineEvent, 1)
+	out := make(chan []ProtectedChange)
+	ch <- deletedPVCEvent()
+	close(ch)
+	go collectProtected(ch, out, protectedPolicy())
+	blocked := <-out
+	require.Len(t, blocked, 1)
+	require.Equal(t, "prod", blocked[0].Namespace)
+	require.Equal(t, apitype.OpDelete, blocked[0].Op)
+
+	// Delete with both states nil: no namespace, no panic, no block.
+	ch2 := make(chan events.EngineEvent, 1)
+	out2 := make(chan []ProtectedChange)
+	ch2 <- resourceEvent(apitype.OpDelete, "urn:pulumi:s::p::k8s::job",
+		"kubernetes:batch/v1:Job")
+	close(ch2)
+	go collectProtected(ch2, out2, protectedPolicy())
+	require.Empty(t, <-out2)
+}
+
 func TestGateCollectorExitsOnClose(t *testing.T) {
 	st := &fakeStack{}
 	done := make(chan struct{})

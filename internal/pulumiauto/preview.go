@@ -145,11 +145,17 @@ func collectProtected(ch <-chan events.EngineEvent, out chan<- []ProtectedChange
 
 // resourceNamespace reads the namespace from the k8s resource ID
 // ("namespace/name"); empty when unknown (conservative for Deployments).
+// Delete pre-events carry "new": null, so prefer New and fall back to Old;
+// the old state always holds the ID the deletion removes.
 func resourceNamespace(meta apitype.StepEventMetadata) string {
-	id := meta.New.ID
-	if id == "" {
-		id = meta.Old.ID
+	if meta.New == nil && meta.Old == nil {
+		return ""
 	}
+	state := meta.New
+	if state == nil {
+		state = meta.Old
+	}
+	id := state.ID
 	ns, _, found := strings.Cut(id, "/")
 	if !found {
 		return ""
