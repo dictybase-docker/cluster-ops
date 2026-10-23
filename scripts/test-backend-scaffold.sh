@@ -191,4 +191,32 @@ else
 fi
 echo "  scaffold-event-messenger-stack: PASS"
 
+echo "=== 8. scaffold-gateway-stack renders gateway config with cilium and default routes ==="
+: > "${calls}"
+gw_cfg="gateway/Pulumi.dcr-kube1.yaml"
+gw_bak=""
+if [ -f "${gw_cfg}" ]; then
+    gw_bak="${tmp}/gateway-Pulumi.dcr-kube1.yaml.bak"
+    mv "${gw_cfg}" "${gw_bak}"
+fi
+out=$(just gcp-pulumi scaffold-gateway-stack --stack dcr-kube1 2>&1) || {
+    [ -n "${gw_bak}" ] && mv "${gw_bak}" "${gw_cfg}"
+    fail "scaffold-gateway-stack failed:\n${out}"
+}
+[ -f "${gw_cfg}" ] || fail "gateway stack file not created"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".name')" = "dictycr-gateway" ] || fail "name wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".namespace')" = "prod" ] || fail "namespace wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".gatewayClassName')" = "cilium" ] || fail "gatewayClassName wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".issuer.name')" = "letsencrypt-issuer" ] || fail "issuer.name wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.frontend.enabled')" = "true" ] || fail "routes.frontend.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.graphql.enabled')" = "true" ] || fail "routes.graphql.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.minio.enabled')" = "true" ] || fail "routes.minio.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.logto.enabled')" = "false" ] || fail "routes.logto.enabled wrong"
+if [ -n "${gw_bak}" ]; then
+    mv "${gw_bak}" "${gw_cfg}"
+else
+    rm -f "${gw_cfg}"
+fi
+echo "  scaffold-gateway-stack: PASS"
+
 echo "backend scaffold contract tests PASSED"

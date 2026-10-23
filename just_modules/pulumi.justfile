@@ -882,6 +882,75 @@ scaffold-event-messenger-stack stack="" nats_subject="OrderService.Create" ncbi_
     echo "  emailDeployment=event-messenger-email issueDeployment=event-messenger-issue image=dictybase/event-messenger:bootstrap namespace=${namespace} subject=${subj}"
     echo "Next: just gcp-pulumi set-secret --folder event-messenger --key <path>"
 
+# Scaffold a gateway stack config from the cluster registry + template.
+# Initializes the stack with the registry KMS secrets provider when absent, and
+# appends the baseline config block (`gatewayClassName: cilium`, `letsencrypt-issuer`,
+# and route blocks for `frontend`, `graphql`, `minio`, and `logto`) into
+# gateway/Pulumi.<stack>.yaml.
+# Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
+# Usage: just gcp-pulumi scaffold-gateway-stack [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-gateway-stack stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    folder="gateway"
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ]; then
+        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+
+    tmp=$(mktemp /tmp/gateway-stack-XXXXXX)
+    trap 'rm -f "${tmp}"' EXIT
+    sed \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        config/templates/gateway-stack.yaml.tmpl > "${tmp}"
+    cat "${tmp}" >> "${cfg}"
+
+    yq -r '.config' "${cfg}" >/dev/null
+    got_name=$(yq -r '.config."gateway:properties".name' "${cfg}")
+    got_ns=$(yq -r '.config."gateway:properties".namespace' "${cfg}")
+    got_class=$(yq -r '.config."gateway:properties".gatewayClassName' "${cfg}")
+    if [ "${got_name}" != "dictycr-gateway" ] || [ "${got_ns}" != "${namespace}" ] || [ "${got_class}" != "cilium" ]; then
+        echo "ERROR: rendered config failed validation (name=${got_name}, namespace=${got_ns}, gatewayClassName=${got_class})." >&2
+        exit 1
+    fi
+
+    echo "Scaffolded ${cfg}"
+    echo "  name=dictycr-gateway gatewayClassName=cilium namespace=${namespace}"
+    echo "Next: just gcp-pulumi set-config --folder gateway --key properties.issuer.email --value <email>"
+
 # Composite read-only prerequisite gate for a backend service deploy.
 # Checks, in order: registry entry (by stack), namespace exists, ArangoDB
 # credentials Secret exists with the configured keys, the application

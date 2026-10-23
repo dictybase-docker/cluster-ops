@@ -1,0 +1,57 @@
+# Template for a gateway stack config.
+# Rendered by `just gcp-pulumi scaffold-gateway-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `pulumi stack init` writes the
+# secretsprovider + encryptedkey lines.
+config:
+  gateway:properties:
+    name: dictycr-gateway
+    namespace: __NAMESPACE__
+    gatewayClassName: cilium
+    issuer:
+      name: letsencrypt-issuer
+      email: <acme-email>
+      server: https://acme-v02.api.letsencrypt.org/directory
+      secretName: letsencrypt-account-key
+    routes:
+      frontend:
+        enabled: true
+        hosts:
+          - <frontend-host>
+        tlsSecret: frontend-tls
+        services:
+          - name: frontpage-api
+            path: /
+            port: 3000
+          - name: stockcenter-api
+            path: /stockcenter
+            port: 3000
+          - name: publication-api
+            path: /publication
+            port: 3000
+          - name: genomepage-api
+            path: /gene
+            port: 3000
+      graphql:
+        enabled: true
+        hosts:
+          - <graphql-host>
+        tlsSecret: graphql-tls
+        serviceName: graphql-api
+        servicePort: 8080
+        path: /
+      minio:
+        enabled: true
+        hosts:
+          - <minio-host>
+        tlsSecret: minio-tls
+        serviceName: minio
+        servicePort: 9000
+        path: /
+      logto:
+        enabled: false
+        hosts:
+          - <logto-host>
+        tlsSecret: logto-tls
+        serviceName: logto-api
+        servicePort: 3001
+        path: /

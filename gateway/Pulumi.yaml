@@ -1,0 +1,7 @@
+name: gateway
+runtime: go
+description: Cilium Gateway API and cert-manager Issuer for public service routing
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
