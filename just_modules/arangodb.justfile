@@ -1055,6 +1055,48 @@ deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" 
     echo "Coordinator Services in $NS:"
     kubectl get svc -n "$NS" -l arango_deployment=arangodb
 
+# Reconcile an existing ArangoDB Cluster after editing arangodb-cluster/Pulumi.<stack>.yaml
+# (for example, member startup args, resource requests, or image version), without
+# touching the root-password Secret. Runs ensure-stack -> preview -> create-resource,
+# then waits for the ArangoDeployment to return to phase=Running and all member pods
+# to become Ready.
+# Usage: just arangodb update-cluster [--namespace <ns>] [--stack <name>] [--members <n>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding the ArangoDeployment")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK; no dev fallback)")]
+[arg("members", long="members", short="m", help="Expected member pod count (3 agents + 3 dbservers + 3 coordinators)")]
+[arg("retries", long="retries", short="r", help="Readiness probe attempts (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+update-cluster namespace="prod" stack="" members="9" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    FOLDER="arangodb-cluster"
+    NS="{{ namespace }}"
+    STACK=$(just arangodb _require-stack --stack "{{ stack }}")
+
+    echo "Updating $FOLDER (stack '$STACK') in namespace '$NS'..."
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo "Waiting for the ArangoDeployment to report phase=Running..."
+    go run ./cmd/cluster-ops wait custom-resource \
+        --namespace "$NS" --name arangodb \
+        --group database.arangodb.com --version v1 --kind ArangoDeployment \
+        --status-path phase --expected-value Running --failed-value Failed \
+        --timeout $(( RETRIES * INTERVAL )) --interval "$INTERVAL"
+
+    just arangodb _wait-ready --namespace "$NS" \
+        --selector arango_deployment=arangodb \
+        --count "{{ members }}" --retries "{{ retries }}" --interval "{{ interval }}"
+
+    just arangodb verify --namespace "$NS"
+    echo "Next: git add arangodb-cluster/Pulumi.${STACK}.yaml && git commit && git push"
+
 # Create the application user and the seven logical databases, then wait.
 # One command for: ensure-stack, user+password secrets, preview, apply, Job wait.
 # Usage: just arangodb create-databases --app-user <user> --app-password <pw> [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
@@ -2996,3 +3038,74 @@ verify namespace="prod" operator_namespace="prod" members="9" pool="database" no
         exit "$code"
     fi
     echo "Zone spread is preferred (soft anti-affinity), not guaranteed — not checked here."
+
+# Print user collection document counts across ArangoDB databases via a
+# supervised port-forward to the coordinator Service. Zero cluster pods created.
+# Defaults come from the cluster environment ($KUBECONFIG, prod, arangodb:8529,
+# Secret backend keys user/password, and all seven standard databases).
+# Pass --databases as a comma- or space-separated list (or repeat --databases)
+# to query one or more specific databases.
+# Usage: just arangodb collection-counts [--namespace <ns>] [--service <svc>] [--port <n>] [--secret <name>] [--user-key <k>] [--pass-key <k>] [--databases <db>...]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace holding the Service and Secret (default prod)")]
+[arg("service", long="service", short="s", help="Coordinator Service name (default arangodb)")]
+[arg("port", long="port", short="p", help="Coordinator Service port (default 8529)")]
+[arg("secret", long="secret", short="c", help="Application credentials Secret name (default backend)")]
+[arg("user_key", long="user-key", short="u", help="Secret data key for the username (default user)")]
+[arg("pass_key", long="pass-key", short="k", help="Secret data key for the password (default password)")]
+[arg("databases", long="databases", short="d", help="Databases to query (default: annotation annofeature order stock content cgm_ddb chado)")]
+[group('arangodb')]
+[no-cd]
+collection-counts namespace="prod" service="arangodb" port="8529" secret="backend" user_key="user" pass_key="password" *databases:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SVC={{ quote(service) }}
+    PORT={{ quote(port) }}
+    SECRET={{ quote(secret) }}
+    USER_KEY={{ quote(user_key) }}
+    PASS_KEY={{ quote(pass_key) }}
+    RAW_DBS={{ quote(databases) }}
+
+    if [[ -z "${KUBECONFIG:-}" || ! -r "${KUBECONFIG}" ]]; then
+        echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
+        exit 1
+    fi
+
+    DB_USER=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${USER_KEY}}" | base64 -d)
+    DB_PASS=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${PASS_KEY}}" | base64 -d)
+    if [[ -z "$DB_USER" || -z "$DB_PASS" ]]; then
+        echo "Error: Secret '$SECRET' in namespace '$NS' is missing non-empty '$USER_KEY' or '$PASS_KEY'." >&2
+        exit 1
+    fi
+
+    if [[ -z "$RAW_DBS" ]]; then
+        RAW_DBS="annotation annofeature order stock content cgm_ddb chado"
+    else
+        RAW_DBS="${RAW_DBS//,/ }"
+    fi
+
+    export DB_USER DB_PASS RAW_DBS
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$KUBECONFIG" --ns "$NS" --svc "$SVC" --remote-port "$PORT" -- \
+        bash -c '
+            set -euo pipefail
+            for db in $RAW_DBS; do
+                echo "=== Database: $db ==="
+                resp=$(curl -fsSL -u "${DB_USER}:${DB_PASS}" \
+                    "http://127.0.0.1:${FORWARD_PORT}/_db/${db}/_api/collection?excludeSystem=true")
+                cols=$(printf "%s\n" "$resp" | jq -r ".result[].name" | sort)
+                if [[ -z "$cols" ]]; then
+                    echo "  (no user collections)"
+                    continue
+                fi
+                while IFS= read -r c; do
+                    [[ -z "$c" ]] && continue
+                    cnt=$(curl -fsSL -u "${DB_USER}:${DB_PASS}" \
+                        "http://127.0.0.1:${FORWARD_PORT}/_db/${db}/_api/collection/${c}/count" \
+                        | jq -r ".count")
+                    printf "  %-32s %s\n" "$c" "$cnt"
+                done <<< "$cols"
+            done
+        '
+    unset DB_USER DB_PASS RAW_DBS

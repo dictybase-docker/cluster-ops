@@ -36,7 +36,7 @@ Checks 7 and 8 assert the [resource shape](pool-requirements.md#arangodb-resourc
 
 - **Zone spread.** Anti-affinity is preferred, not required, so a legal cluster can put two members in one zone. The recipe prints that caveat instead of asserting it; `just arangodb check-pool` reports the actual spread as INFO.
 - **Architecture and node Ready status.** [`check-pool`](pool-requirements.md#verification) covers those before the install; `verify` re-checks only pool size and taint.
-- **Data.** Nothing here proves a database holds documents — that is the spot check in [bootstrap §6](bootstrap.md#6-after-the-restore).
+- **Data.** `verify` does not query collections. To print user collection document counts across the databases over a temporary port-forward (creating zero cluster pods), run `just arangodb collection-counts` (or `just arangodb collection-counts --databases stock --databases order`).
 
 ## Flags
 

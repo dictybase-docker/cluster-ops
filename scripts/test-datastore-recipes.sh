@@ -140,4 +140,78 @@ for module in minio redis nats postgres arangodb; do
 done
 echo "  verify recipes: PASS"
 
+echo "=== 9. arangodb update-cluster reconciles without --root-password and waits on CR + pods + verify ==="
+: > "${calls}"
+PULUMI_STACK=dcr-kube1 just arangodb update-cluster --namespace prod >/dev/null 2>&1 \
+    || fail "arangodb update-cluster failed"
+grep -q -- "set-secret" "${calls}" && fail "update-cluster must not touch secret.password"
+grep -q -- "stack ensure --folder arangodb-cluster --stack dcr-kube1" "${calls}" \
+    || fail "update-cluster did not run ensure-stack: $(cat "${calls}")"
+grep -q -- "stack preview --folder arangodb-cluster --stack dcr-kube1" "${calls}" \
+    || fail "update-cluster did not run preview: $(cat "${calls}")"
+grep -q -- "stack up --folder arangodb-cluster --stack dcr-kube1" "${calls}" \
+    || fail "update-cluster did not run create-resource: $(cat "${calls}")"
+grep -q -- "wait custom-resource --namespace prod --name arangodb" "${calls}" \
+    || fail "update-cluster did not wait for ArangoDeployment Running: $(cat "${calls}")"
+grep -q -- "wait pods-ready --namespace prod --selector arango_deployment=arangodb --count 9" "${calls}" \
+    || fail "update-cluster did not wait for 9 ready pods: $(cat "${calls}")"
+grep -q -- "preflight arangodb" "${calls}" \
+    || fail "update-cluster did not run verify at the end: $(cat "${calls}")"
+echo "  arangodb update-cluster: PASS"
+
+echo "=== 10. arangodb collection-counts uses forward run and defaults to all 7 databases ==="
+: > "${calls}"
+curl_log="${tmp}/curl.log"
+: > "${curl_log}"
+cat > "${mock_bin}/curl" <<'MOCK'
+#!/usr/bin/env bash
+echo "curl $*" >> "${MOCK_CURL_LOG}"
+case "$*" in
+    *"/_api/collection?excludeSystem=true"*)
+        printf '{"error":false,"code":200,"result":[{"name":"stock"},{"name":"cv"}]}'
+        ;;
+    *"/_api/collection/cv/count"*)
+        printf '{"error":false,"code":200,"count":15}'
+        ;;
+    *"/_api/collection/stock/count"*)
+        printf '{"error":false,"code":200,"count":29841}'
+        ;;
+esac
+MOCK
+chmod +x "${mock_bin}/curl"
+export MOCK_CURL_LOG="${curl_log}"
+# Also support .data.user / .data.password in mock kubectl
+cat > "${mock_bin}/kubectl" <<'MOCK'
+#!/usr/bin/env bash
+echo "kubectl $*" >> "${MOCK_CALLS_LOG}"
+case "$*" in
+    *"{.data.rootUser}"*) printf '%s' "${MOCK_ROOT_USER:-rootuser}" | base64 ;;
+    *"{.data.rootPassword}"*) printf '%s' "${MOCK_ROOT_PASS:-rootpass}" | base64 ;;
+    *"{.data.user}"*) printf '%s' "appuser" | base64 ;;
+    *"{.data.password}"*) printf '%s' "apppass" | base64 ;;
+esac
+MOCK
+chmod +x "${mock_bin}/kubectl"
+
+kubeconfig_tmp="${tmp}/kubeconfig.yaml"
+printf 'apiVersion: v1\nkind: Config\n' > "${kubeconfig_tmp}"
+
+out=$(KUBECONFIG="${kubeconfig_tmp}" just arangodb collection-counts 2>&1) \
+    || fail "collection-counts default run failed: ${out}"
+grep -q -- "forward run --kubeconfig ${kubeconfig_tmp} --ns prod --svc arangodb --remote-port 8529" "${calls}" \
+    || fail "collection-counts did not invoke forward run: $(cat "${calls}")"
+[ "$(grep -c '^=== Database:' <<< "${out}")" = "7" ] \
+    || fail "expected 7 database sections, got:\n${out}"
+
+: > "${calls}"
+: > "${curl_log}"
+out2=$(KUBECONFIG="${kubeconfig_tmp}" just arangodb collection-counts --databases stock --databases order 2>&1) \
+    || fail "collection-counts filtered run failed: ${out2}"
+[ "$(grep -c '^=== Database:' <<< "${out2}")" = "2" ] \
+    || fail "expected 2 database sections, got:\n${out2}"
+grep -q '^=== Database: stock ===' <<< "${out2}" || fail "stock missing"
+grep -q '^=== Database: order ===' <<< "${out2}" || fail "order missing"
+rm -f "${mock_bin}/curl"
+echo "  arangodb collection-counts: PASS"
+
 echo "datastore recipe contract tests PASSED"

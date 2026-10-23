@@ -12,6 +12,7 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [3. Install ArangoDB](#3-install-arangodb)
   - [3.1 Operator](#31-operator)
   - [3.2 Cluster](#32-cluster)
+  - [3.3 Update Cluster Configuration](#33-update-cluster-configuration)
 - [4. Import Data](#4-import-data)
   - [4.1 Bootstrap from Snapshot](#41-bootstrap-from-snapshot)
   - [4.2 Finalize Import](#42-finalize-import)
@@ -78,6 +79,12 @@ just arangodb verify
 ```
 
 Optional paths, each in its own run order:
+
+```bash
+# Day-2 cluster spec update (startup args, requests, or version — §3.3)
+just gcp-pulumi set-config --folder arangodb-cluster --key 'properties.dbservers.args[0]' --value '--rocksdb.block-cache-shard-bits=4'
+just arangodb update-cluster
+```
 
 ```bash
 # Alternative loader path, instead of §4 (§4.3 — reserved for a future revision)
@@ -147,6 +154,16 @@ Creates root-password Secret and 9-member Cluster (3 agents, 3 dbservers, 3 coor
 
 ```bash
 just arangodb deploy-cluster --root-password '<strong-root-password>'
+```
+
+### 3.3 Update Cluster Configuration
+
+**Day-2 maintenance — skip on a first install.** Set member startup arguments (`args`), resource requests, or the ArangoDB version in `arangodb-cluster/Pulumi.${PULUMI_STACK}.yaml` with `set-config`. Then run `update-cluster` to apply the change, wait for the operator to restart each member pod, and verify the cluster.
+→ [Update cluster configuration](reference/arangodb/cluster.md#update-cluster-configuration)
+
+```bash
+just gcp-pulumi set-config --folder arangodb-cluster --key 'properties.dbservers.args[0]' --value '--rocksdb.block-cache-shard-bits=4'
+just arangodb update-cluster
 ```
 
 ---
