@@ -53,3 +53,39 @@ Output is colorized by default; the recipe sets `CHECK_COLOR=0`, so `just arango
 ## Failure Triage
 
 Every failing line maps to a row in [troubleshooting](troubleshooting.md) — pool and taint failures to [pool requirements](pool-requirements.md), PVC failures to [`pulumi-setup.md` §5](../../pulumi-setup.md#5-first-apply--storageclass-and-namespaces).
+
+## Collection Counts
+
+Use `just arangodb collection-counts` as a read-only post-flight data check after a bootstrap restore, a single-database restore, or a cluster update. The recipe opens a temporary port-forward to the coordinator Service, queries the ArangoDB HTTP REST API for each non-system collection and its document count, and closes the tunnel when it exits. It creates zero pods in the cluster.
+
+### Command
+
+```bash
+# Default: all seven standard databases (annotation, annofeature, order, stock, content, cgm_ddb, chado)
+just arangodb collection-counts
+
+# Query specific databases (repeat --databases or pass a comma-separated list)
+just arangodb collection-counts --databases stock --databases order
+just arangodb collection-counts --databases stock,order
+```
+
+### Behavior
+
+1. Requires a readable `$KUBECONFIG` from the active `cluster-env` sub-shell.
+2. Reads the application username and password from Secret `--secret` (default `backend`, keys `user` and `password`) in `--namespace` (default `prod`).
+3. Opens a supervised local TCP port-forward to `svc/<service>:<port>` (`arangodb:8529` by default) via `cluster-ops forward run`.
+4. Calls `GET /_db/<db>/_api/collection?excludeSystem=true` for each database in `--databases` and sorts the collection names.
+5. Calls `GET /_db/<db>/_api/collection/<collection>/count` for each collection and prints a two-column table per database.
+6. Tears down the port-forward automatically on exit.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--namespace` / `-n` | No | `prod` | Namespace holding the coordinator Service and the credentials Secret |
+| `--service` / `-s` | No | `arangodb` | Coordinator Service name |
+| `--port` / `-p` | No | `8529` | Coordinator Service port |
+| `--secret` / `-c` | No | `backend` | Application credentials Secret name |
+| `--user-key` / `-u` | No | `user` | Secret data key for the database username |
+| `--pass-key` / `-k` | No | `password` | Secret data key for the database password |
+| `--databases` / `-d` | No | `annotation annofeature order stock content cgm_ddb chado` | Variadic or comma-separated list of databases to query |

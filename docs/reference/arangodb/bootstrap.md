@@ -134,11 +134,12 @@ To run the two halves separately — for instance to review the config before ap
 
 Run [Finalize Import](#finalize-import) first. It resets restore config, rotates credentials, and verifies app access; then confirm the checks below.
 
-1. **Confirm data landed.** The Job shows `Completed`, the `arangorestore` log lists databases created and restored, and a spot check finds documents:
+1. **Confirm data landed.** The Job shows `Completed`, the `arangorestore` log lists databases created and restored, and `collection-counts` prints the document counts across all restored collections ([verify details](verify.md#collection-counts)):
 
    ```bash
    kubectl get jobs -n prod
    kubectl logs -n prod job/arangodb-restore-<restore-id> -c arangorestore --tail=50
+   just arangodb collection-counts
    ```
 
 2. **Confirm the restore config reset happened**, so the next DR drill cannot read the source bucket:

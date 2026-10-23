@@ -74,8 +74,9 @@ just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password
 just arangodb deploy-backup
 just arangodb list-snapshots-in-cluster --namespace prod
 
-# 6. Verify installation
+# 6. Verify installation and collection document counts
 just arangodb verify
+just arangodb collection-counts
 ```
 
 Optional paths, each in its own run order:
@@ -266,11 +267,12 @@ just arangodb import-database --namespace <target-namespace> --bucket <source-bu
 
 ## 6. Verify
 
-Read-only audit of pool, operator, storage, members, Service and Jobs. Exits non-zero if any required check fails.
-→ [Verify details](reference/arangodb/verify.md)
+Read-only audit of pool, operator, storage, members, Service, Jobs, and collection document counts. `verify` exits non-zero if a required check fails, and `collection-counts` queries each database over a temporary port-forward without creating cluster pods.
+→ [Verify details](reference/arangodb/verify.md) · [Collection counts](reference/arangodb/verify.md#collection-counts)
 
 ```bash
 just arangodb verify
+just arangodb collection-counts
 ```
 
 ---
