@@ -200,6 +200,7 @@ just ci render-tag-deploy --app graphql-server --project graphql_server --out bi
 - [GraphQL server deployment details](reference/graphql/deployment.md)
 
 **Other documents:**
+- Gateway routing (`gateway/`): [`gateway-deploy.md`](gateway-deploy.md)
 - gRPC backends behind this server: [`backend-service-deploy.md`](backend-service-deploy.md)
 - Redis: [`redis-deploy.md`](redis-deploy.md)
 - MinIO and the asset bucket: [`minio-deploy.md`](minio-deploy.md)

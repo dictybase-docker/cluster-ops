@@ -35,7 +35,7 @@ just minio deploy --root-user '<user>' --root-password '<password>'
 
 - **Image repository moved**: free Bitnami images live under `bitnamilegacy/minio` with dated tags (Bitnami Secure Images publishes `latest`-only). The stack pins `2025.7.23-debian-12-r3`. Lab configs predate the `repository` field — the program defaults it to `bitnamilegacy/minio`.
 - **`disableWebUI` removed**: the Console is a separate deployment gated on `console.enabled`. Prod sets `webui: false` → Console off. The guide never exposes a UI; use `mc` from the operator machine.
-- **Ingress**: chart 17 renames `apiIngress.*` to `ingress.*`. This program renders the Ingress itself and prod sets `apiIngress.enabled: false` — the S3 API stays cluster-internal. Expose it via the `ingress/` project when needed, not via this stack.
+- **Ingress**: chart 17 renames `apiIngress.*` to `ingress.*`. This program renders the Ingress itself and prod sets `apiIngress.enabled: false` — the S3 API stays cluster-internal by default. Expose it on production clusters through the [`gateway/`](../../gateway-deploy.md) stack ([MinIO route](../gateway/deployment.md#minio-route)), not via this stack.
 
 ## Service and Credentials
 

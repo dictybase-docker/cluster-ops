@@ -27,6 +27,7 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Deploy modware gRPC backend services | [`docs/backend-service-deploy.md`](docs/backend-service-deploy.md) |
 | Deploy GraphQL server (`graphql-server`) | [`docs/graphql-deploy.md`](docs/graphql-deploy.md) |
 | Deploy Event Messenger (`event-messenger`) | [`docs/event-messenger-deploy.md`](docs/event-messenger-deploy.md) |
+| Deploy Cilium Gateway and `cert-manager` routes | [`docs/gateway-deploy.md`](docs/gateway-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |
 
 Run them in that order for a greenfield project. Each guide opens with a Quick Reference block if you have done it before.

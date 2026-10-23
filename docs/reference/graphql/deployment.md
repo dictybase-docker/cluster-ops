@@ -194,10 +194,10 @@ Pulumi always passes the boolean as one argument, `--auth-enabled=true` or `--au
 
 | `ingress.enabled` | Resources the stack creates | Who routes the external traffic | Keys the program reads |
 |-------------------|-----------------------------|---------------------------------|------------------------|
-| absent or `false` (default) | Deployment `graphql-api-server` and Service `graphql-api` (`:8080`) | a central Gateway stack, in front of `graphql-api:8080` | none, so a stale `ingress.*` value does no harm |
+| absent or `false` (default) | Deployment `graphql-api-server` and Service `graphql-api` (`:8080`) | the central [`gateway/`](../../gateway-deploy.md) stack, in front of `graphql-api:8080` | none, so a stale `ingress.*` value does no harm |
 | `true` | the two resources above and Ingress `graphql-ingress` | this stack, through the `nginx` controller with a `kcert` TLS Secret | `hosts`, `path`, `tlsSecret` (required), and `label` |
 
-**The central Gateway stack is not in this repository.** The `ingress/` project renders its `frontend` block only, and no Gateway API program exists here. With `ingress.enabled: false`, nothing in cluster-ops routes external traffic to `graphql-api`. In-cluster clients still reach the Service at `graphql-api.<namespace>.svc:8080`.
+With `ingress.enabled: false`, deploy the `HTTPRoute` `graphql-route` through the [`gateway/`](../../gateway-deploy.md) stack ([Gateway details](../gateway/deployment.md#graphql-route)). In-cluster clients still reach the Service at `graphql-api.<namespace>.svc:8080`.
 
 ### Turn the Ingress On
 

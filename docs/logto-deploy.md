@@ -66,7 +66,7 @@ ${EDITOR:-vi} "log-to/Pulumi.${PULUMI_STACK}.yaml"
 
 ## 2. Install Logto
 
-**Applies unattended.** One composite run: `check` → `ensure-stack` → `preview` → `create-resource` (`pulumi up -f -y`) → `kubectl rollout status deployment/logto` (10-minute budget from `--retries 60 --interval 10`) → `verify`. The preview inside this run is a record, not a prompt — on a first production apply or after a config change, read the standalone preview first ([§3.3](#33-review-the-plan)). Creates PVC `logto-claim`, Deployment `logto`, Services `logto-api` (3001) and `logto-admin` (3002), and Ingress `logto-ingress` routed to `logto-api` only — the admin Service stays internal. The rollout wait clears only once a pod is **Ready**, and readiness is an HTTP GET on `/api/status`, so a successful install means Logto answered a request, not merely that the container started. Re-run the same command for upgrades after changing `image.tag`.
+**Applies unattended.** One composite run: `check` → `ensure-stack` → `preview` → `create-resource` (`pulumi up -f -y`) → `kubectl rollout status deployment/logto` (10-minute budget from `--retries 60 --interval 10`) → `verify`. The preview inside this run is a record, not a prompt — on a first production apply or after a config change, read the standalone preview first ([§3.3](#33-review-the-plan)). Creates PVC `logto-claim`, Deployment `logto`, Services `logto-api` (3001) and `logto-admin` (3002), and (only when `ingress.enabled` is `true`) Ingress `logto-ingress` routed to `logto-api` only — the admin Service stays internal. On Gateway clusters, keep `ingress.enabled: false` and expose `logto-api` through [`gateway-deploy.md`](gateway-deploy.md). The rollout wait clears only once a pod is **Ready**, and readiness is an HTTP GET on `/api/status`, so a successful install means Logto answered a request, not merely that the container started. Re-run the same command for upgrades after changing `image.tag`.
 → [`just logto install`](reference/logto/deployment.md#just-logto-install) · [Readiness and rollout](reference/logto/deployment.md#readiness-and-rollout)
 
 ```bash
@@ -140,6 +140,7 @@ Common issues:
 - [Shared namespaces](reference/pulumi/namespaces.md)
 
 **Other documentation:**
+- Gateway routing (`gateway/`): [`gateway-deploy.md`](gateway-deploy.md)
 - PostgreSQL prerequisite: [`postgres-deploy.md`](postgres-deploy.md)
 - PostgreSQL cluster details: [`reference/postgres/cluster.md`](reference/postgres/cluster.md)
 - Pulumi backend + StorageClass: [`pulumi-setup.md`](pulumi-setup.md)

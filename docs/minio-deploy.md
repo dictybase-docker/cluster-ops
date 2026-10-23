@@ -140,6 +140,7 @@ Common issues:
 - [Troubleshooting](reference/minio/troubleshooting.md)
 
 **Other documentation:**
+- Gateway routing (`gateway/`): [`gateway-deploy.md`](gateway-deploy.md)
 - PostgreSQL on the same pool: [`postgres-deploy.md`](postgres-deploy.md)
 - ArangoDB on the same pool: [`arangodb-deploy.md`](arangodb-deploy.md)
 - Architecture: [`kops-gcp-architecture.md`](kops-gcp-architecture.md)

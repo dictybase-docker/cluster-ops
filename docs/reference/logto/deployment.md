@@ -29,7 +29,7 @@ The `log-to/` Pulumi program creates, in this order (`log-to/main.go`):
 1. PVC `logto-claim` — `ReadWriteOnce`, `storageClass` and `diskSize` from config; mounted at `/etc/logto/packages/core/connectors`
 2. Deployment `logto` — pod label `app: logto`, one container `logto-container` running `npm run cli db seed -- --swe && npm run cli db alteration deploy <tag> && npm run cli connector link && npm start`, with a readiness probe on `/api/status` ([readiness and rollout](#readiness-and-rollout))
 3. Service `logto-api` (port 3001) and Service `logto-admin` (port 3002) — both default type (ClusterIP), selector `app: logto`
-4. Ingress `logto-ingress` — `ingressClassName: nginx`, TLS from `ingress.tlsSecret`, one rule per `ingress.backendHosts`, path `/` → **`logto-api` only**
+4. Ingress `logto-ingress` (**optional**, created only when `ingress.enabled` is `true`) — `ingressClassName: nginx`, TLS from `ingress.tlsSecret`, one rule per `ingress.backendHosts`, path `/` → **`logto-api` only**. On Gateway clusters, leave `ingress.enabled` set to `false` and route external traffic through [`gateway-deploy.md`](../../gateway-deploy.md) ([Logto route](../gateway/deployment.md#logto-route)).
 
 Every resource name derives from `properties.name`. The recipes hardcode `logto`, `logto-claim`, `logto-api`, `logto-admin`, `logto-ingress`, and the `app=logto` selector, so `name: logto` is mandatory — `check` reads `.config."log-to:properties".name` and rejects any other value with `must set name logto, got '<value>'` before Pulumi is invoked. That check is what keeps a renamed deployment from reaching the rollout wait, where it would otherwise time out against a Deployment that does not exist.
 
@@ -63,7 +63,7 @@ Behavior:
 
 1. Requires `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, and `PULUMI_SECRET_PROVIDER` to be non-empty, and the credentials file to exist. An empty secrets provider is the failure that leaves `ensure-stack`'s `pulumi stack init --secrets-provider ""` with an unusable stack.
 2. Requires `log-to/Pulumi.<stack>.yaml` to exist, and `yq` on `PATH`.
-3. Asserts on that file, in this order: `name` is exactly `logto` (every recipe and resource name derives from it); `namespace` equals `--namespace`; `databaseSecret` is exactly `logto-app`; `image.name` and `image.tag` are set and the tag is not `latest`; `endpoint`, `ingress.backendHosts[0]`, and `ingress.tlsSecret` are non-empty and contain no `<`/`>` (unreplaced template placeholders).
+3. Asserts on that file, in this order: `name` is exactly `logto` (every recipe and resource name derives from it); `namespace` equals `--namespace`; `databaseSecret` is exactly `logto-app`; `image.name` and `image.tag` are set and the tag is not `latest`; `endpoint` is non-empty and contains no `<`/`>` (unreplaced template placeholders); and when `ingress.enabled` is `true`, `ingress.backendHosts[0]` and `ingress.tlsSecret` are also non-empty and contain no `<`/`>`.
 4. Reads `pulumi -C namespace-bootstrap stack output appNamespace` for the same stack and requires it to equal `--namespace` — the bootstrap stack is the only writer of that namespace.
 5. Runs `just postgres verify --namespace <ns>` (operator, Cluster `logto`, pods, PVC, Services).
 6. Requires Secret `logto-app` to carry non-empty `username` and `password` keys.
@@ -122,8 +122,8 @@ Checks:
 | PVC `logto-claim` | Phase `Bound` |
 | Service `logto-api` | First port is 3001 |
 | Service `logto-admin` | First port is 3002 |
-| Ingress `logto-ingress` | A rule host equals `ingress.backendHosts[0]` from `Pulumi.<stack>.yaml` |
-| Ingress TLS | A `spec.tls[].secretName` equals `ingress.tlsSecret` from `Pulumi.<stack>.yaml` |
+| Ingress `logto-ingress` (only when `ingress.enabled: true`) | A rule host equals `ingress.backendHosts[0]` from `Pulumi.<stack>.yaml` |
+| Ingress TLS (only when `ingress.enabled: true`) | A `spec.tls[].secretName` equals `ingress.tlsSecret` from `Pulumi.<stack>.yaml` |
 
 It then prints `kubectl logs deployment/logto --tail=100`, because a healthy rollout does not prove the seed/alteration steps succeeded — read those lines after every version change.
 
@@ -194,12 +194,7 @@ config:
     apiPort: 3001
     adminPort: 3002
     ingress:
-      tlsSecret: <logto-tls-secret>
-      backendHosts:
-        - <logto-auth-domain>
-      label:
-        name: kcert.dev/ingress
-        value: managed
+      enabled: false
 ```
 
 **Keep these values plaintext.** `check` and `verify` read the file with `yq`, not `pulumi config get`, so a Pulumi-encrypted value is a `{secure: ...}` map on disk:
