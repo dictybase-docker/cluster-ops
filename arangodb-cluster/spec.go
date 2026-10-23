@@ -62,6 +62,10 @@ func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage boo
 		"count": cfg.Count,
 	}
 
+	if len(cfg.Args) > 0 {
+		group["args"] = cfg.Args
+	}
+
 	if len(cfg.NodeSelector) > 0 {
 		group["nodeSelector"] = cfg.NodeSelector
 	}

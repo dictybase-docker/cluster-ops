@@ -29,6 +29,8 @@ config:
           effect: NoSchedule
     dbservers:
       count: 3
+      args:
+        - --rocksdb.block-cache-shard-bits=4
       storageClass: dictycr-balanced
       storageSize: 150Gi
       cpuRequest: 500m

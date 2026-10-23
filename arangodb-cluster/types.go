@@ -34,6 +34,7 @@ type TLSConfig struct {
 // MemberConfig holds configuration for one ArangoDB member group (Agents, DBServers, Coordinators).
 type MemberConfig struct {
 	Count         int               `json:"count"`
+	Args          []string          `json:"args,omitempty"`
 	StorageClass  string            `json:"storageClass,omitempty"`
 	StorageSize   string            `json:"storageSize,omitempty"`
 	CPURequest    string            `json:"cpuRequest,omitempty"`

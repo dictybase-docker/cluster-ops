@@ -42,6 +42,7 @@ func newSampleClusterConfig() *ArangoClusterConfig {
 		},
 		DBServers: MemberConfig{
 			Count:         3,
+			Args:          []string{"--rocksdb.block-cache-shard-bits=4"},
 			StorageClass:  "dictycr-balanced",
 			StorageSize:   "150Gi",
 			CPURequest:    "2",
@@ -91,6 +92,7 @@ func verifyAgentSpec(t *testing.T, spec map[string]any) {
 	agents, ok := spec["agents"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 3, agents["count"])
+	assert.Nil(t, agents["args"])
 	assert.Equal(t, map[string]string{nodePoolKey: nodePoolValue}, agents["nodeSelector"])
 	assert.NotNil(t, agents["affinity"])
 
@@ -118,6 +120,7 @@ func verifyDBServerSpec(t *testing.T, spec map[string]any) {
 	dbservers, ok := spec["dbservers"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 3, dbservers["count"])
+	assert.Equal(t, []string{"--rocksdb.block-cache-shard-bits=4"}, dbservers["args"])
 	assert.Equal(t, map[string]string{nodePoolKey: nodePoolValue}, dbservers["nodeSelector"])
 	assert.NotNil(t, dbservers["affinity"])
 
