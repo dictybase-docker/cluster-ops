@@ -17,6 +17,7 @@ config:
       name: svhd/logto
       tag: latest
     ingress:
+      enabled: true
       tlsSecret: logto-tls-secret
       issuer: letsencrypt-prod
       backendHosts:

@@ -64,6 +64,7 @@ check stack="" namespace="prod":
     image_name=$(yq -r '.config."log-to:properties".image.name // ""' "$CFG_FILE")
     image_tag=$(yq -r '.config."log-to:properties".image.tag // ""' "$CFG_FILE")
     endpoint=$(yq -r '.config."log-to:properties".endpoint // ""' "$CFG_FILE")
+    ingress_enabled=$(yq -r '.config."log-to:properties".ingress.enabled // "false"' "$CFG_FILE")
     ingress_host=$(yq -r '.config."log-to:properties".ingress.backendHosts[0] // ""' "$CFG_FILE")
     tls_secret=$(yq -r '.config."log-to:properties".ingress.tlsSecret // ""' "$CFG_FILE")
 
@@ -83,12 +84,18 @@ check stack="" namespace="prod":
         echo "Error: $CFG_FILE must pin a non-latest Logto image tag." >&2
         exit 1
     fi
-    for value in "$endpoint" "$ingress_host" "$tls_secret"; do
-        if [[ -z "$value" || "$value" == *"<"* || "$value" == *">"* ]]; then
-            echo "Error: $CFG_FILE contains an empty or placeholder production value." >&2
-            exit 1
-        fi
-    done
+    if [[ -z "$endpoint" || "$endpoint" == *"<"* || "$endpoint" == *">"* ]]; then
+        echo "Error: $CFG_FILE contains an empty or placeholder production value." >&2
+        exit 1
+    fi
+    if [[ "$ingress_enabled" == "true" ]]; then
+        for value in "$ingress_host" "$tls_secret"; do
+            if [[ -z "$value" || "$value" == *"<"* || "$value" == *">"* ]]; then
+                echo "Error: $CFG_FILE contains an empty or placeholder production value." >&2
+                exit 1
+            fi
+        done
+    fi
 
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
     app_namespace=$(pulumi -C namespace-bootstrap stack output appNamespace --stack "$STACK")
@@ -172,6 +179,7 @@ verify stack="" namespace="prod":
         exit 1
     fi
 
+    ingress_enabled=$(yq -r '.config."log-to:properties".ingress.enabled // "false"' "$CFG_FILE")
     expected_host=$(yq -r '.config."log-to:properties".ingress.backendHosts[0] // ""' "$CFG_FILE")
     expected_tls=$(yq -r '.config."log-to:properties".ingress.tlsSecret // ""' "$CFG_FILE")
     failures=0
@@ -217,19 +225,21 @@ verify stack="" namespace="prod":
         fi
     done
 
-    ingress_json=$(kubectl get ingress logto-ingress -n "$NS" -o json 2>/dev/null || true)
-    if [[ -z "$ingress_json" ]]; then
-        bad "Ingress logto-ingress missing"
-    else
-        if jq -e --arg host "$expected_host" 'any(.spec.rules[]?; .host == $host)' <<<"$ingress_json" >/dev/null; then
-            ok "Ingress host $expected_host configured"
+    if [[ "$ingress_enabled" == "true" ]]; then
+        ingress_json=$(kubectl get ingress logto-ingress -n "$NS" -o json 2>/dev/null || true)
+        if [[ -z "$ingress_json" ]]; then
+            bad "Ingress logto-ingress missing"
         else
-            bad "Ingress host $expected_host missing"
-        fi
-        if jq -e --arg secret "$expected_tls" 'any(.spec.tls[]?; .secretName == $secret)' <<<"$ingress_json" >/dev/null; then
-            ok "Ingress TLS Secret $expected_tls configured"
-        else
-            bad "Ingress TLS Secret $expected_tls missing"
+            if jq -e --arg host "$expected_host" 'any(.spec.rules[]?; .host == $host)' <<<"$ingress_json" >/dev/null; then
+                ok "Ingress host $expected_host configured"
+            else
+                bad "Ingress host $expected_host missing"
+            fi
+            if jq -e --arg secret "$expected_tls" 'any(.spec.tls[]?; .secretName == $secret)' <<<"$ingress_json" >/dev/null; then
+                ok "Ingress TLS Secret $expected_tls configured"
+            else
+                bad "Ingress TLS Secret $expected_tls missing"
+            fi
         fi
     fi
 

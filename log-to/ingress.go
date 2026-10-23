@@ -12,6 +12,9 @@ func (lt *Logto) CreateIngress(
 	ctx *pulumi.Context,
 	service pulumi.Resource,
 ) (*networkingv1.Ingress, error) {
+	if !lt.Config.Ingress.Enabled {
+		return nil, nil
+	}
 	ingress, err := networkingv1.NewIngress(
 		ctx,
 		fmt.Sprintf("%s-ingress", lt.Config.Name),

@@ -12,6 +12,7 @@ config:
       name: svhd/logto
       tag: 1.10.1
     ingress:
+      enabled: true
       backendHosts:
         - secure: v1:3Zz2DonNxslE3Neb:9kXkq0sHvhO1f+AY8SqqwEI16wpwc0xPn345oOHC4jvtfA0=
       label:

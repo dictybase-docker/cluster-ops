@@ -103,6 +103,7 @@ write_config() {
     local endpoint="${5:-https://auth.example.com}"
     local ingress_host="${6:-auth.example.com}"
     local tls_secret="${7:-logto-tls}"
+    local ingress_enabled="${8:-true}"
     local database_yaml="databaseSecret: ${database_secret}"
     if [[ "$database_secret" == "encrypted" ]]; then
         database_yaml=$'databaseSecret:\n      secure: v1:encrypted'
@@ -122,6 +123,7 @@ config:
     apiPort: 3001
     adminPort: 3002
     ingress:
+      enabled: ${ingress_enabled}
       tlsSecret: ${tls_secret}
       backendHosts:
         - ${ingress_host}
@@ -250,6 +252,14 @@ echo 'apply fail-fast: PASS'
 run_recipe "$just_bin" logto verify --stack "$stack" >/tmp/logto-verify-output
 rg -q 'Logto checks passed\.' /tmp/logto-verify-output
 echo 'multi-rule Ingress verification: PASS'
+
+write_config logto logto-app 1.43.0 prod https://auth.example.com "" "" false
+: > "$log_file"
+run_recipe "$just_bin" logto check --stack "$stack" >/dev/null
+run_recipe "$just_bin" logto verify --stack "$stack" >/tmp/logto-verify-no-ingress-output
+rg -q 'Logto checks passed\.' /tmp/logto-verify-no-ingress-output
+! rg -q 'get ingress logto-ingress' "$log_file"
+echo 'ingress disabled check and verify: PASS'
 
 source_text=$(cat just_modules/logto.justfile)
 grep -F 'just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"' <<<"${source_text}" >/dev/null

@@ -21,6 +21,7 @@ type LogtoConfig struct {
 }
 
 type IngressConfig struct {
+	Enabled      bool
 	TLSSecret    string
 	BackendHosts []string
 	Label        LabelConfig
