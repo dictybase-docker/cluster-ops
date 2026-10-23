@@ -2,314 +2,214 @@
 
 Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
+This document explains how to restore or import one ArangoDB database from a restic snapshot without a restore of the full instance.
+
 ## Table of Contents
 
 - [What It Does](#what-it-does)
-- [Config Keys](#config-keys)
-- [Restore Arguments Per Mode](#restore-arguments-per-mode)
-- [Behavior](#behavior)
-  - [Preflight Chain](#preflight-chain)
-  - [`restore-database`](#restore-database)
-  - [`import-database`](#import-database)
-- [Flags](#flags)
-  - [`restore-database` Flags](#restore-database-flags)
-  - [`import-database` Flags](#import-database-flags)
-  - [Added To `configure-restore` And `configure-bootstrap`](#added-to-configure-restore-and-configure-bootstrap)
+- [Restore From This Cluster (`restore-database`)](#restore-from-this-cluster-restore-database)
+- [Import From Another Project (`import-database`)](#import-from-another-project-import-database)
+- [Step-by-Step Flags (`configure-restore` and `configure-bootstrap`)](#step-by-step-flags-configure-restore-and-configure-bootstrap)
+- [Preflight Checks](#preflight-checks)
 - [Overwrite Semantics](#overwrite-semantics)
+- [Config Keys and Cleanup](#config-keys-and-cleanup)
+- [Restore Arguments Per Mode](#restore-arguments-per-mode)
 - [Failure Modes](#failure-modes)
 - [Lifecycle and Teardown](#lifecycle-and-teardown)
 - [Related](#related)
 
+---
+
 ## What It Does
 
-Two composite recipes restore exactly one ArangoDB database out of a restic
-snapshot that holds the whole instance:
+Two composite recipes restore one ArangoDB database out of a restic snapshot that holds the full instance.
 
-| Recipe | Source repository | Identity | Stack overlay | EXIT trap |
-|--------|-------------------|----------|---------------|-----------|
-| `restore-database` | this cluster's own bucket, read from `arangodb-restore/Pulumi.<stack>.yaml` | `dictycr` (whatever `resticSecret.name` says) | `database` + `overwrite` only | `_reset-single-database-config` |
-| `import-database` | another GCP project's bucket, passed with `--bucket` | `dictycr-source`, read-only, `noLock: true` | bucket, three secret names, `noLock`, `database`, `overwrite` | `reset-restore-config` |
+| Recipe | Source Repository | Secret Identity | Stack Overlay | Exit Trap |
+|--------|-------------------|-----------------|---------------|-----------|
+| `restore-database` | This cluster's bucket, from `arangodb-restore/Pulumi.<stack>.yaml` | `dictycr` (from `resticSecret.name`) | `database` and `overwrite` only | Clears `database` and `overwrite` |
+| `import-database` | A bucket in another GCP project, from `--bucket` | `dictycr-source` (read-only, `noLock: true`) | `bucket`, three secret names, `noLock`, `database`, `overwrite` | Resets all keys to DR defaults |
 
-The export side is unchanged. The nightly CronJob and the immediate
-`deploy-backup` Job already run `arangodump --all-databases` into
-`/arangodump/<db>` subdirectories inside the snapshot
-([backup details](backup.md)), so a single-database restore only selects one of
-those subdirectories — there is no per-database export artifact to produce
-first.
+The backup job does not change. The daily CronJob and `deploy-backup` run `arangodump --all-databases` and write each database into `/arangodump/<db>` inside the snapshot ([backup details](backup.md)). You do not need a separate per-database backup job.
 
-Narrowing happens at two independent levels, and both must agree:
+Both recipes limit the restore in two places:
 
-- restic `--include /arangodump/<database>` reconstructs only that database's
-  subtree onto the scratch volume.
-- arangorestore `--server.database <database>` writes only into that database.
+- `restic` runs with `--include /arangodump/<database>` and restores only that subdirectory onto the scratch volume.
+- `arangorestore` runs with `--server.database <database>` and writes only into that database.
 
-Users and grants live in `_system`. A single-database restore does **not**
-carry app users: after restoring an application database, re-run
-[`create-databases` / `configure-app-credentials`](databases.md) (same cluster)
-or `finalize-bootstrap` (cross-project) if the app user is missing.
+Users and grants stay in the `_system` database. A single-database restore does **not** copy application users. If the application user is missing after the restore, run [`create-databases` or `configure-app-credentials`](databases.md) for a same-cluster restore, or run [`finalize-bootstrap`](bootstrap.md#finalize-import) for a cross-project import.
 
-## Config Keys
+---
 
-Both recipes drive the existing `arangodb-restore` stack. They add two keys to
-it and take them away again.
+## Restore From This Cluster (`restore-database`)
 
-| Key | Type | Set by | Effect when absent |
-|-----|------|--------|--------------------|
-| `properties.database` | string | `restore-database`, `import-database`, `configure-restore --database`, `configure-bootstrap --database` | whole-instance restore: `--all-databases true`, every `/arangodump/*` subdirectory |
-| `properties.overwrite` | bool (`"true"` / `"false"` as written by `config set-all`) | the same four recipes, from `--overwrite` | arangorestore runs without `--overwrite true`; every recipe refuses to reach that state for an existing database unless `--overwrite yes` was given ([Overwrite Semantics](#overwrite-semantics)) |
+Use `restore-database` for a point-in-time restore of one database from this cluster's own backup bucket.
 
-Both keys are recipe-managed and deliberately absent from
-`arangodb-restore/Pulumi.dcr-kube1.yaml`. Existing stack templates therefore
-keep their whole-instance disaster-recovery behavior unchanged, and no template
-edit is needed to use these recipes.
+```bash
+just arangodb restore-database --namespace <ns> --database <db>
+```
 
-They are removed on every exit path: `restore-database` traps
-`_reset-single-database-config` (clears `database` and `overwrite`, leaves
-bucket/secrets/`noLock` alone because that run never touched them),
-`import-database` traps the broader `reset-restore-config`. A whole-instance
-`configure-restore` or `configure-bootstrap` run additionally does
-`pulumi config rm --path properties.database` / `properties.overwrite` before
-finishing, so a stale filter left behind by any route cannot quietly narrow the
-next DR drill to one database.
+### Behavior
 
-Validation is duplicated on purpose — once in the recipes so a bad flag fails
-before anything is mutated, once in Go so a hand-edited stack config fails at
-`pulumi up`:
-
-- Database names must match `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`
-  (`arangodb-restore/types.go`, `databasePattern` / `validateDatabase()`; the
-  recipes apply the same regex inline). The leading underscore is allowed
-  because `_system` is a legitimate target. ArangoDB's extended naming mode is
-  stricter about what the server accepts, but a name this pattern rejects is
-  never one arangorestore can address.
-- `overwrite: true` without `database` is rejected by `Validate()` and by all
-  four recipes: overwrite only applies to a single-database restore.
-- `--overwrite` accepts `yes`/`no` (operator spelling) and `true`/`false` (the
-  spelling stack config stores); anything else aborts.
-
-## Restore Arguments Per Mode
-
-Built by `arangodb-restore/spec.go`, `buildResticRestoreArgs` and
-`buildArangorestoreArgs`.
-
-| Mode | restic (init container `restic-restore`) | arangorestore (main container `arangorestore`) |
-|------|------------------------------------------|------------------------------------------------|
-| Whole instance | `-r gs:<bucket>:/ restore <snapshot> --target /restore` | `--input-directory /restore/arangodump --all-databases true --include-system-collections --create-database true` |
-| One database | same, plus `--include /arangodump/<database>` | `--input-directory /restore/arangodump/<database> --server.database <database> --include-system-collections --create-database true`, plus `--overwrite true` only with `--overwrite yes` |
-
-Both arangorestore invocations are prefixed with
-`--server.endpoint http+tcp://<server>:<port> --server.username root
---server.password $(ARANGO_PASSWORD)`, and `--no-lock` is prepended to the
-restic args (ahead of the `restore` subcommand, where restic expects
-repository-level options) whenever `noLock: true` — which is every
-`import-database` run.
-
-restic `--include` matches the **original absolute path recorded in the
-snapshot** (`/arangodump/<db>`), never a path under `--target`. `restic restore
---target /restore` then reconstructs that absolute path below the target, which
-is why the scratch input directory in single-database mode is
-`/restore/arangodump/<db>` and not `/restore/<db>`
-(`scratchInputDirectory()`).
-
-## Behavior
-
-### Preflight Chain
-
-`_preflight-database-restore` is the shared read-only gate. Callers run it
-**before their first mutation**, so a typo or a surprising target database
-aborts before any stack config or Job exists; `scripts/test-arangodb-single-db-restore.sh`
-asserts that ordering (`assert_order '_preflight-database-restore' 'config set-all'`).
-
-1. Database name must match `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`.
-2. `--overwrite` must be `yes`, `true`, `no`, `false` or empty.
-3. `_restic-ls` proves the snapshot holds `/arangodump/<db>`: a throwaway
-   `restic/restic:0.17.0` pod runs `-r gs:<bucket>:/ --no-lock ls <snapshot>
-   /arangodump/<db>`, credentials mounted from the restic secret, and only
-   lines matching `^/arangodump/<db>(/|$)` are kept. No match aborts.
-4. `_database-exists` decides the target gate through `_arangosh-probe`
-   (a short-lived `arangodb:<version>` pod running `db._databases()` against
-   `_system`). Exit status is the contract: **0 = exists, 3 = definitively
-   absent, anything else = the probe itself failed**.
-5. Fail closed when the probe returned 0 and `--overwrite` is not `yes`/`true`.
-6. Print the resolved outcome (`does not exist yet; arangorestore
-   --create-database true creates it`, or `exists and --overwrite yes was
-   given: its collections are replaced`), plus the `_system` warning when the
-   target is `_system`.
-
-A probe exit other than 0 or 3 aborts the run. An unreachable coordinator is
-never read as "database absent", because that reading would turn a network
-blip into an unguarded restore.
-
-### `restore-database`
-
-Same-cluster point-in-time restore of one database from this cluster's own
-restic bucket.
-
-1. Resolve the stack with `_require-stack`: `--stack`, else `$PULUMI_STACK`,
-   else abort with `Error: no stack name — set PULUMI_STACK (via cluster env)
-   or pass --stack.` There is no `dev` fallback.
-2. Require `--namespace` and `--database`; default `--snapshot` to `latest` and
-   `--restore-id` to `dbrestore-<UTC YYYYMMDD-HHMMSS>`.
-3. Discover the coordinator Service when `--server` is omitted: first Service
-   labelled `arango_deployment=arangodb` in the namespace, excluding `-int` /
-   `-ea` and per-member (`-agnt-`, `-crdn-`, `-prmr-`, `-sngl-`) Services;
-   falls back to `arangodb` with a warning.
-4. Read `bucket` and `resticSecret.name` out of
-   `arangodb-restore/Pulumi.<stack>.yaml` with `yq`, then assert the stack is on
-   this cluster's own DR identity. A missing file or missing keys aborts and
-   points at `reset-restore-config`, and so does a leftover bootstrap overlay
-   (`resticSecret.name: dictycr-source` or `noLock: true`) — a foreign-bucket
-   stack would otherwise turn a same-cluster restore into a read of another
-   project's repository. This run never takes a bucket from a flag.
-5. Pin an omitted or `latest` `--snapshot` to the newest snapshot in that bucket
-   with `_restic-snapshots-json`. The preflight then proves one concrete
-   snapshot, the Job restores exactly that snapshot, and the closing summary
-   names an auditable recovery point instead of `latest`.
-6. `_assert-no-running-jobs --selector app=arangodb-restore` in the target
-   namespace: queued or finished Jobs may be replaced, a Job with a running
-   container may not.
-7. `_preflight-database-restore` with the bucket/secret from step 4 and the
-   pinned id from step 5.
-8. Install the EXIT trap (`_reset-single-database-config`) — from here on every
-   exit path, failure included, leaves the stack in whole-instance DR posture.
-9. `configure-restore --database <db> [--overwrite yes]` writes the stack
-   config in one `pulumi config set-all`: `namespace`, `server`, `restoreId`,
-   `snapshot`, `confirmTarget` (always computed as
-   `<namespace>/<server>/<restoreId>`), `database`, `overwrite`. It re-runs the
-   same preflight first; the repeat is read-only and costs two extra throwaway
-   pods.
-10. `apply-restore`: `preview` → `create-resource`, wait for the `restic-restore`
-    init container to terminate `Completed`, print its log, wait for the Job,
-    print the `arangorestore` log and the scratch PVC.
-11. Post-verify with `_database-has-collections`: **0 = verified, 4 = the
-    database exists but holds no non-system collection, anything else = the
-    probe failed**. Exit 4 fails the composite, so a restore that produced an
-    empty database is never reported as success.
-
-### `import-database`
-
-Same flow against another project's bucket. Differences only:
-
-- `--bucket` is required and is used directly by the preflight (there is no
-  stack config to read it from yet); `--secret` defaults to `dictycr-source`.
-- `--restore-id` defaults to `import-<UTC YYYYMMDD-HHMMSS>`.
-- Step 9 calls `configure-bootstrap` instead of `configure-restore`. That
-  overlays the source bucket, the three source secret **names** (keys keep
-  their `dictycr`-compatible values `resticPass` / `gcsCredentials` /
-  `gcsProject`) and `noLock: true`, on top of the target identity and the
-  single-database pair.
-- Step 5 resolves an omitted or `latest` `--snapshot` against the source
-  repository instead of this cluster's own bucket. Both composites pin the
-  same way, so the id the preflight proves is the id the Job restores, and the
-  id is stored in the stack config, so the effective RPO stays auditable.
-- The EXIT trap is `reset-restore-config`, because this run moved
-  bucket/secrets/`noLock` as well.
-
-## Flags
+1. Resolves the stack from `--stack` or `$PULUMI_STACK`. The recipe stops if neither value is set.
+2. Discovers the coordinator Service in `--namespace` when `--server` is omitted, or falls back to `arangodb`.
+3. Reads `bucket` and `resticSecret.name` from `arangodb-restore/Pulumi.<stack>.yaml`. If the stack still holds a cross-project overlay (`dictycr-source` or `noLock: true`), the recipe stops and tells you to run `reset-restore-config`.
+4. Resolves an omitted or `latest` `--snapshot` to the newest snapshot ID in the bucket. The preflight checks and the restore Job use that exact snapshot ID.
+5. Stops if another `arangodb-restore` Job has an active container in the namespace.
+6. Runs the read-only [preflight checks](#preflight-checks) before any stack change.
+7. Registers an exit trap that removes `properties.database` and `properties.overwrite` when the command exits.
+8. Writes `namespace`, `server`, `restoreId`, `snapshot`, `confirmTarget`, `database`, and `overwrite` to the stack config with `configure-restore`.
+9. Runs `apply-restore` to create the Job, waits for the `restic-restore` init container, prints its log, waits for `arangorestore`, and prints its log.
+10. Verifies that the restored database contains at least one non-system collection. If the database is empty, the recipe fails.
 
 ### `restore-database` Flags
 
-`just arangodb restore-database --namespace <ns> --database <db> [...]`
-
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--namespace`, `-n` | Yes | — | No safe default restore target exists |
-| `--database`, `-d` | Yes | — | Use `configure-restore` + `apply-restore` for a whole-instance restore |
-| `--snapshot`, `-p` | No | `latest` | restic snapshot id, or `latest`; empty or `latest` is pinned to the newest snapshot in the stack's bucket before the preflight, and the pinned id is what reaches the stack config |
-| `--overwrite`, `-w` | No | `no` | `yes`/`no` (`true`/`false` also accepted); required to touch an existing database |
-| `--server`, `-v` | No | auto-discovered, else `arangodb` | Coordinator Service name |
-| `--restore-id`, `-i` | No | `dbrestore-<UTC timestamp>` | DNS-1123 label, at most 46 chars so `arangodb-restore-<id>` stays under 63 |
-| `--stack`, `-k` | No | `$PULUMI_STACK` | No `dev` fallback |
-| `--retries`, `-r` | No | `180` | Probe attempts per phase in `apply-restore` |
-| `--interval`, `-t` | No | `10` | Seconds between probes — 30 minutes per phase at the defaults |
+| `--namespace`, `-n` | Yes | — | Target namespace in this cluster |
+| `--database`, `-d` | Yes | — | Database name. Must match `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$` |
+| `--snapshot`, `-p` | No | `latest` | Restic snapshot ID or `latest`. The recipe pins `latest` to the newest snapshot ID before preflight |
+| `--overwrite`, `-w` | No | `no` | `yes` or `no` (`true` or `false` also work). Required when the target database already exists |
+| `--server`, `-v` | No | Auto-discovered, else `arangodb` | Coordinator Service name |
+| `--restore-id`, `-i` | No | `dbrestore-<UTC timestamp>` | DNS-1123 label, maximum 46 characters so the Job name stays under 63 characters |
+| `--stack`, `-k` | No | `$PULUMI_STACK` | Pulumi stack name |
+| `--retries`, `-r` | No | `180` | Probe attempts per wait phase in `apply-restore` |
+| `--interval`, `-t` | No | `10` | Seconds between probes (30 minutes per phase at the defaults) |
+
+---
+
+## Import From Another Project (`import-database`)
+
+Use `import-database` to copy one database from a restic bucket in another GCP project into this cluster. Create Secret `dictycr-source` first ([cross-project bootstrap](bootstrap.md#3-create-the-source-secret)).
+
+```bash
+just arangodb import-database --namespace <ns> --bucket <source-bucket> --database <db>
+```
+
+### Behavior
+
+`import-database` runs the same flow as `restore-database`, with these differences:
+
+1. Requires `--bucket` for the source project's restic bucket and defaults `--secret` to `dictycr-source`.
+2. Pins an omitted or `latest` `--snapshot` against the source repository before preflight.
+3. Defaults `--restore-id` to `import-<UTC timestamp>`.
+4. Registers an exit trap that runs `reset-restore-config` on every exit path.
+5. Calls `configure-bootstrap` instead of `configure-restore`. This step sets the source bucket, points the three secret names at `dictycr-source`, sets `noLock: true`, and sets `database` and `overwrite`.
 
 ### `import-database` Flags
 
-`just arangodb import-database --namespace <ns> --bucket <source-bucket> --database <db> [...]`
-
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--namespace`, `-n` | Yes | — | Target namespace in **this** cluster |
-| `--bucket`, `-b` | Yes | — | SOURCE project's restic bucket; never defaulted |
-| `--database`, `-d` | Yes | — | Use `bootstrap-from-snapshot` for a whole-instance first load |
-| `--snapshot`, `-p` | No | `latest` | Empty or `latest` resolves to the newest snapshot in the source repo and is pinned in the stack config |
-| `--overwrite`, `-w` | No | `no` | Same semantics as `restore-database` |
-| `--secret`, `-c` | No | `dictycr-source` | Holds the SOURCE `resticPass` / `gcsProject` / `gcsCredentials` |
-| `--server`, `-v` | No | auto-discovered, else `arangodb` | Coordinator Service name |
-| `--restore-id`, `-i` | No | `import-<UTC timestamp>` | Same DNS-1123 and 46-char rules |
-| `--stack`, `-k` | No | `$PULUMI_STACK` | No `dev` fallback |
-| `--retries`, `-r` | No | `180` | Probe attempts per phase |
+| `--namespace`, `-n` | Yes | — | Target namespace in this cluster |
+| `--bucket`, `-b` | Yes | — | Source project's restic bucket |
+| `--database`, `-d` | Yes | — | Database name. Use `bootstrap-from-snapshot` for a full-instance load |
+| `--snapshot`, `-p` | No | `latest` | Restic snapshot ID or `latest`, pinned from the source repository |
+| `--overwrite`, `-w` | No | `no` | `yes` or `no`. Required when the target database already exists |
+| `--secret`, `-c` | No | `dictycr-source` | Secret with the source `resticPass`, `gcsProject`, and `gcsCredentials` |
+| `--server`, `-v` | No | Auto-discovered, else `arangodb` | Coordinator Service name |
+| `--restore-id`, `-i` | No | `import-<UTC timestamp>` | DNS-1123 label, maximum 46 characters |
+| `--stack`, `-k` | No | `$PULUMI_STACK` | Pulumi stack name |
+| `--retries`, `-r` | No | `180` | Probe attempts per wait phase |
 | `--interval`, `-t` | No | `10` | Seconds between probes |
 
-### Added To `configure-restore` And `configure-bootstrap`
+---
 
-The two composites above are the recommended entry points; these flags exist so
-the same narrowing is available when driving the stack step by step. Neither
-recipe installs a trap, so a run that sets `--database` here leaves the keys on
-the stack until `reset-restore-config` (or the next whole-instance
-`configure-*`) clears them.
+## Step-by-Step Flags (`configure-restore` and `configure-bootstrap`)
+
+Prefer `restore-database` and `import-database`. If you want to inspect the Pulumi stack configuration before you run `apply-restore`, pass `--database` and `--overwrite` to `configure-restore` or `configure-bootstrap`.
+
+**CAUTION: Neither `configure-restore` nor `configure-bootstrap` registers an exit trap.** Run `just arangodb reset-restore-config` after `apply-restore` so the single-database keys do not stay on the stack.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--database`, `-d` | No | empty = whole instance | Adds the read-only preflight; `configure-restore` reads bucket/secret from `arangodb-restore/Pulumi.<stack>.yaml`, `configure-bootstrap` uses its own `--bucket` / `--secret` |
-| `--overwrite`, `-w` | No | `no` | Rejected without `--database` |
+| `--database`, `-d` | No | Empty (full instance) | Runs the read-only preflight and limits the restore to one database |
+| `--overwrite`, `-w` | No | `no` | Rejected when `--database` is not set |
+
+---
+
+## Preflight Checks
+
+Both recipes run a read-only preflight check **before** any stack config change or Job creation. If any check fails, the recipe stops and changes nothing.
+
+1. **Database name syntax:** `--database` must match `^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$`. An initial underscore is allowed for `_system`.
+2. **Overwrite flag syntax:** `--overwrite` must be `yes`, `true`, `no`, `false`, or empty. Any other value stops the run. Also, `--overwrite yes` without `--database` is rejected.
+3. **Snapshot content check:** A temporary `restic/restic:0.17.0` pod runs `restic --no-lock ls <snapshot> /arangodump/<db>` with credentials from the restic Secret. If the snapshot has no `/arangodump/<db>` directory, the recipe stops.
+4. **Target database check:** A temporary `arangodb` pod queries the coordinator to check whether `<db>` already exists. The pod uses the ArangoDB version from `arangodb-cluster/Pulumi.<stack>.yaml`.
+5. **Overwrite gate:** If the database exists and `--overwrite` is not `yes` or `true`, the recipe stops. If the coordinator probe fails for any network or authentication reason, the recipe also stops. An unreachable coordinator does not count as a missing database.
+
+---
 
 ## Overwrite Semantics
 
-Fail closed by default: a single-database restore replaces the collections of
-an existing database, so the preflight aborts rather than guess. The abort
-message names the database, the server, the namespace, states that nothing was
-changed, and gives the exact remedy (`Re-run the same recipe with --overwrite
-yes`).
+**CAUTION: Overwrite replaces the collections in the target database.** By default, the preflight check refuses to touch an existing database. Pass `--overwrite yes` only when you want to replace the collections in that database.
 
-`--overwrite true` is appended only when `--overwrite yes` was given, and that
-flag is not what makes the default safe: arangorestore's own `overwrite` option
-already defaults to `true` (`client-tools/Restore/RestoreFeatureOptions.h` in
-`arangodb/arangodb`). The gate is the preflight — reach the Job through a
-recipe and an existing database is refused without `--overwrite yes`; a
-hand-edited stack config with `database` set and `overwrite` absent does not get
-that protection.
+When you pass `--overwrite yes`, the recipe sets `properties.overwrite: true` and passes `--overwrite true` to `arangorestore`. Do not set `properties.database` by hand in the stack file. The preflight check in the `just` recipe enforces the overwrite gate before the Job starts.
 
-`_system` always exists, so it always requires `--overwrite yes`. It also
-restores the source's users and root password — the preflight prints a warning,
-and `just arangodb reset-root-password` must run afterwards or the destination
-cluster's `arangodb-pass` Secret no longer matches the live root password.
+The `_system` database always exists on the cluster, so a restore of `_system` always requires `--overwrite yes`. A restore of `_system` also replaces the cluster's users and root password with the values from the snapshot. If you restore `_system`, run `just arangodb reset-root-password` afterwards so Secret `arangodb-pass` matches the live root password.
+
+---
+
+## Config Keys and Cleanup
+
+Both recipes use the `arangodb-restore` stack. They set two temporary keys on the stack and remove them when the command exits.
+
+| Key | Type | Effect When Set | Effect When Absent |
+|-----|------|-----------------|--------------------|
+| `properties.database` | string | Restores only `/arangodump/<database>` into `<database>` | Restores the full instance (`--all-databases true`) |
+| `properties.overwrite` | bool | Appends `--overwrite true` to `arangorestore` | Runs `arangorestore` without `--overwrite true` |
+
+Neither key is stored in `arangodb-restore/Pulumi.<stack>.yaml`. The committed stack template stays in full-instance disaster-recovery mode.
+
+Cleanup occurs automatically on exit:
+
+- `restore-database` removes `properties.database` and `properties.overwrite` on exit and leaves `bucket`, the secret names, and `noLock` unchanged.
+- `import-database` runs `just arangodb reset-restore-config` on exit. This command sets `bucket` back to `restic-arangodb-backup-prod`, sets the three secret names back to `dictycr`, and sets `noLock` to `false`. It also removes `snapshot`, `restoreId`, `confirmTarget`, `database`, and `overwrite`.
+- A full-instance `configure-restore` or `configure-bootstrap` run also removes `properties.database` and `properties.overwrite`, so a stale key cannot limit a later disaster-recovery drill to one database.
+
+---
+
+## Restore Arguments Per Mode
+
+The `arangodb-restore` program builds these container arguments for the two modes:
+
+| Mode | Init Container (`restic-restore`) | Main Container (`arangorestore`) |
+|------|-----------------------------------|----------------------------------|
+| Full instance | `-r gs:<bucket>:/ restore <snapshot> --target /restore` | `--input-directory /restore/arangodump --all-databases true --include-system-collections --create-database true` |
+| Single database | Same, plus `--include /arangodump/<database>` | `--input-directory /restore/arangodump/<database> --server.database <database> --include-system-collections --create-database true` (plus `--overwrite true` when `overwrite: true`) |
+
+When `noLock: true` is set (every `import-database` run), `--no-lock` is placed before the `restore` subcommand. Both `arangorestore` modes connect as `root` with the password from Secret `arangodb-pass`.
+
+`restic --include` matches the path `/arangodump/<db>` recorded inside the snapshot. `restic restore --target /restore` writes that path under `/restore`, so `arangorestore` reads from `/restore/arangodump/<db>`.
+
+---
 
 ## Failure Modes
 
-| Symptom | Cause | Where it stops |
-|---------|-------|----------------|
-| `snapshot '<id>' in gs://<bucket> contains no '/arangodump/<db>'` | wrong database name, or a snapshot predating that database | `_restic-ls`, before any mutation; the message prints the `list-snapshots-in-cluster` invocation to inspect the repository (use `list-source-snapshots` for an import) |
-| `database '<db>' already exists on '<server>'` | target exists, `--overwrite yes` not given | preflight, before any mutation |
-| `the arangodb-restore stack still carries a cross-project bootstrap overlay` | `import-database` / `bootstrap-from-snapshot` could not reset the stack (its trap is best-effort, `|| true`) | `restore-database`, before the snapshot pin and the preflight; the message names `reset-restore-config` as the remedy |
-| `could not determine whether database '<db>' exists (probe exit N)` | unreachable coordinator, missing `arangodb-pass`, missing `arangodb-cluster/Pulumi.<stack>.yaml` | preflight; a failed probe is never read as "database absent" |
-| `apply-restore` fails | restic or arangorestore error; `BackoffLimit: 0`, no retry | the EXIT trap still clears the single-database keys |
-| `database '<db>' exists but has no non-system collection` | restore brought no data | `_database-has-collections` exits 4, the composite fails |
-| arangorestore version error | restore image tag does not match the destination server's minor version | `arangodb-restore/types.go` `defaultArangoImageTag` (`3.12.11`) must track `arangodb-cluster:properties.version` in the destination cluster's stack config |
+| Symptom | Cause | Action |
+|---------|-------|--------|
+| `snapshot '<id>' in gs://<bucket> contains no '/arangodump/<db>'` | Wrong database name, or the snapshot was taken before the database existed | Run `just arangodb list-snapshots-in-cluster --namespace <ns>` (or `list-source-snapshots` for an import) and pick a snapshot that contains the database |
+| `database '<db>' already exists on '<server>'` | The target database exists and `--overwrite yes` was not given | Re-run with `--overwrite yes` if you want to replace the database's collections |
+| `the arangodb-restore stack still carries a cross-project bootstrap overlay` | A previous import did not reset the stack config | Run `just arangodb reset-restore-config` before you run `restore-database` |
+| `could not determine whether database '<db>' exists (probe exit N)` | The coordinator is unreachable, Secret `arangodb-pass` is missing, or `arangodb-cluster/Pulumi.<stack>.yaml` is missing | Check the coordinator Service and `arangodb-pass` in the target namespace |
+| `apply-restore` fails | `restic` or `arangorestore` returned a non-zero exit code (`BackoffLimit: 0`) | Read the container logs printed by the recipe. The exit trap still resets the stack keys |
+| `database '<db>' exists but has no non-system collection` | The restore finished, but the target database has no user collections | Inspect the snapshot contents and the `arangorestore` log |
+| `arangorestore` version error | The restore container image tag does not match the server's minor version | Match the image tag in `arangodb-restore` to `properties.version` in `arangodb-cluster/Pulumi.<stack>.yaml` |
 
-The arangosh probes read `arangodb-cluster:properties.version` from the
-destination cluster's stack config to pick their own image tag, so they always
-speak the destination's version even when the restore image is stale.
+---
 
 ## Lifecycle and Teardown
 
-- The restore Job and its scratch PVC self-delete one hour after finishing
-  (`ttlSecondsAfterFinished: 3600`). Inspect logs before then.
-- `arangodb-restore` is a one-off action, not a standing service. Destroy the
-  stack when done: `just gcp-pulumi remove-resource --folder arangodb-restore`.
-- `reset-restore-config` puts the stack back on the DR defaults: bucket
-  `restic-arangodb-backup-prod`, secrets `dictycr` (restic/bucket/project),
-  `noLock: false`, and clears `snapshot`, `restoreId`, `confirmTarget`,
-  `database` and `overwrite`. Both composites reach this state on their own;
-  run it by hand only after a manual `configure-restore --database` /
-  `configure-bootstrap --database`.
+- The restore Job and its scratch PVC delete themselves one hour after completion (`ttlSecondsAfterFinished: 3600`). Read the logs before the timer expires.
+- `arangodb-restore` is a one-off action, not a persistent service. Remove the stack resources after you check the Job logs:
+
+  ```bash
+  just gcp-pulumi remove-resource --folder arangodb-restore
+  ```
+
+---
 
 ## Related
 
-- [Restore details](restore.md) — whole-instance drill and the shared
-  configure/apply mechanics.
-- [Cross-project bootstrap](bootstrap.md) — minting `dictycr-source` and the
-  whole-instance first load.
-- [Backup details](backup.md) — the per-database dump layout this relies on.
-- [Troubleshooting](troubleshooting.md) — symptom-to-cause map for the restore
-  Job.
+- [Restore details](restore.md) — full-instance disaster-recovery drill and configure/apply mechanics.
+- [Cross-project bootstrap](bootstrap.md) — `dictycr-source` setup and full-instance first load.
+- [Backup details](backup.md) — snapshot layout and backup CronJob.
+- [Troubleshooting](troubleshooting.md) — error messages for the restore Job and cross-project access.
