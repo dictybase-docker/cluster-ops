@@ -16,7 +16,7 @@ import (
 )
 
 // CustomResourceCondition waits for one custom resource's status field to
-// reach a value (e.g. ArangoDeployment status.state=Running, CNPG Cluster
+// reach a value (e.g. ArangoDeployment status.phase=Running, CNPG Cluster
 // status.phase="Cluster in healthy state").
 type CustomResourceCondition struct {
 	Namespace     string

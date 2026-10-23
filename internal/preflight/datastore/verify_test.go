@@ -58,10 +58,10 @@ var (
 )
 
 //nolint:goconst,lll,unparam // fixture literals
-func arangoCR(ns string, state string) *unstructured.Unstructured {
+func arangoCR(ns string, phase string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"namespace": ns, "name": arangoCRName},
-		"status":   map[string]any{"state": state},
+		"status":   map[string]any{"phase": phase},
 	}}
 	obj.SetGroupVersionKind(arangoGVR.GroupVersion().WithKind("ArangoDeployment"))
 	return obj
@@ -162,7 +162,7 @@ func TestVerifyArangoDB(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fi
 		require.Equal(t, "8/9 member pods Running and ready", members.Detail)
 	})
 
-	t.Run("CR state Failed is named", func(t *testing.T) {
+	t.Run("CR phase Failed is named", func(t *testing.T) {
 		clients := kube.Clients{Kube: k8sfake.NewSimpleClientset(append(baseObjs(),
 			scObj("dictycr-balanced"), scObj("dictycr-ssd"))...)}
 		dyn := dynamicClients(arangoCR(fixNS, "Failed"))
@@ -170,7 +170,7 @@ func TestVerifyArangoDB(t *testing.T) { //nolint:funlen,cyclop,lll,goconst // fi
 
 		cr := findDatastoreResult(results, "ArangoDeployment arangodb")
 		require.Equal(t, preflight.StatusFail, cr.Status)
-		require.Contains(t, cr.Detail, "state=Failed")
+		require.Contains(t, cr.Detail, "phase=Failed")
 	})
 
 	t.Run("agent PVCs bound at 20Gi on dictycr-ssd", func(t *testing.T) {

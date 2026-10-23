@@ -85,7 +85,7 @@ func VerifyArangoDB(cfg ArangoConfig) []IO.IO[preflight.Result] {
 	)
 }
 
-// arangoDeploymentState verifies the CR exists and status.state is Running.
+// arangoDeploymentState verifies the CR exists and status.phase is Running.
 func arangoDeploymentState(clients kube.Clients, ns string) IO.IO[preflight.Result] {
 	name := "ArangoDeployment arangodb"
 	return func() preflight.Result {
@@ -98,17 +98,17 @@ func arangoDeploymentState(clients kube.Clients, ns string) IO.IO[preflight.Resu
 		if err != nil {
 			return lookupFailure(name, err)
 		}
-		state, found, _ := unstructured.NestedString(obj.Object, "status", "state")
+		phase, found, _ := unstructured.NestedString(obj.Object, "status", "phase")
 		if !found {
-			return preflight.Result{Name: name, Detail: "status.state not set yet", Status: preflight.StatusFail}
+			return preflight.Result{Name: name, Detail: "status.phase not set yet", Status: preflight.StatusFail}
 		}
-		if state != "Running" {
+		if phase != "Running" {
 			return preflight.Result{
-				Name: name, Detail: fmt.Sprintf("state=%s, want Running", state),
+				Name: name, Detail: fmt.Sprintf("phase=%s, want Running", phase),
 				Status: preflight.StatusFail,
 			}
 		}
-		return preflight.Result{Name: name, Detail: "state=Running", Status: preflight.StatusPass}
+		return preflight.Result{Name: name, Detail: "phase=Running", Status: preflight.StatusPass}
 	}
 }
 

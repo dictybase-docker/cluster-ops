@@ -1040,11 +1040,11 @@ deploy-cluster root_password namespace="prod" stack="" members="9" retries="90" 
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
-    echo "Waiting for the ArangoDeployment to report state=Running..."
+    echo "Waiting for the ArangoDeployment to report phase=Running..."
     go run ./cmd/cluster-ops wait custom-resource \
         --namespace "$NS" --name arangodb \
         --group database.arangodb.com --version v1 --kind ArangoDeployment \
-        --status-path state --expected-value Running --failed-value Failed \
+        --status-path phase --expected-value Running --failed-value Failed \
         --timeout $(( RETRIES * INTERVAL )) --interval "$INTERVAL"
 
     just arangodb _wait-ready --namespace "$NS" \
