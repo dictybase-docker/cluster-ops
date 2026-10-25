@@ -22,6 +22,7 @@ const (
 	//nolint:gosec // G101: Kubernetes Secret name pointer, not a credential.
 	defaultIssuerSecretName  = "letsencrypt-account-key"
 	defaultRootPath          = "/"
+	defaultGraphqlPath       = "/graphql"
 	defaultFrontendPort      = 3000
 	defaultGraphqlService    = "graphql-api"
 	defaultGraphqlPort       = 8080
@@ -116,19 +117,19 @@ func (c *GatewayConfig) ApplyDefaults() {
 	c.Issuer.Name = F.Pipe1(c.Issuer.Name, defaultStr(defaultIssuerName))
 	c.Issuer.Server = F.Pipe1(c.Issuer.Server, defaultStr(defaultIssuerServer))
 	c.Issuer.SecretName = F.Pipe1(c.Issuer.SecretName, defaultStr(defaultIssuerSecretName))
-	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort)
-	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort)
-	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort)
+	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort, defaultGraphqlPath)
+	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort, defaultRootPath)
+	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort, defaultRootPath)
 	c.Routes.Frontend.Services = F.Pipe1(
 		c.Routes.Frontend.Services,
 		A.Map(applyFrontendBackendDefaults),
 	)
 }
 
-func (r *ServiceRouteConfig) applyServiceDefaults(svc string, port int) {
+func (r *ServiceRouteConfig) applyServiceDefaults(svc string, port int, path string) {
 	r.ServiceName = F.Pipe1(r.ServiceName, defaultStr(svc))
 	r.ServicePort = F.Pipe1(r.ServicePort, defaultInt(port))
-	r.Path = F.Pipe1(r.Path, defaultStr(defaultRootPath))
+	r.Path = F.Pipe1(r.Path, defaultStr(path))
 }
 
 func applyFrontendBackendDefaults(b FrontendServiceBackend) FrontendServiceBackend {

@@ -65,8 +65,13 @@ func (g *GatewayStack) buildGatewayListeners() pulumi.Array {
 			},
 		},
 	}
+	seenHosts := make(map[string]bool)
 	for _, rl := range g.enabledRouteListeners() {
 		for idx, host := range rl.hosts {
+			if seenHosts[host] {
+				continue
+			}
+			seenHosts[host] = true
 			listeners = append(listeners, buildHTTPSListener(rl.routeKey, idx, host, rl.tlsSecret))
 		}
 	}

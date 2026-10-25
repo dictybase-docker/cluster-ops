@@ -34,11 +34,11 @@ config:
       graphql:
         enabled: true
         hosts:
-          - <graphql-host>
-        tlsSecret: graphql-tls
+          - <frontend-host>
+        tlsSecret: frontend-tls
         serviceName: graphql-api
         servicePort: 8080
-        path: /
+        path: /graphql
       minio:
         enabled: true
         hosts:

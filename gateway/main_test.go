@@ -26,6 +26,12 @@ func (m *gatewayResourceMocks) NewResource(args pulumi.MockResourceArgs) (string
 	return args.Name, args.Inputs, nil
 }
 
+const (
+	testFrontendHost = "slime.dictycr.org"
+	//nolint:gosec // G101: Kubernetes Secret name pointer, not a credential.
+	testFrontendTLS = "frontend-tls"
+)
+
 func validSampleGatewayConfig() *GatewayConfig {
 	//nolint:gosec // G101 false positive on test fixture secret names.
 	cfg := &GatewayConfig{
@@ -37,7 +43,7 @@ func validSampleGatewayConfig() *GatewayConfig {
 			Frontend: FrontendRouteConfig{
 				Enabled:   true,
 				Hosts:     []string{"dictycr.org"},
-				TLSSecret: "frontend-tls",
+				TLSSecret: testFrontendTLS,
 				Services: []FrontendServiceBackend{
 					{Name: "frontpage-api", Path: "/", Port: 3000},
 					{Name: "stockcenter-api", Path: "/stockcenter", Port: 3000},
@@ -47,11 +53,10 @@ func validSampleGatewayConfig() *GatewayConfig {
 			},
 			Graphql: ServiceRouteConfig{
 				Enabled:     true,
-				Hosts:       []string{"graphql.dictycr.org"},
-				TLSSecret:   "graphql-tls",
+				Hosts:       []string{testFrontendHost},
+				TLSSecret:   testFrontendTLS,
 				ServiceName: "graphql-api",
 				ServicePort: 8080,
-				Path:        "/",
 			},
 			Minio: ServiceRouteConfig{
 				Enabled:     true,
@@ -81,6 +86,7 @@ func TestConfigValidateDefaultsAndSuccess(t *testing.T) {
 	require.Equal(t, "letsencrypt-issuer", cfg.Issuer.Name)
 	require.Equal(t, "https://acme-v02.api.letsencrypt.org/directory", cfg.Issuer.Server)
 	require.Equal(t, "letsencrypt-account-key", cfg.Issuer.SecretName)
+	require.Equal(t, "/graphql", cfg.Routes.Graphql.Path)
 	require.Equal(t, "logto-api", cfg.Routes.Logto.ServiceName)
 	require.Equal(t, 3001, cfg.Routes.Logto.ServicePort)
 	require.Equal(t, "/", cfg.Routes.Logto.Path)
@@ -136,11 +142,10 @@ func TestConfigValidateFailures(t *testing.T) {
 	t.Run("enabled frontend route missing services", func(t *testing.T) {
 		t.Parallel()
 		cfg := validSampleGatewayConfig()
-		//nolint:gosec // G101 false positive on test fixture secret name.
 		cfg.Routes.Frontend = FrontendRouteConfig{
 			Enabled:   true,
 			Hosts:     []string{"dictycr.org"},
-			TLSSecret: "frontend-tls",
+			TLSSecret: testFrontendTLS,
 		}
 		err := cfg.Validate()
 		require.EqualError(t, err, "routes.frontend.enabled=true but routes.frontend is missing services")
@@ -193,6 +198,36 @@ func TestInstallCreatesIssuerGatewayAndEnabledHTTPRoutes(t *testing.T) {
 
 	_, hasLogto := mocks.resources["logto-route"]
 	require.False(t, hasLogto, "disabled logto route must not be created")
+}
+
+func TestSharedHostnameDeduplicatesGatewayListeners(t *testing.T) {
+	t.Parallel()
+	mocks := &gatewayResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	cfg := validSampleGatewayConfig()
+	cfg.Routes.Frontend.Hosts = []string{testFrontendHost}
+	cfg.Routes.Graphql.Hosts = []string{testFrontendHost}
+	cfg.Routes.Graphql.TLSSecret = testFrontendTLS
+	require.NoError(t, cfg.Validate())
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return NewGatewayStack(cfg).Install(ctx)
+	}, pulumi.WithMocks("gateway", "test", mocks))
+	require.NoError(t, err)
+
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+
+	gw := mocks.resources["dictycr-gateway"]
+	listeners := gw.Inputs["spec"].ObjectValue()["listeners"].ArrayValue()
+	require.Len(
+		t,
+		listeners,
+		3,
+		"must have 1 HTTP listener + 1 shared HTTPS listener for slime.dictycr.org + 1 HTTPS listener for minio",
+	)
+
+	gqlRoute := mocks.resources["graphql-route"]
+	require.Contains(t, fmt.Sprint(gqlRoute.Inputs), "/graphql")
 }
 
 func TestInstallWithLogtoEnabled(t *testing.T) {
