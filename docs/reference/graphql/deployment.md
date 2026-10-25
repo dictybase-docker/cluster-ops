@@ -10,6 +10,7 @@ This document gives the details for the `graphql_server/` Pulumi project: the re
 - [Prerequisites](#prerequisites)
 - [In-Cluster Service Discovery](#in-cluster-service-discovery)
 - [Create the Stack](#create-the-stack)
+- [Storage Endpoint](#storage-endpoint)
 - [Authentication Mode](#authentication-mode)
 - [Ingress Mode](#ingress-mode)
 - [MinIO Secret Keys](#minio-secret-keys)
@@ -91,7 +92,7 @@ kubectl -n <namespace> rollout restart deployment/graphql-api-server
 Run `scaffold-graphql-stack` to create a new cluster stack file from `config/templates/graphql-stack.yaml.tmpl` and the cluster registry entry (`config/clusters/<cluster>.yaml`).
 
 ```bash
-just gcp-pulumi scaffold-graphql-stack
+just gcp-pulumi scaffold-graphql-stack --store-endpoint https://<storage-host>
 ```
 
 The recipe performs these actions:
@@ -100,6 +101,13 @@ The recipe performs these actions:
 2. Reads the MinIO Secret name (`minio-root`) and key names (`rootUser`, `rootPassword`) from `minio/Pulumi.<stack>.yaml`.
 3. Refuses to overwrite an existing `graphql_server/Pulumi.<stack>.yaml`.
 4. Initializes the stack with `pulumi stack init --secrets-provider` and appends the rendered `config:` block (`authEnabled: false`, `ingress.enabled: false`).
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--stack` / `-s` | No | `$PULUMI_STACK` | Must match a `stack:` key in `config/clusters/*.yaml` |
+| `--store-endpoint` | No | `https://storage.dictybase.dev` | Public S3 storage origin written to `properties.endpoints.store`. Override on non-lab clusters. |
+| `--port` / `-p` | No | `8080` | GraphQL HTTP server port |
+| `--secret-name` | No | from `minio/Pulumi.<stack>.yaml`, else `minio-root` | MinIO credentials Secret name |
 
 When `graphql_server/Pulumi.<stack>.yaml` already exists, select the stack with:
 
@@ -154,6 +162,29 @@ For the full shape with auth on and Ingress on, read `graphql_server/Pulumi.expe
 | `image.tag` | the last tag from CI | an immutable `develop-<sha>` tag or a release tag |
 
 **The lab stack file sets `authEnabled: true` and `ingress.enabled: true`.** A stack file that you copy from it starts with auth on and Ingress on, not with the defaults.
+
+---
+
+## Storage Endpoint
+
+The key `properties.endpoints.store` holds the public HTTPS origin of the cluster's MinIO S3 service (for example, `https://slimestorage.dictycr.org` on `dcr-kube1`, or `https://storage.dictybase.dev` on `dcr-experiments`). It comes from plain-text Pulumi stack configuration, not from a Kubernetes Secret.
+
+| Key | CLI flag passed to the container | Default in `scaffold-graphql-stack` | Purpose |
+|-----|----------------------------------|-------------------------------------|---------|
+| `properties.endpoints.store` | `--s3-storage-api` | `https://storage.dictybase.dev` | Public base URL that `graphql-server` prepends to `<s3Bucket.name>/<s3Bucket.path>/<file>` when returning uploaded asset URLs |
+| `properties.s3Bucket.name` | `--s3-bucket` | `editor` | MinIO bucket where the server stores uploaded files |
+| `properties.s3Bucket.path` | `--s3-bucket-path` | `assets` | Object key prefix inside the bucket |
+
+Note the difference between the two MinIO endpoints:
+
+- **In-cluster S3 upload connection (`--s3-server` / `--s3-server-port`)**: Comes automatically from Kubernetes service discovery (`MINIO_SERVICE_HOST` and `MINIO_SERVICE_PORT`, pointing to `svc/minio:9000` in the same namespace) and authenticates with `ACCESS_KEY` and `SECRET_KEY` from Secret `minio-root` ([MinIO Secret keys](#minio-secret-keys)).
+- **Public browser URL (`--s3-storage-api`)**: Comes from `properties.endpoints.store` in `graphql_server/Pulumi.<stack>.yaml`. It must match the public MinIO hostname exposed by [`gateway-deploy.md`](../../gateway-deploy.md) ([MinIO route](../gateway/deployment.md#minio-route)).
+
+Because `scaffold-graphql-stack` defaults `--store-endpoint` to the lab URL `https://storage.dictybase.dev`, always pass `--store-endpoint https://<storage-host>` when scaffolding a new cluster or update an existing stack with `set-config`:
+
+```bash
+just gcp-pulumi set-config --folder graphql_server --key properties.endpoints.store --value https://<storage-host>
+```
 
 ---
 
