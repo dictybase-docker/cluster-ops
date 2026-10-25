@@ -16,7 +16,8 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [4. Import Data](#4-import-data)
   - [4.1 Bootstrap from Snapshot](#41-bootstrap-from-snapshot)
   - [4.2 Finalize Import](#42-finalize-import)
-  - [4.3 Alternative: Loaders](#43-alternative-loaders)
+  - [4.3 Rewrite Content Storage URLs](#43-rewrite-content-storage-urls)
+  - [4.4 Alternative: Loaders](#44-alternative-loaders)
 - [5. Backup & Restore](#5-backup--restore)
   - [5.1 Deploy Backup](#51-deploy-backup)
   - [5.2 Restore Drill](#52-restore-drill)
@@ -70,6 +71,10 @@ just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
 # 4.2 Finalize — rotate root + imported app password (also verifies app login)
 just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 
+# 4.3 Inspect and rewrite hardcoded S3 storage origins in the content database
+just arangodb inspect-content-urls --pattern storage.dictybase.dev
+just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host> --dry-run no
+
 # 5. Deploy backup (immediate job + cronjob), then confirm a snapshot landed
 just arangodb deploy-backup
 just arangodb list-snapshots-in-cluster --namespace prod
@@ -88,7 +93,7 @@ just arangodb update-cluster
 ```
 
 ```bash
-# Alternative loader path, instead of §4 (§4.3 — reserved for a future revision)
+# Alternative loader path, instead of §4 (§4.4 — reserved for a future revision)
 just arangodb create-databases --app-user '<user>' --app-password '<password>'
 just arangodb deploy-loader --folder arangodb-dataloader
 ```
@@ -220,7 +225,18 @@ One required setup after import: reset root, rotate imported app password to a n
 just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 ```
 
-### 4.3 Alternative: Loaders
+### 4.3 Rewrite Content Storage URLs
+
+Lexical JSON documents in the `content` database (`serialized_json` collection) contain full S3 asset URLs from the source cluster. Run `inspect-content-urls` to list every matching URL and segment, then run `rewrite-content-urls` (first in default `--dry-run yes` mode, then with `--dry-run no`) to replace the source storage origin with this cluster's storage origin (and run the reverse replacement when restoring a production snapshot back to `dcr-experiments`).
+→ [Rewrite content storage URLs](reference/arangodb/bootstrap.md#rewrite-content-storage-urls)
+
+```bash
+just arangodb inspect-content-urls --pattern storage.dictybase.dev
+just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host>
+just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host> --dry-run no
+```
+
+### 4.4 Alternative: Loaders
 
 **Reserved for a future revision — skip it.** Loaders are the fallback when there is no restic snapshot to bootstrap from.
 → [Import details](reference/arangodb/import.md#current-state)
