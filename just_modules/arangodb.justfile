@@ -3109,3 +3109,215 @@ collection-counts namespace="prod" service="arangodb" port="8529" secret="backen
             done
         '
     unset DB_USER DB_PASS RAW_DBS
+
+# Inspect hardcoded URLs inside an ArangoDB database (default `content`,
+# auto-discovering all user collections when `--collection` is empty) via a
+# supervised port-forward to the ArangoDB coordinator Service. Read-only: zero
+# mutations. Extracts every http/https URL matching `--pattern` (default
+# `storage.dictybase.dev`), breaks each URL into origin + bucket/path segment,
+# and prints a summary of matching documents, total URL occurrences, and each
+# unique URL segment.
+# Usage: just arangodb inspect-content-urls [--pattern <substr>] [--database <db>] [--collection <col>] [--namespace <ns>] [--service <svc>] [--port <n>] [--secret <name>]
+[arg("pattern", long="pattern", short="m", help="Host or URL substring to match (default storage.dictybase.dev)")]
+[arg("database", long="database", short="d", help="ArangoDB database name (default content)")]
+[arg("collection", long="collection", short="l", help="Collection name (default: scan all user collections in --database)")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace holding the Service and Secret (default prod)")]
+[arg("service", long="service", short="s", help="Coordinator Service name (default arangodb)")]
+[arg("port", long="port", short="p", help="Coordinator Service port (default 8529)")]
+[arg("secret", long="secret", short="c", help="Application credentials Secret name (default backend)")]
+[arg("user_key", long="user-key", short="u", help="Secret data key for the username (default user)")]
+[arg("pass_key", long="pass-key", short="k", help="Secret data key for the password (default password)")]
+[group('arangodb')]
+[no-cd]
+inspect-content-urls pattern="storage.dictybase.dev" database="content" collection="" namespace="prod" service="arangodb" port="8529" secret="backend" user_key="user" pass_key="password":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SVC={{ quote(service) }}
+    PORT={{ quote(port) }}
+    SECRET={{ quote(secret) }}
+    USER_KEY={{ quote(user_key) }}
+    PASS_KEY={{ quote(pass_key) }}
+    DB={{ quote(database) }}
+    COL={{ quote(collection) }}
+    PAT={{ quote(pattern) }}
+
+    if [[ -z "${KUBECONFIG:-}" || ! -r "${KUBECONFIG}" ]]; then
+        echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
+        exit 1
+    fi
+
+    DB_USER=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${USER_KEY}}" | base64 -d)
+    DB_PASS=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${PASS_KEY}}" | base64 -d)
+    if [[ -z "$DB_USER" || -z "$DB_PASS" ]]; then
+        echo "Error: Secret '$SECRET' in namespace '$NS' is missing non-empty '$USER_KEY' or '$PASS_KEY'." >&2
+        exit 1
+    fi
+
+    JQ_REPORT='
+        [ .[] as $doc
+          | ($doc.raw | [scan("https?://[^\"'\''\\s)\\\\]+")] | map(select(contains($pat)))[]) as $url
+          | ($url | capture("^(?<origin>https?://[^/]+)(?<segment>/.*)?$")) as $u
+          | { col: $doc.col, key: $doc.key, slug: ($doc.slug // $doc.name // "-"), url: $url, origin: $u.origin, segment: ($u.segment // "/") }
+        ] as $rows
+        | "=== Content URL Inspection (database: " + $db + ", pattern: " + $pat + ") ===",
+          "Total URL occurrences : " + ($rows | length | tostring),
+          "Affected documents    : " + ($rows | map(.col + "/" + .key) | unique | length | tostring),
+          "",
+          "--- Breakdown by Origin ---",
+          ($rows | group_by(.origin) | map("  " + .[0].origin + " : " + (length | tostring) + " occurrence(s)") | .[]?),
+          "",
+          "--- Unique URL Segments ---",
+          ($rows | group_by(.segment) | map("  " + (length | tostring) + "x\t" + .[0].segment) | .[]?),
+          "",
+          "--- Document & URL Segment Details (collection | key | slug | origin | segment) ---",
+          ($rows[] | "  " + .col + "\t" + .key + "\t" + .slug + "\t" + .origin + "\t" + .segment)
+    '
+
+    export DB_USER DB_PASS DB COL PAT JQ_REPORT
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$KUBECONFIG" --ns "$NS" --svc "$SVC" --remote-port "$PORT" -- \
+        bash -c '
+            set -euo pipefail
+            if [[ -n "$COL" ]]; then
+                cols="$COL"
+            else
+                col_resp=$(curl -sS -u "${DB_USER}:${DB_PASS}" \
+                    "http://127.0.0.1:${FORWARD_PORT}/_db/${DB}/_api/collection?excludeSystem=true")
+                if printf "%s" "$col_resp" | jq -e ".error == true" >/dev/null 2>&1; then
+                    echo "ArangoDB error on database '\''$DB'\'': $(printf "%s" "$col_resp" | jq -r ".errorMessage")" >&2
+                    exit 1
+                fi
+                cols=$(printf "%s\n" "$col_resp" | jq -r ".result[].name" | sort)
+            fi
+            if [[ -z "$cols" ]]; then
+                echo "No user collections found in database '\''$DB'\''."
+                exit 0
+            fi
+            echo "Scanning collections in '\''$DB'\'': $(echo $cols)"
+            all_docs="[]"
+            for c in $cols; do
+                payload=$(jq -nc --arg col "$c" --arg pat "$PAT" "{
+                    query: \"FOR doc IN @@col FILTER CONTAINS(TO_STRING(doc), @pat) RETURN { col: @colName, key: doc._key, slug: doc.slug, name: doc.name, raw: TO_STRING(doc) }\",
+                    bindVars: { \"@col\": \$col, \"colName\": \$col, \"pat\": \$pat }
+                }")
+                resp=$(curl -sS -u "${DB_USER}:${DB_PASS}" \
+                    -H "Content-Type: application/json" \
+                    -d "$payload" \
+                    "http://127.0.0.1:${FORWARD_PORT}/_db/${DB}/_api/cursor")
+                if printf "%s" "$resp" | jq -e ".error == true" >/dev/null 2>&1; then
+                    echo "ArangoDB query error on collection '\''$c'\'': $(printf "%s" "$resp" | jq -r ".errorMessage")" >&2
+                    exit 1
+                fi
+                batch=$(printf "%s" "$resp" | jq ".result // []")
+                all_docs=$(jq -nc --argjson a "$all_docs" --argjson b "$batch" "\$a + \$b")
+            done
+            printf "%s\n" "$all_docs" | jq -r --arg db "$DB" --arg pat "$PAT" "$JQ_REPORT"
+        '
+    unset DB_USER DB_PASS DB COL PAT JQ_REPORT
+
+# Rewrite hardcoded storage URL origins inside the `content` database (collection
+# `serialized_json`, field `content` Lexical JSON) in either direction
+# (e.g. `https://storage.dictybase.dev` <-> `https://slimestorage.dictycr.org`).
+# Defaults to `--dry-run yes` so it previews the matching document count and
+# URL replacements without mutating ArangoDB. Pass `--dry-run no` to apply.
+# Usage: just arangodb rewrite-content-urls --from-origin <old-origin> --to-origin <new-origin> [--dry-run yes|no] [--database <db>] [--collection <col>] [--namespace <ns>] [--service <svc>] [--port <n>] [--secret <name>]
+[arg("from_origin", long="from-origin", short="f", help="Source URL origin to replace (e.g. https://storage.dictybase.dev)")]
+[arg("to_origin", long="to-origin", short="t", help="Target URL origin to write (e.g. https://slimestorage.dictycr.org)")]
+[arg("dry_run", long="dry-run", pattern="yes|no", help="Preview only when 'yes' (default); mutate ArangoDB only when 'no'")]
+[arg("database", long="database", short="d", help="ArangoDB database name (default content)")]
+[arg("collection", long="collection", short="l", help="Collection holding Lexical JSON documents (default serialized_json)")]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace holding the Service and Secret (default prod)")]
+[arg("service", long="service", short="s", help="Coordinator Service name (default arangodb)")]
+[arg("port", long="port", short="p", help="Coordinator Service port (default 8529)")]
+[arg("secret", long="secret", short="c", help="Application credentials Secret name (default backend)")]
+[arg("user_key", long="user-key", short="u", help="Secret data key for the username (default user)")]
+[arg("pass_key", long="pass-key", short="k", help="Secret data key for the password (default password)")]
+[group('arangodb')]
+[no-cd]
+rewrite-content-urls from_origin to_origin dry_run="yes" database="content" collection="serialized_json" namespace="prod" service="arangodb" port="8529" secret="backend" user_key="user" pass_key="password":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SVC={{ quote(service) }}
+    PORT={{ quote(port) }}
+    SECRET={{ quote(secret) }}
+    USER_KEY={{ quote(user_key) }}
+    PASS_KEY={{ quote(pass_key) }}
+    DB={{ quote(database) }}
+    COL={{ quote(collection) }}
+    FROM_ORIGIN={{ quote(from_origin) }}
+    TO_ORIGIN={{ quote(to_origin) }}
+    DRY_RUN={{ quote(dry_run) }}
+
+    FROM_ORIGIN="${FROM_ORIGIN%/}"
+    TO_ORIGIN="${TO_ORIGIN%/}"
+    if [[ ! "$FROM_ORIGIN" =~ ^https?://[^/]+$ || ! "$TO_ORIGIN" =~ ^https?://[^/]+$ ]]; then
+        echo "Error: --from-origin and --to-origin must be scheme+host origins (e.g. https://storage.dictybase.dev)." >&2
+        exit 1
+    fi
+    if [[ "$FROM_ORIGIN" == "$TO_ORIGIN" ]]; then
+        echo "Error: --from-origin and --to-origin are identical ($FROM_ORIGIN)." >&2
+        exit 1
+    fi
+    if [[ -z "${KUBECONFIG:-}" || ! -r "${KUBECONFIG}" ]]; then
+        echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
+        exit 1
+    fi
+
+    DB_USER=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${USER_KEY}}" | base64 -d)
+    DB_PASS=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.${PASS_KEY}}" | base64 -d)
+    if [[ -z "$DB_USER" || -z "$DB_PASS" ]]; then
+        echo "Error: Secret '$SECRET' in namespace '$NS' is missing non-empty '$USER_KEY' or '$PASS_KEY'." >&2
+        exit 1
+    fi
+
+    export DB_USER DB_PASS DB COL FROM_ORIGIN TO_ORIGIN DRY_RUN
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$KUBECONFIG" --ns "$NS" --svc "$SVC" --remote-port "$PORT" -- \
+        bash -c '
+            set -euo pipefail
+            preview_payload=$(jq -nc --arg col "$COL" --arg from "$FROM_ORIGIN" "{
+                query: \"FOR doc IN @@col FILTER CONTAINS(doc.content, @from) RETURN { key: doc._key, slug: doc.slug }\",
+                bindVars: { \"@col\": \$col, \"from\": \$from }
+            }")
+            preview_resp=$(curl -sS -u "${DB_USER}:${DB_PASS}" \
+                -H "Content-Type: application/json" \
+                -d "$preview_payload" \
+                "http://127.0.0.1:${FORWARD_PORT}/_db/${DB}/_api/cursor")
+            if printf "%s" "$preview_resp" | jq -e ".error == true" >/dev/null 2>&1; then
+                echo "ArangoDB error: $(printf "%s" "$preview_resp" | jq -r ".errorMessage")" >&2
+                exit 1
+            fi
+            count=$(printf "%s" "$preview_resp" | jq ".result | length")
+            echo "Database   : $DB (collection: $COL)"
+            echo "From origin: $FROM_ORIGIN"
+            echo "To origin  : $TO_ORIGIN"
+            echo "Documents matching: $count"
+            if [[ "$DRY_RUN" == "yes" ]]; then
+                echo "Dry-run mode (--dry-run yes): no documents modified."
+                echo "Re-run with --dry-run no to apply."
+                exit 0
+            fi
+            if [[ "$count" -eq 0 ]]; then
+                echo "Nothing to update."
+                exit 0
+            fi
+            update_payload=$(jq -nc --arg col "$COL" --arg from "$FROM_ORIGIN" --arg to "$TO_ORIGIN" "{
+                query: \"FOR doc IN @@col FILTER CONTAINS(doc.content, @from) UPDATE doc WITH { content: SUBSTITUTE(doc.content, @from, @to) } IN @@col RETURN NEW._key\",
+                bindVars: { \"@col\": \$col, \"from\": \$from, \"to\": \$to }
+            }")
+            update_resp=$(curl -sS -u "${DB_USER}:${DB_PASS}" \
+                -H "Content-Type: application/json" \
+                -d "$update_payload" \
+                "http://127.0.0.1:${FORWARD_PORT}/_db/${DB}/_api/cursor")
+            if printf "%s" "$update_resp" | jq -e ".error == true" >/dev/null 2>&1; then
+                echo "ArangoDB update error: $(printf "%s" "$update_resp" | jq -r ".errorMessage")" >&2
+                exit 1
+            fi
+            updated=$(printf "%s" "$update_resp" | jq ".result | length")
+            echo "Updated $updated document(s) in $DB/$COL."
+        '
+    unset DB_USER DB_PASS DB COL FROM_ORIGIN TO_ORIGIN DRY_RUN
