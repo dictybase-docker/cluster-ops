@@ -16,7 +16,7 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [4. Import Data](#4-import-data)
   - [4.1 Bootstrap from Snapshot](#41-bootstrap-from-snapshot)
   - [4.2 Finalize Import](#42-finalize-import)
-  - [4.3 Rewrite Content Storage URLs](#43-rewrite-content-storage-urls)
+  - [4.3 Content Storage URLs (Optional)](#43-content-storage-urls-optional)
   - [4.4 Alternative: Loaders](#44-alternative-loaders)
 - [5. Backup & Restore](#5-backup--restore)
   - [5.1 Deploy Backup](#51-deploy-backup)
@@ -70,10 +70,6 @@ just arangodb bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
 
 # 4.2 Finalize — rotate root + imported app password (also verifies app login)
 just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
-
-# 4.3 Inspect and rewrite hardcoded S3 storage origins in the content database
-just arangodb inspect-content-urls --pattern storage.dictybase.dev
-just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host> --dry-run no
 
 # 5. Deploy backup (immediate job + cronjob), then confirm a snapshot landed
 just arangodb deploy-backup
@@ -225,15 +221,13 @@ One required setup after import: reset root, rotate imported app password to a n
 just arangodb finalize-bootstrap --app-user '<existing-app-user>' --app-password '<new-destination-app-password>'
 ```
 
-### 4.3 Rewrite Content Storage URLs
+### 4.3 Content Storage URLs (Optional)
 
-Lexical JSON documents in the `content` database (`serialized_json` collection) contain full S3 asset URLs from the source cluster. Run `inspect-content-urls` to list every matching URL and segment, then run `rewrite-content-urls` (first in default `--dry-run yes` mode, then with `--dry-run no`) to replace the source storage origin with this cluster's storage origin (and run the reverse replacement when restoring a production snapshot back to `dcr-experiments`).
-→ [Rewrite content storage URLs](reference/arangodb/bootstrap.md#rewrite-content-storage-urls)
+**Optional — skip for normal deployments.** Do not run `rewrite-content-urls` when `graphql-server` rewrites storage URLs on the fly from `properties.endpoints.store`. Use `inspect-content-urls` for a read-only audit of stored URLs in the `content` database (`serialized_json` collection).
+→ [Why you must not rewrite the database](reference/arangodb/content-urls.md#why-you-must-not-rewrite-the-database-after-restore) · [Inspect and rewrite recipes](reference/arangodb/content-urls.md#inspect-content-urls-inspect-content-urls)
 
 ```bash
 just arangodb inspect-content-urls --pattern storage.dictybase.dev
-just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host>
-just arangodb rewrite-content-urls --from-origin https://storage.dictybase.dev --to-origin <https://target-storage-host> --dry-run no
 ```
 
 ### 4.4 Alternative: Loaders
@@ -328,6 +322,8 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 - [Operator details](reference/arangodb/operator.md)
 - [Cluster details](reference/arangodb/cluster.md)
 - [Databases details](reference/arangodb/databases.md)
+- [Bootstrap details](reference/arangodb/bootstrap.md)
+- [Content storage URLs](reference/arangodb/content-urls.md)
 - [Import details](reference/arangodb/import.md)
 - [Backup details](reference/arangodb/backup.md)
 - [Restore details](reference/arangodb/restore.md)
