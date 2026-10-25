@@ -13,6 +13,7 @@ This document gives the details for the `gateway/` Pulumi project and the `just 
   - [just gcp-pulumi scaffold-gateway-stack](#just-gcp-pulumi-scaffold-gateway-stack)
   - [just gateway check](#just-gateway-check)
   - [just gateway deploy](#just-gateway-deploy)
+  - [just gateway show-ip](#just-gateway-show-ip)
   - [just gateway verify](#just-gateway-verify)
 - [Create the Stack](#create-the-stack)
 - [Configure the ACME Issuer](#configure-the-acme-issuer)
@@ -36,7 +37,7 @@ The `gateway/` Pulumi project creates the ACME `Issuer`, the Cilium `Gateway`, a
 | 1 | `cert-manager.io/v1:Issuer` | `letsencrypt-issuer` | ACME HTTP-01 solver that attaches challenge `HTTPRoute` resources to `Gateway` `dictycr-gateway`. |
 | 2 | `gateway.networking.k8s.io/v1:Gateway` | `dictycr-gateway` | Class `cilium`. Annotated with `cert-manager.io/issuer: letsencrypt-issuer`. Carries one HTTP listener on port `80` and one HTTPS listener on port `443` for each host on an enabled route. |
 | 3 | `gateway.networking.k8s.io/v1:HTTPRoute` | `frontend-route` | **Optional (`routes.frontend.enabled: true` by default).** Routes `/`, `/stockcenter`, `/publication`, and `/gene` to the four frontend Services on port `3000`. |
-| 4 | `gateway.networking.k8s.io/v1:HTTPRoute` | `graphql-route` | **Optional (`routes.graphql.enabled: true` by default).** Routes `/` to Service `graphql-api` on port `8080`. |
+| 4 | `gateway.networking.k8s.io/v1:HTTPRoute` | `graphql-route` | **Optional (`routes.graphql.enabled: true` by default).** Routes `/graphql` to Service `graphql-api` on port `8080`. |
 | 5 | `gateway.networking.k8s.io/v1:HTTPRoute` | `minio-route` | **Optional (`routes.minio.enabled: true` by default).** Routes `/` to Service `minio` on port `9000`. |
 | 6 | `gateway.networking.k8s.io/v1:HTTPRoute` | `logto-route` | **Optional (`routes.logto.enabled: false` by default).** Routes `/` to Service `logto-api` on port `3001`. |
 
@@ -126,7 +127,7 @@ Behavior:
 
 ### just gateway deploy
 
-Composite deployment command. Runs preflight, stack selection, preview, apply, and verification in one sequence.
+Composite deployment command. Runs preflight, stack selection, preview, apply, and waits for Cilium to assign an external IP address to the `Gateway`. Does not check TLS Secrets yet because you must point DNS `A` records at the new external IP address before `cert-manager` can complete HTTP-01 challenges.
 
 ```bash
 just gateway deploy
@@ -138,12 +139,27 @@ Behavior:
 2. `just gcp-pulumi ensure-stack --folder gateway --stack <stack>`
 3. `just gcp-pulumi preview --folder gateway --stack <stack>`
 4. `just gcp-pulumi create-resource --folder gateway --stack <stack>`
-5. `just gateway verify --stack <stack> --namespace <ns>`
+5. Polls `Gateway` `<name>` until `.status.addresses[0].value` is non-empty and prints the external IP address.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
-| `--stack` / `-s` | No | `$PULUMI_STACK` | Passed to all five steps |
-| `--namespace` / `-n` | No | `prod` | Passed to `check` and `verify` |
+| `--stack` / `-s` | No | `$PULUMI_STACK` | Passed to all steps |
+| `--namespace` / `-n` | No | `prod` | Target namespace |
+| `--retries` / `-r` | No | `30` | External IP poll attempts |
+| `--interval` / `-i` | No | `10` | Seconds between external IP polls (300s default budget) |
+
+### just gateway show-ip
+
+Prints the external LoadBalancer IP address assigned to the `Gateway`.
+
+```bash
+just gateway show-ip
+```
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--stack` / `-s` | No | `$PULUMI_STACK` | Reads `properties.name` from `gateway/Pulumi.<stack>.yaml` |
+| `--namespace` / `-n` | No | `prod` | Target namespace |
 
 ### just gateway verify
 
@@ -211,11 +227,11 @@ config:
       graphql:
         enabled: true
         hosts:
-          - <graphql-host>
-        tlsSecret: graphql-tls
+          - <frontend-host>
+        tlsSecret: frontend-tls
         serviceName: graphql-api
         servicePort: 8080
-        path: /
+        path: /graphql
       minio:
         enabled: true
         hosts:
@@ -259,7 +275,7 @@ just gcp-pulumi set-config --folder gateway --key properties.issuer.email --valu
 
 ## Configure the Routes
 
-Each route block has an `enabled` boolean. When `enabled` is `true`, the program adds an HTTPS listener (`https-<route>-0`) on port `443` of the `Gateway` and creates `<route>-route`. When `enabled` is `false`, the program skips both the listener and the `HTTPRoute`, and ignores any `<...-host>` placeholder on that route. At least one route must have `enabled: true`.
+Each route block has an `enabled` boolean. When `enabled` is `true`, the program adds an HTTPS listener on port `443` of the `Gateway` for each unique hostname (deduplicating when two routes, such as `frontend` and `graphql`, share the same hostname and TLS Secret) and creates `<route>-route`. When `enabled` is `false`, the program skips both the listener and the `HTTPRoute`, and ignores any `<...-host>` placeholder on that route. At least one route must have `enabled: true`.
 
 ### Frontend Route
 
@@ -287,10 +303,10 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 
 ### GraphQL Route
 
-`properties.routes.graphql.enabled` defaults to **`true`** in the scaffold template. When enabled, `graphql-route` routes `/` (`PathPrefix`) to `graphql-api:8080`. Keep `properties.ingress.enabled` set to `false` in `graphql_server/Pulumi.<stack>.yaml` ([GraphQL deploy](../../graphql-deploy.md)).
+`properties.routes.graphql.enabled` defaults to **`true`** and `properties.routes.graphql.path` defaults to **`/graphql`** in the scaffold template. When enabled, `graphql-route` routes `/graphql` (`PathPrefix`) to `graphql-api:8080` and shares the `<frontend-host>` hostname and `frontend-tls` Secret with the frontend route (for example, `https://slime.dictycr.org/graphql`). Keep `properties.ingress.enabled` set to `false` in `graphql_server/Pulumi.<stack>.yaml` ([GraphQL deploy](../../graphql-deploy.md)).
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <graphql-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value true
 ```
 
@@ -351,4 +367,4 @@ just gateway verify
 | `route '<name>' is enabled but contains an empty or placeholder host or tlsSecret` | An enabled route still holds `<...-host>` | Set `properties.routes.<name>.hosts[0]` with `set-config`, or set `properties.routes.<name>.enabled` to `false` |
 | `must enable at least one route` | All four routes have `enabled: false` | Set at least one route `enabled` key to `true` |
 | `Error from server (NotFound): services "<svc>" not found` | A route is enabled for a backend Service that is not deployed yet | Deploy the backend Service first, or set `properties.routes.<route>.enabled` to `false` |
-| `TLS Secret <name> missing or not kubernetes.io/tls` during `verify` | DNS does not point to the Gateway external IP yet, or the HTTP-01 challenge is still in progress | Check the Gateway IP with `kubectl -n <namespace> get gateway dictycr-gateway`, update DNS A records, and inspect `kubectl -n <namespace> get certificate,challenge` |
+| `TLS Secret <name> missing or not kubernetes.io/tls` during `verify` | DNS does not point to the Gateway external IP yet, or the HTTP-01 challenge is still in progress | Check the Gateway IP with `just gateway show-ip`, update DNS A records, and inspect `kubectl -n <namespace> get certificate,challenge` |

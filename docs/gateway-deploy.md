@@ -17,10 +17,11 @@ The `gateway/` Pulumi project deploys the shared **Cilium Gateway** (`dictycr-ga
 - [6. Configure the MinIO Route](#6-configure-the-minio-route)
 - [7. Configure the Logto Route (Optional)](#7-configure-the-logto-route-optional)
 - [8. Preview and Deploy](#8-preview-and-deploy)
-- [9. Push the Stack File](#9-push-the-stack-file)
-- [10. Verify the Gateway](#10-verify-the-gateway)
-- [11. Troubleshooting](#11-troubleshooting)
-- [12. Related Documents](#12-related-documents)
+- [9. Point DNS A Records to the Gateway IP](#9-point-dns-a-records-to-the-gateway-ip)
+- [10. Push the Stack File](#10-push-the-stack-file)
+- [11. Verify the Gateway](#11-verify-the-gateway)
+- [12. Troubleshooting](#12-troubleshooting)
+- [13. Related Documents](#13-related-documents)
 
 ---
 
@@ -42,26 +43,29 @@ just gcp-pulumi ensure-stack --folder gateway
 # 3. Set the Let's Encrypt ACME contact email
 just gcp-pulumi set-config --folder gateway --key properties.issuer.email --value <acme-email>
 
-# 4. Configure the frontend route (default: enabled)
+# 4. Configure the frontend route (default: enabled, e.g. slime.dictycr.org)
 just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts[0] --value <frontend-host>
 
-# 5. Configure the GraphQL route (default: enabled)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <graphql-host>
+# 5. Configure the GraphQL route (default: enabled at /graphql on the same host)
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
 
-# 6. Configure the MinIO route (default: enabled)
+# 6. Configure the MinIO route (default: enabled on its own subdomain, e.g. slimestorage.dictycr.org)
 just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts[0] --value <minio-host>
 
 # 7. Optional. Enable and configure the Logto route (default: false)
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts[0] --value <logto-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value true
 
-# 8. Check prerequisites, preview, deploy, and verify
+# 8. Deploy the Gateway and wait for its external LoadBalancer IP
 just gateway deploy
 
-# 9. Commit and push the stack file
+# 9. Point DNS A records for enabled hostnames to this IP
+just gateway show-ip
+
+# 10. Commit and push the stack file
 git add "gateway/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "gateway: stack config" && git push
 
-# 10. Re-verify at any time
+# 11. Verify the Gateway, HTTPRoutes, and TLS Secrets after DNS resolves
 just gateway verify
 ```
 
@@ -128,12 +132,12 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 
 ## 5. Configure the GraphQL Route
 
-The key `properties.routes.graphql.enabled` defaults to `true`. Set the public hostname for Service `graphql-api` (`:8080`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
+The key `properties.routes.graphql.enabled` defaults to `true`, and `properties.routes.graphql.path` defaults to `/graphql`. Set `hosts[0]` to the same hostname as the frontend (for example, `slime.dictycr.org`) so the Gateway shares one HTTPS listener and TLS Secret (`frontend-tls`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
 → [GraphQL route](reference/gateway/deployment.md#graphql-route)
 
 ```bash
-# Set the public hostname (route is enabled by default)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <graphql-host>
+# Set the public hostname (shares frontend-tls by default, path /graphql)
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
 
 # Or disable the route until graphql_server is deployed
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value false
@@ -176,8 +180,8 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enable
 
 ## 8. Preview and Deploy
 
-Run `just gateway check` and `just gcp-pulumi preview --folder gateway` to review the plan first, then run `just gateway deploy` to execute `check` → `ensure-stack` → `preview` → `create-resource` → `verify`. Point your DNS A records at the Gateway external IP address so `cert-manager` can complete the HTTP-01 challenges.
-→ [`just gateway deploy`](reference/gateway/deployment.md#just-gateway-deploy) · [TLS certificate issuance](reference/gateway/deployment.md#tls-certificate-issuance)
+Run `just gcp-pulumi preview --folder gateway` to review the plan first, then run `just gateway deploy`. The recipe runs `check` → `ensure-stack` → `preview` → `create-resource`, waits for Cilium to assign the external LoadBalancer IP address to `dictycr-gateway`, and prints that IP address.
+→ [`just gateway deploy`](reference/gateway/deployment.md#just-gateway-deploy)
 
 ```bash
 just gcp-pulumi preview --folder gateway
@@ -186,7 +190,18 @@ just gateway deploy
 
 ---
 
-## 9. Push the Stack File
+## 9. Point DNS A Records to the Gateway IP
+
+Print the external IP address of `dictycr-gateway` and create DNS `A` records pointing each enabled route hostname (`<frontend-host>`, `<graphql-host>`, `<minio-host>`, `<logto-host>`) to that IP address. After DNS resolves, `cert-manager` completes the Let's Encrypt HTTP-01 challenge on port `80` and writes each route's TLS Secret.
+→ [`just gateway show-ip`](reference/gateway/deployment.md#just-gateway-show-ip) · [TLS certificate issuance](reference/gateway/deployment.md#tls-certificate-issuance)
+
+```bash
+just gateway show-ip
+```
+
+---
+
+## 10. Push the Stack File
 
 Commit and push `gateway/Pulumi.${PULUMI_STACK}.yaml` so Git keeps the canonical routing and hostname configuration for the cluster.
 → [Create the stack](reference/gateway/deployment.md#create-the-stack)
@@ -197,9 +212,9 @@ git add "gateway/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "gateway: stack c
 
 ---
 
-## 10. Verify the Gateway
+## 11. Verify the Gateway
 
-Run `just gateway verify` to confirm that `Issuer` `letsencrypt-issuer` is `Ready`, `Gateway` `dictycr-gateway` is `Programmed` with an external IP address, and every enabled route has an `Accepted` `HTTPRoute` and a `kubernetes.io/tls` Secret.
+After your DNS `A` records resolve to the Gateway IP address, run `just gateway verify` to confirm that `Issuer` `letsencrypt-issuer` is `Ready`, `Gateway` `dictycr-gateway` is `Programmed`, and every enabled route has an `Accepted` `HTTPRoute` and a `kubernetes.io/tls` Secret.
 → [Verification](reference/gateway/deployment.md#verification)
 
 ```bash
@@ -208,13 +223,13 @@ just gateway verify
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 → [Troubleshooting table](reference/gateway/deployment.md#troubleshooting)
 
 ---
 
-## 12. Related Documents
+## 13. Related Documents
 
 **Reference details for this guide:**
 - [Gateway deployment details](reference/gateway/deployment.md)
