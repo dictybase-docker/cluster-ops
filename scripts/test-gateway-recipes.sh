@@ -95,6 +95,9 @@ case "$*" in
     *"get issuer letsencrypt-issuer"*"-o json"*)
         printf '{"status":{"conditions":[{"type":"Ready","status":"True"}]}}\n'
         ;;
+    *"get gateway dictycr-gateway"*"-o jsonpath"*)
+        printf '34.120.0.10'
+        ;;
     *"get gateway dictycr-gateway"*"-o json"*)
         printf '{"status":{"addresses":[{"value":"34.120.0.10"}],"conditions":[{"type":"Accepted","status":"True"},{"type":"Programmed","status":"True"}]}}\n'
         ;;
@@ -254,17 +257,19 @@ echo 'GatewayClass guard: PASS'
 
 write_config
 : > "$log_file"
-run_recipe "$just_bin" gateway deploy --stack "$stack" >/dev/null
+out=$(run_recipe "$just_bin" gateway deploy --stack "$stack" --retries 2 --interval 1)
+printf '%s' "$out" | rg -q '34\.120\.0\.10'
+printf '%s' "$out" | rg -q 'Next: just gateway verify'
 deploy_calls=()
 while IFS= read -r line; do
     deploy_calls+=("$line")
-done < <(rg '^just ' "$log_file")
+done < <(rg '^(just|kubectl) ' "$log_file")
 expected_order=(
     "just gateway check"
     "just gcp-pulumi ensure-stack"
     "just gcp-pulumi preview"
     "just gcp-pulumi create-resource"
-    "just gateway verify"
+    "kubectl get gateway dictycr-gateway"
 )
 last=-1
 for expected in "${expected_order[@]}"; do
@@ -281,7 +286,12 @@ for expected in "${expected_order[@]}"; do
     fi
     last=$index
 done
-echo 'deploy order: PASS'
+! rg -q '^just gateway verify' "$log_file"
+echo 'deploy order and IP output: PASS'
+
+ip_out=$(run_recipe "$just_bin" gateway show-ip --stack "$stack")
+[[ "$ip_out" == "34.120.0.10" ]] || { echo "unexpected show-ip output: $ip_out" >&2; exit 1; }
+echo 'show-ip: PASS'
 
 : > "$log_file"
 if run_recipe env STUB_CHECK_STATUS=1 "$just_bin" gateway deploy --stack "$stack" >/dev/null 2>&1; then

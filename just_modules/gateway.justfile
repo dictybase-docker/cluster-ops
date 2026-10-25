@@ -171,25 +171,79 @@ check stack="" namespace="prod":
 
     echo "Gateway prerequisites ready for stack '$STACK'."
 
-# Deploy Gateway: check -> ensure-stack -> preview -> create-resource -> verify.
-# Usage: just gateway deploy [--stack <name>] [--namespace <ns>]
+# Deploy Gateway: check -> ensure-stack -> preview -> create-resource -> wait for external IP.
+# Does not check TLS Secrets yet because DNS A records must point to the Gateway
+# external IP before cert-manager can complete HTTP-01 challenges. Run
+# `just gateway verify` after updating DNS.
+# Usage: just gateway deploy [--stack <name>] [--namespace <ns>] [--retries <n>] [--interval <s>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Gateway namespace")]
+[arg("retries", long="retries", short="r", help="Address poll attempts (default 30)")]
+[arg("interval", long="interval", short="i", help="Seconds between address polls (default 10)")]
 [group('gateway')]
 [no-cd]
-deploy stack="" namespace="prod":
+deploy stack="" namespace="prod" retries="30" interval="10":
     #!/usr/bin/env bash
     set -euo pipefail
 
     FOLDER="gateway"
     NS={{ quote(namespace) }}
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    if [[ ! "$RETRIES" =~ ^[1-9][0-9]*$ || ! "$INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: retries and interval must be positive integers." >&2
+        exit 1
+    fi
     STACK=$(just gateway _require-stack --stack {{ quote(stack) }})
+    CFG_FILE="${FOLDER}/Pulumi.${STACK}.yaml"
 
     just gateway check --stack "$STACK" --namespace "$NS"
     just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
-    just gateway verify --stack "$STACK" --namespace "$NS"
+
+    gw_name=$(yq -r '.config."gateway:properties".name // "dictycr-gateway"' "$CFG_FILE")
+    addr=""
+    for i in $(seq 1 "$RETRIES"); do
+        addr=$(kubectl get gateway "$gw_name" -n "$NS" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+        if [[ -n "$addr" ]]; then
+            echo "Gateway $gw_name external IP: $addr"
+            break
+        fi
+        echo "Waiting for Gateway $gw_name external IP (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+    if [[ -z "$addr" ]]; then
+        echo "Error: Gateway $gw_name did not receive an external IP in $NS." >&2
+        exit 1
+    fi
+    echo "Point your DNS A records for enabled route hostnames to $addr, then run:"
+    echo "Next: just gateway verify"
+
+# Print the external IP address assigned to the Gateway.
+# Usage: just gateway show-ip [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Gateway namespace")]
+[group('gateway')]
+[no-cd]
+show-ip stack="" namespace="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    STACK=$(just gateway _require-stack --stack {{ quote(stack) }})
+    CFG_FILE="gateway/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$CFG_FILE" ]]; then
+        echo "Error: stack config missing: $CFG_FILE" >&2
+        exit 1
+    fi
+    gw_name=$(yq -r '.config."gateway:properties".name // "dictycr-gateway"' "$CFG_FILE")
+    addr=$(kubectl get gateway "$gw_name" -n "$NS" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+    if [[ -z "$addr" ]]; then
+        echo "Error: Gateway $gw_name has no external address yet in $NS." >&2
+        exit 1
+    fi
+    printf '%s\n' "$addr"
 
 # Verify Issuer, Gateway, TLS Secrets, and HTTPRoutes for enabled routes.
 # Usage: just gateway verify [--stack <name>] [--namespace <ns>]
