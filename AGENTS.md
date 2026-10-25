@@ -50,4 +50,18 @@ mechanical subset; the rest are review rules.
 - Values containing password/token/secret/credential/keys are secrets unless
   proven otherwise; pass `--plaintext` to `set-config` only for non-secret
   pointers the Pulumi heuristic misclassifies.
+- **Run the 4-point cross-cluster audit on every service, stack, recipe, or
+  doc setup:**
+  1. Audit every CLI flag and environment variable in `<service>/container.go`
+     (or `main.go`) and ensure every per-cluster endpoint (`endpoints.store`,
+     `endpoints.auth`), CORS origin, Secret name, and Service name has an
+     explicit numbered step in `docs/<service>-deploy.md` and no silent lab
+     default in `config/templates/*.tmpl`.
+  2. Audit `Pulumi.<prod-stack>.yaml` line by line for lab leftovers
+     (`*.dictybase.dev` URLs or lab Secret names copied from `experiments`).
+  3. Trace cross-service data dependencies when data is restored across
+     clusters (for example, hardcoded storage URLs inside ArangoDB collections).
+  4. Separate Day-1 bootstrap (`deploy` waiting for an external LoadBalancer IP)
+     from post-DNS verification (`verify` checking Let's Encrypt TLS Secrets
+     after DNS `A` records resolve).
 - Run `just check` before reporting completion — zero failures.
