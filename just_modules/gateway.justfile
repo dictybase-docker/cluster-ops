@@ -60,6 +60,60 @@ install-crds version="v1.2.1":
     fi
     echo "Gateway API CRDs (${ver}) ready. Next: just gateway check"
 
+# Restart the Cilium agent and Cilium operator in kube-system and verify GatewayClass.
+# Usage: just gateway restart-cilium [--class <name>] [--retries <n>] [--interval <s>]
+[arg("class", long="class", short="c", help="GatewayClass name (default cilium)")]
+[arg("retries", long="retries", short="r", help="GatewayClass poll attempts (default 18)")]
+[arg("interval", long="interval", short="i", help="Seconds between GatewayClass polls (default 5)")]
+[group('gateway')]
+[no-cd]
+restart-cilium class="cilium" retries="18" interval="5":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    gw_class={{ quote(class) }}
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    if [[ ! "$RETRIES" =~ ^[1-9][0-9]*$ || ! "$INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: retries and interval must be positive integers." >&2
+        exit 1
+    fi
+
+    echo "Restarting Cilium operator in kube-system..."
+    kubectl -n kube-system rollout restart deployment/cilium-operator
+
+    ds_strategy=$(kubectl -n kube-system get daemonset cilium -o jsonpath='{.spec.updateStrategy.type}' 2>/dev/null || true)
+    if [[ "$ds_strategy" == "RollingUpdate" ]]; then
+        echo "Restarting Cilium agent daemonset in kube-system..."
+        kubectl -n kube-system rollout restart daemonset/cilium
+        echo "Waiting for Cilium agent rollout..."
+        kubectl -n kube-system rollout status daemonset/cilium --timeout=180s
+    fi
+
+    echo "Waiting for Cilium operator rollout..."
+    kubectl -n kube-system rollout status deployment/cilium-operator --timeout=180s
+
+    echo "Verifying GatewayClass '$gw_class'..."
+    accepted=0
+    for i in $(seq 1 "$RETRIES"); do
+        gwclass_json=$(kubectl get gatewayclass "$gw_class" -o json 2>/dev/null || true)
+        if [[ -n "$gwclass_json" ]] && jq -e 'any(.status.conditions[]?; .type == "Accepted" and .status == "True")' <<<"$gwclass_json" >/dev/null 2>&1; then
+            accepted=1
+            break
+        fi
+        echo "Waiting for GatewayClass '$gw_class' to report condition Accepted=True (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    if [[ "$accepted" -ne 1 ]]; then
+        echo "Error: GatewayClass '$gw_class' not found or not Accepted by Cilium." >&2
+        echo "Verify that spec.networking.cilium.gatewayAPI.enabled is true in cluster.yaml and run 'just gcp-cluster apply-cluster'." >&2
+        exit 1
+    fi
+
+    echo "GatewayClass '$gw_class' is Accepted by Cilium."
+    echo "Next: just gateway deploy"
+
 # Read-only preflight: Pulumi env, stack config, namespace-bootstrap match,
 # GatewayClass cilium Accepted, cert-manager Gateway API flag, and backend Services
 # for enabled routes.
@@ -147,7 +201,7 @@ check stack="" namespace="prod":
 
     gwclass_json=$(kubectl get gatewayclass "$gw_class" -o json 2>/dev/null || true)
     if [[ -z "$gwclass_json" ]]; then
-        echo "Error: GatewayClass $gw_class not found on cluster — enable Cilium gatewayAPI and run 'just gateway install-crds'." >&2
+        echo "Error: GatewayClass $gw_class not found on cluster — enable Cilium gatewayAPI, run 'just gateway install-crds', and run 'just gateway restart-cilium'." >&2
         exit 1
     fi
     if ! jq -e 'any(.status.conditions[]?; .type == "Accepted" and .status == "True")' <<<"$gwclass_json" >/dev/null; then

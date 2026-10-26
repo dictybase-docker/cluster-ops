@@ -9,7 +9,9 @@ The `gateway/` Pulumi project deploys the shared **Cilium Gateway** (`dictycr-ga
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)
-- [1. Install Gateway API CRDs](#1-install-gateway-api-crds)
+- [1. Install Gateway API and Enable Cilium](#1-install-gateway-api-and-enable-cilium)
+  - [1.1 New Cluster Setup](#11-new-cluster-setup)
+  - [1.2 Existing Cluster Migration](#12-existing-cluster-migration)
 - [2. Scaffold or Select the Stack](#2-scaffold-or-select-the-stack)
 - [3. Configure the ACME Issuer](#3-configure-the-acme-issuer)
 - [4. Configure the Frontend Route](#4-configure-the-frontend-route)
@@ -33,8 +35,14 @@ For experienced users. Full details in the sections below.
 # Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. Install Gateway API standard CRDs and enable Gateway API on cert-manager
+# 1. New cluster: create cluster, then install CRDs
+just gcp-cluster create-cluster
 just gateway install-crds
+
+# 1. Existing cluster: install CRDs, apply cluster manifest, then restart Cilium
+just gateway install-crds
+just gcp-cluster apply-cluster
+just gateway restart-cilium
 
 # 2. Scaffold the stack file on a new cluster, or select an existing stack
 just gcp-pulumi scaffold-gateway-stack
@@ -44,16 +52,16 @@ just gcp-pulumi ensure-stack --folder gateway
 just gcp-pulumi set-config --folder gateway --key properties.issuer.email --value <acme-email>
 
 # 4. Configure the frontend route (default: enabled, e.g. slime.dictycr.org)
-just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts.0 --value <frontend-host>
 
 # 5. Configure the GraphQL route (default: enabled at /graphql on the same host)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
 
 # 6. Configure the MinIO route (default: enabled on its own subdomain, e.g. slimestorage.dictycr.org)
-just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts[0] --value <minio-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts.0 --value <minio-host>
 
 # 7. Optional. Enable and configure the Logto route (default: false)
-just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts[0] --value <logto-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts.0 --value <logto-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value true
 
 # 8. Deploy the Gateway and wait for its external LoadBalancer IP
@@ -78,13 +86,37 @@ just gateway verify
 - Outside the sub-shell the recipes fail with `Error: no stack name`.
 - Leave the sub-shell with `exit` or Ctrl-D.
 
-## 1. Install Gateway API CRDs
+## 1. Install Gateway API and Enable Cilium
 
-Apply the Kubernetes Gateway API standard CRDs and enable `--enable-gateway-api` on `cert-manager`. If you just added `spec.networking.cilium.gatewayAPI.enabled: true` to `config/kops/<cluster>/cluster.yaml`, run this command before you run `just gcp-cluster apply-cluster` so Cilium sees the CRDs at startup.
-→ [Prerequisites](reference/gateway/deployment.md#prerequisites) · [`just gateway install-crds`](reference/gateway/deployment.md#just-gateway-install-crds)
+![Cilium Gateway API Workflow](reference/gateway/gateway-setup-workflow.png)
+
+Cilium creates `GatewayClass` `cilium` only when the Gateway API CRDs exist in the API server and the Cilium operator runs with Gateway API enabled. Choose the sequence below that matches your cluster condition.
+→ [Command sequences and dependencies](reference/gateway/deployment.md#command-sequences-and-dependencies) · [`just gateway install-crds`](reference/gateway/deployment.md#just-gateway-install-crds) · [`just gateway restart-cilium`](reference/gateway/deployment.md#just-gateway-restart-cilium)
+
+### 1.1 New Cluster Setup
+
+On a new cluster, enable `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`. Then create the cluster and install the CRDs.
+→ [Prerequisites](reference/gateway/deployment.md#prerequisites)
 
 ```bash
+just gcp-cluster create-cluster
 just gateway install-crds
+```
+
+### 1.2 Existing Cluster Migration
+
+On an existing cluster, install the Gateway API CRDs into the API server first. Then reconcile the cluster and restart the Cilium operator to register `GatewayClass` `cilium`.
+→ [Command sequences and dependencies](reference/gateway/deployment.md#command-sequences-and-dependencies)
+
+```bash
+# 1. Install CRDs first (API server must have CRDs before Cilium activates)
+just gateway install-crds
+
+# 2. Reconcile kOps manifest and update cilium-config
+just gcp-cluster apply-cluster
+
+# 3. Restart Cilium operator to bind CRDs and verify GatewayClass cilium
+just gateway restart-cilium
 ```
 
 ---
@@ -122,7 +154,7 @@ The key `properties.routes.frontend.enabled` defaults to `true`. Set the public 
 
 ```bash
 # Set the public hostname (route is enabled by default)
-just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts.0 --value <frontend-host>
 
 # Or disable the route until frontend_application is deployed
 just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.enabled --value false
@@ -132,12 +164,12 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 
 ## 5. Configure the GraphQL Route
 
-The key `properties.routes.graphql.enabled` defaults to `true`, and `properties.routes.graphql.path` defaults to `/graphql`. Set `hosts[0]` to the same hostname as the frontend (for example, `slime.dictycr.org`) so the Gateway shares one HTTPS listener and TLS Secret (`frontend-tls`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
+The key `properties.routes.graphql.enabled` defaults to `true`, and `properties.routes.graphql.path` defaults to `/graphql`. Set `hosts.0` (`hosts[0]`) to the same hostname as the frontend (for example, `slime.dictycr.org`) so the Gateway shares one HTTPS listener and TLS Secret (`frontend-tls`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
 → [GraphQL route](reference/gateway/deployment.md#graphql-route)
 
 ```bash
 # Set the public hostname (shares frontend-tls by default, path /graphql)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
 
 # Or disable the route until graphql_server is deployed
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value false
@@ -152,7 +184,7 @@ The key `properties.routes.minio.enabled` defaults to `true`. Set the public S3 
 
 ```bash
 # Set the public hostname (route is enabled by default)
-just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts[0] --value <minio-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts.0 --value <minio-host>
 
 # Or disable the route to keep MinIO cluster-internal
 just gcp-pulumi set-config --folder gateway --key properties.routes.minio.enabled --value false
@@ -164,7 +196,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.minio.enable
 
 **Optional. The default is off. Skip this section while Logto is not deployed.**
 
-The key `properties.routes.logto.enabled` defaults to `false`. To expose `logto-api` (`:3001`) through the Gateway after you deploy Logto, set `hosts[0]` first and then set `enabled` to `true`.
+The key `properties.routes.logto.enabled` defaults to `false`. To expose `logto-api` (`:3001`) through the Gateway after you deploy Logto, set `hosts.0` (`hosts[0]`) first and then set `enabled` to `true`.
 → [Logto route](reference/gateway/deployment.md#logto-route)
 
 ```bash
@@ -172,7 +204,7 @@ The key `properties.routes.logto.enabled` defaults to `false`. To expose `logto-
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value false
 
 # Turn the Logto route on. Set the hostname first.
-just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts[0] --value <logto-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts.0 --value <logto-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value true
 ```
 

@@ -85,6 +85,21 @@ case "$*" in
     *"rollout status deployment/cert-manager"*)
         exit 0
         ;;
+    *"get daemonset cilium"*"-o jsonpath="*|*"get daemonset cilium"*"-o jsonpath="*)
+        printf 'RollingUpdate\n'
+        ;;
+    *"rollout restart deployment/cilium-operator"*)
+        exit 0
+        ;;
+    *"rollout restart daemonset/cilium"*)
+        exit 0
+        ;;
+    *"rollout status daemonset/cilium"*)
+        exit 0
+        ;;
+    *"rollout status deployment/cilium-operator"*)
+        exit 0
+        ;;
     *"get service frontpage-api"*) printf '3000\n' ;;
     *"get service stockcenter-api"*) printf '3000\n' ;;
     *"get service publication-api"*) printf '3000\n' ;;
@@ -222,6 +237,18 @@ expect_failure() {
 run_recipe "$just_bin" gateway install-crds >/dev/null
 rg -q 'apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/' "$log_file"
 echo 'install-crds: PASS'
+
+: > "$log_file"
+run_recipe "$just_bin" gateway restart-cilium --retries 2 --interval 1 >/dev/null
+rg -q 'rollout restart deployment/cilium-operator' "$log_file"
+rg -q 'rollout restart daemonset/cilium' "$log_file"
+rg -q 'rollout status daemonset/cilium' "$log_file"
+rg -q 'rollout status deployment/cilium-operator' "$log_file"
+rg -q 'get gatewayclass cilium' "$log_file"
+echo 'restart-cilium success: PASS'
+
+expect_failure 'not found or not Accepted' env STUB_GWCLASS_MISSING=1 "$just_bin" gateway restart-cilium --retries 2 --interval 1
+echo 'restart-cilium failure guard: PASS'
 
 write_config
 : > "$log_file"

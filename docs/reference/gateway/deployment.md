@@ -8,8 +8,10 @@ This document gives the details for the `gateway/` Pulumi project and the `just 
 
 - [What the Project Creates](#what-the-project-creates)
 - [Prerequisites](#prerequisites)
+  - [Command Sequences and Dependencies](#command-sequences-and-dependencies)
 - [Recipes](#recipes)
   - [just gateway install-crds](#just-gateway-install-crds)
+  - [just gateway restart-cilium](#just-gateway-restart-cilium)
   - [just gcp-pulumi scaffold-gateway-stack](#just-gcp-pulumi-scaffold-gateway-stack)
   - [just gateway check](#just-gateway-check)
   - [just gateway deploy](#just-gateway-deploy)
@@ -58,7 +60,62 @@ Each component in the table below must be ready before you deploy the Gateway st
 | `cert-manager` | Running with `--enable-gateway-api` on the controller container | `just gateway install-crds` | [`kops-setup.md`](../../kops-setup.md) |
 | Backend Services | Every Service referenced by an enabled route exists in the namespace | `just gateway check` | [`graphql-deploy.md`](../../graphql-deploy.md), [`minio-deploy.md`](../../minio-deploy.md), [`logto-deploy.md`](../../logto-deploy.md) |
 
-On an existing kOps cluster where `spec.networking.cilium.gatewayAPI.enabled: true` was added to `config/kops/<cluster>/cluster.yaml`, run `just gateway install-crds` first so the Gateway API CRDs exist in the API server, and then reconcile the cluster with `just gcp-cluster apply-cluster` ([day-2 operations](../kops/day2-operations.md)). Cilium registers `GatewayClass` `cilium` only when the CRDs exist at startup.
+On an existing kOps cluster where `spec.networking.cilium.gatewayAPI.enabled: true` was added to `config/kops/<cluster>/cluster.yaml`, follow the sequence in [Command Sequences and Dependencies](#command-sequences-and-dependencies) to make sure that the CRDs exist before Cilium reconciles.
+
+### Command Sequences and Dependencies
+
+![Cilium Gateway API Workflow](gateway-setup-workflow.png)
+
+Cilium creates `GatewayClass` `cilium` only when two conditions are true:
+1. The Gateway API CRDs exist in the Kubernetes API server.
+2. The Cilium operator runs with Gateway API enabled in its configuration.
+
+Follow the sequence that matches your cluster state:
+
+#### Condition 1: New Cluster
+
+1. Enable Cilium Gateway API in `config/kops/<cluster>/cluster.yaml`:
+   ```yaml
+   spec:
+     networking:
+       cilium:
+         gatewayAPI:
+           enabled: true
+   ```
+2. Provision the cluster:
+   ```bash
+   just gcp-cluster create-cluster
+   ```
+3. Install Gateway API CRDs and enable Gateway API on `cert-manager`:
+   ```bash
+   just gateway install-crds
+   ```
+4. Deploy the Gateway:
+   ```bash
+   just gateway deploy
+   ```
+
+#### Condition 2: Existing Cluster (Migration to Gateway API)
+
+1. Install the CRDs into the API server before you update the cluster:
+   ```bash
+   just gateway install-crds
+   ```
+   **Dependency**: The Gateway API CRDs must exist in the API server before the controller can register `GatewayClass` `cilium`.
+2. Apply the updated cluster manifest to reconcile `cilium-config`:
+   ```bash
+   just gcp-cluster apply-cluster
+   ```
+   **Dependency**: This step pushes `spec.networking.cilium.gatewayAPI.enabled: true` to the state store and updates ConfigMap `cilium-config` in `kube-system`.
+3. If `GatewayClass` `cilium` is not accepted, restart the Cilium operator:
+   ```bash
+   just gateway restart-cilium
+   ```
+   **Dependency**: When Cilium was already active before the update, the operator must restart to bind the CRDs and register `GatewayClass` `cilium`.
+4. Deploy the Gateway:
+   ```bash
+   just gateway deploy
+   ```
 
 ---
 
@@ -82,6 +139,28 @@ Behavior:
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
 | `--version` / `-v` | No | `v1.2.1` | Gateway API release tag |
+
+### just gateway restart-cilium
+
+Restarts the Cilium operator in `kube-system`, rolls out the daemonset when its update strategy is `RollingUpdate`, waits for the rollout, and verifies that `GatewayClass` `cilium` exists and is `Accepted`.
+
+```bash
+just gateway restart-cilium
+```
+
+Behavior:
+
+1. Validates that `--retries` and `--interval` are positive integers.
+2. Restarts Deployment `cilium-operator` in namespace `kube-system`.
+3. If DaemonSet `cilium` uses strategy `RollingUpdate`, restarts the DaemonSet and waits for its rollout.
+4. Waits for `rollout status` on `deployment/cilium-operator`.
+5. Polls `kubectl get gatewayclass <class> -o json` until condition `Accepted=True` or until retries expire.
+
+| Flag | Required | Default | Notes |
+|------|----------|---------|-------|
+| `--class` / `-c` | No | `cilium` | Target GatewayClass name |
+| `--retries` / `-r` | No | `18` | Poll attempts |
+| `--interval` / `-i` | No | `5` | Seconds between polls (90s default budget) |
 
 ### just gcp-pulumi scaffold-gateway-stack
 
@@ -288,10 +367,10 @@ Each route block has an `enabled` boolean. When `enabled` is `true`, the program
 | `/publication` | `publication-api` | `3000` |
 | `/gene` | `genomepage-api` | `3000` |
 
-Set the public frontend hostname:
+Set the public frontend hostname (`set-config` rewrites `hosts.0` to `hosts[0]` so `zsh` does not expand `[0]` as a filename pattern):
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts.0 --value <frontend-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.enabled --value true
 ```
 
@@ -306,7 +385,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 `properties.routes.graphql.enabled` defaults to **`true`** and `properties.routes.graphql.path` defaults to **`/graphql`** in the scaffold template. When enabled, `graphql-route` routes `/graphql` (`PathPrefix`) to `graphql-api:8080` and shares the `<frontend-host>` hostname and `frontend-tls` Secret with the frontend route (for example, `https://slime.dictycr.org/graphql`). Keep `properties.ingress.enabled` set to `false` in `graphql_server/Pulumi.<stack>.yaml` ([GraphQL deploy](../../graphql-deploy.md)).
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts[0] --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value true
 ```
 
@@ -315,7 +394,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enab
 `properties.routes.minio.enabled` defaults to **`true`** in the scaffold template. When enabled, `minio-route` routes `/` (`PathPrefix`) to `minio:9000`. Keep `properties.apiIngress.enabled` set to `false` in `minio/Pulumi.<stack>.yaml` ([MinIO deploy](../../minio-deploy.md)).
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts[0] --value <minio-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts.0 --value <minio-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.minio.enabled --value true
 ```
 
@@ -326,7 +405,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.minio.enable
 Turn the Logto route on after `log-to` is deployed:
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts[0] --value <logto-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts.0 --value <logto-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value true
 ```
 
@@ -362,9 +441,9 @@ just gateway verify
 |---------|-------|--------|
 | `Error: no stack name` | Recipe run outside the `cluster-env` sub-shell | Enter `just cluster-env --env <env> --cluster <cluster>` or pass `--stack <name>` |
 | `Error: stack config missing: gateway/Pulumi.<stack>.yaml` | Stack file not scaffolded yet | Run `just gcp-pulumi scaffold-gateway-stack` |
-| `GatewayClass cilium not found on cluster` | Gateway API CRDs were not installed, or Cilium Gateway API is not enabled in kOps | Run `just gateway install-crds`, verify `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`, and run `just gcp-cluster apply-cluster` |
+| `GatewayClass cilium not found on cluster` | Gateway API CRDs were not installed, Cilium Gateway API is not enabled in kOps, or Cilium started before the CRDs | Run `just gateway install-crds`, verify `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`, run `just gcp-cluster apply-cluster`, and run `just gateway restart-cilium` |
 | `contains an empty or placeholder issuer value` | `issuer.email` still holds `<acme-email>` | Run `just gcp-pulumi set-config --folder gateway --key properties.issuer.email --value <email>` |
-| `route '<name>' is enabled but contains an empty or placeholder host or tlsSecret` | An enabled route still holds `<...-host>` | Set `properties.routes.<name>.hosts[0]` with `set-config`, or set `properties.routes.<name>.enabled` to `false` |
+| `route '<name>' is enabled but contains an empty or placeholder host or tlsSecret` | An enabled route still holds `<...-host>` | Set `properties.routes.<name>.hosts.0` with `set-config`, or set `properties.routes.<name>.enabled` to `false` |
 | `must enable at least one route` | All four routes have `enabled: false` | Set at least one route `enabled` key to `true` |
 | `Error from server (NotFound): services "<svc>" not found` | A route is enabled for a backend Service that is not deployed yet | Deploy the backend Service first, or set `properties.routes.<route>.enabled` to `false` |
 | `TLS Secret <name> missing or not kubernetes.io/tls` during `verify` | DNS does not point to the Gateway external IP yet, or the HTTP-01 challenge is still in progress | Check the Gateway IP with `just gateway show-ip`, update DNS A records, and inspect `kubectl -n <namespace> get certificate,challenge` |
