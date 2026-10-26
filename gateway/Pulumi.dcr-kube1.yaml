@@ -1,0 +1,59 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIBX0Ac5sBzoJfaXk3naej+bPvY+3FNahYPmKzNAfSC0SSQDjx5R/tlIrEuOLUVFQKdWCsQMmJaNbrps2U5Snl46fOmpZ2ED31EiZoc0bfzdRHytYIaijjeT5CWqx6ImoJq63Rc3jleE5PXg=
+# Template for a gateway stack config.
+# Rendered by `just gcp-pulumi scaffold-gateway-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `pulumi stack init` writes the
+# secretsprovider + encryptedkey lines.
+config:
+  gateway:properties:
+    name: dictycr-gateway
+    namespace: prod
+    gatewayClassName: cilium
+    issuer:
+      name: letsencrypt-issuer
+      email: siddhartha-basu@northwestern.edu
+      server: https://acme-v02.api.letsencrypt.org/directory
+      secretName: letsencrypt-account-key
+    routes:
+      frontend:
+        enabled: false
+        hosts:
+          - <frontend-host>
+        tlsSecret: frontend-tls
+        services:
+          - name: frontpage-api
+            path: /
+            port: 3000
+          - name: stockcenter-api
+            path: /stockcenter
+            port: 3000
+          - name: publication-api
+            path: /publication
+            port: 3000
+          - name: genomepage-api
+            path: /gene
+            port: 3000
+      graphql:
+        enabled: true
+        hosts:
+          - slimemold.dictycr.org
+        tlsSecret: frontend-tls
+        serviceName: graphql-api
+        servicePort: 8080
+        path: /graphql
+      minio:
+        enabled: true
+        hosts:
+          - slimestorage.dictycr.org
+        tlsSecret: minio-tls
+        serviceName: minio
+        servicePort: 9000
+        path: /
+      logto:
+        enabled: false
+        hosts:
+          - <logto-host>
+        tlsSecret: logto-tls
+        serviceName: logto-api
+        servicePort: 3001
+        path: /
