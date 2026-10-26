@@ -14,6 +14,8 @@ not edit the lab `experiments`/`local` stacks of `modware-order`,
 `modware-annotation`, `modware-annotation-feature`, `modware-stock`, or
 `modware-content`.
 
+![Backend Service Deploy Workflow](reference/backend/backend-deploy-workflow.png)
+
 ## Table of Contents
 - [Quick Reference](#quick-reference)
 - [1. Create the deployer key](#1-create-the-deployer-key)

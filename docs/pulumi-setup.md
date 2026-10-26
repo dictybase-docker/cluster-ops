@@ -10,6 +10,8 @@ Starts where [`kops-setup.md`](kops-setup.md) ends (cluster up and validated). Y
 
 **You end up with**: `pulumi-manager` key, KMS secrets provider, versioned GCS state bucket, cluster env file with `PULUMI_*` vars and the per-cluster tool-manifest selector, plus the selected `.tool-versions.<env>.<cluster>` manifest, StorageClass `dictycr-balanced`, shared namespaces `operators` + app namespace via the `namespace-bootstrap` stack. Takes ~10–20 minutes once the cluster is Ready.
 
+![Pulumi Setup Workflow](reference/pulumi/pulumi-setup-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

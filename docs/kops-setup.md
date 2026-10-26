@@ -12,6 +12,8 @@ Takes ~30–45 minutes for a clean run — most of it waiting for GCE instances 
 >
 > **Once inside `just cluster-env`, stop typing `--cluster` and `--project`.** The shell exports `CLUSTER_NAME` and `PROJECT_ID`; every recipe below reads them automatically. Pass a flag only to override, or when a command runs *before* you've entered the shell.
 
+![kOps Cluster Setup Workflow](reference/kops/kops-setup-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

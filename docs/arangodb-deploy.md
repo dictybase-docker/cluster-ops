@@ -4,6 +4,8 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 
 **Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit lab `arangodb-single` stacks.
 
+![ArangoDB Deploy Workflow](reference/arangodb/arangodb-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

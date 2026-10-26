@@ -6,6 +6,8 @@ The `event-messenger/` Pulumi project deploys **event-messenger** (`dictybase/ev
 
 **Status**: Production procedure. Run `just gcp-pulumi scaffold-event-messenger-stack` to create a new cluster stack file from the registry and template, or `just gcp-pulumi ensure-stack --folder event-messenger` when the stack file already exists.
 
+![Event Messenger Deploy Workflow](reference/event-messenger/event-messenger-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

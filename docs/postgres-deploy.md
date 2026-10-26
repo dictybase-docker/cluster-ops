@@ -4,6 +4,8 @@ Provisioning guide for production PostgreSQL **16** on kOps `stateful-db`, via t
 
 **Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `dev`/`experiments` stacks of `cloudnative-pg-operator` / `cloudnative-pg-cluster`.
 
+![PostgreSQL Deploy Workflow](reference/postgres/postgres-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

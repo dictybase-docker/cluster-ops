@@ -4,6 +4,8 @@ Provisioning guide for production **standalone MinIO** (S3 API, Bitnami chart 17
 
 **Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `dev`/`experiments`/`local` stacks of `minio`.
 
+![MinIO Deploy Workflow](reference/minio/minio-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

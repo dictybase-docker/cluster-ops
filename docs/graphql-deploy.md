@@ -6,6 +6,8 @@ The `graphql_server/` Pulumi project deploys **graphql-server** (`dictybase/grap
 
 **Status**: Production procedure. Run `just gcp-pulumi scaffold-graphql-stack` to create a new cluster stack file from the registry and template, or `just gcp-pulumi ensure-stack --folder graphql_server` when the stack file already exists.
 
+![GraphQL Server Deploy Workflow](reference/graphql/graphql-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)

@@ -4,6 +4,8 @@ Provisioning guide for production **NATS 2.15** on kOps, via the official `nats-
 
 **Status**: Production procedure. Use `Pulumi.dcr-kube1.yaml` configs only. Do not edit the lab `experiments`/`local` stacks of `nats`.
 
+![NATS Deploy Workflow](reference/nats/nats-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)
