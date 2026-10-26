@@ -42,7 +42,7 @@ history and the process arguments:
 just gcp-pulumi set-secret --folder <project-folder> --key "<key>"
 ```
 
-Both write with `--path`, so dotted keys like `properties.secret.password` create nested structure rather than a literal flat key.
+Both write with `--path`, so dotted keys like `properties.secret.password` create nested structure rather than a literal flat key. For list elements, pass a dotted numeric index (such as `properties.routes.graphql.hosts.0`) or wrap `[0]` in single quotes (`'properties.routes.graphql.hosts[0]'`); `set-config` and `set-secret` rewrite `.0` to `[0]` automatically so `zsh` does not fail with `no matches found`.
 
 ## Preview and Apply
 

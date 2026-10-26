@@ -20,8 +20,8 @@ All recipes accept `--stack <name>`. If omitted they use `$PULUMI_STACK`, fallin
 
 | Recipe | What it does | Environment variables |
 |--------|--------------|-----------------------|
-| `just gcp-pulumi set-config` | `config set --path <key> <value>`; `--plaintext yes` adds `--plaintext` when the CLI mis-guesses a non-secret as secret (e.g. paths under `credentials/`) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
-| `just gcp-pulumi set-secret` | `config set --path --secret <key> <value>`; omit `--value` to type the secret at a hidden prompt (keeps it out of shell history and process arguments) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
+| `just gcp-pulumi set-config` | `config set --path <key> <value>`; normalizes dotted numeric segments (`hosts.0` → `hosts[0]`); `--plaintext yes` adds `--plaintext` when the CLI mis-guesses a non-secret as secret (e.g. paths under `credentials/`) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
+| `just gcp-pulumi set-secret` | `config set --path --secret <key> <value>`; normalizes dotted numeric segments (`hosts.0` → `hosts[0]`); omit `--value` to type the secret at a hidden prompt (keeps it out of shell history and process arguments) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_STACK` |
 
 ## Apply and Destroy
 

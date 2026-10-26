@@ -4,22 +4,50 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
+	A "github.com/IBM/fp-go/v2/array"
 	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
+	P "github.com/IBM/fp-go/v2/predicate"
+	S "github.com/IBM/fp-go/v2/string"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 )
 
 // errOutputNotFound names a missing stack output (sentinel; errors.Is, never
 // message matching).
-var errOutputNotFound = errors.New("stack output not set")
+var (
+	errOutputNotFound = errors.New("stack output not set")
+	numericSegmentRe  = regexp.MustCompile(`^[0-9]+$`)
+	formatSegment     = F.Pipe1(
+		numericSegmentRe.MatchString,
+		P.Fold(S.Prepend("."), S.Format[string]("[%s]")),
+	)
+)
+
+// NormalizeConfigKey rewrites dotted numeric path segments (such as
+// "properties.routes.graphql.hosts.0") into Pulumi bracket indices
+// ("properties.routes.graphql.hosts[0]") so operators can pass list indices
+// without shell-glob brackets.
+func NormalizeConfigKey(key string) string {
+	parts := strings.Split(key, ".")
+	return F.Pipe3(
+		parts[1:],
+		A.Map(formatSegment),
+		A.Fold(S.Monoid),
+		S.Prepend(parts[0]),
+	)
+}
 
 // SetConfig writes one key; secret marks it for the secrets provider. The
-// value never reaches logs.
+// value never reaches logs. Dotted numeric segments (e.g. hosts.0) are
+// normalized to Pulumi bracket indices (hosts[0]).
 func SetConfig(ctx context.Context, s StackAPI, key, value string, secret bool) IOE.IOEither[error, struct{}] {
+	normalized := NormalizeConfigKey(key)
 	return IOE.TryCatchError(func() (struct{}, error) {
-		return struct{}{}, s.SetConfig(ctx, key, auto.ConfigValue{Value: value, Secret: secret})
+		return struct{}{}, s.SetConfig(ctx, normalized, auto.ConfigValue{Value: value, Secret: secret})
 	})
 }
 

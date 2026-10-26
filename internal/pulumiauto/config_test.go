@@ -12,15 +12,53 @@ import (
 )
 
 // testSecret is the shared planted-secret fixture (never real).
-const testSecret = "s3cr3t"
+const (
+	testSecret      = "s3cr3t"
+	testImageTagKey = "imageTag"
+	testGraphqlHost = "properties.routes.graphql.hosts[0]"
+)
 
 func TestSetConfigTargetsStack(t *testing.T) {
 	log := []string{}
 	st := &fakeStack{log: &log}
-	_, err := E.UnwrapError(SetConfig(context.Background(), st, "imageTag", "v1.2.3", false)())
+	_, err := E.UnwrapError(SetConfig(context.Background(), st, testImageTagKey, "v1.2.3", false)())
 	require.NoError(t, err)
-	require.Equal(t, []string{"set-config:imageTag"}, log)
-	require.Equal(t, auto.ConfigValue{Value: "v1.2.3"}, st.configs["imageTag"])
+	require.Equal(t, []string{"set-config:" + testImageTagKey}, log)
+	require.Equal(t, auto.ConfigValue{Value: "v1.2.3"}, st.configs[testImageTagKey])
+}
+
+func TestNormalizeConfigKeyRewritesDotIndices(t *testing.T) {
+	cases := map[string]string{
+		"":                                  "",
+		testImageTagKey:                     testImageTagKey,
+		"properties.issuer.email":           "properties.issuer.email",
+		"properties.routes.graphql.hosts.0": testGraphqlHost,
+		testGraphqlHost:                     testGraphqlHost,
+		"properties.clusters.0.cluster.backup.bucket": "properties.clusters[0].cluster.backup.bucket",
+		"properties.matrix.0.1.name":                  "properties.matrix[0][1].name",
+	}
+	for in, want := range cases {
+		require.Equal(t, want, NormalizeConfigKey(in), "input %q", in)
+	}
+}
+
+func TestSetConfigNormalizesDotIndexKey(t *testing.T) {
+	log := []string{}
+	st := &fakeStack{log: &log}
+	_, err := E.UnwrapError(SetConfig(
+		context.Background(),
+		st,
+		"properties.routes.graphql.hosts.0",
+		"slime.dictycr.org",
+		false,
+	)())
+	require.NoError(t, err)
+	require.Equal(t, []string{"set-config:" + testGraphqlHost}, log)
+	require.Equal(
+		t,
+		auto.ConfigValue{Value: "slime.dictycr.org"},
+		st.configs[testGraphqlHost],
+	)
 }
 
 func TestSetSecretMarksSecret(t *testing.T) {

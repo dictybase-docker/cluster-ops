@@ -203,7 +203,9 @@ func stackConfigSetAction(cltx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	key, value := cltx.String("key"), cltx.String("value")
+	rawKey := cltx.String("key")
+	key := pulumiauto.NormalizeConfigKey(rawKey)
+	value := cltx.String("value")
 	if !cltx.IsSet("value") {
 		stdin := readSecretFromStdin(os.Stdin)
 		secret, err := E.UnwrapError(stdin())

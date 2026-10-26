@@ -159,9 +159,11 @@ ensure-stack folder stack="":
 # Set an encrypted config value on a stack (config set --path --secret).
 # Omit --value to enter the secret at a hidden prompt. That path keeps the
 # value out of the shell history and the process arguments.
+# Dotted numeric segments (e.g. hosts.0) are normalized to [0] so zsh does not
+# fail on unquoted brackets.
 # Usage: just gcp-pulumi set-secret --folder <dir> --key <config.path> [--value <secret>] [--stack <name>]
 [arg("value", long="value", short="v", help="Secret value to store; omit to enter it at a hidden prompt")]
-[arg("key", long="key", short="k", help="Config key path, e.g. properties.secret.password")]
+[arg("key", long="key", short="k", help="Config key path, e.g. properties.secret.password (dot indices like .0 map to [0])")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
 [arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
 [no-cd]
@@ -184,9 +186,11 @@ set-secret folder key value="" stack="":
             --key {{ quote(key) }} --secret
     fi
 # Set a plain (unencrypted) config value on a stack (config set --path).
+# Dotted numeric segments (e.g. hosts.0) are normalized to [0] so zsh does not
+# fail on unquoted brackets.
 # Usage: just gcp-pulumi set-config --folder <dir> --key <config.path> --value <val> [--stack <name>] [--plaintext <yes>]
 [arg("value", long="value", short="v", help="Config value to store")]
-[arg("key", long="key", short="k", help="Config key path, e.g. properties.restoreId")]
+[arg("key", long="key", short="k", help="Config key path, e.g. properties.restoreId (dot indices like .0 map to [0])")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
 [arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
 [arg("plaintext", long="plaintext", help="Pass --plaintext when the value is not a secret but the CLI would guess otherwise")]
@@ -1157,7 +1161,8 @@ set-secret-shell folder key value stack="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
-    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret {{ quote(key) }} {{ quote(value) }}
+    norm_key=$(printf '%s' {{ quote(key) }} | sed -E 's/\.([0-9]+)(\.|$)/[\1]\2/g; s/\.([0-9]+)(\.|\[|$)/[\1]\2/g')
+    pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --secret "${norm_key}" {{ quote(value) }}
 
 
 # Rollback copy of the pre-migration set-config (real pulumi CLI body; delete one release after migration).
@@ -1175,10 +1180,11 @@ set-config-shell folder key value stack="" plaintext="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    norm_key=$(printf '%s' {{ quote(key) }} | sed -E 's/\.([0-9]+)(\.|$)/[\1]\2/g; s/\.([0-9]+)(\.|\[|$)/[\1]\2/g')
     if [ -n "{{ plaintext }}" ]; then
-        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --plaintext {{ quote(key) }} {{ quote(value) }}
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path --plaintext "${norm_key}" {{ quote(value) }}
     else
-        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path {{ quote(key) }} {{ quote(value) }}
+        pulumi -C {{ quote(folder) }} -s "${stack_name}" config set --path "${norm_key}" {{ quote(value) }}
     fi
 
 

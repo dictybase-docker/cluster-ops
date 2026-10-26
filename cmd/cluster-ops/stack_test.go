@@ -77,3 +77,27 @@ func TestReadSecretFromStdin(t *testing.T) {
 	require.Error(t, err2)
 	require.Empty(t, r)
 }
+
+func TestStackConfigSetNormalizesDotIndexKey(t *testing.T) {
+	opener := &fakeOpener{stack: &fakeStack{name: "s1"}}
+	restoreOpener := newOpener
+	newOpener = func() pulumiauto.StackOpener { return opener }
+	defer func() { newOpener = restoreOpener }()
+
+	t.Setenv("PULUMI_BACKEND_URL", "gs://test-bucket")
+	t.Setenv("PULUMI_SECRET_PROVIDER", "gcpkms://projects/p/locations/l/keyRings/r/cryptoKeys/k")
+
+	app := stackTestApp()
+	err := app.Run([]string{
+		appName,
+		stackFlag,
+		"config",
+		"set",
+		dashFolder, "gateway",
+		dashStack, "unregistered-stack",
+		"--key", "properties.routes.graphql.hosts.0",
+		"--value", "slime.dictycr.org",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"set-config:properties.routes.graphql.hosts[0]"}, opener.stack.log)
+}

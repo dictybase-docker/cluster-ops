@@ -104,4 +104,13 @@ grep -q "stack up --folder arangodb-single --stack s1" "${calls}" \
     || fail "stack up argv wrong: $(cat "${calls}")"
 echo "  preview/create-resource argv: PASS"
 
+echo "=== 6. set-config accepts shell-safe dot index keys ==="
+: > "${calls}"
+just gcp-pulumi set-config --folder gateway --stack s1 \
+    --key properties.routes.graphql.hosts.0 --value slime.dictycr.org >/dev/null 2>&1 \
+    || fail "set-config failed: $(cat "${calls}")"
+grep -q "stack config set --folder gateway --stack s1 --key properties.routes.graphql.hosts.0 --value slime.dictycr.org" "${calls}" \
+    || fail "set-config argv wrong: $(cat "${calls}")"
+echo "  set-config dot-index argv: PASS"
+
 echo "pulumi automation contract tests PASSED"
