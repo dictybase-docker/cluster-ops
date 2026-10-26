@@ -96,6 +96,12 @@ guide, not per section.
   `ingress.enabled`) get their own numbered section in the guide TOC and Quick
   Reference, opening with `**Optional. The default is off.**` and showing the
   `set-config` / `set-secret` recipe block.
+- **Never write unquoted `[0]` or `[*]` in shell command blocks.** In `zsh`,
+  unquoted brackets trigger filename globbing and fail with `no matches found`.
+  Prefer dotted list indices (`properties.routes.graphql.hosts.0`, which
+  `set-config` and `set-secret` rewrite to `[0]`) or wrap bracketed keys in
+  single quotes (`'properties.dbservers.args[0]'`). `just docs docs-lint`
+  enforces this check.
 
 ## 4. Guide Skeleton
 

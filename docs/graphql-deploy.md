@@ -144,7 +144,7 @@ The key `properties.ingress.enabled` defaults to `false`. With `false`, the stac
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value false
 
 # Turn the Ingress on. Set the four keys first.
-just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts[0] --value <graphql-host>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts.0 --value <graphql-host>
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.path --value /
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.tlsSecret --value <graphql-tls-secret>
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.name --value kcert.dev/ingress

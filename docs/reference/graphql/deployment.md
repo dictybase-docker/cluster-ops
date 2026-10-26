@@ -237,7 +237,7 @@ Set `hosts`, `path`, and `tlsSecret` **before** you set `enabled` to `true`. The
 The program does not check `label`, but it always writes one label `<label.name>: <label.value>` on the Ingress. An empty `label.name` sends an empty label key, and the API server rejects it at apply time. Set `kcert.dev/ingress: managed` so that `kcert` issues the TLS Secret named in `tlsSecret`.
 
 ```bash
-just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts[0] --value <graphql-host>
+just gcp-pulumi set-config --folder graphql_server --key properties.ingress.hosts.0 --value <graphql-host>
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.path --value /
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.tlsSecret --value <graphql-tls-secret>
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.label.name --value kcert.dev/ingress

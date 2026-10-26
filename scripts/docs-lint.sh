@@ -11,7 +11,9 @@
 #   5. Guide section numbering has no gaps after the first numbered section
 #   6. Guide section shape: no prose after the command block (STYLE.md rule 2)
 #   7. Guide section has a reference link (STYLE.md rule 2)
-#   8. Recipe echoes in just_modules/ point at recipes, not section numbers
+#   8. Shell command blocks must not contain unquoted [...] glob tokens
+#      (e.g. hosts[0]), which fail in zsh with 'no matches found'
+#   9. Recipe echoes in just_modules/ point at recipes, not section numbers
 #      or titles (STYLE.md rule 8)
 #
 # STYLE.md rule 6 (env/context switches split into labeled blocks) is not
@@ -56,14 +58,21 @@ for i, l in enumerate(lines, 1):
 
 # fenced regions (code examples) — checks below skip them
 fence_lines = set()
+shell_fence_lines = set()
 in_f = False
+f_lang = ""
 for i, l in enumerate(lines, 1):
-    if l.strip().startswith("```"):
+    s = l.strip()
+    if s.startswith("```"):
         if in_f:
             fence_lines.update(range(in_f, i + 1))
+            if f_lang in ("bash", "sh", "zsh", "shell"):
+                shell_fence_lines.update(range(in_f + 1, i))
             in_f = False
+            f_lang = ""
         else:
             in_f = i
+            f_lang = s[3:].strip().split()[0] if s[3:].strip() else ""
 if in_f:
     fence_lines.update(range(in_f, len(lines) + 1))
 
@@ -142,6 +151,17 @@ if secs and "## Table of Contents" in text:
             p(f"section {n}: no reference-doc link — every command section "
               f"links its reference doc (STYLE.md rule 2)", start)
             bad += 1
+
+# 8. shell command blocks must not contain unquoted [...] glob tokens
+#    (e.g. hosts[0] or args[0]), which fail in zsh with 'no matches found'.
+for i in sorted(shell_fence_lines):
+    s = lines[i - 1].strip()
+    if not s or s.startswith("#"):
+        continue
+    unquoted = re.sub(r"'[^']*'|\"[^\"]*\"", "", lines[i - 1])
+    for m in re.finditer(r"[A-Za-z0-9_.-]+\[[^\]]+\]", unquoted):
+        p(f"unquoted '{m.group(0)}' in shell block fails in zsh — use dot index (.0) or single quotes", i)
+        bad += 1
 
 sys.exit(1 if bad else 0)
 PYEOF
