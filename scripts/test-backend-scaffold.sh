@@ -15,7 +15,19 @@ mock_bin="${tmp}/bin"
 mkdir -p "${mock_bin}"
 calls="${tmp}/calls.log"
 : > "${calls}"
-cleanup() { rm -rf "${tmp}"; }
+em_cfg="event-messenger/Pulumi.dcr-kube1.yaml"
+em_bak=""
+gw_cfg="gateway/Pulumi.dcr-kube1.yaml"
+gw_bak=""
+cleanup() {
+    if [ -n "${em_bak}" ] && [ -f "${em_bak}" ]; then
+        mv "${em_bak}" "${em_cfg}"
+    fi
+    if [ -n "${gw_bak}" ] && [ -f "${gw_bak}" ]; then
+        mv "${gw_bak}" "${gw_cfg}"
+    fi
+    rm -rf "${tmp}"
+}
 trap cleanup EXIT
 
 fail() {
