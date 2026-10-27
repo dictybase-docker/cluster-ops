@@ -210,7 +210,7 @@ out=$(just gcp-pulumi scaffold-gateway-stack --stack dcr-kube1 2>&1) || {
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".issuer.name')" = "letsencrypt-issuer" ] || fail "issuer.name wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.frontend.enabled')" = "true" ] || fail "routes.frontend.enabled wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.graphql.enabled')" = "true" ] || fail "routes.graphql.enabled wrong"
-[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.graphql.path')" = "/graphql" ] || fail "routes.graphql.path wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.graphql.path')" = "/" ] || fail "routes.graphql.path wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.minio.enabled')" = "true" ] || fail "routes.minio.enabled wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.logto.enabled')" = "false" ] || fail "routes.logto.enabled wrong"
 if [ -n "${gw_bak}" ]; then

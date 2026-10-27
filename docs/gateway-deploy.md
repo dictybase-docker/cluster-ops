@@ -55,8 +55,8 @@ just gcp-pulumi set-config --folder gateway --key properties.issuer.email --valu
 # 4. Configure the frontend route (default: enabled, e.g. slime.dictycr.org)
 just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts.0 --value <frontend-host>
 
-# 5. Configure the GraphQL route (default: enabled at /graphql on the same host)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
+# 5. Configure the GraphQL route (default: enabled, e.g. graphql.dictycr.org)
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <graphql-host>
 
 # 6. Configure the MinIO route (default: enabled on its own subdomain, e.g. slimestorage.dictycr.org)
 just gcp-pulumi set-config --folder gateway --key properties.routes.minio.hosts.0 --value <minio-host>
@@ -166,12 +166,12 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 
 ## 5. Configure the GraphQL Route
 
-The key `properties.routes.graphql.enabled` defaults to `true`, and `properties.routes.graphql.path` defaults to `/graphql`. Set `hosts.0` (`hosts[0]`) to the same hostname as the frontend (for example, `slime.dictycr.org`) so the Gateway shares one HTTPS listener and TLS Secret (`frontend-tls`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
+The key `properties.routes.graphql.enabled` defaults to `true`, and `properties.routes.graphql.path` defaults to `/` so the route serves both the GraphiQL playground at `/` and queries at `/graphql`. Set `hosts.0` (`hosts[0]`) to the public GraphQL hostname (for example, `graphql.dictycr.org`), or set `enabled` to `false` if `graphql_server` is not deployed yet.
 → [GraphQL route](reference/gateway/deployment.md#graphql-route)
 
 ```bash
-# Set the public hostname (shares frontend-tls by default, path /graphql)
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
+# Set the public hostname (path / serves both / and /graphql)
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <graphql-host>
 
 # Or disable the route until graphql_server is deployed
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value false

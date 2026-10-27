@@ -86,7 +86,7 @@ func TestConfigValidateDefaultsAndSuccess(t *testing.T) {
 	require.Equal(t, "letsencrypt-issuer", cfg.Issuer.Name)
 	require.Equal(t, "https://acme-v02.api.letsencrypt.org/directory", cfg.Issuer.Server)
 	require.Equal(t, "letsencrypt-account-key", cfg.Issuer.SecretName)
-	require.Equal(t, "/graphql", cfg.Routes.Graphql.Path)
+	require.Equal(t, "/", cfg.Routes.Graphql.Path)
 	require.Equal(t, "logto-api", cfg.Routes.Logto.ServiceName)
 	require.Equal(t, 3001, cfg.Routes.Logto.ServicePort)
 	require.Equal(t, "/", cfg.Routes.Logto.Path)
@@ -230,7 +230,7 @@ func TestSharedHostnameDeduplicatesGatewayListeners(t *testing.T) {
 	)
 
 	gqlRoute := mocks.resources["graphql-route"]
-	require.Contains(t, fmt.Sprint(gqlRoute.Inputs), "/graphql")
+	require.Contains(t, fmt.Sprint(gqlRoute.Inputs), "graphql-api")
 }
 
 func TestInstallWithLogtoEnabled(t *testing.T) {

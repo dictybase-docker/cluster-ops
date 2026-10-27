@@ -39,7 +39,7 @@ The `gateway/` Pulumi project creates the ACME `Issuer`, the Cilium `Gateway`, a
 | 1 | `cert-manager.io/v1:Issuer` | `letsencrypt-issuer` | ACME HTTP-01 solver that attaches challenge `HTTPRoute` resources to `Gateway` `dictycr-gateway`. |
 | 2 | `gateway.networking.k8s.io/v1:Gateway` | `dictycr-gateway` | Class `cilium`. Annotated with `cert-manager.io/issuer: letsencrypt-issuer`. Carries one HTTP listener on port `80` and one HTTPS listener on port `443` for each host on an enabled route. |
 | 3 | `gateway.networking.k8s.io/v1:HTTPRoute` | `frontend-route` | **Optional (`routes.frontend.enabled: true` by default).** Routes `/`, `/stockcenter`, `/publication`, and `/gene` to the four frontend Services on port `3000`. |
-| 4 | `gateway.networking.k8s.io/v1:HTTPRoute` | `graphql-route` | **Optional (`routes.graphql.enabled: true` by default).** Routes `/graphql` to Service `graphql-api` on port `8080`. |
+| 4 | `gateway.networking.k8s.io/v1:HTTPRoute` | `graphql-route` | **Optional (`routes.graphql.enabled: true` by default).** Routes `/` (both the GraphiQL playground at `/` and queries at `/graphql`) to Service `graphql-api` on port `8080`. |
 | 5 | `gateway.networking.k8s.io/v1:HTTPRoute` | `minio-route` | **Optional (`routes.minio.enabled: true` by default).** Routes `/` to Service `minio` on port `9000`. |
 | 6 | `gateway.networking.k8s.io/v1:HTTPRoute` | `logto-route` | **Optional (`routes.logto.enabled: false` by default).** Routes `/` to Service `logto-api` on port `3001`. |
 
@@ -310,11 +310,11 @@ config:
       graphql:
         enabled: true
         hosts:
-          - <frontend-host>
-        tlsSecret: frontend-tls
+          - <graphql-host>
+        tlsSecret: graphql-tls
         serviceName: graphql-api
         servicePort: 8080
-        path: /graphql
+        path: /
       minio:
         enabled: true
         hosts:
@@ -386,10 +386,10 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.ena
 
 ### GraphQL Route
 
-`properties.routes.graphql.enabled` defaults to **`true`** and `properties.routes.graphql.path` defaults to **`/graphql`** in the scaffold template. When enabled, `graphql-route` routes `/graphql` (`PathPrefix`) to `graphql-api:8080` and shares the `<frontend-host>` hostname and `frontend-tls` Secret with the frontend route (for example, `https://slime.dictycr.org/graphql`). Keep `properties.ingress.enabled` set to `false` in `graphql_server/Pulumi.<stack>.yaml` ([GraphQL deploy](../../graphql-deploy.md)).
+`properties.routes.graphql.enabled` defaults to **`true`** and `properties.routes.graphql.path` defaults to **`/`** in the scaffold template. When enabled, `graphql-route` routes `/` (`PathPrefix`, covering both the GraphiQL playground at `/` and queries at `/graphql`) to `graphql-api:8080`. Keep `properties.ingress.enabled` set to `false` in `graphql_server/Pulumi.<stack>.yaml` ([GraphQL deploy](../../graphql-deploy.md)).
 
 ```bash
-just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <frontend-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.hosts.0 --value <graphql-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.graphql.enabled --value true
 ```
 

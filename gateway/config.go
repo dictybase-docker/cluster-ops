@@ -22,7 +22,6 @@ const (
 	//nolint:gosec // G101: Kubernetes Secret name pointer, not a credential.
 	defaultIssuerSecretName  = "letsencrypt-account-key"
 	defaultRootPath          = "/"
-	defaultGraphqlPath       = "/graphql"
 	defaultFrontendPort      = 3000
 	defaultGraphqlService    = "graphql-api"
 	defaultGraphqlPort       = 8080
@@ -117,7 +116,7 @@ func (c *GatewayConfig) ApplyDefaults() {
 	c.Issuer.Name = F.Pipe1(c.Issuer.Name, defaultStr(defaultIssuerName))
 	c.Issuer.Server = F.Pipe1(c.Issuer.Server, defaultStr(defaultIssuerServer))
 	c.Issuer.SecretName = F.Pipe1(c.Issuer.SecretName, defaultStr(defaultIssuerSecretName))
-	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort, defaultGraphqlPath)
+	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort, defaultRootPath)
 	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort, defaultRootPath)
 	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort, defaultRootPath)
 	c.Routes.Frontend.Services = F.Pipe1(
