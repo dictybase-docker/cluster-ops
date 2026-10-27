@@ -86,7 +86,16 @@ case "$*" in
         exit 0
         ;;
     *"get daemonset cilium"*"-o jsonpath="*|*"get daemonset cilium"*"-o jsonpath="*)
-        printf 'RollingUpdate\n'
+        printf '%s\n' "${STUB_DS_STRATEGY:-OnDelete}"
+        ;;
+    *"get pods -l k8s-app=cilium -o json"*)
+        printf '{"items":[{"metadata":{"name":"cilium-abc"},"spec":{"nodeName":"node-1"}}]}\n'
+        ;;
+    *"delete pod cilium-abc"*)
+        exit 0
+        ;;
+    *"wait --for=condition=Ready pod -l k8s-app=cilium"*)
+        exit 0
         ;;
     *"rollout restart deployment/cilium-operator"*)
         exit 0
@@ -241,8 +250,8 @@ echo 'install-crds: PASS'
 : > "$log_file"
 run_recipe "$just_bin" gateway restart-cilium --retries 2 --interval 1 >/dev/null
 rg -q 'rollout restart deployment/cilium-operator' "$log_file"
-rg -q 'rollout restart daemonset/cilium' "$log_file"
-rg -q 'rollout status daemonset/cilium' "$log_file"
+rg -q 'delete pod cilium-abc' "$log_file"
+rg -q 'wait --for=condition=Ready pod -l k8s-app=cilium' "$log_file"
 rg -q 'rollout status deployment/cilium-operator' "$log_file"
 rg -q 'get gatewayclass cilium' "$log_file"
 echo 'restart-cilium success: PASS'

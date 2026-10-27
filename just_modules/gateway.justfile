@@ -58,7 +58,7 @@ install-crds version="v1.2.1":
             kubectl -n "$cm_ns" rollout status deployment/cert-manager --timeout=180s
         fi
     fi
-    echo "Gateway API CRDs (${ver}) ready. Next: just gateway check"
+    echo "Gateway API CRDs (${ver}) ready. Next: just gateway restart-cilium"
 
 # Restart the Cilium agent and Cilium operator in kube-system and verify GatewayClass.
 # Usage: just gateway restart-cilium [--class <name>] [--retries <n>] [--interval <s>]
@@ -88,6 +88,14 @@ restart-cilium class="cilium" retries="18" interval="5":
         kubectl -n kube-system rollout restart daemonset/cilium
         echo "Waiting for Cilium agent rollout..."
         kubectl -n kube-system rollout status daemonset/cilium --timeout=180s
+    elif [[ "$ds_strategy" == "OnDelete" ]]; then
+        echo "Rolling Cilium agent pods in kube-system (OnDelete strategy)..."
+        while IFS=$'\t' read -r pod node; do
+            [[ -z "$pod" ]] && continue
+            echo "Restarting Cilium agent $pod on node $node..."
+            kubectl -n kube-system delete pod "$pod" --wait=true
+            kubectl -n kube-system wait --for=condition=Ready pod -l k8s-app=cilium --field-selector "spec.nodeName=${node}" --timeout=180s
+        done < <(kubectl -n kube-system get pods -l k8s-app=cilium -o json | jq -r '.items[] | [.metadata.name, .spec.nodeName] | @tsv')
     fi
 
     echo "Waiting for Cilium operator rollout..."

@@ -35,9 +35,10 @@ For experienced users. Full details in the sections below.
 # Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. New cluster: create cluster, then install CRDs
+# 1. New cluster: create cluster, install CRDs, then restart Cilium
 just gcp-cluster create-cluster
 just gateway install-crds
+just gateway restart-cilium
 
 # 1. Existing cluster: install CRDs, apply cluster manifest, then restart Cilium
 just gateway install-crds
@@ -95,12 +96,13 @@ Cilium creates `GatewayClass` `cilium` only when the Gateway API CRDs exist in t
 
 ### 1.1 New Cluster Setup
 
-On a new cluster, enable `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`. Then create the cluster and install the CRDs.
+On a new cluster, enable `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`. Create the cluster, install the CRDs, and restart Cilium so the operator and node agents bind the new CRDs.
 → [Prerequisites](reference/gateway/deployment.md#prerequisites)
 
 ```bash
 just gcp-cluster create-cluster
 just gateway install-crds
+just gateway restart-cilium
 ```
 
 ### 1.2 Existing Cluster Migration

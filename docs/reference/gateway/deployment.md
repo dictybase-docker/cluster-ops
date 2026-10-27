@@ -90,7 +90,11 @@ Follow the sequence that matches your cluster state:
    ```bash
    just gateway install-crds
    ```
-4. Deploy the Gateway:
+4. Restart Cilium so the operator and node agents bind the Gateway API CRDs:
+   ```bash
+   just gateway restart-cilium
+   ```
+5. Deploy the Gateway:
    ```bash
    just gateway deploy
    ```
@@ -142,7 +146,7 @@ Behavior:
 
 ### just gateway restart-cilium
 
-Restarts the Cilium operator in `kube-system`, rolls out the daemonset when its update strategy is `RollingUpdate`, waits for the rollout, and verifies that `GatewayClass` `cilium` exists and is `Accepted`.
+Restarts the Cilium operator and Cilium agent pods in `kube-system`, waits for their rollouts, and verifies that `GatewayClass` `cilium` exists and is `Accepted`.
 
 ```bash
 just gateway restart-cilium
@@ -152,7 +156,7 @@ Behavior:
 
 1. Validates that `--retries` and `--interval` are positive integers.
 2. Restarts Deployment `cilium-operator` in namespace `kube-system`.
-3. If DaemonSet `cilium` uses strategy `RollingUpdate`, restarts the DaemonSet and waits for its rollout.
+3. If DaemonSet `cilium` uses strategy `RollingUpdate`, restarts the DaemonSet and waits for its rollout. If DaemonSet `cilium` uses strategy `OnDelete` (the kOps default), deletes each `k8s-app=cilium` pod one node at a time and waits for the replacement pod on that node to report `Ready` so every node agent activates `CiliumEnvoyConfig`.
 4. Waits for `rollout status` on `deployment/cilium-operator`.
 5. Polls `kubectl get gatewayclass <class> -o json` until condition `Accepted=True` or until retries expire.
 
