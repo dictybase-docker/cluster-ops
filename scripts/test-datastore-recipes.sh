@@ -47,6 +47,11 @@ MOCK
 cat > "${mock_bin}/mc" <<'MOCK'
 #!/usr/bin/env bash
 echo "mc $* MC_HOST_minio_dst=${MC_HOST_minio_dst:-unset} MC_CONFIG_DIR=${MC_CONFIG_DIR:-unset}" >> "${MOCK_CALLS_LOG}"
+if [[ "$1" == "anonymous" && "$2" == "get-json" ]]; then
+    default_policy='{"Statement":[{"Effect":"Allow"}]}'
+    printf '%s\n' "${MOCK_MC_POLICY_JSON:-$default_policy}"
+    exit 0
+fi
 [[ "$1" == "mirror" && "${MOCK_MC_MIRROR:-ok}" == "fail" ]] && exit 1
 exit 0
 MOCK
@@ -83,13 +88,22 @@ import_bucket() {
         --source-user srcuser --source-password srcpass "$@"
 }
 
-echo "=== 3. import-bucket mirrors through the forward port ==="
+echo "=== 3. import-bucket mirrors through the forward port and syncs bucket policy ==="
 : > "${calls}"
 out=$(import_bucket 2>&1) || fail "import-bucket failed: ${out}"
 [[ "$(grep -c '^mc mirror' "${calls}")" == "1" ]] || fail "expected one mirror: $(cat "${calls}")"
 grep '^mc mirror' "${calls}" | grep -q 'MC_HOST_minio_dst=http://rootuser:rootpass@localhost:45678' \
     || fail "target alias must use the forward port: $(grep '^mc mirror' "${calls}")"
-echo "  target alias + mirror: PASS"
+grep -q '^mc anonymous get-json minio-src/media' "${calls}" \
+    || fail "import-bucket must read source anonymous policy: $(cat "${calls}")"
+grep -q '^mc anonymous set-json .* minio_dst/media' "${calls}" \
+    || fail "import-bucket must apply non-empty anonymous policy: $(cat "${calls}")"
+: > "${calls}"
+out=$(MOCK_MC_POLICY_JSON='{}' import_bucket --policy-only yes 2>&1) || fail "import-bucket --policy-only failed: ${out}"
+[[ "$(grep -c '^mc mirror' "${calls}")" == "0" ]] || fail "--policy-only must skip mc mirror: $(cat "${calls}")"
+grep -q '^mc anonymous set none minio_dst/media' "${calls}" \
+    || fail "empty source policy must set none on target: $(cat "${calls}")"
+echo "  target alias + mirror + policy sync: PASS"
 
 echo "=== 4. import-bucket retries the mirror --retries times, then fails ==="
 : > "${calls}"

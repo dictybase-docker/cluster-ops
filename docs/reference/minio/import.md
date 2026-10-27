@@ -4,7 +4,7 @@ Back to: [MinIO Deploy Guide](../../minio-deploy.md)
 
 ## What It Does
 
-Mirrors **one bucket** from a source S3-compatible endpoint (another cluster's MinIO, GCS S3 gateway, AWS S3) into this MinIO, using `mc mirror --preserve --overwrite`. Runs from the operator machine; reaches the in-cluster API through `cluster-ops forward run`, which opens a free local port to `svc/minio` and reconnects if the pod restarts.
+Mirrors **one bucket** and its **anonymous bucket policy** (`mc anonymous get-json` / `set-json`) from a source S3-compatible endpoint (another cluster's MinIO, GCS S3 gateway, AWS S3) into this MinIO, using `mc mirror --preserve --overwrite`. Runs from the operator machine; reaches the in-cluster API through `cluster-ops forward run`, which opens a free local port to `svc/minio` and reconnects if the pod restarts.
 
 ## Command
 
@@ -22,8 +22,9 @@ just minio import-bucket \
 2. Wraps the whole mc flow in one `cluster-ops forward run` child to `svc/minio:9000` — a free local port exported as `FORWARD_PORT`, torn down when the child exits
 3. Registers the `mc` alias `minio-src` (explicit source credentials) in a throwaway `MC_CONFIG_DIR` the recipe deletes on exit; the target alias `minio_dst` is built inside the forwarded child as `MC_HOST_minio_dst` from the Secret-derived credentials and `FORWARD_PORT` — env, never argv
 4. Creates the bucket on the target if missing (`mc mb --ignore-existing`)
-5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed
+5. Runs `mc mirror --preserve --overwrite --retry --summary` with HTTP/1.1 forced for the source (`GODEBUG=http2client=0`); `--remove` only when the flag is passed (skipped when `--policy-only yes` is passed)
 6. Retries the mirror up to `--retries` times (default 5) inside the same forward-held child — each attempt resumes, skipping objects already copied
+7. Reads the source bucket's anonymous policy (`mc anonymous get-json minio-src/<bucket>`). If the policy contains one or more `Statement` rules (such as public `s3:GetObject` on `editor` or `download` on `dsc-redesign`), applies that JSON policy to `minio_dst/<bucket>` (`mc anonymous set-json`); otherwise sets `mc anonymous set none minio_dst/<bucket>`
 
 ## Flags
 
@@ -36,6 +37,7 @@ just minio import-bucket \
 | `--secret` | No | `minio-root` | Target credentials Secret |
 | `--remove` | No | off | Deletes target objects missing at the source — dangerous, opt-in |
 | `--retries` | No | `5` | Mirror attempts before giving up; each attempt resumes where the last stopped |
+| `--policy-only` | No | `no` | Pass `yes` to copy only the anonymous bucket policy onto a bucket whose objects are already mirrored |
 
 ## Idempotence
 

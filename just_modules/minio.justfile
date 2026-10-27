@@ -103,10 +103,11 @@ deploy root_user root_password namespace="prod" stack="" retries="60" interval="
     echo
     kubectl get svc -n "$NS" minio
 
-# Mirror one bucket from a source MinIO/S3 endpoint into this MinIO.
+# Mirror one bucket from a source MinIO/S3 endpoint into this MinIO, including
+# its anonymous bucket policy (mc anonymous get-json / set-json).
 # Source credentials are explicit flags; target credentials are read from the
 # in-cluster Secret. Re-runnable — mc mirror only copies what changed.
-# Usage: just minio import-bucket --bucket <name> --source-url <url> --source-user <user> --source-password <pw> [--namespace <ns>] [--secret <name>] [--remove]
+# Usage: just minio import-bucket --bucket <name> --source-url <url> --source-user <user> --source-password <pw> [--namespace <ns>] [--secret <name>] [--remove] [--policy-only]
 [arg("bucket", long="bucket", short="b", help="Bucket name (must exist at the source; created here if missing)")]
 [arg("source_url", long="source-url", short="s", help="Source S3 endpoint URL, e.g. https://storage.source.example:9000")]
 [arg("source_user", long="source-user", short="u", help="Source access key")]
@@ -115,9 +116,10 @@ deploy root_user root_password namespace="prod" stack="" retries="60" interval="
 [arg("secret", long="secret", short="e", help="Secret holding this MinIO's root credentials")]
 [arg("remove", long="remove", help="Pass --remove to mc mirror (deletes target objects missing at source; default OFF)")]
 [arg("retries", long="retries", short="r", help="Mirror attempts before giving up (default 5); each attempt resumes where the last stopped")]
+[arg("policy_only", long="policy-only", help="Pass 'yes' to copy only the anonymous bucket policy when objects are already mirrored")]
 [group('minio')]
 [no-cd]
-import-bucket bucket source_url source_user source_password namespace="prod" secret="minio-root" remove="no" retries="5":
+import-bucket bucket source_url source_user source_password namespace="prod" secret="minio-root" remove="no" retries="5" policy_only="no":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -172,7 +174,7 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
     RETRIES={{ quote(retries) }}
     [[ "$RETRIES" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --retries must be a positive integer." >&2; exit 1; }
 
-    export USER_ENC PASS_ENC BUCKET RETRIES REMOVE_FLAG=""
+    export USER_ENC PASS_ENC BUCKET RETRIES REMOVE_FLAG="" POLICY_ONLY={{ quote(policy_only) }}
     [[ {{ quote(remove) }} == "yes" ]] && REMOVE_FLAG="--remove"
     echo "Ensuring bucket '$BUCKET' exists on the target..."
     go run ./cmd/cluster-ops forward run --ns "$NS" --svc minio --remote-port 9000 -- \
@@ -186,25 +188,39 @@ import-bucket bucket source_url source_user source_password namespace="prod" sec
             # reset storms disappear. Harmless for plain-http endpoints.
             export GODEBUG=http2client=0
 
-            ok=0
-            for attempt in $(seq 1 "$RETRIES"); do
-                # --retry retries failed objects in place (transient resets);
-                # --summary prints copied/failed counts per attempt.
-                if mc mirror --preserve --overwrite --retry --summary $REMOVE_FLAG \
-                    "minio-src/$BUCKET" "minio_dst/$BUCKET"; then
-                    ok=1
-                    break
-                fi
-                echo "Mirror attempt $attempt/$RETRIES failed — retrying (resume skips objects already copied)..." >&2
-                sleep $((attempt * 5))
-            done
-            [[ "$ok" == "1" ]] || { echo "Error: mirror still failing after $RETRIES attempts." >&2; exit 1; }
+            if [[ "$POLICY_ONLY" != "yes" ]]; then
+                ok=0
+                for attempt in $(seq 1 "$RETRIES"); do
+                    # --retry retries failed objects in place (transient resets);
+                    # --summary prints copied/failed counts per attempt.
+                    if mc mirror --preserve --overwrite --retry --summary $REMOVE_FLAG \
+                        "minio-src/$BUCKET" "minio_dst/$BUCKET"; then
+                        ok=1
+                        break
+                    fi
+                    echo "Mirror attempt $attempt/$RETRIES failed — retrying (resume skips objects already copied)..." >&2
+                    sleep $((attempt * 5))
+                done
+                [[ "$ok" == "1" ]] || { echo "Error: mirror still failing after $RETRIES attempts." >&2; exit 1; }
+            fi
 
-            echo
-            echo "Done. Object counts:"
-            mc ls --recursive "minio_dst/$BUCKET" | wc -l
+            echo "Syncing anonymous bucket policy from source..."
+            policy_file="${MC_CONFIG_DIR}/policy.json"
+            mc anonymous get-json "minio-src/$BUCKET" > "$policy_file"
+            if jq -e ".Statement | length > 0" "$policy_file" >/dev/null 2>&1; then
+                mc anonymous set-json "$policy_file" "minio_dst/$BUCKET"
+            else
+                mc anonymous set none "minio_dst/$BUCKET"
+            fi
+            mc anonymous get "minio_dst/$BUCKET"
+
+            if [[ "$POLICY_ONLY" != "yes" ]]; then
+                echo
+                echo "Done. Object counts:"
+                mc ls --recursive "minio_dst/$BUCKET" | wc -l
+            fi
         '
-    unset USER_ENC PASS_ENC BUCKET REMOVE_FLAG RETRIES
+    unset USER_ENC PASS_ENC BUCKET REMOVE_FLAG RETRIES POLICY_ONLY
 
 # Post-install check: pool, pod, PVC, Service, Secret. Exits non-zero on failure.
 # Usage: just minio verify [--namespace <ns>] [--secret <name>] [--pool <label>] [--node-count <n>]
