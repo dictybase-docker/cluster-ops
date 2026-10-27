@@ -194,7 +194,7 @@ Behavior:
 1. Requires `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, and `PULUMI_SECRET_PROVIDER` to be non-empty, and the credentials file to exist.
 2. Requires `gateway/Pulumi.<stack>.yaml` to exist, and `yq` on `PATH`.
 3. Checks that `name` and `gatewayClassName` are non-empty, `namespace` equals `--namespace`, and `issuer.email` and `issuer.secretName` are non-empty and contain no `<` or `>` placeholders.
-4. Checks each route (`frontend`, `graphql`, `minio`, `logto`). For every route where `enabled` is `true`, requires `hosts[0]` and `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
+4. Checks each route (`frontend`, `graphql`, `minio`, `logto`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
 5. Reads `pulumi -C namespace-bootstrap stack output appNamespace` and requires it to equal `--namespace`.
 6. Verifies that `GatewayClass` `cilium` exists and reports condition `Accepted=True`.
 7. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, or `logto-api`) exists in `--namespace`.
@@ -430,7 +430,7 @@ just gateway verify
 |-------|----------------|
 | `Issuer` `letsencrypt-issuer` | Condition `Ready=True` |
 | `Gateway` `dictycr-gateway` | Condition `Programmed=True` and non-empty `status.addresses[0].value` |
-| `HTTPRoute` `<route>-route` (for each enabled route) | `spec.hostnames` contains `routes.<route>.hosts[0]` and parent condition `Accepted=True` |
+| `HTTPRoute` `<route>-route` (for each enabled route) | `spec.hostnames` contains every entry in `routes.<route>.hosts` and parent condition `Accepted=True` |
 | `Secret` `<tlsSecret>` (for each enabled route) | Exists in the namespace with type `kubernetes.io/tls` |
 
 ---

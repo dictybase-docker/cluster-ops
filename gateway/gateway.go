@@ -53,18 +53,7 @@ func (g *GatewayStack) buildGatewaySpec() pulumi.Map {
 }
 
 func (g *GatewayStack) buildGatewayListeners() pulumi.Array {
-	listeners := pulumi.Array{
-		pulumi.Map{
-			fieldName:  pulumi.String("http"),
-			"protocol": pulumi.String("HTTP"),
-			fieldPort:  pulumi.Int(80),
-			"allowedRoutes": pulumi.Map{
-				"namespaces": pulumi.Map{
-					"from": pulumi.String("Same"),
-				},
-			},
-		},
-	}
+	var listeners pulumi.Array
 	seenHosts := make(map[string]bool)
 	for _, rl := range g.enabledRouteListeners() {
 		for idx, host := range rl.hosts {
@@ -72,10 +61,28 @@ func (g *GatewayStack) buildGatewayListeners() pulumi.Array {
 				continue
 			}
 			seenHosts[host] = true
-			listeners = append(listeners, buildHTTPSListener(rl.routeKey, idx, host, rl.tlsSecret))
+			listeners = append(
+				listeners,
+				buildHTTPListener(rl.routeKey, idx, host),
+				buildHTTPSListener(rl.routeKey, idx, host, rl.tlsSecret),
+			)
 		}
 	}
 	return listeners
+}
+
+func buildHTTPListener(routeKey string, idx int, host string) pulumi.Map {
+	return pulumi.Map{
+		fieldName:  pulumi.String(fmt.Sprintf("http-%s-%d", routeKey, idx)),
+		"hostname": pulumi.String(host),
+		fieldPort:  pulumi.Int(80),
+		"protocol": pulumi.String("HTTP"),
+		"allowedRoutes": pulumi.Map{
+			"namespaces": pulumi.Map{
+				"from": pulumi.String("Same"),
+			},
+		},
+	}
 }
 
 func buildHTTPSListener(routeKey string, idx int, host, tlsSecret string) pulumi.Map {

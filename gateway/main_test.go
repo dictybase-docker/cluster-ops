@@ -177,8 +177,11 @@ func TestInstallCreatesIssuerGatewayAndEnabledHTTPRoutes(t *testing.T) {
 	gwSpec := fmt.Sprint(gw.Inputs)
 	require.Contains(t, gwSpec, "cilium")
 	require.Contains(t, gwSpec, "cert-manager.io/issuer")
+	require.Contains(t, gwSpec, "http-frontend-0")
 	require.Contains(t, gwSpec, "https-frontend-0")
+	require.Contains(t, gwSpec, "http-graphql-0")
 	require.Contains(t, gwSpec, "https-graphql-0")
+	require.Contains(t, gwSpec, "http-minio-0")
 	require.Contains(t, gwSpec, "https-minio-0")
 	require.NotContains(t, gwSpec, "https-logto")
 
@@ -222,8 +225,8 @@ func TestSharedHostnameDeduplicatesGatewayListeners(t *testing.T) {
 	require.Len(
 		t,
 		listeners,
-		3,
-		"must have 1 HTTP listener + 1 shared HTTPS listener for slime.dictycr.org + 1 HTTPS listener for minio",
+		4,
+		"must have HTTP+HTTPS listeners for slime.dictycr.org and HTTP+HTTPS listeners for minio",
 	)
 
 	gqlRoute := mocks.resources["graphql-route"]

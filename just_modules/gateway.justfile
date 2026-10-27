@@ -177,14 +177,18 @@ check stack="" namespace="prod":
         en=$(yq -r ".config.\"gateway:properties\".routes.${route}.enabled // \"false\"" "$CFG_FILE")
         if [[ "$en" == "true" ]]; then
             enabled_count=$((enabled_count + 1))
-            host=$(yq -r ".config.\"gateway:properties\".routes.${route}.hosts[0] // \"\"" "$CFG_FILE")
+            host_count=$(yq -r ".config.\"gateway:properties\".routes.${route}.hosts | length" "$CFG_FILE")
             tls=$(yq -r ".config.\"gateway:properties\".routes.${route}.tlsSecret // \"\"" "$CFG_FILE")
-            for val in "$host" "$tls"; do
-                if [[ -z "$val" || "$val" == *"<"* || "$val" == *">"* ]]; then
+            if [[ "$host_count" -eq 0 || -z "$tls" || "$tls" == *"<"* || "$tls" == *">"* ]]; then
+                echo "Error: $CFG_FILE route '$route' is enabled but contains an empty or placeholder host or tlsSecret." >&2
+                exit 1
+            fi
+            while IFS= read -r host; do
+                if [[ -z "$host" || "$host" == *"<"* || "$host" == *">"* ]]; then
                     echo "Error: $CFG_FILE route '$route' is enabled but contains an empty or placeholder host or tlsSecret." >&2
                     exit 1
                 fi
-            done
+            done < <(yq -r ".config.\"gateway:properties\".routes.${route}.hosts[]" "$CFG_FILE")
         fi
     done
     if [[ "$enabled_count" -eq 0 ]]; then
@@ -358,7 +362,6 @@ verify stack="" namespace="prod":
         if [[ "$en" != "true" ]]; then
             continue
         fi
-        expected_host=$(yq -r ".config.\"gateway:properties\".routes.${route}.hosts[0] // \"\"" "$CFG_FILE")
         expected_tls=$(yq -r ".config.\"gateway:properties\".routes.${route}.tlsSecret // \"\"" "$CFG_FILE")
         route_name="${route}-route"
 
@@ -366,11 +369,14 @@ verify stack="" namespace="prod":
         if [[ -z "$hr_json" ]]; then
             bad "HTTPRoute $route_name missing in $NS"
         else
-            if jq -e --arg h "$expected_host" 'any(.spec.hostnames[]?; . == $h)' <<<"$hr_json" >/dev/null; then
-                ok "HTTPRoute $route_name matches host $expected_host"
-            else
-                bad "HTTPRoute $route_name missing host $expected_host"
-            fi
+            while IFS= read -r expected_host; do
+                [[ -z "$expected_host" ]] && continue
+                if jq -e --arg h "$expected_host" 'any(.spec.hostnames[]?; . == $h)' <<<"$hr_json" >/dev/null; then
+                    ok "HTTPRoute $route_name matches host $expected_host"
+                else
+                    bad "HTTPRoute $route_name missing host $expected_host"
+                fi
+            done < <(yq -r ".config.\"gateway:properties\".routes.${route}.hosts[]" "$CFG_FILE")
             if jq -e 'any(.status.parents[]?.conditions[]?; .type == "Accepted" and .status == "True")' <<<"$hr_json" >/dev/null; then
                 ok "HTTPRoute $route_name is Accepted"
             else
