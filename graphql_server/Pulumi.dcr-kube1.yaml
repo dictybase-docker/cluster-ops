@@ -14,7 +14,7 @@ config:
     endpoints:
       organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
       publication: https://www.ebi.ac.uk/europepmc/webservices/rest/search
-      store: https://slimestorage.dictycr.org
+      store: https://storage.dictycr.org
     image:
       name: dictybase/graphql-server
       tag: develop-5afc6ba
