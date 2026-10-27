@@ -36,15 +36,16 @@ config:
       graphql:
         enabled: true
         hosts:
-          - slimemold.dictycr.org
-        tlsSecret: frontend-tls
+          - graphql.dictycr.org
+        tlsSecret: graphql-tls
         serviceName: graphql-api
         servicePort: 8080
-        path: /graphql
+        path: /
       minio:
         enabled: true
         hosts:
           - slimestorage.dictycr.org
+          - storage.dictycr.org
         tlsSecret: minio-tls
         serviceName: minio
         servicePort: 9000
