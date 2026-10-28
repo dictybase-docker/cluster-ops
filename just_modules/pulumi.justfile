@@ -886,10 +886,102 @@ scaffold-event-messenger-stack stack="" nats_subject="OrderService.Create" ncbi_
     echo "  emailDeployment=event-messenger-email issueDeployment=event-messenger-issue image=dictybase/event-messenger:bootstrap namespace=${namespace} subject=${subj}"
     echo "Next: just gcp-pulumi set-secret --folder event-messenger --key <path>"
 
+# Scaffold a dcr-mcp stack config from the cluster registry + template.
+# Initializes the stack with the registry KMS secrets provider when absent, and
+# appends the baseline config block (`ingress.enabled: false`, `stateless: true`,
+# `rateLimit: 120`, `image.tag: bootstrap`) into dcr-mcp/Pulumi.<stack>.yaml.
+# Derives `graphqlEndpoint` from --graphql-endpoint when passed, else from
+# `gateway/Pulumi.<stack>.yaml` (`routes.graphql.hosts[0]` -> `https://<host>/graphql`),
+# else `https://graphql.dictybase.dev/graphql`.
+# Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
+# Usage: just gcp-pulumi scaffold-dcr-mcp-stack [--stack <name>] [--graphql-endpoint <url>] [--port <n>] [--rate-limit <n>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("graphql_endpoint", long="graphql-endpoint", help="Upstream GraphQL endpoint URL (defaults to gateway routes.graphql.hosts[0], else https://graphql.dictybase.dev/graphql)")]
+[arg("port", long="port", short="p", help="MCP HTTP server port (default 8080)")]
+[arg("rate_limit", long="rate-limit", help="Maximum /mcp requests per client IP per minute (default 120)")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+
+    folder="dcr-mcp"
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+
+    gql_ep={{ quote(graphql_endpoint) }}
+    gw_cfg="gateway/Pulumi.${stack_name}.yaml"
+    if [ -z "${gql_ep}" ] && [ -f "${gw_cfg}" ]; then
+        gw_host=$(yq -r '.config."gateway:properties".routes.graphql.hosts[0] // ""' "${gw_cfg}" 2>/dev/null || true)
+        if [ -n "${gw_host}" ] && [ "${gw_host}" != "null" ] && [[ "${gw_host}" != *"<"* ]]; then
+            gql_ep="https://${gw_host}/graphql"
+        fi
+    fi
+    [ -z "${gql_ep}" ] && gql_ep="https://graphql.dictybase.dev/graphql"
+
+    cfg="${folder}/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ]; then
+        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
+        echo "       Edit it by hand, or delete it only if you own it." >&2
+        exit 1
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+
+    tmp=$(mktemp /tmp/dcr-mcp-stack-XXXXXX)
+    trap 'rm -f "${tmp}"' EXIT
+    port_val={{ quote(port) }}
+    rate_val={{ quote(rate_limit) }}
+    sed \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        -e "s|__PORT__|${port_val}|g" \
+        -e "s|__RATE_LIMIT__|${rate_val}|g" \
+        -e "s|__GRAPHQL_ENDPOINT__|${gql_ep}|g" \
+        config/templates/dcr-mcp-stack.yaml.tmpl > "${tmp}"
+    cat "${tmp}" >> "${cfg}"
+
+    yq -r '.config' "${cfg}" >/dev/null
+    got_name=$(yq -r '.config."dcr-mcp:properties".name' "${cfg}")
+    got_ns=$(yq -r '.config."dcr-mcp:properties".namespace' "${cfg}")
+    if [ "${got_name}" != "dcr-mcp" ] || [ "${got_ns}" != "${namespace}" ]; then
+        echo "ERROR: rendered config failed validation (name=${got_name}, namespace=${got_ns})." >&2
+        exit 1
+    fi
+    if grep -q ':latest' "${cfg}"; then
+        echo "ERROR: rendered config contains :latest — prod stacks must never carry a mutable tag." >&2
+        exit 1
+    fi
+
+    echo "Scaffolded ${cfg}"
+    echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} graphqlEndpoint=${gql_ep} port=${port_val}"
+    echo "Next: just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>"
+
 # Scaffold a gateway stack config from the cluster registry + template.
 # Initializes the stack with the registry KMS secrets provider when absent, and
 # appends the baseline config block (`gatewayClassName: cilium`, `letsencrypt-issuer`,
-# and route blocks for `frontend`, `graphql`, `minio`, and `logto`) into
+# and route blocks for `frontend`, `graphql`, `minio`, `logto`, and `mcp`) into
 # gateway/Pulumi.<stack>.yaml.
 # Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
 # Usage: just gcp-pulumi scaffold-gateway-stack [--stack <name>]

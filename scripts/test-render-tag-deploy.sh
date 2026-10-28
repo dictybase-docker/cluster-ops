@@ -212,4 +212,13 @@ grep -q 'docker_image: event-messenger' "${em_out}" || fail "docker_image must b
 grep -q 'app: event-messenger' "${em_out}" || fail "app must be event-messenger"
 echo "  event-messenger mapping: PASS"
 
+echo "=== 9. dcr-mcp project renders tag-build.yaml ==="
+mcp_out="${tmp}/dcr-mcp-tag-build.yaml"
+PULUMI_STACK=dcr-kube1 just ci render-tag-deploy --app dcr-mcp --project dcr-mcp \
+    --out "${mcp_out}" >/dev/null || fail "dcr-mcp render failed"
+grep -q 'project: dcr-mcp' "${mcp_out}" || fail "project must be dcr-mcp"
+grep -q 'docker_image: dcr-mcp' "${mcp_out}" || fail "docker_image must be dcr-mcp"
+grep -q 'app: dcr-mcp' "${mcp_out}" || fail "app must be dcr-mcp"
+echo "  dcr-mcp mapping: PASS"
+
 echo "render-tag-deploy contract tests PASSED"

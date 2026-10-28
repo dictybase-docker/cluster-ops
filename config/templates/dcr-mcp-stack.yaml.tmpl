@@ -1,0 +1,21 @@
+# Template for a dcr-mcp stack config.
+# Rendered by `just gcp-pulumi scaffold-dcr-mcp-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `pulumi stack init` writes the
+# secretsprovider + encryptedkey lines.
+config:
+  dcr-mcp:properties:
+    allowedOrigins:
+      - "*"
+    command: start-server
+    graphqlEndpoint: __GRAPHQL_ENDPOINT__
+    host: 0.0.0.0
+    image:
+      name: dictybase/dcr-mcp
+      tag: bootstrap
+    ingress:
+      enabled: false
+    name: dcr-mcp
+    namespace: __NAMESPACE__
+    port: __PORT__
+    rateLimit: __RATE_LIMIT__
+    stateless: true

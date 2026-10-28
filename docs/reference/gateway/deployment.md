@@ -24,6 +24,7 @@ This document gives the details for the `gateway/` Pulumi project and the `just 
   - [GraphQL Route](#graphql-route)
   - [MinIO Route](#minio-route)
   - [Logto Route](#logto-route)
+  - [MCP Route](#mcp-route)
 - [TLS Certificate Issuance](#tls-certificate-issuance)
 - [Verification](#verification)
 - [Troubleshooting](#troubleshooting)
@@ -42,6 +43,7 @@ The `gateway/` Pulumi project creates the ACME `Issuer`, the Cilium `Gateway`, a
 | 4 | `gateway.networking.k8s.io/v1:HTTPRoute` | `graphql-route` | **Optional (`routes.graphql.enabled: true` by default).** Routes `/` (both the GraphiQL playground at `/` and queries at `/graphql`) to Service `graphql-api` on port `8080`. |
 | 5 | `gateway.networking.k8s.io/v1:HTTPRoute` | `minio-route` | **Optional (`routes.minio.enabled: true` by default).** Routes `/` to Service `minio` on port `9000`. |
 | 6 | `gateway.networking.k8s.io/v1:HTTPRoute` | `logto-route` | **Optional (`routes.logto.enabled: false` by default).** Routes `/` to Service `logto-api` on port `3001`. |
+| 7 | `gateway.networking.k8s.io/v1:HTTPRoute` | `mcp-route` | **Optional (`routes.mcp.enabled: false` by default).** Routes `/` (both `/mcp` and `/healthz`) to Service `dcr-mcp-api` on port `8080`. |
 
 The project creates **no Namespace** and **no backend Service**. The `namespace-bootstrap` stack owns the namespace ([shared namespaces](../pulumi/namespaces.md)). The legacy `ingress/`, `ingress-controller/`, `redirect-ingress/`, `kcert/`, and `cert-issuer/` projects remain for the lab `dcr-experiments` cluster only.
 
@@ -58,7 +60,7 @@ Each component in the table below must be ready before you deploy the Gateway st
 | Cilium Gateway API | `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml` | `kubectl get gatewayclass cilium` | [`kops-setup.md`](../../kops-setup.md) |
 | Gateway API CRDs | Standard install bundle (`gateways`, `httproutes`, `gatewayclasses`, `referencegrants`) | `just gateway install-crds` | This guide |
 | `cert-manager` | Running with `--enable-gateway-api` on the controller container | `just gateway install-crds` | [`kops-setup.md`](../../kops-setup.md) |
-| Backend Services | Every Service referenced by an enabled route exists in the namespace | `just gateway check` | [`graphql-deploy.md`](../../graphql-deploy.md), [`minio-deploy.md`](../../minio-deploy.md), [`logto-deploy.md`](../../logto-deploy.md) |
+| Backend Services | Every Service referenced by an enabled route exists in the namespace | `just gateway check` | [`graphql-deploy.md`](../../graphql-deploy.md), [`dcr-mcp-deploy.md`](../../dcr-mcp-deploy.md), [`minio-deploy.md`](../../minio-deploy.md), [`logto-deploy.md`](../../logto-deploy.md) |
 
 On an existing kOps cluster where `spec.networking.cilium.gatewayAPI.enabled: true` was added to `config/kops/<cluster>/cluster.yaml`, follow the sequence in [Command Sequences and Dependencies](#command-sequences-and-dependencies) to make sure that the CRDs exist before Cilium reconciles.
 
@@ -198,10 +200,10 @@ Behavior:
 1. Requires `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, and `PULUMI_SECRET_PROVIDER` to be non-empty, and the credentials file to exist.
 2. Requires `gateway/Pulumi.<stack>.yaml` to exist, and `yq` on `PATH`.
 3. Checks that `name` and `gatewayClassName` are non-empty, `namespace` equals `--namespace`, and `issuer.email` and `issuer.secretName` are non-empty and contain no `<` or `>` placeholders.
-4. Checks each route (`frontend`, `graphql`, `minio`, `logto`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
+4. Checks each route (`frontend`, `graphql`, `minio`, `logto`, `mcp`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
 5. Reads `pulumi -C namespace-bootstrap stack output appNamespace` and requires it to equal `--namespace`.
 6. Verifies that `GatewayClass` `cilium` exists and reports condition `Accepted=True`.
-7. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, or `logto-api`) exists in `--namespace`.
+7. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, `logto-api`, or `dcr-mcp-api`) exists in `--namespace`.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
@@ -331,6 +333,14 @@ config:
         serviceName: logto-api
         servicePort: 3001
         path: /
+      mcp:
+        enabled: false
+        hosts:
+          - <mcp-host>
+        tlsSecret: mcp-tls
+        serviceName: dcr-mcp-api
+        servicePort: 8080
+        path: /
 ```
 
 **Keep all hostnames, service names, and TLS Secret names in plain text.** None of these values is a credential. `just gateway check` and `just gateway verify` inspect `gateway/Pulumi.<stack>.yaml` with `yq`.
@@ -411,6 +421,17 @@ Turn the Logto route on after `log-to` is deployed:
 ```bash
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.hosts.0 --value <logto-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enabled --value true
+```
+
+### MCP Route
+
+`properties.routes.mcp.enabled` defaults to **`false`** in the scaffold template. When enabled, `mcp-route` routes `/` (`PathPrefix`, covering both `/mcp` and `/healthz` with no URL subpath prefix) on its own dedicated hostname to `dcr-mcp-api:8080`. Keep `properties.ingress.enabled` set to `false` in `dcr-mcp/Pulumi.<stack>.yaml` ([dcr-mcp deploy](../../dcr-mcp-deploy.md)).
+
+Turn the MCP route on after `dcr-mcp` is deployed:
+
+```bash
+just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.hosts.0 --value <mcp-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled --value true
 ```
 
 ---

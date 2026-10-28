@@ -125,6 +125,7 @@ func (g *GatewayStack) enabledRouteListeners() []routeListenerSpec {
 		{key: routeKeyGraphql, rt: cfg.Routes.Graphql},
 		{key: routeKeyMinio, rt: cfg.Routes.Minio},
 		{key: routeKeyLogto, rt: cfg.Routes.Logto},
+		{key: routeKeyMcp, rt: cfg.Routes.Mcp},
 	} {
 		if named.rt.Enabled {
 			specs = append(specs, routeListenerSpec{

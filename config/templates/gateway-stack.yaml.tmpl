@@ -55,3 +55,11 @@ config:
         serviceName: logto-api
         servicePort: 3001
         path: /
+      mcp:
+        enabled: false
+        hosts:
+          - <mcp-host>
+        tlsSecret: mcp-tls
+        serviceName: dcr-mcp-api
+        servicePort: 8080
+        path: /

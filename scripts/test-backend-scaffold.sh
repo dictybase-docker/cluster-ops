@@ -19,12 +19,17 @@ em_cfg="event-messenger/Pulumi.dcr-kube1.yaml"
 em_bak=""
 gw_cfg="gateway/Pulumi.dcr-kube1.yaml"
 gw_bak=""
+mcp_cfg="dcr-mcp/Pulumi.dcr-kube1.yaml"
+mcp_bak=""
 cleanup() {
     if [ -n "${em_bak}" ] && [ -f "${em_bak}" ]; then
         mv "${em_bak}" "${em_cfg}"
     fi
     if [ -n "${gw_bak}" ] && [ -f "${gw_bak}" ]; then
         mv "${gw_bak}" "${gw_cfg}"
+    fi
+    if [ -n "${mcp_bak}" ] && [ -f "${mcp_bak}" ]; then
+        mv "${mcp_bak}" "${mcp_cfg}"
     fi
     rm -rf "${tmp}"
 }
@@ -225,11 +230,40 @@ out=$(just gcp-pulumi scaffold-gateway-stack --stack dcr-kube1 2>&1) || {
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.graphql.path')" = "/" ] || fail "routes.graphql.path wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.minio.enabled')" = "true" ] || fail "routes.minio.enabled wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.logto.enabled')" = "false" ] || fail "routes.logto.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.mcp.enabled')" = "false" ] || fail "routes.mcp.enabled wrong"
 if [ -n "${gw_bak}" ]; then
     mv "${gw_bak}" "${gw_cfg}"
 else
     rm -f "${gw_cfg}"
 fi
 echo "  scaffold-gateway-stack: PASS"
+
+echo "=== 9. scaffold-dcr-mcp-stack renders dcr-mcp config with gateway graphql host ==="
+: > "${calls}"
+mcp_cfg="dcr-mcp/Pulumi.dcr-kube1.yaml"
+mcp_bak=""
+if [ -f "${mcp_cfg}" ]; then
+    mcp_bak="${tmp}/dcr-mcp-Pulumi.dcr-kube1.yaml.bak"
+    mv "${mcp_cfg}" "${mcp_bak}"
+fi
+out=$(just gcp-pulumi scaffold-dcr-mcp-stack --stack dcr-kube1 2>&1) || {
+    [ -n "${mcp_bak}" ] && mv "${mcp_bak}" "${mcp_cfg}"
+    fail "scaffold-dcr-mcp-stack failed:\n${out}"
+}
+[ -f "${mcp_cfg}" ] || fail "dcr-mcp stack file not created"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".name')" = "dcr-mcp" ] || fail "name wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".namespace')" = "prod" ] || fail "namespace wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".command')" = "start-server" ] || fail "command wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".graphqlEndpoint')" = "https://graphql.dictycr.org/graphql" ] || fail "graphqlEndpoint wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".ingress.enabled')" = "false" ] || fail "ingress.enabled wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".stateless')" = "true" ] || fail "stateless wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".rateLimit')" = "120" ] || fail "rateLimit wrong"
+grep -q ':latest' "${mcp_cfg}" && fail "mutable :latest tag in rendered config"
+if [ -n "${mcp_bak}" ]; then
+    mv "${mcp_bak}" "${mcp_cfg}"
+else
+    rm -f "${mcp_cfg}"
+fi
+echo "  scaffold-dcr-mcp-stack: PASS"
 
 echo "backend scaffold contract tests PASSED"

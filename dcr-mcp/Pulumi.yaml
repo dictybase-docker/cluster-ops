@@ -1,0 +1,7 @@
+name: dcr-mcp
+runtime: go
+description: dictyBase Stock Center Model Context Protocol (MCP) server
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

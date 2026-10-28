@@ -116,6 +116,7 @@ case "$*" in
     *"get service graphql-api"*) printf '8080\n' ;;
     *"get service minio"*) printf '9000\n' ;;
     *"get service logto-api"*) printf '3001\n' ;;
+    *"get service dcr-mcp-api"*) printf '8080\n' ;;
     *"get issuer letsencrypt-issuer"*"-o json"*)
         printf '{"status":{"conditions":[{"type":"Ready","status":"True"}]}}\n'
         ;;
@@ -129,6 +130,7 @@ case "$*" in
     *"get secret graphql-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get secret minio-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get secret logto-tls"*) printf 'kubernetes.io/tls\n' ;;
+    *"get secret mcp-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get httproute frontend-route"*"-o json"*)
         printf '{"spec":{"hostnames":["dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
         ;;
@@ -140,6 +142,9 @@ case "$*" in
         ;;
     *"get httproute logto-route"*"-o json"*)
         printf '{"spec":{"hostnames":["auth.dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
+        ;;
+    *"get httproute mcp-route"*"-o json"*)
+        printf '{"spec":{"hostnames":["mcp.dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
         ;;
     *)
         echo "unexpected kubectl call: $*" >&2

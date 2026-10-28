@@ -26,6 +26,7 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Deploy production Redis 8 (standalone) | [`docs/redis-deploy.md`](docs/redis-deploy.md) |
 | Deploy modware gRPC backend services | [`docs/backend-service-deploy.md`](docs/backend-service-deploy.md) |
 | Deploy GraphQL server (`graphql-server`) | [`docs/graphql-deploy.md`](docs/graphql-deploy.md) |
+| Deploy MCP server (`dcr-mcp`) | [`docs/dcr-mcp-deploy.md`](docs/dcr-mcp-deploy.md) |
 | Deploy Event Messenger (`event-messenger`) | [`docs/event-messenger-deploy.md`](docs/event-messenger-deploy.md) |
 | Deploy Cilium Gateway and `cert-manager` routes | [`docs/gateway-deploy.md`](docs/gateway-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |

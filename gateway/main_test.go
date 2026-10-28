@@ -71,6 +71,11 @@ func validSampleGatewayConfig() *GatewayConfig {
 				Hosts:     []string{"<logto-host>"},
 				TLSSecret: "logto-tls",
 			},
+			Mcp: ServiceRouteConfig{
+				Enabled:   false,
+				Hosts:     []string{"<mcp-host>"},
+				TLSSecret: "mcp-tls",
+			},
 		},
 	}
 	cfg.ApplyDefaults()
@@ -90,6 +95,9 @@ func TestConfigValidateDefaultsAndSuccess(t *testing.T) {
 	require.Equal(t, "logto-api", cfg.Routes.Logto.ServiceName)
 	require.Equal(t, 3001, cfg.Routes.Logto.ServicePort)
 	require.Equal(t, "/", cfg.Routes.Logto.Path)
+	require.Equal(t, "dcr-mcp-api", cfg.Routes.Mcp.ServiceName)
+	require.Equal(t, 8080, cfg.Routes.Mcp.ServicePort)
+	require.Equal(t, "/", cfg.Routes.Mcp.Path)
 }
 
 func TestConfigValidateFailures(t *testing.T) {

@@ -25,6 +25,7 @@ func (g *GatewayStack) createHTTPRoutes(
 		{key: routeKeyGraphql, rt: g.Config.Routes.Graphql},
 		{key: routeKeyMinio, rt: g.Config.Routes.Minio},
 		{key: routeKeyLogto, rt: g.Config.Routes.Logto},
+		{key: routeKeyMcp, rt: g.Config.Routes.Mcp},
 	} {
 		if err := g.createServiceHTTPRoute(ctx, gw, named.key, named.rt); err != nil {
 			return err

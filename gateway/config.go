@@ -29,11 +29,14 @@ const (
 	defaultMinioPort         = 9000
 	defaultLogtoService      = "logto-api"
 	defaultLogtoPort         = 3001
+	defaultMcpService        = "dcr-mcp-api"
+	defaultMcpPort           = 8080
 	gatewayNetworkingVersion = "gateway.networking.k8s.io/v1"
 	routeKeyFrontend         = "frontend"
 	routeKeyGraphql          = "graphql"
 	routeKeyMinio            = "minio"
 	routeKeyLogto            = "logto"
+	routeKeyMcp              = "mcp"
 	fieldNamespace           = "namespace"
 	fieldName                = "name"
 	fieldPort                = "port"
@@ -59,6 +62,7 @@ type RoutesConfig struct {
 	Graphql  ServiceRouteConfig  `json:"graphql"`
 	Minio    ServiceRouteConfig  `json:"minio"`
 	Logto    ServiceRouteConfig  `json:"logto"`
+	Mcp      ServiceRouteConfig  `json:"mcp"`
 }
 
 type FrontendRouteConfig struct {
@@ -116,19 +120,20 @@ func (c *GatewayConfig) ApplyDefaults() {
 	c.Issuer.Name = F.Pipe1(c.Issuer.Name, defaultStr(defaultIssuerName))
 	c.Issuer.Server = F.Pipe1(c.Issuer.Server, defaultStr(defaultIssuerServer))
 	c.Issuer.SecretName = F.Pipe1(c.Issuer.SecretName, defaultStr(defaultIssuerSecretName))
-	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort, defaultRootPath)
-	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort, defaultRootPath)
-	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort, defaultRootPath)
+	c.Routes.Graphql.applyServiceDefaults(defaultGraphqlService, defaultGraphqlPort)
+	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort)
+	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort)
+	c.Routes.Mcp.applyServiceDefaults(defaultMcpService, defaultMcpPort)
 	c.Routes.Frontend.Services = F.Pipe1(
 		c.Routes.Frontend.Services,
 		A.Map(applyFrontendBackendDefaults),
 	)
 }
 
-func (r *ServiceRouteConfig) applyServiceDefaults(svc string, port int, path string) {
+func (r *ServiceRouteConfig) applyServiceDefaults(svc string, port int) {
 	r.ServiceName = F.Pipe1(r.ServiceName, defaultStr(svc))
 	r.ServicePort = F.Pipe1(r.ServicePort, defaultInt(port))
-	r.Path = F.Pipe1(r.Path, defaultStr(path))
+	r.Path = F.Pipe1(r.Path, defaultStr(defaultRootPath))
 }
 
 func applyFrontendBackendDefaults(b FrontendServiceBackend) FrontendServiceBackend {
@@ -158,13 +163,16 @@ func validateGatewayConfig(c *GatewayConfig) E.Either[error, *GatewayConfig] {
 }
 
 func validateRemainingServiceRoutes(c *GatewayConfig) E.Either[error, *GatewayConfig] {
-	return F.Pipe2(
+	return F.Pipe3(
 		E.Of[error](c),
 		E.Chain(validateNamedServiceRoute(routeKeyMinio, func(cfg *GatewayConfig) ServiceRouteConfig {
 			return cfg.Routes.Minio
 		})),
 		E.Chain(validateNamedServiceRoute(routeKeyLogto, func(cfg *GatewayConfig) ServiceRouteConfig {
 			return cfg.Routes.Logto
+		})),
+		E.Chain(validateNamedServiceRoute(routeKeyMcp, func(cfg *GatewayConfig) ServiceRouteConfig {
+			return cfg.Routes.Mcp
 		})),
 	)
 }
@@ -236,7 +244,8 @@ func anyRouteEnabled(c *GatewayConfig) bool {
 	return c.Routes.Frontend.Enabled ||
 		c.Routes.Graphql.Enabled ||
 		c.Routes.Minio.Enabled ||
-		c.Routes.Logto.Enabled
+		c.Routes.Logto.Enabled ||
+		c.Routes.Mcp.Enabled
 }
 
 func validateAtLeastOneRoute(c *GatewayConfig) E.Either[error, *GatewayConfig] {
