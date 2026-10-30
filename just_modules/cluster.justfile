@@ -136,11 +136,37 @@ update-cluster cluster="" kops_name="" state="": build
         exit 1
     fi
 
+    tmp_docker=""
     if [ -z "${DOCKER_CONFIG:-}" ] || [ ! -d "${DOCKER_CONFIG:-}" ]; then
         tmp_docker=$(mktemp -d)
-        trap 'rm -rf "${tmp_docker}"' EXIT
         export DOCKER_CONFIG="${tmp_docker}"
     fi
+    sync_pid=""
+    cleanup_update() {
+        [ -n "${sync_pid}" ] && kill "${sync_pid}" 2>/dev/null || true
+        [ -n "${tmp_docker}" ] && rm -rf "${tmp_docker}" || true
+    }
+    trap cleanup_update EXIT
+
+    igs_yaml="{{ justfile_directory() }}/config/kops/${c}/instancegroups.yaml"
+    if [ -n "${c}" ] && [ -f "${igs_yaml}" ] && grep -qE '^[[:space:]]*name:[[:space:]]*stateful-db' "${igs_yaml}"; then
+        kubeconfig_file="${KUBECONFIG:-}"
+        [ -z "${kubeconfig_file}" ] && kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+        if [ -s "${kubeconfig_file}" ]; then
+            (
+                export KUBECONFIG="${kubeconfig_file}"
+                while true; do
+                    sleep 5
+                    if [ "$(kubectl config current-context 2>/dev/null || true)" = "${kn}" ]; then
+                        kubectl label nodes -l 'kops.k8s.io/instancegroup=stateful-db,!pool' pool=database --overwrite >/dev/null 2>&1 || true
+                        kubectl taint nodes -l kops.k8s.io/instancegroup=stateful-db dedicated=database:NoSchedule --overwrite >/dev/null 2>&1 || true
+                    fi
+                done
+            ) &
+            sync_pid=$!
+        fi
+    fi
+
     ./bin/cluster-ops kops update
 
 # Preview pending cluster changes without applying them (version-aware dry-run).
@@ -1090,8 +1116,36 @@ rolling-update cluster="" kops_name="" state="" instance_group="" force="no" yes
     [ "{{ force }}" = "yes" ] && cmd_args+=("--force")
     [ "{{ yes }}" = "yes" ] && cmd_args+=("--yes")
 
+    sync_pid=""
+    trap '[ -n "${sync_pid}" ] && kill "${sync_pid}" 2>/dev/null || true' EXIT
+    if [ "{{ yes }}" = "yes" ] && [ -n "${c}" ]; then
+        igs_yaml="{{ justfile_directory() }}/config/kops/${c}/instancegroups.yaml"
+        if [ -f "${igs_yaml}" ] && grep -qE '^[[:space:]]*name:[[:space:]]*stateful-db' "${igs_yaml}"; then
+            kubeconfig_file="${KUBECONFIG:-}"
+            [ -z "${kubeconfig_file}" ] && kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+            if [ -s "${kubeconfig_file}" ]; then
+                (
+                    export KUBECONFIG="${kubeconfig_file}"
+                    while true; do
+                        sleep 5
+                        if [ "$(kubectl config current-context 2>/dev/null || true)" = "${kn}" ]; then
+                            kubectl label nodes -l 'kops.k8s.io/instancegroup=stateful-db,!pool' pool=database --overwrite >/dev/null 2>&1 || true
+                            kubectl taint nodes -l kops.k8s.io/instancegroup=stateful-db dedicated=database:NoSchedule --overwrite >/dev/null 2>&1 || true
+                        fi
+                    done
+                ) &
+                sync_pid=$!
+            fi
+        fi
+    fi
+
     echo "Running rolling-update for ${kn}..."
     kops rolling-update cluster --name="${kn}" --state="${st}" "${cmd_args[@]+"${cmd_args[@]}"}"
+
+    if [ -n "${sync_pid}" ]; then
+        kill "${sync_pid}" 2>/dev/null || true
+        sync_pid=""
+    fi
 
     if [ "{{ yes }}" = "yes" ]; then
         echo
