@@ -6,7 +6,7 @@ metadata:
     kops.k8s.io/cluster: dictycr-dev-staging-dcr-experiments-k8s.local
   name: control-plane-us-central1-c
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240607
+  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20261021
   machineType: n1-custom-4-8192
   maxSize: 1
   minSize: 1
@@ -30,7 +30,7 @@ metadata:
     kops.k8s.io/cluster: dictycr-dev-staging-dcr-experiments-k8s.local
   name: nodes-us-central1-c
 spec:
-  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20240607
+  image: ubuntu-os-cloud/ubuntu-2204-jammy-v20261021
   machineType: n1-custom-2-4096
   maxSize: 6
   minSize: 4
