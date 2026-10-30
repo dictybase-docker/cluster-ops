@@ -142,7 +142,7 @@ just gcp-cluster create-cluster
 ## 4. Day-2 Operations (Git-First Workflow)
 
 Every configuration and scaling change is edit YAML → commit → apply → verify no drift.
-→ [Day-2 operations](reference/kops/day2-operations.md) · [Change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix) · [CI drift detection](reference/kops/day2-operations.md#drift-detection-ci) · [Break-glass edits](reference/kops/day2-operations.md#break-glass-emergency-edits)
+→ [Day-2 operations](reference/kops/day2-operations.md) · [OS image upgrades & stateful pool drain](reference/kops/os-image-upgrade.md) · [Legacy kOps 1.29 cluster upgrades](reference/kops/legacy-cluster-upgrade.md) · [Change trigger matrix](reference/kops/day2-operations.md#change-trigger-matrix) · [CI drift detection](reference/kops/day2-operations.md#drift-detection-ci) · [Break-glass edits](reference/kops/day2-operations.md#break-glass-emergency-edits)
 
 ```bash
 $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
@@ -221,6 +221,8 @@ just gcp-cluster create-cluster
 - [Service accounts & authentication](reference/kops/service-accounts.md)
 - [Cluster bootstrap detail](reference/kops/bootstrap.md)
 - [Day-2 operations detail](reference/kops/day2-operations.md)
+- [OS image upgrades & stateful pool drain safeguards](reference/kops/os-image-upgrade.md)
+- [Legacy kOps 1.29 cluster upgrades (`dcr-experiments`)](reference/kops/legacy-cluster-upgrade.md)
 - [Cluster access — kubeconfig, k9s, status](reference/kops/cluster-access.md)
 - [Teardown & disposable lifecycle](reference/kops/teardown.md)
 - [Declarative re-creation](reference/kops/recreation.md)

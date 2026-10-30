@@ -123,3 +123,5 @@ If an autonomous GCE MIG repair replaces a node out-of-band, sync manually:
 just gcp-cluster sync-node-pools
 ```
 
+During `update-cluster` and `rolling-update --yes yes`, a background loop applies `pool=database` and `dedicated=database:NoSchedule` as each replacement `stateful-db` VM registers so evicted database pods reschedule before the next node drains. See [OS Image Upgrades and Stateful Pool Drain Safeguards](os-image-upgrade.md) for production stateful-pool drain behavior and [Legacy kOps 1.29 Cluster Upgrades (`dcr-experiments`)](legacy-cluster-upgrade.md) for legacy kOps 1.29 clusters.
+
