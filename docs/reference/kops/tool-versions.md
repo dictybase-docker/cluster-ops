@@ -15,6 +15,7 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 | `helm` | Kubernetes package manager | [helm.sh](https://helm.sh/docs/) |
 | `k9s` | Terminal cluster UI | [k9scli.io](https://k9scli.io/) |
 | `mc` | MinIO client (S3 management & backups) | [min.io](https://min.io/docs/minio/linux/reference/minio-mc.html) |
+| `trivy` | Container and Kubernetes CVE scanner ([`check-cves`](os-image-upgrade.md)) | [trivy.dev](https://trivy.dev/) |
 
 Install everything pinned in the active manifest, then verify — one recipe folds both:
 

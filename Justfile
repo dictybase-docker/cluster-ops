@@ -792,6 +792,7 @@ check-tools skip_asdf="no":
             helm)     helm version --short 2>/dev/null ;;
             k9s)      k9s version -s 2>/dev/null | awk '/Version/ {print $2; exit}' ;;
             mc)       mc --version 2>/dev/null | head -n1 | awk '{print $3}' ;;
+            trivy)    trivy --version 2>/dev/null | awk '/^Version:/ {print $2; exit}' ;;
             *)        "$1" --version 2>/dev/null | head -n1 ;;
         esac
     }
@@ -814,7 +815,7 @@ check-tools skip_asdf="no":
         echo
         pinfile="${ASDF_DEFAULT_TOOL_VERSIONS_FILENAME:-.tool-versions}"
         echo "asdf-managed tools (pinned in ${pinfile}):"
-        for t in kubectl kops pulumi velero helm k9s mc; do check "$t"; done
+        for t in kubectl kops pulumi velero helm k9s mc trivy; do check "$t"; done
     fi
 
     echo

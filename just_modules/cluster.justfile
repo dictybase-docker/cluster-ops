@@ -1640,6 +1640,164 @@ verify-cluster cluster="" kops_name="" state="" waittime="20":
     echo
     echo "All validations passed."
 
+# Check node OS boot-image currency in GCP and scan cluster workloads with Trivy.
+# Usage: just gcp-cluster check-cves [--cluster <name>] [--project <id>] [--severity <levels>] [--skip-trivy yes|no]
+[arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID or cluster.yaml)")]
+[arg("severity", long="severity", short="s", help="Comma-separated Trivy severities (default HIGH,CRITICAL)")]
+[arg("skip_trivy", long="skip-trivy", pattern="yes|no", help="Skip Trivy k8s workload scan (default no)")]
+[group('cluster-management')]
+[no-cd]
+check-cves cluster="" project="" severity="HIGH,CRITICAL" skip_trivy="no":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    root="{{ justfile_directory() }}"
+    c={{ quote(cluster) }}
+    [ -z "${c}" ] && c="${CLUSTER_NAME:-}"
+    [ -z "${c}" ] && [ -n "${KOPS_CLUSTER_NAME:-}" ] && c="${KOPS_CLUSTER_NAME%-k8s.local}"
+    if [ -z "${c}" ] && [ -n "${KUBECONFIG:-}" ]; then
+        kc_base=$(basename "${KUBECONFIG}")
+        c="${kc_base%-kubeconfig.yaml}"
+    fi
+
+    p={{ quote(project) }}
+    [ -z "${p}" ] && p="${PROJECT_ID:-}"
+
+    # When CLUSTER_NAME is the short env name (e.g. dcr-experiments) while the
+    # kops bundle dir uses the full cluster name (dictycr-dev-staging-dcr-experiments),
+    # fall back to KUBECONFIG basename or match project: in config/kops/*/cluster.yaml.
+    if [ -z "${c}" ] || [ ! -f "${root}/config/kops/${c}/instancegroups.yaml" ]; then
+        if [ -n "${KUBECONFIG:-}" ]; then
+            kc_cand=$(basename "${KUBECONFIG}")
+            kc_cand="${kc_cand%-kubeconfig.yaml}"
+            if [ -f "${root}/config/kops/${kc_cand}/instancegroups.yaml" ]; then
+                c="${kc_cand}"
+            fi
+        fi
+    fi
+    if [ -z "${c}" ] || [ ! -f "${root}/config/kops/${c}/instancegroups.yaml" ]; then
+        if [ -n "${p}" ]; then
+            for cand_yaml in "${root}"/config/kops/*/cluster.yaml; do
+                [ -f "${cand_yaml}" ] || continue
+                cand_dir=$(basename "$(dirname "${cand_yaml}")")
+                [ "${cand_dir}" = "_starter" ] && continue
+                cand_proj=$(grep -E '^[[:space:]]*project:[[:space:]]*' "${cand_yaml}" | head -n1 | awk '{print $2}' | tr -d "\"'")
+                if [ "${cand_proj}" = "${p}" ] && [ -f "${root}/config/kops/${cand_dir}/instancegroups.yaml" ]; then
+                    c="${cand_dir}"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    if [ -z "${c}" ]; then
+        echo "ERROR: cluster name required. Enter 'just cluster-env' or pass --cluster <name>." >&2
+        exit 1
+    fi
+
+    cluster_yaml="${root}/config/kops/${c}/cluster.yaml"
+    igs_yaml="${root}/config/kops/${c}/instancegroups.yaml"
+
+    if [ -z "${p}" ] && [ -f "${cluster_yaml}" ]; then
+        p=$(grep -E '^[[:space:]]*project:[[:space:]]*' "${cluster_yaml}" | head -n1 | awk '{print $2}' | tr -d "\"'")
+    fi
+    if [ -z "${p}" ]; then
+        echo "ERROR: GCP project id required. Enter 'just cluster-env' or pass --project <id>." >&2
+        exit 1
+    fi
+
+    sev={{ quote(severity) }}
+    skip={{ quote(skip_trivy) }}
+
+    if [ ! -f "${igs_yaml}" ]; then
+        echo "ERROR: instancegroups manifest not found: ${igs_yaml}" >&2
+        exit 1
+    fi
+
+    pinned_images=$(grep -E '^[[:space:]]*image:[[:space:]]*' "${igs_yaml}" | awk '{print $2}' | tr -d "\"'" | awk -F'/' '{print $NF}' | sort -u)
+    first_img=$(printf '%s\n' "${pinned_images}" | head -n1)
+    family="ubuntu-2404-lts-amd64"
+    case "${first_img}" in
+        ubuntu-2204-*) family="ubuntu-2204-lts" ;;
+        ubuntu-2404-*) family="ubuntu-2404-lts-amd64" ;;
+    esac
+
+    gcloud_args=()
+    if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+        sa_email=$(jq -r '.client_email // empty' "${GOOGLE_APPLICATION_CREDENTIALS}" 2>/dev/null || true)
+        [ -n "${sa_email}" ] && gcloud_args+=("--account=${sa_email}")
+    fi
+
+    echo "=== 1/2: GCP Node Boot Image Currency (${c}, project ${p}) ==="
+    latest_img=$(gcloud "${gcloud_args[@]+"${gcloud_args[@]}"}" compute images describe-from-family "${family}" \
+        --project ubuntu-os-cloud \
+        --format='value(name)' 2>/dev/null | tr -d '\r')
+    if [ -z "${latest_img}" ]; then
+        echo "ERROR: could not query latest image for family '${family}' in ubuntu-os-cloud." >&2
+        exit 1
+    fi
+    echo "Upstream family : ${family}"
+    echo "Latest GCP image: ${latest_img}"
+
+    img_lag=0
+    while IFS= read -r img; do
+        [ -z "${img}" ] && continue
+        if [ "${img}" = "${latest_img}" ]; then
+            echo "  PASS  manifest instancegroups.yaml pinned to ${img}"
+        else
+            echo "  WARN  manifest instancegroups.yaml pinned to ${img} (latest: ${latest_img})"
+            img_lag=1
+        fi
+    done <<< "${pinned_images}"
+
+    disk_lines=$(gcloud "${gcloud_args[@]+"${gcloud_args[@]}"}" compute disks list --project "${p}" \
+        --filter='sourceImage:*' \
+        --format='value(name,zone.basename(),sourceImage.basename())' 2>/dev/null || true)
+    if [ -z "${disk_lines}" ]; then
+        echo "  WARN  no boot disks returned for project ${p}"
+        img_lag=1
+    else
+        while IFS=$'\t' read -r dname dzone dimg; do
+            [ -z "${dname}" ] && continue
+            if [ "${dimg}" = "${latest_img}" ]; then
+                echo "  PASS  node disk ${dname} (${dzone}): ${dimg}"
+            else
+                echo "  WARN  node disk ${dname} (${dzone}): ${dimg} (behind ${latest_img})"
+                img_lag=1
+            fi
+        done <<< "${disk_lines}"
+    fi
+
+    echo
+    echo "=== 2/2: Kubernetes Workload CVE Scan (severity: ${sev}) ==="
+    kubeconfig_file="${KUBECONFIG:-}"
+    if [ -z "${kubeconfig_file}" ]; then
+        kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+    fi
+
+    if [ "${skip}" = "yes" ]; then
+        echo "Skipped Trivy scan (--skip-trivy yes)."
+    elif command -v trivy >/dev/null 2>&1; then
+        trivy k8s --kubeconfig "${kubeconfig_file}" \
+            --scanners vuln \
+            --severity "${sev}" \
+            --report summary cluster
+    else
+        echo "Notice: 'trivy' is not installed on PATH; skipping container CVE scan."
+        echo "Install with: just install-tool --name trivy --version 0.69.3"
+    fi
+
+    if [ "${img_lag}" -ne 0 ]; then
+        echo
+        echo "Node OS image lag detected. Update ${igs_yaml} to ubuntu-os-cloud/${latest_img}, then run:" >&2
+        echo "  just gcp-cluster apply-cluster" >&2
+        echo "  just gcp-cluster rolling-update --yes yes" >&2
+        exit 1
+    fi
+    echo
+    echo "All node boot images match latest upstream (${latest_img})."
+
 # Rollback copy of the pre-migration verify-cluster (delete one release after migration).
 verify-cluster-shell cluster="" kops_name="" state="" waittime="20":
     #!/usr/bin/env bash

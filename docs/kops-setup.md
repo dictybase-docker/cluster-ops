@@ -153,6 +153,9 @@ just gcp-cluster apply-cluster
 # Replace VMs after a machineType, disk, image, or kubernetesVersion change
 just gcp-cluster rolling-update            # dry-run inspection
 just gcp-cluster rolling-update --yes yes  # execute
+
+# Audit node OS boot-image currency in GCP and scan cluster workloads for CVEs
+just gcp-cluster check-cves
 ```
 
 ---

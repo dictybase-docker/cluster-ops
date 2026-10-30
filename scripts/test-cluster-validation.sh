@@ -74,4 +74,46 @@ grep -q "preflight verify-cluster" "${calls}" \
     || fail "the composite must still run after a failed export: $(cat "${calls}")"
 echo "  export is best-effort: PASS"
 
+echo "=== 5. check-cves passes when manifest and disks match latest upstream and invokes trivy ==="
+cat > "${mock_bin}/gcloud" <<'MOCK'
+#!/usr/bin/env bash
+echo "gcloud $*" >> "${MOCK_CALLS_LOG}"
+if [[ "$*" == *"describe-from-family"* ]]; then
+    echo "${MOCK_LATEST_IMG:-ubuntu-2404-noble-amd64-v20261024}"
+    exit 0
+fi
+if [[ "$*" == *"disks list"* ]]; then
+    printf 'nodes-8h3b\tus-central1-b\t%s\n' "${MOCK_DISK_IMG:-ubuntu-2404-noble-amd64-v20261024}"
+    exit 0
+fi
+exit 0
+MOCK
+cat > "${mock_bin}/trivy" <<'MOCK'
+#!/usr/bin/env bash
+echo "trivy $*" >> "${MOCK_CALLS_LOG}"
+exit 0
+MOCK
+chmod +x "${mock_bin}/gcloud" "${mock_bin}/trivy"
+
+: > "${calls}"
+CLUSTER_NAME=dcr-kube1 PROJECT_ID=dcr-kube1 just gcp-cluster check-cves >/dev/null 2>&1 \
+    || fail "no-arg check-cves failed in cluster-env shell"
+grep -q "trivy k8s" "${calls}" \
+    || fail "check-cves must invoke trivy k8s when trivy is on PATH: $(cat "${calls}")"
+echo "  check-cves pass (cluster-env defaults) + trivy invocation: PASS"
+
+echo "=== 6. check-cves resolves legacy bundle dir from PROJECT_ID/KUBECONFIG when CLUSTER_NAME is short ==="
+: > "${calls}"
+MOCK_LATEST_IMG="ubuntu-2204-jammy-v20261021" MOCK_DISK_IMG="ubuntu-2204-jammy-v20261021" \
+    CLUSTER_NAME=dcr-experiments PROJECT_ID=dcr-experiments \
+    just gcp-cluster check-cves >/dev/null 2>&1 \
+    || fail "no-arg check-cves failed for dcr-experiments cluster-env"
+echo "  check-cves dcr-experiments cluster-env resolution: PASS"
+
+echo "=== 7. check-cves exits non-zero when a node boot disk lags behind latest upstream ==="
+if MOCK_DISK_IMG="ubuntu-2404-noble-amd64-v20260906" CLUSTER_NAME=dcr-kube1 PROJECT_ID=dcr-kube1 just gcp-cluster check-cves --skip-trivy yes >/dev/null 2>&1; then
+    fail "check-cves exited 0 although node disk lagged behind latest upstream image"
+fi
+echo "  check-cves lag detection: PASS"
+
 echo "cluster validation contract tests PASSED"

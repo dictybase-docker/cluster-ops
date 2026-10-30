@@ -4,13 +4,14 @@ Back to: [kOps Cluster Setup](../../kops-setup.md)
 
 ## Upgrade Procedure
 
-Update `spec.image` across every instance group in `config/kops/${CLUSTER_NAME}/instancegroups.yaml`, commit the change, apply the manifest bundle, and roll the nodes.
+Run `just gcp-cluster check-cves` inside `just cluster-env` to check whether the cluster's manifest or live GCE node boot disks lag behind the latest Ubuntu LTS security image in GCP and to scan running workloads with `trivy k8s` (`trivy` is an asdf-managed tool — install it with `just install-tool --name trivy --version 0.69.3`; see [asdf-managed tools](tool-versions.md)). When a newer image is available, update `spec.image` across every instance group in `config/kops/${CLUSTER_NAME}/instancegroups.yaml`, commit the change, apply the manifest bundle, and roll the nodes.
 
 ```bash
-# 1. Inspect the latest Ubuntu 24.04 LTS image in GCP
-gcloud compute images describe-from-family ubuntu-2404-lts-amd64 \
-  --project ubuntu-os-cloud \
-  --format='value(name,creationTimestamp)'
+# 0. One-time: install trivy in the active cluster tool manifest
+just install-tool --name trivy --version 0.69.3
+
+# 1. Check node boot-image currency against ubuntu-os-cloud and scan workloads
+just gcp-cluster check-cves
 
 # 2. Update spec.image in config/kops/${CLUSTER_NAME}/instancegroups.yaml and commit
 $EDITOR config/kops/${CLUSTER_NAME}/instancegroups.yaml
