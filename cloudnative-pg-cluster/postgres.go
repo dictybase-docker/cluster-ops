@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
+	F "github.com/IBM/fp-go/v2/function"
+	N "github.com/IBM/fp-go/v2/number"
 	barmancloudv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/barmancloud/v1"
 	cnpgv1 "github.com/dictybase-docker/cluster-ops/crds/kubernetes/postgresql/v1"
 	"github.com/dictybase-docker/cluster-ops/internal/nsprobe"
@@ -123,6 +125,7 @@ func (prop *Properties) buildClusterSpec(
 		Bootstrap:             prop.buildBootstrapArgs(cluster),
 		ExternalClusters:      prop.buildExternalClustersArgs(cluster),
 		Affinity:              prop.buildAffinityArgs(cluster),
+		EnablePDB:             pulumi.Bool(F.Pipe1(cluster.Instances, N.MoreThan(1))),
 		EnableSuperuserAccess: pulumi.Bool(cluster.Superuser),
 		// Plugin-based WAL archiving and backups (in-tree barmanObjectStore
 		// is deprecated since CNPG 1.26 and removed in 1.31).

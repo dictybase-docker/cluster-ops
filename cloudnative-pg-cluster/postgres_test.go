@@ -181,6 +181,15 @@ func TestBuildClusterSpecEmitsPluginWALArchiver(t *testing.T) {
 	assert.Nil(t, spec.Backup)
 }
 
+func TestBuildClusterSpecDisablesPDBForSingleInstance(t *testing.T) {
+	props := &Properties{}
+	singleSpec := props.buildClusterSpec(Cluster{Name: testClusterName, Instances: 1}, "logto-store")
+	assert.Equal(t, pulumi.Bool(false), singleSpec.EnablePDB)
+
+	haSpec := props.buildClusterSpec(Cluster{Name: testClusterName, Instances: 3}, "logto-store")
+	assert.Equal(t, pulumi.Bool(true), haSpec.EnablePDB)
+}
+
 func TestBuildScheduledBackupArgsUsesPluginMethod(t *testing.T) {
 	props := &Properties{}
 	args := props.buildScheduledBackupArgs(Cluster{Name: "logto"})
