@@ -3,19 +3,20 @@ package main
 import "fmt"
 
 const (
-	defaultName         = "arangodb"
-	defaultMode         = "Cluster"
-	defaultEnvironment  = "Production"
-	defaultVersion      = "3.12.11"
-	defaultArchitecture = "amd64"
-	defaultTLSCASecret  = "None"
-	arangoDeploymentKey = "arango_deployment"
-	nodePoolKey         = "pool"
-	nodePoolValue       = "database"
-	tolerationKey       = "dedicated"
-	tolerationOpEqual   = "Equal"
-	tolerationEffect    = "NoSchedule"
-	minClusterMembers   = 3
+	defaultName                          = "arangodb"
+	defaultMode                          = "Cluster"
+	defaultEnvironment                   = "Production"
+	defaultVersion                       = "3.12.11"
+	defaultArchitecture                  = "amd64"
+	defaultTLSCASecret                   = "None"
+	arangoDeploymentKey                  = "arango_deployment"
+	nodePoolKey                          = "pool"
+	nodePoolValue                        = "database"
+	tolerationKey                        = "dedicated"
+	tolerationOpEqual                    = "Equal"
+	tolerationEffect                     = "NoSchedule"
+	minClusterMembers                    = 3
+	defaultTerminationGracePeriodSeconds = 120
 )
 
 // Toleration defines a Kubernetes pod toleration.
@@ -33,16 +34,17 @@ type TLSConfig struct {
 
 // MemberConfig holds configuration for one ArangoDB member group (Agents, DBServers, Coordinators).
 type MemberConfig struct {
-	Count         int               `json:"count"`
-	Args          []string          `json:"args,omitempty"`
-	StorageClass  string            `json:"storageClass,omitempty"`
-	StorageSize   string            `json:"storageSize,omitempty"`
-	CPURequest    string            `json:"cpuRequest,omitempty"`
-	MemoryRequest string            `json:"memoryRequest,omitempty"`
-	CPULimit      string            `json:"cpuLimit,omitempty"`
-	MemoryLimit   string            `json:"memoryLimit,omitempty"`
-	NodeSelector  map[string]string `json:"nodeSelector,omitempty"`
-	Tolerations   []Toleration      `json:"tolerations,omitempty"`
+	Count                         int               `json:"count"`
+	Args                          []string          `json:"args,omitempty"`
+	StorageClass                  string            `json:"storageClass,omitempty"`
+	StorageSize                   string            `json:"storageSize,omitempty"`
+	CPURequest                    string            `json:"cpuRequest,omitempty"`
+	MemoryRequest                 string            `json:"memoryRequest,omitempty"`
+	CPULimit                      string            `json:"cpuLimit,omitempty"`
+	MemoryLimit                   string            `json:"memoryLimit,omitempty"`
+	TerminationGracePeriodSeconds int               `json:"terminationGracePeriodSeconds,omitempty"`
+	NodeSelector                  map[string]string `json:"nodeSelector,omitempty"`
+	Tolerations                   []Toleration      `json:"tolerations,omitempty"`
 }
 
 // SecretConfig holds configuration for the ArangoDB root password secret.

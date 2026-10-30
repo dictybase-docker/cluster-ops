@@ -2,34 +2,44 @@ package main
 
 import (
 	"fmt"
+
+	A "github.com/IBM/fp-go/v2/array"
+	F "github.com/IBM/fp-go/v2/function"
+	O "github.com/IBM/fp-go/v2/option"
+	P "github.com/IBM/fp-go/v2/predicate"
+	S "github.com/IBM/fp-go/v2/string"
 )
+
+func defaultStr(fallback string) func(string) string {
+	return F.Flow2(
+		O.FromPredicate(S.IsNonEmpty),
+		O.GetOrElse(F.Constant(fallback)),
+	)
+}
+
+func defaultInt(fallback int) func(int) int {
+	return F.Flow2(
+		O.FromPredicate(P.IsNonZero[int]()),
+		O.GetOrElse(F.Constant(fallback)),
+	)
+}
+
+func tolerationToMap(t Toleration) map[string]any {
+	return map[string]any{
+		"key":      t.Key,
+		"operator": t.Operator,
+		"value":    t.Value,
+		"effect":   t.Effect,
+	}
+}
 
 // buildClusterSpec generates the Kubernetes CR spec map for kube-arangodb ArangoDeployment.
 func buildClusterSpec(cfg *ArangoClusterConfig) map[string]any {
-	deployName := cfg.Name
-	if deployName == "" {
-		deployName = defaultName
-	}
-
-	env := cfg.Environment
-	if env == "" {
-		env = defaultEnvironment
-	}
-
-	arch := cfg.Architecture
-	if arch == "" {
-		arch = defaultArchitecture
-	}
-
-	version := cfg.Version
-	if version == "" {
-		version = defaultVersion
-	}
-
-	caSecretName := cfg.TLS.CASecretName
-	if caSecretName == "" {
-		caSecretName = defaultTLSCASecret
-	}
+	deployName := F.Pipe1(cfg.Name, defaultStr(defaultName))
+	env := F.Pipe1(cfg.Environment, defaultStr(defaultEnvironment))
+	arch := F.Pipe1(cfg.Architecture, defaultStr(defaultArchitecture))
+	version := F.Pipe1(cfg.Version, defaultStr(defaultVersion))
+	caSecretName := F.Pipe1(cfg.TLS.CASecretName, defaultStr(defaultTLSCASecret))
 
 	spec := map[string]any{
 		"mode":            defaultMode,
@@ -58,11 +68,16 @@ func buildClusterSpec(cfg *ArangoClusterConfig) map[string]any {
 
 // buildMemberGroup builds the configuration map for a member group with placement and anti-affinity.
 func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage bool) map[string]any {
+	gracePeriod := F.Pipe1(
+		cfg.TerminationGracePeriodSeconds,
+		defaultInt(defaultTerminationGracePeriodSeconds),
+	)
 	group := map[string]any{
-		"count": cfg.Count,
+		"count":                         cfg.Count,
+		"terminationGracePeriodSeconds": gracePeriod,
 	}
 
-	if len(cfg.Args) > 0 {
+	if A.IsNonEmpty(cfg.Args) {
 		group["args"] = cfg.Args
 	}
 
@@ -70,17 +85,11 @@ func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage boo
 		group["nodeSelector"] = cfg.NodeSelector
 	}
 
-	if len(cfg.Tolerations) > 0 {
-		tolerations := make([]map[string]any, 0, len(cfg.Tolerations))
-		for _, t := range cfg.Tolerations {
-			tolerations = append(tolerations, map[string]any{
-				"key":      t.Key,
-				"operator": t.Operator,
-				"value":    t.Value,
-				"effect":   t.Effect,
-			})
-		}
-		group["tolerations"] = tolerations
+	if A.IsNonEmpty(cfg.Tolerations) {
+		group["tolerations"] = F.Pipe1(
+			cfg.Tolerations,
+			A.Map(tolerationToMap),
+		)
 	}
 
 	group["affinity"] = buildAntiAffinity(deployName, role)
@@ -90,7 +99,7 @@ func buildMemberGroup(cfg MemberConfig, deployName, role string, withStorage boo
 		group["resources"] = resources
 	}
 
-	if withStorage && cfg.StorageSize != "" {
+	if withStorage && S.IsNonEmpty(cfg.StorageSize) {
 		group["volumeClaimTemplate"] = buildVolumeClaimTemplate(cfg.StorageClass, cfg.StorageSize)
 	}
 

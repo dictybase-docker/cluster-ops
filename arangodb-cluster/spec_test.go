@@ -92,6 +92,11 @@ func verifyAgentSpec(t *testing.T, spec map[string]any) {
 	agents, ok := spec["agents"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 3, agents["count"])
+	assert.Equal(
+		t,
+		defaultTerminationGracePeriodSeconds,
+		agents["terminationGracePeriodSeconds"],
+	)
 	assert.Nil(t, agents["args"])
 	assert.Equal(t, map[string]string{nodePoolKey: nodePoolValue}, agents["nodeSelector"])
 	assert.NotNil(t, agents["affinity"])
@@ -120,6 +125,11 @@ func verifyDBServerSpec(t *testing.T, spec map[string]any) {
 	dbservers, ok := spec["dbservers"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 3, dbservers["count"])
+	assert.Equal(
+		t,
+		defaultTerminationGracePeriodSeconds,
+		dbservers["terminationGracePeriodSeconds"],
+	)
 	assert.Equal(t, []string{"--rocksdb.block-cache-shard-bits=4"}, dbservers["args"])
 	assert.Equal(t, map[string]string{nodePoolKey: nodePoolValue}, dbservers["nodeSelector"])
 	assert.NotNil(t, dbservers["affinity"])
@@ -143,6 +153,11 @@ func verifyCoordinatorSpec(t *testing.T, spec map[string]any) {
 	coordinators, ok := spec["coordinators"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 3, coordinators["count"])
+	assert.Equal(
+		t,
+		defaultTerminationGracePeriodSeconds,
+		coordinators["terminationGracePeriodSeconds"],
+	)
 	assert.Nil(t, coordinators["volumeClaimTemplate"])
 	assert.NotNil(t, coordinators["affinity"])
 
