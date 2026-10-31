@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	cloud.google.com/go/kms v1.36.0
-	cloud.google.com/go/storage v1.69.0
+	cloud.google.com/go/storage v1.70.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/pulumi/pulumi-gcp/sdk/v7 v7.38.0
@@ -20,7 +20,7 @@ require (
 require (
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.24.1-0.20261001053825-dbc26066f70a // indirect
+	cloud.google.com/go/auth v0.24.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/longrunning v1.2.0 // indirect
 	cloud.google.com/go/monitoring v1.30.0 // indirect
