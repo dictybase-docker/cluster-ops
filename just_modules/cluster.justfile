@@ -1780,12 +1780,42 @@ check-cves cluster="" project="" severity="HIGH,CRITICAL" skip_trivy="no":
         echo "Skipped Trivy scan (--skip-trivy yes)."
     elif command -v trivy >/dev/null 2>&1; then
         trivy k8s --kubeconfig "${kubeconfig_file}" \
+            --disable-node-collector \
+            --ignore-unfixed \
             --scanners vuln \
             --severity "${sev}" \
-            --report summary cluster
+            -f json -q \
+        | jq -sr '
+            if length == 0 or (.[0].Resources // [] | length) == 0 then
+              "No fixed HIGH/CRITICAL vulnerabilities found."
+            else
+              (["NAMESPACE", "RESOURCE", "CRIT_UNIQUE", "HIGH_UNIQUE", "CRITICAL_CVES"] | @tsv),
+              (
+                [ .[0].Resources[]
+                  | select(.Kind != "Job")
+                  | . as $r
+                  | [ $r.Results[]?.Vulnerabilities[]? | select(.Status == "fixed") ] as $v
+                  | ($v | map(select(.Severity == "CRITICAL") | .VulnerabilityID) | unique) as $c
+                  | ($v | map(select(.Severity == "HIGH") | .VulnerabilityID) | unique) as $h
+                  | select(($c | length) > 0 or ($h | length) > 0)
+                  | {
+                      ns: ($r.Namespace // "cluster"),
+                      res: ("\($r.Kind)/\($r.Name)" | sub("^Pod/arangodb-(?<role>agnt|prmr|crdn)-.*$"; "Pod/arangodb-\(.role)")),
+                      c_len: ($c | length),
+                      h_len: ($h | length),
+                      c_ids: ($c | join(","))
+                    }
+                ]
+                | unique_by([.ns, .res])
+                | sort_by(.ns, -.c_len, -.h_len, .res)[]
+                | [.ns, .res, (.c_len | tostring), (.h_len | tostring), (if .c_ids == "" then "-" else .c_ids end)]
+                | @tsv
+              )
+            end
+          ' | column -t -s $'\t'
     else
         echo "Notice: 'trivy' is not installed on PATH; skipping container CVE scan."
-        echo "Install with: just install-tool --name trivy --version 0.69.3"
+        echo "Install with: just install-tool --name trivy --version 0.76.0"
     fi
 
     if [ "${img_lag}" -ne 0 ]; then
