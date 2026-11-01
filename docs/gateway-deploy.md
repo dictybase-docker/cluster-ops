@@ -294,6 +294,7 @@ just gateway verify
 **Other documentation:**
 - Cluster setup and day-2 operations: [`kops-setup.md`](kops-setup.md)
 - Pulumi backend and namespaces: [`pulumi-setup.md`](pulumi-setup.md)
+- Frontend applications deployment: [`frontend-deploy.md`](frontend-deploy.md)
 - GraphQL server deployment: [`graphql-deploy.md`](graphql-deploy.md)
 - MCP server deployment: [`dcr-mcp-deploy.md`](dcr-mcp-deploy.md)
 - MinIO deployment: [`minio-deploy.md`](minio-deploy.md)

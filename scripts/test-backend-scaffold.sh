@@ -21,7 +21,12 @@ gw_cfg="gateway/Pulumi.dcr-kube1.yaml"
 gw_bak=""
 mcp_cfg="dcr-mcp/Pulumi.dcr-kube1.yaml"
 mcp_bak=""
+fe_cfg="frontend_application/Pulumi.dcr-kube1.yaml"
+fe_bak=""
 cleanup() {
+    if [ -n "${fe_bak}" ] && [ -f "${fe_bak}" ]; then
+        mv "${fe_bak}" "${fe_cfg}"
+    fi
     if [ -n "${em_bak}" ] && [ -f "${em_bak}" ]; then
         mv "${em_bak}" "${em_cfg}"
     fi
@@ -265,5 +270,31 @@ else
     rm -f "${mcp_cfg}"
 fi
 echo "  scaffold-dcr-mcp-stack: PASS"
+
+echo "=== 10. scaffold-frontend-stack renders four apps with bootstrap tags ==="
+: > "${calls}"
+if [ -f "${fe_cfg}" ]; then
+    fe_bak="${tmp}/frontend-Pulumi.dcr-kube1.yaml.bak"
+    mv "${fe_cfg}" "${fe_bak}"
+fi
+out=$(just gcp-pulumi scaffold-frontend-stack --stack dcr-kube1 2>&1) || fail "scaffold-frontend-stack failed:\n${out}"
+[ -f "${fe_cfg}" ] || fail "frontend stack file not created"
+fe_key='.config."frontend_application:properties"'
+[ "$(yq_get "${fe_cfg}" "${fe_key}.namespace")" = "prod" ] || fail "namespace wrong"
+[ "$(yq_get "${fe_cfg}" "${fe_key}.port")" = "3000" ] || fail "port wrong"
+[ "$(yq_get "${fe_cfg}" "${fe_key}.apps | length")" = "4" ] || fail "apps count wrong"
+[ "$(yq_get "${fe_cfg}" "${fe_key}.apps[0].name")" = "frontpage" ] || fail "app 0 wrong"
+[ "$(yq_get "${fe_cfg}" "${fe_key}.apps[3].name")" = "genomepage" ] || fail "app 3 wrong"
+[ "$(yq_get "${fe_cfg}" "${fe_key}.apps[2].tag")" = "bootstrap" ] || fail "tag wrong"
+grep -q ':latest' "${fe_cfg}" && fail "mutable :latest tag in rendered config"
+out=$(just gcp-pulumi scaffold-frontend-stack --stack dcr-kube1 2>&1) && fail "second scaffold must refuse to overwrite"
+case "${out}" in *"refusing to overwrite"*) ;; *) fail "overwrite refusal message missing" ;; esac
+if [ -n "${fe_bak}" ]; then
+    mv "${fe_bak}" "${fe_cfg}"
+    fe_bak=""
+else
+    rm -f "${fe_cfg}"
+fi
+echo "  scaffold-frontend-stack: PASS"
 
 echo "backend scaffold contract tests PASSED"

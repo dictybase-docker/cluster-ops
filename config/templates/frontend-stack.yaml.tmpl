@@ -1,0 +1,24 @@
+# Template for a frontend_application stack config.
+# Rendered by `just gcp-pulumi scaffold-frontend-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `pulumi stack init` writes the
+# secretsprovider + encryptedkey lines.
+# App names must stay frontpage, publication, stockcenter, and genomepage: the
+# gateway frontend route targets the Services <name>-api.
+config:
+  frontend_application:properties:
+    apps:
+      - image: dictybase/dicty-frontpage
+        name: frontpage
+        tag: bootstrap
+      - image: dictybase/publication
+        name: publication
+        tag: bootstrap
+      - image: dictybase/stock-center
+        name: stockcenter
+        tag: bootstrap
+      - image: dictybase/genomepage
+        name: genomepage
+        tag: bootstrap
+    logLevel: error
+    namespace: __NAMESPACE__
+    port: __PORT__
