@@ -20,11 +20,12 @@ jobs:
     secrets: inherit
     with:
       app: __APP__
+      application_type: __APPLICATION_TYPE__
       project: __PROJECT__
       stack: __STACK__
       repository: ${{ github.repository }}
       ref: ${{ github.ref_name }}
-      dockerfile: build/package/Dockerfile
+      dockerfile: __DOCKERFILE__
       docker_image: __DOCKER_IMAGE__
       cluster: ${{ vars.__CI_ENV___CLUSTER }}
       cluster_state_storage: ${{ vars.__CI_ENV___KOPS_STATE_STORAGE }}
@@ -32,4 +33,4 @@ jobs:
       kubectl_version: ${{ vars.__CI_ENV___KUBECTL_VERSION }}
       pulumi_version: ${{ vars.__CI_ENV___PULUMI_VERSION }}
       environment: production
-      runner: backend
+      runner: __RUNNER__

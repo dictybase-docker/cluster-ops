@@ -221,4 +221,20 @@ grep -q 'docker_image: dcr-mcp' "${mcp_out}" || fail "docker_image must be dcr-m
 grep -q 'app: dcr-mcp' "${mcp_out}" || fail "app must be dcr-mcp"
 echo "  dcr-mcp mapping: PASS"
 
+echo "=== 10. frontend_application project renders frontend tag-build.yaml ==="
+fe_out="${tmp}/frontend-tag-build.yaml"
+PULUMI_STACK=dcr-kube1 just ci render-tag-deploy --app frontpage:stockcenter:publication:genomepage \
+    --project frontend_application --application-type frontend --runner dcr-frontendx \
+    --docker-image dicty-frontpage:stock-center:publication:genomepage \
+    --dockerfile docker/Dockerfile.frontpage:docker/Dockerfile.stock-center:docker/Dockerfile.publication:docker/Dockerfile.genomepage \
+    --out "${fe_out}" >/dev/null || fail "frontend render failed"
+grep -q 'project: frontend_application' "${fe_out}" || fail "project must be frontend_application"
+grep -q 'application_type: frontend' "${fe_out}" || fail "application_type must be frontend"
+grep -q 'app: frontpage:stockcenter:publication:genomepage' "${fe_out}" || fail "app list wrong"
+grep -q 'docker_image: dicty-frontpage:stock-center:publication:genomepage' "${fe_out}" || fail "docker_image list wrong"
+grep -q 'runner: dcr-frontendx' "${fe_out}" || fail "runner must be dcr-frontendx"
+grep -q 'Dockerfile.genomepage' "${fe_out}" || fail "dockerfile list wrong"
+grep -q 'application_type: microservice' "${mcp_out}" || fail "backend default application_type must be microservice"
+echo "  frontend mapping: PASS"
+
 echo "render-tag-deploy contract tests PASSED"

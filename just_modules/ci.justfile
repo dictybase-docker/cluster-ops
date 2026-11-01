@@ -215,16 +215,21 @@ sync-deploy-vars cluster="" repos:
 # mismatch dies here, not in a production deploy run. Writes to --out; never
 # edits the service repo in place. The PR and merge in the service repo stay
 # manual.
-# Usage: just ci render-tag-deploy [--stack <name>] --app <app> --project <project> [--docker-image <name>] --out <file> [--workflow-ref <ref>]
+# Frontend monorepo: pass --application-type frontend, colon-separated --app,
+# --docker-image and --dockerfile lists (one entry per stack app), and --runner.
+# Usage: just ci render-tag-deploy [--stack <name>] --app <app> --project <project> [--docker-image <name>] [--application-type <type>] [--dockerfile <path>] [--runner <label>] --out <file> [--workflow-ref <ref>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("app", long="app", short="a", help="Application name passed to the composite (e.g. order, graphql-server)")]
 [arg("project", long="project", short="p", help="cluster-ops Pulumi project folder (e.g. modware-order, graphql_server)")]
 [arg("docker_image", long="docker-image", short="d", help="Docker Hub image name (defaults to --project with '_' replaced by '-')")]
+[arg("application_type", long="application-type", help="Composite application_type: microservice, backend, or frontend (default microservice)")]
+[arg("dockerfile", long="dockerfile", help="Dockerfile path; colon-separated list for frontend (default build/package/Dockerfile)")]
+[arg("runner", long="runner", help="GitHub Actions runner label (default backend)")]
 [arg("out", long="out", short="o", help="Output file path for the rendered tag-build.yaml")]
 [arg("workflow_ref", long="workflow-ref", short="w", help="Git ref of dictyBase/workflows to pin in the output (default develop)")]
 [group('ci-management')]
 [no-cd]
-render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docker_image="":
+render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docker_image="" application_type="microservice" dockerfile="build/package/Dockerfile" runner="backend":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -268,6 +273,9 @@ render-tag-deploy stack="" app="" project="" out="" workflow_ref="develop" docke
         -e "s|__PROJECT__|${project}|g" \
         -e "s|__STACK__|${stack_name}|g" \
         -e "s|__DOCKER_IMAGE__|${image_name}|g" \
+        -e "s|__APPLICATION_TYPE__|{{ application_type }}|g" \
+        -e "s|__DOCKERFILE__|{{ dockerfile }}|g" \
+        -e "s|__RUNNER__|{{ runner }}|g" \
         -e "s|__CI_ENV__|${ci_env}|g" \
         -e "s|__WORKFLOW_REF__|{{ workflow_ref }}|g" \
         config/templates/tag-build-deploy.yaml.tmpl > "${tmp}"

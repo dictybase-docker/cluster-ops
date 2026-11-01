@@ -131,6 +131,9 @@ not in a prod deploy run); zero occurrences of `staging`.
 | `--app` / `-a` | Yes | — | Application name passed to the composite (`order`, `graphql-server`) |
 | `--project` / `-p` | Yes | — | cluster-ops Pulumi project folder (`modware-order`, `graphql_server`) |
 | `--docker-image` / `-d` | No | `--project` with `_` → `-` | Docker Hub image name. Only needed when it differs from the dashed project folder |
+| `--application-type` | No | `microservice` | Composite `application_type`. Pass `frontend` for `frontend_application`. |
+| `--dockerfile` | No | `build/package/Dockerfile` | Dockerfile path. For `frontend`, a colon-separated list with one entry per stack app. |
+| `--runner` | No | `backend` | GitHub Actions runner label. The frontend monorepo uses `dcr-frontendx`. |
 | `--out` / `-o` | Yes | — | Output file path (rendered `tag-build.yaml`) |
 | `--workflow-ref` / `-w` | No | `develop` | Pin the reusable workflow ref in the output; also the ref the input-drift guard fetches |
 
