@@ -120,8 +120,8 @@ just gcp-pulumi create-resource --folder frontend_application
 
 ## 4. Expose Through the Production Gateway
 
-The `frontend-route` in the `gateway/` stack sends `/`, `/stockcenter`, `/publication`, and `/gene` to the four Services. Set the public hostname, then deploy the Gateway. Deploy `frontend_application` first, because the route needs the four Services.
-→ [Frontend route](reference/gateway/deployment.md#frontend-route) · [Routing](reference/frontend/deployment.md#routing)
+The `frontend-route` in the `gateway/` stack sends `/`, `/stockcenter`, `/publication`, and `/gene` to the four Services. Set the public hostname, then deploy the Gateway. Deploy `frontend_application` first, because the route needs the four Services. **If the hostname already resolves to another IP address, read the cutover steps before you change DNS.**
+→ [Hostname cutover](reference/frontend/deployment.md#reuse-a-hostname-from-another-cluster) · [Frontend route](reference/gateway/deployment.md#frontend-route) · [Routing](reference/frontend/deployment.md#routing)
 
 ```bash
 just gcp-pulumi set-config --folder gateway --key properties.routes.frontend.hosts.0 --value <frontend-host>

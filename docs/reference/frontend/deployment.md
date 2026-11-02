@@ -13,6 +13,7 @@ This document gives the details for the `frontend_application/` Pulumi project: 
   - [Keys That Change per Cluster](#keys-that-change-per-cluster)
 - [Image Tags](#image-tags)
 - [Routing](#routing)
+  - [Reuse a Hostname from Another Cluster](#reuse-a-hostname-from-another-cluster)
 - [Stack Files](#stack-files)
 - [Deploy Behavior](#deploy-behavior)
 - [CI Deployment](#ci-deployment)
@@ -144,6 +145,20 @@ The `frontend_application/` stack creates no Ingress. The Gateway stack owns the
 The route table and the `enabled` toggle are in [Gateway details](../gateway/deployment.md#frontend-route). Deploy `frontend_application` before you turn on the route, so each backend Service exists. In-cluster clients reach a Service at `<name>-api.<namespace>.svc:3000`.
 
 On the lab `dcr-experiments` cluster, the separate `ingress/` project routes the front-end hostnames through `nginx`. That project is outside this guide.
+
+### Reuse a Hostname from Another Cluster
+
+Use this procedure when the public hostname already resolves to a different IP address. The `just gateway deploy` recipe does not change DNS, so the old site keeps the traffic until you change the `A` record.
+
+1. Lower the TTL of the `A` record one day before the cutover.
+2. Run `just gateway deploy`. The Gateway and the route exist, but the hostname still points to the old IP address.
+3. Run `just gateway show-ip`. Change the `A` record to this IP address.
+4. Run `just gateway verify`. It passes when the TLS `Secret` exists.
+5. Raise the TTL again.
+
+The ACME `Issuer` uses HTTP-01. cert-manager can issue the certificate only after the hostname resolves to the new Gateway IP address. HTTPS on the new Gateway fails for about 1–2 minutes after the change. If cert-manager tried before the change, the challenge failed and a backoff delays the retry. Delete the pending `Order` to force a new attempt.
+
+Resolvers keep the old IP address until the TTL expires. To roll back, set the `A` record to the old IP address.
 
 ---
 
