@@ -108,8 +108,8 @@ just gcp-cluster rolling-update --yes yes
 
 | Pin | Behavior |
 |-----|----------|
-| **kOps ≤ 1.30** (`dev` pin v1.29.2) | `update-cluster` and `rolling-update` are separate commands. Running `rolling-update` after VM template changes is required |
-| **kOps ≥ 1.31** (`prod` pin v1.36.1) | `update-cluster` runs `kops reconcile cluster --yes`, which reconciles cloud resources and rolls nodes sequentially in one pass. Use `rolling-update` only for targeted pool rolls (`--instance-group <name>`) or forced restarts (`--force yes`) |
+| **kOps ≤ 1.30** (`dev` pin v1.29.2) | `update-cluster` runs `kops update cluster --yes --admin` (cloud resources and templates only). Run `just gcp-cluster rolling-update --yes yes` when VM templates change |
+| **kOps ≥ 1.31** (`prod` pin v1.36.1) | `update-cluster` runs `kops update cluster --yes` (cloud resources and templates only, without `--admin`). Run `just gcp-cluster rolling-update --yes yes` when VM templates change |
 
 ## Node Pool Labels and Taints (GCE Limitation)
 

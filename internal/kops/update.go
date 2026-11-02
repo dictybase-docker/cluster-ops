@@ -16,11 +16,10 @@ import (
 var kopsV131 = semver.MustParse("1.31.0")
 
 const (
-	flagYes      = "--yes"
-	flagAdmin    = "--admin"
-	cmdCluster   = "cluster"
-	cmdUpdate    = "update"
-	cmdReconcile = "reconcile"
+	flagYes    = "--yes"
+	flagAdmin  = "--admin"
+	cmdCluster = "cluster"
+	cmdUpdate  = "update"
 )
 
 // UpdateCluster applies pending cluster changes using the correct
@@ -73,12 +72,15 @@ func selectKopsPlanCommand(v semver.Version) IOE.IOEither[error, string] {
 }
 
 // updateCommandArgs returns the kops arguments for applying or previewing changes.
+// Uses `kops update cluster` across all kOps versions so cloud templates and
+// firewall rules update without triggering an automatic VM rolling-update;
+// legacy kOps (< 1.31) also passes --admin.
 func updateCommandArgs(v semver.Version, apply bool) []string {
 	if v.GTE(kopsV131) {
 		if apply {
-			return []string{cmdReconcile, cmdCluster, flagYes}
+			return []string{cmdUpdate, cmdCluster, flagYes}
 		}
-		return []string{cmdReconcile, cmdCluster}
+		return []string{cmdUpdate, cmdCluster}
 	}
 	if apply {
 		return []string{cmdUpdate, cmdCluster, flagYes, flagAdmin}

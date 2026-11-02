@@ -131,7 +131,7 @@ It is the **same recipe** used for [post-teardown recreation](recreation.md) —
 
 | Action | kOps ≤ 1.30.x (repo pin v1.29.2) | kOps ≥ 1.31.0 |
 |--------|-----------------------------------|---------------|
-| Preview (dry-run) | `kops update cluster --admin` | `kops reconcile cluster` |
-| Apply | `kops update cluster --yes --admin` | `kops reconcile cluster --yes` |
-| Rolling update | separate `kops rolling-update` if needed | included in `reconcile` |
+| Preview (dry-run) | `kops update cluster --admin` | `kops update cluster` |
+| Apply | `kops update cluster --yes --admin` | `kops update cluster --yes` |
+| Rolling update | `just gcp-cluster rolling-update --yes yes` when VM templates change | `just gcp-cluster rolling-update --yes yes` when VM templates change |
 | Validate | `kops validate cluster` | same |

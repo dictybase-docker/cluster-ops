@@ -67,25 +67,25 @@ func TestUpdateCommandArgs(t *testing.T) {
 			name:     "v1.31.0 boundary apply",
 			version:  vReconcile,
 			apply:    true,
-			expected: "reconcile cluster --yes",
+			expected: "update cluster --yes",
 		},
 		{
 			name:     "v1.31.0 boundary plan",
 			version:  vReconcile,
 			apply:    false,
-			expected: "reconcile cluster",
+			expected: "update cluster",
 		},
 		{
 			name:     "modern version apply",
 			version:  vModern,
 			apply:    true,
-			expected: "reconcile cluster --yes",
+			expected: "update cluster --yes",
 		},
 		{
 			name:     "modern version plan",
 			version:  vModern,
 			apply:    false,
-			expected: "reconcile cluster",
+			expected: "update cluster",
 		},
 	}
 
