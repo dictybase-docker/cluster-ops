@@ -221,6 +221,23 @@ check stack="" namespace="prod":
         exit 1
     fi
 
+    cm_ns=""
+    for candidate in kube-system cert-manager; do
+        if kubectl -n "$candidate" get deployment cert-manager >/dev/null 2>&1; then
+            cm_ns="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$cm_ns" ]]; then
+        echo "Error: cert-manager Deployment not found in kube-system or cert-manager." >&2
+        exit 1
+    fi
+    cm_json=$(kubectl -n "$cm_ns" get deployment cert-manager -o json)
+    if ! jq -e 'any(.spec.template.spec.containers[0].args[]?; startswith("--enable-gateway-api"))' <<<"$cm_json" >/dev/null; then
+        echo "Error: cert-manager in '$cm_ns' lacks --enable-gateway-api — run 'just gateway install-crds'." >&2
+        exit 1
+    fi
+
     fe_en=$(yq -r '.config."gateway:properties".routes.frontend.enabled // "false"' "$CFG_FILE")
     if [[ "$fe_en" == "true" ]]; then
         for svc in $(yq -r '.config."gateway:properties".routes.frontend.services[].name' "$CFG_FILE"); do

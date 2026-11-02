@@ -169,6 +169,35 @@ update-cluster cluster="" kops_name="" state="": build
 
     ./bin/cluster-ops kops update
 
+    if [ -n "${sync_pid}" ]; then
+        kill "${sync_pid}" 2>/dev/null || true
+        sync_pid=""
+    fi
+
+    cluster_yaml="{{ justfile_directory() }}/config/kops/${c}/cluster.yaml"
+    if [ -n "${c}" ] && [ -f "${cluster_yaml}" ] && grep -q 'gatewayAPI:' "${cluster_yaml}"; then
+        kubeconfig_file="${KUBECONFIG:-}"
+        [ -z "${kubeconfig_file}" ] && kubeconfig_file="{{ invocation_directory() }}/${c}-kubeconfig.yaml"
+        if [ -s "${kubeconfig_file}" ] || [ "$(kubectl config current-context 2>/dev/null || true)" = "${kn}" ]; then
+            (
+                [ -s "${kubeconfig_file}" ] && export KUBECONFIG="${kubeconfig_file}"
+                if [ "$(kubectl config current-context 2>/dev/null || true)" = "${kn}" ]; then
+                    for cm_ns in kube-system cert-manager; do
+                        if cm_json=$(kubectl -n "${cm_ns}" get deployment cert-manager -o json 2>/dev/null) && [ -n "${cm_json}" ]; then
+                            if ! jq -e 'any(.spec.template.spec.containers[0].args[]?; startswith("--enable-gateway-api"))' <<<"${cm_json}" >/dev/null 2>&1; then
+                                echo "Re-enabling --enable-gateway-api on cert-manager in namespace '${cm_ns}' after kops update..."
+                                kubectl -n "${cm_ns}" patch deployment cert-manager --type='json' \
+                                    -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--enable-gateway-api"}]'
+                                kubectl -n "${cm_ns}" rollout status deployment/cert-manager --timeout=180s
+                            fi
+                            break
+                        fi
+                    done
+                fi
+            )
+        fi
+    fi
+
 # Preview pending cluster changes without applying them (version-aware dry-run).
 # Usage: just gcp-cluster plan-cluster [--cluster <name>] [--kops-name <name>] [--state <uri>]
 [arg("cluster", long="cluster", short="c", help="Cluster name (defaults to CLUSTER_NAME env var)")]

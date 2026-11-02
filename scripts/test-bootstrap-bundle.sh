@@ -88,6 +88,10 @@ JSON
 fi
 
 # label/taint and anything else: succeed silently.
+if [[ "$*" == *"get deployment cert-manager"* ]]; then
+    printf '{"spec":{"template":{"spec":{"containers":[{"name":"cert-manager-controller","args":["--v=2"]}]}}}}\n'
+    exit 0
+fi
 exit 0
 EOF
 chmod +x "${test_env_dir}/kubectl"
@@ -146,6 +150,7 @@ echo "=== 4. Testing operational recipes with pure CLI args (env unset) ==="
 
     just gcp-cluster update-cluster --cluster dcr-test-1
     grep -E "(update|reconcile)" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ update-cluster executed"
+    grep -E "patch deployment cert-manager.*--enable-gateway-api" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ update-cluster re-enabled --enable-gateway-api on cert-manager"
 
     just gcp-cluster validate-cluster --cluster dcr-test-1
     grep -E "validate.*cluster.*--name=dcr-test-1-k8s\.local" "${MOCK_KOPS_LOG}" >/dev/null && echo "  ✓ validate-cluster executed"

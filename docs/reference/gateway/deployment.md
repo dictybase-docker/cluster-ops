@@ -203,7 +203,8 @@ Behavior:
 4. Checks each route (`frontend`, `graphql`, `minio`, `logto`, `mcp`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
 5. Reads `pulumi -C namespace-bootstrap stack output appNamespace` and requires it to equal `--namespace`.
 6. Verifies that `GatewayClass` `cilium` exists and reports condition `Accepted=True`.
-7. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, `logto-api`, or `dcr-mcp-api`) exists in `--namespace`.
+7. Verifies that Deployment `cert-manager` exists in `kube-system` or `cert-manager` and passes `--enable-gateway-api` in its container arguments.
+8. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, `logto-api`, or `dcr-mcp-api`) exists in `--namespace`.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
@@ -467,6 +468,7 @@ just gateway verify
 | `Error: no stack name` | Recipe run outside the `cluster-env` sub-shell | Enter `just cluster-env --env <env> --cluster <cluster>` or pass `--stack <name>` |
 | `Error: stack config missing: gateway/Pulumi.<stack>.yaml` | Stack file not scaffolded yet | Run `just gcp-pulumi scaffold-gateway-stack` |
 | `GatewayClass cilium not found on cluster` | Gateway API CRDs were not installed, Cilium Gateway API is not enabled in kOps, or Cilium started before the CRDs | Run `just gateway install-crds`, verify `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml`, run `just gcp-cluster apply-cluster`, and run `just gateway restart-cilium` |
+| `cert-manager in '<ns>' lacks --enable-gateway-api` | `just gateway install-crds` was not run yet, or a raw `kops update cluster` reset the `cert-manager` addon manifest | Run `just gateway install-crds` (`just gcp-cluster update-cluster` also restores this flag automatically when `gatewayAPI` is enabled) |
 | `contains an empty or placeholder issuer value` | `issuer.email` still holds `<acme-email>` | Run `just gcp-pulumi set-config --folder gateway --key properties.issuer.email --value <email>` |
 | `route '<name>' is enabled but contains an empty or placeholder host or tlsSecret` | An enabled route still holds `<...-host>` | Set `properties.routes.<name>.hosts.0` with `set-config`, or set `properties.routes.<name>.enabled` to `false` |
 | `must enable at least one route` | All four routes have `enabled: false` | Set at least one route `enabled` key to `true` |

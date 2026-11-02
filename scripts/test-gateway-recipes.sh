@@ -77,7 +77,11 @@ case "$*" in
         printf '{"status":{"conditions":[{"type":"Accepted","status":"True"}]}}\n'
         ;;
     *"get deployment cert-manager"*)
-        printf '{"spec":{"template":{"spec":{"containers":[{"name":"cert-manager","args":["--v=2","--enable-gateway-api"]}]}}},"status":{"availableReplicas":1}}\n'
+        if [[ "${STUB_CM_MISSING_FLAG:-0}" == "1" ]]; then
+            printf '{"spec":{"template":{"spec":{"containers":[{"name":"cert-manager","args":["--v=2"]}]}}},"status":{"availableReplicas":1}}\n'
+        else
+            printf '{"spec":{"template":{"spec":{"containers":[{"name":"cert-manager","args":["--v=2","--enable-gateway-api"]}]}}},"status":{"availableReplicas":1}}\n'
+        fi
         ;;
     *"patch deployment cert-manager"*)
         exit 0
@@ -295,6 +299,10 @@ echo 'all routes disabled guard: PASS'
 write_config
 expect_failure 'GatewayClass cilium' env STUB_GWCLASS_MISSING=1 "$just_bin" gateway check --stack "$stack"
 echo 'GatewayClass guard: PASS'
+
+write_config
+expect_failure '--enable-gateway-api' env STUB_CM_MISSING_FLAG=1 "$just_bin" gateway check --stack "$stack"
+echo 'cert-manager Gateway API flag guard: PASS'
 
 write_config
 : > "$log_file"
