@@ -120,4 +120,108 @@ echo 'failure count: PASS'
 expect_failure 'timeout must look like' "$just_bin" frontend verify --timeout abc
 echo 'timeout guard: PASS'
 
+expect_failure 'no stack name' env -u PULUMI_STACK "$just_bin" frontend pr-deploy-workflow
+echo 'pr-deploy-workflow no stack guard: PASS'
+
+expect_failure "no registry entry with stack '${stack}'" "$just_bin" frontend pr-deploy-workflow
+echo 'pr-deploy-workflow registry guard: PASS'
+
+# Mock git + gh for pr-deploy-workflow happy path against stack dcr-kube1
+render_dir="${tmp_dir}/render"
+mkdir -p "$render_dir"
+printf 'name: Tag Build\n      runner: dcr-frontendx-prod\n' > "${render_dir}/frontendx-tag-build.yaml"
+remote_bare="${tmp_dir}/frontendx-remote.git"
+seed_repo="${tmp_dir}/frontendx-seed"
+command git init --bare -b develop "$remote_bare" >/dev/null 2>&1
+command git clone "$remote_bare" "$seed_repo" >/dev/null 2>&1
+mkdir -p "${seed_repo}/.github/workflows" \
+    "${seed_repo}/apps/dicty-frontpage" \
+    "${seed_repo}/apps/stock-center" \
+    "${seed_repo}/apps/publication" \
+    "${seed_repo}/apps/genome-page"
+printf 'name: staging\n' > "${seed_repo}/.github/workflows/staging.yml"
+printf 'name: ci\n       runner: dcr-frontendx\n' > "${seed_repo}/.github/workflows/ci.yml"
+cat > "${seed_repo}/apps/dicty-frontpage/.env.production" <<'ENV'
+VITE_APP_STOCKCENTER_URL="https://dictybase.dev/stockcenter"
+VITE_APP_FRONTPAGE_URL="https://dictybase.dev"
+VITE_APP_PUBLICATION_URL="https://dictybase.dev/publication"
+VITE_APP_GRAPHQL_SERVER="https://graphql.dictybase.dev"
+VITE_AUTH_ENABLED=true
+ENV
+cp "${seed_repo}/apps/dicty-frontpage/.env.production" "${seed_repo}/apps/stock-center/.env.production"
+cat > "${seed_repo}/apps/publication/.env.production" <<'ENV'
+VITE_FRONTPAGE_URL="https://dictybase.dev"
+VITE_STOCKCENTER_URL="https://dictybase.dev/stockcenter"
+VITE_PUBLICATION_URL="https://dictybase.dev/publication"
+VITE_GRAPHQL_SERVER='https://graphql.dictybase.dev'
+VITE_DEPLOY_ENV='development'
+VITE_AUTH_ENABLED=true
+ENV
+cat > "${seed_repo}/apps/genome-page/.env.development" <<'ENV'
+VITE_BASENAME='/gene'
+VITE_GRAPHQL_SERVER='https://graphql.dictybase.dev'
+VITE_FRONTPAGE_URL="https://dictybase.dev"
+VITE_STOCKCENTER_URL="https://dictybase.dev/stockcenter"
+VITE_PUBLICATION_URL="https://dictybase.dev/publication"
+VITE_DEPLOY_ENV='development'
+VITE_AUTH_ENABLED=true
+ENV
+cat > "${seed_repo}/apps/genome-page/.env.production" <<'ENV'
+NEXT_PUBLIC_BASENAME='gene'
+NEXT_PUBLIC_GRAPHQL_SERVER="https://staginggraphql.dictycr.org"
+ENV
+command git -C "$seed_repo" config user.email "test@example.org"
+command git -C "$seed_repo" config user.name "Test"
+command git -C "$seed_repo" add -A
+command git -C "$seed_repo" commit -m "seed" >/dev/null
+command git -C "$seed_repo" push origin develop >/dev/null 2>&1
+
+real_git="$(command -v git)"
+cat > "${tmp_dir}/bin/git" << MOCK_GIT
+#!/usr/bin/env bash
+set -euo pipefail
+args=()
+for a in "\$@"; do
+    if [[ "\$a" == "https://github.com/dictyBase/frontendx.git" ]]; then
+        args+=("${remote_bare}")
+    else
+        args+=("\$a")
+    fi
+done
+if [[ "\${args[*]}" == *"commit -m"* ]]; then
+    exec "$real_git" -c user.email=test@example.org -c user.name=Test "\${args[@]}"
+fi
+exec "$real_git" "\${args[@]}"
+MOCK_GIT
+chmod +x "${tmp_dir}/bin/git"
+
+cat > "${tmp_dir}/bin/gh" <<'MOCK_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'gh %s\n' "$*" >> "${STUB_LOG}"
+case "$1 $2" in
+    "pr list") printf '' ;;
+    "pr create") printf 'https://github.com/dictyBase/frontendx/pull/999\n' ;;
+    *) exit 0 ;;
+esac
+MOCK_GH
+chmod +x "${tmp_dir}/bin/gh"
+
+: > "$log_file"
+pr_out=$(run_recipe "$just_bin" frontend pr-deploy-workflow --stack dcr-kube1 --render-dir "$render_dir")
+printf '%s' "$pr_out" | rg -q 'https://github.com/dictyBase/frontendx/pull/999'
+rg -q 'gh pr create --repo dictyBase/frontendx' "$log_file"
+verify_clone="${tmp_dir}/verify-clone"
+"$real_git" clone --branch ci/tag-deploy-dcr-kube1 "$remote_bare" "$verify_clone" >/dev/null 2>&1
+[[ -f "${verify_clone}/.github/workflows/tag-build.yaml" ]]
+[[ ! -f "${verify_clone}/.github/workflows/staging.yml" ]]
+rg -q 'runner: dcr-frontendx-prod' "${verify_clone}/.github/workflows/tag-build.yaml"
+rg -q 'runner: dcr-frontendx-beefy' "${verify_clone}/.github/workflows/ci.yml"
+rg -q 'VITE_APP_GRAPHQL_SERVER="https://graphql.dictycr.org"' "${verify_clone}/apps/dicty-frontpage/.env.production"
+rg -q 'VITE_APP_FRONTPAGE_URL="https://dictycr.org"' "${verify_clone}/apps/stock-center/.env.production"
+rg -q "VITE_GRAPHQL_SERVER='https://graphql.dictycr.org'" "${verify_clone}/apps/publication/.env.production"
+rg -q "VITE_GRAPHQL_SERVER='https://graphql.dictycr.org'" "${verify_clone}/apps/genome-page/.env.production"
+rg -q 'VITE_PUBLICATION_URL="https://dictycr.org/publication"' "${verify_clone}/apps/genome-page/.env.production"
+echo 'pr-deploy-workflow happy path: PASS'
+
 echo 'frontend recipe contract tests PASSED'

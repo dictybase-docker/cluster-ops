@@ -194,7 +194,7 @@ No recipe waits for the rollout. Run the commands in [Verification](#verificatio
 
 ## CI Deployment
 
-A push to `develop` in `dictyBase/frontendx` starts `.github/workflows/ci.yml`. That workflow calls the composite deploy workflow with `application_type: frontend`, `project: frontend_application`, `stack: experiments`, and `runner: dcr-frontendx`. The `app`, `docker_image`, and `dockerfile` inputs are colon-separated lists with one entry per app.
+A push to `develop` in `dictyBase/frontendx` starts `.github/workflows/ci.yml`. That workflow calls the composite deploy workflow with `application_type: frontend`, `project: frontend_application`, `stack: experiments`, and `runner: dcr-frontendx-beefy`. The `app`, `docker_image`, and `dockerfile` inputs are colon-separated lists with one entry per app.
 
 The composite workflow builds each image from `docker/Dockerfile.<app>` and publishes `dictybase/<image>:<tag>`. It clones cluster-ops at branch **`develop`** and sets `properties.apps[<n>].tag` for every list entry. **All apps get the same tag.** Then it runs `pulumi up`.
 
@@ -225,29 +225,22 @@ Those files name lab and staging hosts, not production hosts. This table shows t
 | `publication` | `https://graphql.dictybase.dev` | `https://logto.dictybase.dev` |
 | `genome-page` | `https://staginggraphql.dictycr.org` | `https://staginglogto.dictycr.org` |
 
-**A production tag deploy with these files makes the production front ends call the lab or staging back ends.** The front-end URLs (`VITE_APP_FRONTPAGE_URL` and the similar keys) also name `dictybase.dev`. Before you cut the first production tag, set each production host in `.env.production` of each app in `frontendx`, and merge the change. The values must match the hosts in the `gateway/` stack ([Gateway details](../gateway/deployment.md#frontend-route)).
+**A production tag deploy with unpatched files makes the production front ends call the lab or staging back ends.** The front-end URLs (`VITE_APP_FRONTPAGE_URL` and the similar keys) also name `dictybase.dev`, and `apps/genome-page/.env.production` uses legacy `NEXT_PUBLIC_*` keys unless replaced with `VITE_*`. Run `just frontend pr-deploy-workflow` before you cut the first production tag. The recipe reads the frontend and GraphQL hosts from `gateway/Pulumi.<stack>.yaml`, updates `apps/*/.env.production`, and opens the pull request in `dictyBase/frontendx`.
 
-The `develop` push to the `experiments` stack uses the development build mode, so it does not show this problem. Check the build mode in the Dockerfile of each app before you trust a first production image. The files are in the `frontendx` repository, so this section reports their state when this document was written.
+The `develop` push to the `experiments` stack uses the development build mode (`apps/<app>/.env.development`), so `just frontend pr-deploy-workflow` leaves `.env.development` untouched.
 
 ---
 
 ## Tag Deploy Setup
 
-The CI path above deploys the lab `experiments` stack only. `frontendx` has no tag workflow, so production rollouts stay manual until you add one. `frontendx` has no entry in `config/services.yaml`, so `just ci deploy-backend-services` and `just ci pr-deploy-workflows` exit with `no services matched` for this repository. Use the single-repository recipes from the production cluster-env sub-shell.
+The CI path above deploys the lab `experiments` stack only. `frontendx` has no entry in `config/services.yaml`, so `just ci deploy-backend-services` and `just ci pr-deploy-workflows` exit with `no services matched` for this repository. Use the single-repository CI recipes and `just frontend pr-deploy-workflow` from the production cluster-env sub-shell.
 
 ```bash
 just ci create-deploy-key
 just ci render-composite-deploy
 just ci set-deploy-secret --repos dictyBase/frontendx
 just ci sync-deploy-vars --repos dictyBase/frontendx
-just ci render-tag-deploy \
-  --app frontpage:stockcenter:publication:genomepage \
-  --project frontend_application \
-  --application-type frontend \
-  --runner dcr-frontendx \
-  --docker-image dicty-frontpage:stock-center:publication:genomepage \
-  --dockerfile docker/Dockerfile.frontpage:docker/Dockerfile.stock-center:docker/Dockerfile.publication:docker/Dockerfile.genomepage \
-  --out bin/ci-render/frontendx-tag-build.yaml
+just frontend pr-deploy-workflow
 ```
 
 | Recipe | What it changes | Risk | Details |
@@ -256,14 +249,11 @@ just ci render-tag-deploy \
 | `render-composite-deploy` | Sets org variable `PROD_PULUMI_STATE_STORAGE` and renders `composite-deploy.yaml` | None until a pull request merges the file into `dictyBase/workflows` | [Workflow render](../backend/render-deploy-workflows.md) |
 | `set-deploy-secret` | Adds `frontendx` to the repository list of the org secret `PROD_DEPLOY_SA_KEY` | The recipe sends the current list again, so no repository loses access | [CI variables](../backend/ci-variables.md#set-deploy-secret) |
 | `sync-deploy-vars` | Sets the five `PROD_*` repository variables from the registry entry | One upsert per variable | [CI variables](../backend/ci-variables.md#sync-deploy-vars) |
-| `render-tag-deploy` | Writes `bin/ci-render/frontendx-tag-build.yaml` in cluster-ops only | None until you merge the pull request below | [Workflow render](../backend/render-deploy-workflows.md#render-tag-deploy-flags) |
+| `pr-deploy-workflow` | Renders `bin/ci-render/frontendx-tag-build.yaml` (`runner: dcr-frontendx-prod`), sets `runner: dcr-frontendx-beefy` in `.github/workflows/ci.yml`, updates `apps/*/.env.production` from `gateway/Pulumi.<stack>.yaml`, removes `.github/workflows/staging.yml`, and opens a pull request in `dictyBase/frontendx` | None until you merge the pull request | [Workflow render](../backend/render-deploy-workflows.md#render-tag-deploy-flags) |
 
-`--application-type frontend` makes the composite run the frontend deploy. The default `microservice` runs the backend deploy, which sets `properties.image.tag` and changes no front-end image. `--runner dcr-frontendx` copies the label from the `ci.yml` of the repository. Check that the label names a runner that can reach the production cluster.
+`pr-deploy-workflow` calls `render-tag-deploy` with `--application-type frontend` and `--runner dcr-frontendx-prod`, which makes the composite run the frontend deploy on the production runner. The default `microservice` runs the backend deploy, which sets `properties.image.tag` and changes no front-end image. Check that `dcr-frontendx-prod` can reach the production cluster and `dcr-frontendx-beefy` can reach the `experiments` cluster.
 
-To finish the setup, open a pull request against `dictyBase/frontendx`:
-
-1. Copy `bin/ci-render/frontendx-tag-build.yaml` to `.github/workflows/tag-build.yaml`.
-2. Do not change `.github/workflows/ci.yml`. It keeps the develop path on the `experiments` stack.
+To finish the setup, merge the pull request in `dictyBase/frontendx`, fast-forward `master` to `develop`, and push a release tag. Do not change `apps/*/.env.development`. It keeps the `develop` push path on the `experiments` stack.
 
 Two conditions must hold before a tag deploys, and these recipes check neither one. First, the composite workflow must select `secrets.PROD_DEPLOY_SA_KEY` and `vars.PROD_PULUMI_STATE_STORAGE` for `inputs.environment == 'production'`. Second, `frontend_application/Pulumi.<prod-stack>.yaml` must exist on cluster-ops `develop`. No operator ran a full tag deploy for this repository, so watch the first production tag.
 

@@ -21,7 +21,7 @@ The `frontend_application/` Pulumi project deploys the four dictyBase web front 
   - [7.1 Create the Deployer Key](#71-create-the-deployer-key)
   - [7.2 Prepare the Composite Deploy Workflow](#72-prepare-the-composite-deploy-workflow)
   - [7.3 Publish CI Credentials and Variables](#73-publish-ci-credentials-and-variables)
-  - [7.4 Render the Tag Workflow](#74-render-the-tag-workflow)
+  - [7.4 Render the Tag Workflow and Open the Pull Request](#74-render-the-tag-workflow-and-open-the-pull-request)
 - [8. Troubleshooting](#8-troubleshooting)
 - [9. Related Documents](#9-related-documents)
 
@@ -65,7 +65,7 @@ just ci create-deploy-key
 just ci render-composite-deploy
 just ci set-deploy-secret --repos dictyBase/frontendx
 just ci sync-deploy-vars --repos dictyBase/frontendx
-just ci render-tag-deploy --app frontpage:stockcenter:publication:genomepage --project frontend_application --application-type frontend --runner dcr-frontendx --docker-image dicty-frontpage:stock-center:publication:genomepage --dockerfile docker/Dockerfile.frontpage:docker/Dockerfile.stock-center:docker/Dockerfile.publication:docker/Dockerfile.genomepage --out bin/ci-render/frontendx-tag-build.yaml
+just frontend pr-deploy-workflow
 ```
 
 ---
@@ -191,20 +191,13 @@ just ci set-deploy-secret --repos dictyBase/frontendx
 just ci sync-deploy-vars --repos dictyBase/frontendx
 ```
 
-### 7.4 Render the Tag Workflow
+### 7.4 Render the Tag Workflow and Open the Pull Request
 
-Render the deploy-only workflow to `bin/ci-render/frontendx-tag-build.yaml`. Copy the file to `.github/workflows/tag-build.yaml` in `dictyBase/frontendx` and open a pull request. The four lists must stay in the same app order.
+Render `bin/ci-render/frontendx-tag-build.yaml` (`runner: dcr-frontendx-prod`), update `runner: dcr-frontendx-beefy` in `.github/workflows/ci.yml`, update the production URLs in `apps/*/.env.production` from `gateway/Pulumi.${PULUMI_STACK}.yaml`, and open a pull request on `dictyBase/frontendx`. The recipe leaves `.env.development` untouched, so `develop` pushes keep targeting `experiments`.
 → [Tag deploy setup](reference/frontend/deployment.md#tag-deploy-setup) · [Workflow render details](reference/backend/render-deploy-workflows.md#render-tag-deploy-flags)
 
 ```bash
-just ci render-tag-deploy \
-  --app frontpage:stockcenter:publication:genomepage \
-  --project frontend_application \
-  --application-type frontend \
-  --runner dcr-frontendx \
-  --docker-image dicty-frontpage:stock-center:publication:genomepage \
-  --dockerfile docker/Dockerfile.frontpage:docker/Dockerfile.stock-center:docker/Dockerfile.publication:docker/Dockerfile.genomepage \
-  --out bin/ci-render/frontendx-tag-build.yaml
+just frontend pr-deploy-workflow
 ```
 
 ---
