@@ -141,6 +141,7 @@ mkdir -p "${seed_repo}/.github/workflows" \
     "${seed_repo}/apps/genome-page"
 printf 'name: staging\n' > "${seed_repo}/.github/workflows/staging.yml"
 printf 'name: ci\n       runner: dcr-frontendx\n' > "${seed_repo}/.github/workflows/ci.yml"
+printf '# frontendx\n\n## Table of Contents\n\n- [Installation](#installation)\n' > "${seed_repo}/README.md"
 cat > "${seed_repo}/apps/dicty-frontpage/.env.production" <<'ENV'
 VITE_APP_STOCKCENTER_URL="https://dictybase.dev/stockcenter"
 VITE_APP_FRONTPAGE_URL="https://dictybase.dev"
@@ -217,6 +218,9 @@ verify_clone="${tmp_dir}/verify-clone"
 [[ ! -f "${verify_clone}/.github/workflows/staging.yml" ]]
 rg -q 'runner: dcr-frontendx-prod' "${verify_clone}/.github/workflows/tag-build.yaml"
 rg -q 'runner: dcr-frontendx-beefy' "${verify_clone}/.github/workflows/ci.yml"
+rg -q '# Production Deployment' "${verify_clone}/README.md"
+rg -q 'https://github.com/purpleclay/nsv' "${verify_clone}/README.md"
+rg -q 'tag=\$\(nsv next\)' "${verify_clone}/README.md"
 rg -q 'VITE_APP_GRAPHQL_SERVER="https://graphql.dictycr.org"' "${verify_clone}/apps/dicty-frontpage/.env.production"
 rg -q 'VITE_APP_FRONTPAGE_URL="https://dictycr.org"' "${verify_clone}/apps/stock-center/.env.production"
 rg -q "VITE_GRAPHQL_SERVER='https://graphql.dictycr.org'" "${verify_clone}/apps/publication/.env.production"
