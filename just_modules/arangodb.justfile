@@ -1094,6 +1094,30 @@ update-cluster namespace="prod" stack="" members="9" retries="90" interval="10":
         --selector arango_deployment=arangodb \
         --count "{{ members }}" --retries "{{ retries }}" --interval "{{ interval }}"
 
+    if cr_json=$(kubectl -n "$NS" get arangodeployment arangodb -o json 2>/dev/null) && [[ -n "$cr_json" ]]; then
+        pods_json=$(kubectl -n "$NS" get pods -l arango_deployment=arangodb -o json 2>/dev/null || true)
+        if [[ -n "$pods_json" ]]; then
+            stale_pods=$(jq -r --argjson cr "$cr_json" '
+                .items[]
+                | (.metadata.labels.role // "") as $role
+                | (if $role == "agent" then $cr.spec.agents.terminationGracePeriodSeconds
+                   elif $role == "dbserver" then $cr.spec.dbservers.terminationGracePeriodSeconds
+                   elif $role == "coordinator" then $cr.spec.coordinators.terminationGracePeriodSeconds
+                   else null end) as $want
+                | select($want != null and .spec.terminationGracePeriodSeconds != $want)
+                | .metadata.name
+            ' <<<"$pods_json")
+            for pod in $stale_pods; do
+                [[ -z "$pod" ]] && continue
+                echo "Rotating $pod to apply updated terminationGracePeriodSeconds..."
+                kubectl -n "$NS" delete pod "$pod" --wait=true --timeout=120s
+                just arangodb _wait-ready --namespace "$NS" \
+                    --selector arango_deployment=arangodb \
+                    --count "{{ members }}" --retries "{{ retries }}" --interval "{{ interval }}"
+            done
+        fi
+    fi
+
     just arangodb verify --namespace "$NS"
     echo "Next: git add arangodb-cluster/Pulumi.${STACK}.yaml && git commit && git push"
 
