@@ -236,6 +236,32 @@ pr-deploy-workflow stack="" render_dir="bin/ci-render" base="develop":
         "$gp_env"
     rm -f "${gp_env}.bak"
 
+    readme_file="${repo_dir}/README.md"
+    if [[ -f "$readme_file" ]] && ! grep -q '# Production Deployment' "$readme_file"; then
+        sed -i.bak \
+            -e 's|- \[Installation\](#installation)|- [Installation](#installation)\
+    - [Production Deployment](#production-deployment)|' \
+            "$readme_file"
+        sed -i.bak -e 's|^    - \[Production Deployment\]|- [Production Deployment]|' "$readme_file"
+        rm -f "${readme_file}.bak"
+        {
+            printf '\n# Production Deployment\n\n'
+            printf 'Pushes to `develop` build with `apps/*/.env.development` and deploy to the `experiments` cluster through `.github/workflows/ci.yml`.\n\n'
+            printf 'Pushing a semantic version tag runs `.github/workflows/tag-build.yaml`, which builds all four applications (`frontpage`, `stockcenter`, `publication`, and `genomepage`) with `--mode=production` (`apps/*/.env.production`) and deploys them to the `%s` production cluster.\n\n' "${STACK}"
+            printf 'Install [nsv](https://github.com/purpleclay/nsv) ([installation guide](https://purpleclay.github.io/nsv/install/)) to compute the next semantic version from conventional commits, then fast-forward `main` from `develop` and push the tag:\n\n'
+            printf '```bash\n'
+            printf 'git checkout develop\n'
+            printf 'git pull origin develop\n'
+            printf 'git checkout main\n'
+            printf 'git merge --ff-only develop\n'
+            printf 'git push origin main\n\n'
+            printf 'tag=$(nsv next)\n'
+            printf 'git tag "$tag"\n'
+            printf 'git push origin "$tag"\n'
+            printf '```\n'
+        } >> "$readme_file"
+    fi
+
     if [[ -z "$(git -C "$repo_dir" status --porcelain)" ]]; then
         echo "  frontendx already up to date on ${base_branch} — skipping PR."
         exit 0
@@ -244,7 +270,7 @@ pr-deploy-workflow stack="" render_dir="bin/ci-render" base="develop":
     head_branch="ci/tag-deploy-${STACK}"
     git_https -C "$repo_dir" fetch origin "$head_branch" >/dev/null 2>&1 || true
     git -C "$repo_dir" checkout -B "$head_branch" >/dev/null 2>&1
-    git -C "$repo_dir" add -A .github/workflows apps/dicty-frontpage/.env.production apps/stock-center/.env.production apps/publication/.env.production apps/genome-page/.env.production
+    git -C "$repo_dir" add -A .github/workflows apps/dicty-frontpage/.env.production apps/stock-center/.env.production apps/publication/.env.production apps/genome-page/.env.production README.md
     git -C "$repo_dir" commit -m "ci(deploy): add production tag deploy workflow and endpoints for ${STACK}" >/dev/null
     git_https -C "$repo_dir" push -u origin "$head_branch" --force >/dev/null 2>&1
 
