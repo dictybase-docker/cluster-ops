@@ -181,7 +181,7 @@ check stack="" namespace="prod":
     done
 
     enabled_count=0
-    for route in frontend graphql minio logto mcp; do
+    for route in frontend api graphql minio logto mcp; do
         en=$(yq -r ".config.\"gateway:properties\".routes.${route}.enabled // \"false\"" "$CFG_FILE")
         if [[ "$en" == "true" ]]; then
             enabled_count=$((enabled_count + 1))
@@ -238,12 +238,14 @@ check stack="" namespace="prod":
         exit 1
     fi
 
-    fe_en=$(yq -r '.config."gateway:properties".routes.frontend.enabled // "false"' "$CFG_FILE")
-    if [[ "$fe_en" == "true" ]]; then
-        for svc in $(yq -r '.config."gateway:properties".routes.frontend.services[].name' "$CFG_FILE"); do
-            kubectl -n "$NS" get service "$svc" >/dev/null
-        done
-    fi
+    for multi_route in frontend api; do
+        mr_en=$(yq -r ".config.\"gateway:properties\".routes.${multi_route}.enabled // \"false\"" "$CFG_FILE")
+        if [[ "$mr_en" == "true" ]]; then
+            for svc in $(yq -r ".config.\"gateway:properties\".routes.${multi_route}.services[].name" "$CFG_FILE"); do
+                kubectl -n "$NS" get service "$svc" >/dev/null
+            done
+        fi
+    done
     for route in graphql minio logto mcp; do
         en=$(yq -r ".config.\"gateway:properties\".routes.${route}.enabled // \"false\"" "$CFG_FILE")
         if [[ "$en" == "true" ]]; then
@@ -382,7 +384,7 @@ verify stack="" namespace="prod":
         fi
     fi
 
-    for route in frontend graphql minio logto mcp; do
+    for route in frontend api graphql minio logto mcp; do
         en=$(yq -r ".config.\"gateway:properties\".routes.${route}.enabled // \"false\"" "$CFG_FILE")
         if [[ "$en" != "true" ]]; then
             continue

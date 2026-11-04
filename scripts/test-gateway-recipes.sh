@@ -121,6 +121,7 @@ case "$*" in
     *"get service minio"*) printf '9000\n' ;;
     *"get service logto-api"*) printf '3001\n' ;;
     *"get service dcr-mcp-api"*) printf '8080\n' ;;
+    *"get service stock-api"*) printf '9345\n' ;;
     *"get issuer letsencrypt-issuer"*"-o json"*)
         printf '{"status":{"conditions":[{"type":"Ready","status":"True"}]}}\n'
         ;;
@@ -135,6 +136,7 @@ case "$*" in
     *"get secret minio-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get secret logto-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get secret mcp-tls"*) printf 'kubernetes.io/tls\n' ;;
+    *"get secret api-tls"*) printf 'kubernetes.io/tls\n' ;;
     *"get httproute frontend-route"*"-o json"*)
         printf '{"spec":{"hostnames":["dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
         ;;
@@ -149,6 +151,9 @@ case "$*" in
         ;;
     *"get httproute mcp-route"*"-o json"*)
         printf '{"spec":{"hostnames":["mcp.dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
+        ;;
+    *"get httproute api-route"*"-o json"*)
+        printf '{"spec":{"hostnames":["api.dictycr.org"]},"status":{"parents":[{"conditions":[{"type":"Accepted","status":"True"},{"type":"ResolvedRefs","status":"True"}]}]}}\n'
         ;;
     *)
         echo "unexpected kubectl call: $*" >&2
@@ -169,6 +174,8 @@ write_config() {
     local minio_host="${8:-storage.dictycr.org}"
     local logto_enabled="${9:-false}"
     local logto_host="${10:-<logto-host>}"
+    local api_enabled="${11:-false}"
+    local api_host="${12:-<api-host>}"
     cat > "$cfg_file" <<EOF
 config:
   gateway:properties:
@@ -223,6 +230,15 @@ config:
         serviceName: logto-api
         servicePort: 3001
         path: /
+      api:
+        enabled: ${api_enabled}
+        hosts:
+          - ${api_host}
+        tlsSecret: api-tls
+        services:
+          - name: stock-api
+            path: /v1/stocks
+            port: 9345
 EOF
 }
 
@@ -354,6 +370,16 @@ echo 'deploy check fail-fast: PASS'
 run_recipe "$just_bin" gateway verify --stack "$stack" >/tmp/gateway-verify-output
 rg -q 'Gateway checks passed\.' /tmp/gateway-verify-output
 ! rg -q 'get httproute logto-route' "$log_file"
+! rg -q 'get httproute api-route' "$log_file"
 echo 'verify enabled routes: PASS'
+
+write_config prod ops@dictycr.org true dictycr.org true graphql.dictycr.org true storage.dictycr.org false '<logto-host>' true api.dictycr.org
+: > "$log_file"
+run_recipe "$just_bin" gateway check --stack "$stack" >/dev/null
+rg -q 'get service stock-api' "$log_file"
+run_recipe "$just_bin" gateway verify --stack "$stack" >/tmp/gateway-verify-api-output
+rg -q 'Gateway checks passed\.' /tmp/gateway-verify-api-output
+rg -q 'get httproute api-route' "$log_file"
+echo 'api route check and verify: PASS'
 
 echo 'Gateway recipe contract: PASS'

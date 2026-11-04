@@ -51,6 +51,11 @@ func validSampleGatewayConfig() *GatewayConfig {
 					{Name: "genomepage-api", Path: "/gene", Port: 3000},
 				},
 			},
+			API: FrontendRouteConfig{
+				Enabled:   false,
+				Hosts:     []string{"<api-host>"},
+				TLSSecret: "api-tls",
+			},
 			Graphql: ServiceRouteConfig{
 				Enabled:     true,
 				Hosts:       []string{testFrontendHost},
@@ -98,6 +103,10 @@ func TestConfigValidateDefaultsAndSuccess(t *testing.T) {
 	require.Equal(t, "dcr-mcp-api", cfg.Routes.Mcp.ServiceName)
 	require.Equal(t, 8080, cfg.Routes.Mcp.ServicePort)
 	require.Equal(t, "/", cfg.Routes.Mcp.Path)
+	require.Len(t, cfg.Routes.API.Services, 1)
+	require.Equal(t, "stock-api", cfg.Routes.API.Services[0].Name)
+	require.Equal(t, "/v1/stocks", cfg.Routes.API.Services[0].Path)
+	require.Equal(t, 9345, cfg.Routes.API.Services[0].Port)
 }
 
 func TestConfigValidateFailures(t *testing.T) {
@@ -157,6 +166,14 @@ func TestConfigValidateFailures(t *testing.T) {
 		}
 		err := cfg.Validate()
 		require.EqualError(t, err, "routes.frontend.enabled=true but routes.frontend is missing services")
+	})
+
+	t.Run("enabled api route contains placeholder host", func(t *testing.T) {
+		t.Parallel()
+		cfg := validSampleGatewayConfig()
+		cfg.Routes.API.Enabled = true
+		err := cfg.Validate()
+		require.EqualError(t, err, "routes.api.enabled=true but routes.api contains placeholder in hosts")
 	})
 }
 
@@ -263,4 +280,32 @@ func TestInstallWithLogtoEnabled(t *testing.T) {
 	logtoRoute, hasLogto := mocks.resources["logto-route"]
 	require.True(t, hasLogto)
 	require.Contains(t, fmt.Sprint(logtoRoute.Inputs), "logto-api")
+}
+
+func TestInstallWithAPIEnabled(t *testing.T) {
+	t.Parallel()
+	mocks := &gatewayResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	cfg := validSampleGatewayConfig()
+	cfg.Routes.API.Enabled = true
+	cfg.Routes.API.Hosts = []string{"api.dictycr.org"}
+	require.NoError(t, cfg.Validate())
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return NewGatewayStack(cfg).Install(ctx)
+	}, pulumi.WithMocks("gateway", "test", mocks))
+	require.NoError(t, err)
+
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+
+	gw := mocks.resources["dictycr-gateway"]
+	require.Contains(t, fmt.Sprint(gw.Inputs), "http-api-0")
+	require.Contains(t, fmt.Sprint(gw.Inputs), "https-api-0")
+
+	apiRoute, hasAPI := mocks.resources["api-route"]
+	require.True(t, hasAPI)
+	apiInputs := fmt.Sprint(apiRoute.Inputs)
+	require.Contains(t, apiInputs, "api.dictycr.org")
+	require.Contains(t, apiInputs, "stock-api")
+	require.Contains(t, apiInputs, "/v1/stocks")
 }

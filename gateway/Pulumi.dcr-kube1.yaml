@@ -66,3 +66,12 @@ config:
         serviceName: dcr-mcp-api
         servicePort: 8080
         path: /
+      api:
+        enabled: false
+        hosts:
+          - <api-host>
+        tlsSecret: api-tls
+        services:
+          - name: stock-api
+            path: /v1/stocks
+            port: 9345

@@ -15,8 +15,16 @@ func (g *GatewayStack) createHTTPRoutes(
 	ctx *pulumi.Context,
 	gw pulumi.Resource,
 ) error {
-	if err := g.createFrontendHTTPRoute(ctx, gw); err != nil {
-		return err
+	for _, named := range []struct {
+		key string
+		rt  FrontendRouteConfig
+	}{
+		{key: routeKeyFrontend, rt: g.Config.Routes.Frontend},
+		{key: routeKeyAPI, rt: g.Config.Routes.API},
+	} {
+		if err := g.createMultiServiceHTTPRoute(ctx, gw, named.key, named.rt); err != nil {
+			return err
+		}
 	}
 	for _, named := range []struct {
 		key string
@@ -34,19 +42,21 @@ func (g *GatewayStack) createHTTPRoutes(
 	return nil
 }
 
-func (g *GatewayStack) createFrontendHTTPRoute(
+func (g *GatewayStack) createMultiServiceHTTPRoute(
 	ctx *pulumi.Context,
 	gw pulumi.Resource,
+	routeKey string,
+	rt FrontendRouteConfig,
 ) error {
-	fe := g.Config.Routes.Frontend
-	if !fe.Enabled {
+	if !rt.Enabled {
 		return nil
 	}
+	routeName := fmt.Sprintf("%s-route", routeKey)
 	rules := F.Pipe1(
-		fe.Services,
+		rt.Services,
 		A.Map(buildFrontendRule),
 	)
-	return g.registerHTTPRoute(ctx, gw, "frontend-route", fe.Hosts, toPulumiArray(rules))
+	return g.registerHTTPRoute(ctx, gw, routeName, rt.Hosts, toPulumiArray(rules))
 }
 
 func (g *GatewayStack) createServiceHTTPRoute(

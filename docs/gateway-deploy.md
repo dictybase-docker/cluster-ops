@@ -1,8 +1,8 @@
 # Gateway Deploy
 
-The `gateway/` Pulumi project deploys the shared **Cilium Gateway** (`dictycr-gateway`), the **cert-manager** ACME `Issuer` (`letsencrypt-issuer`), and the `HTTPRoute` resources for `frontend_application`, `graphql_server`, `minio`, `log-to`, and `dcr-mcp` into one namespace.
+The `gateway/` Pulumi project deploys the shared **Cilium Gateway** (`dictycr-gateway`), the **cert-manager** ACME `Issuer` (`letsencrypt-issuer`), and the `HTTPRoute` resources for `frontend_application`, `graphql_server`, `minio`, `log-to`, `dcr-mcp`, and the `modware-*` HTTP APIs (`modware-stock`) into one namespace.
 
-**Each service route has its own `enabled` toggle.** By default, the scaffold template enables `frontend`, `graphql`, and `minio`, and disables `logto` ([Section 7](#7-configure-the-logto-route-optional)) and `mcp` ([Section 8](#8-configure-the-mcp-route-optional)). Legacy `nginx` Ingress resources remain on `dcr-experiments` only.
+**Each service route has its own `enabled` toggle.** By default, the scaffold template enables `frontend`, `graphql`, and `minio`, and disables `logto` ([Section 7](#7-configure-the-logto-route-optional)), `mcp` ([Section 8](#8-configure-the-mcp-route-optional)), and `api` ([Section 9](#9-configure-the-http-api-route-optional)). Legacy `nginx` Ingress resources remain on `dcr-experiments` only.
 
 **Status**: Production procedure. Run `just gcp-pulumi scaffold-gateway-stack` to create a new cluster stack file from the registry and template, or `just gcp-pulumi ensure-stack --folder gateway` when the stack file already exists.
 
@@ -19,12 +19,13 @@ The `gateway/` Pulumi project deploys the shared **Cilium Gateway** (`dictycr-ga
 - [6. Configure the MinIO Route](#6-configure-the-minio-route)
 - [7. Configure the Logto Route (Optional)](#7-configure-the-logto-route-optional)
 - [8. Configure the MCP Route (Optional)](#8-configure-the-mcp-route-optional)
-- [9. Preview and Deploy](#9-preview-and-deploy)
-- [10. Point DNS A Records to the Gateway IP](#10-point-dns-a-records-to-the-gateway-ip)
-- [11. Push the Stack File](#11-push-the-stack-file)
-- [12. Verify the Gateway](#12-verify-the-gateway)
-- [13. Troubleshooting](#13-troubleshooting)
-- [14. Related Documents](#14-related-documents)
+- [9. Configure the HTTP API Route (Optional)](#9-configure-the-http-api-route-optional)
+- [10. Preview and Deploy](#10-preview-and-deploy)
+- [11. Point DNS A Records to the Gateway IP](#11-point-dns-a-records-to-the-gateway-ip)
+- [12. Push the Stack File](#12-push-the-stack-file)
+- [13. Verify the Gateway](#13-verify-the-gateway)
+- [14. Troubleshooting](#14-troubleshooting)
+- [15. Related Documents](#15-related-documents)
 
 ---
 
@@ -70,16 +71,20 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.logto.enable
 just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.hosts.0 --value <mcp-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled --value true
 
-# 9. Deploy the Gateway and wait for its external LoadBalancer IP
+# 9. Optional. Enable and configure the HTTP API route (default: false)
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value true
+
+# 10. Deploy the Gateway and wait for its external LoadBalancer IP
 just gateway deploy
 
-# 10. Point DNS A records for enabled hostnames to this IP
+# 11. Point DNS A records for enabled hostnames to this IP
 just gateway show-ip
 
-# 11. Commit and push the stack file
+# 12. Commit and push the stack file
 git add "gateway/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "gateway: stack config" && git push
 
-# 12. Verify the Gateway, HTTPRoutes, and TLS Secrets after DNS resolves
+# 13. Verify the Gateway, HTTPRoutes, and TLS Secrets after DNS resolves
 just gateway verify
 ```
 
@@ -235,7 +240,25 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled 
 
 ---
 
-## 9. Preview and Deploy
+## 9. Configure the HTTP API Route (Optional)
+
+**Optional. The default is off. Skip this section while modware-stock is not deployed.**
+
+The key `properties.routes.api.enabled` defaults to `false`. To expose the modware HTTP APIs (such as `/v1/stocks` on `stock-api:9345`) on one dedicated hostname through the Gateway after you deploy `modware-stock`, set `hosts.0` (`hosts[0]`) first and then set `enabled` to `true`.
+→ [HTTP API route](reference/gateway/deployment.md#http-api-route)
+
+```bash
+# Keep the HTTP API route off (default)
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value false
+
+# Turn the HTTP API route on. Set the hostname first.
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value true
+```
+
+---
+
+## 10. Preview and Deploy
 
 Run `just gcp-pulumi preview --folder gateway` to review the plan first, then run `just gateway deploy`. The recipe runs `check` → `ensure-stack` → `preview` → `create-resource`, waits for Cilium to assign the external LoadBalancer IP address to `dictycr-gateway`, and prints that IP address.
 → [`just gateway deploy`](reference/gateway/deployment.md#just-gateway-deploy)
@@ -247,9 +270,9 @@ just gateway deploy
 
 ---
 
-## 10. Point DNS A Records to the Gateway IP
+## 11. Point DNS A Records to the Gateway IP
 
-Print the external IP address of `dictycr-gateway` and create DNS `A` records pointing each enabled route hostname (`<frontend-host>`, `<graphql-host>`, `<minio-host>`, `<logto-host>`, `<mcp-host>`) to that IP address. After DNS resolves, `cert-manager` completes the Let's Encrypt HTTP-01 challenge on port `80` and writes each route's TLS Secret.
+Print the external IP address of `dictycr-gateway` and create DNS `A` records pointing each enabled route hostname (`<frontend-host>`, `<graphql-host>`, `<minio-host>`, `<logto-host>`, `<mcp-host>`, `<api-host>`) to that IP address. After DNS resolves, `cert-manager` completes the Let's Encrypt HTTP-01 challenge on port `80` and writes each route's TLS Secret.
 → [`just gateway show-ip`](reference/gateway/deployment.md#just-gateway-show-ip) · [TLS certificate issuance](reference/gateway/deployment.md#tls-certificate-issuance)
 
 ```bash
@@ -258,7 +281,7 @@ just gateway show-ip
 
 ---
 
-## 11. Push the Stack File
+## 12. Push the Stack File
 
 Commit and push `gateway/Pulumi.${PULUMI_STACK}.yaml` so Git keeps the canonical routing and hostname configuration for the cluster.
 → [Create the stack](reference/gateway/deployment.md#create-the-stack)
@@ -269,7 +292,7 @@ git add "gateway/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "gateway: stack c
 
 ---
 
-## 12. Verify the Gateway
+## 13. Verify the Gateway
 
 After your DNS `A` records resolve to the Gateway IP address, run `just gateway verify` to confirm that `Issuer` `letsencrypt-issuer` is `Ready`, `Gateway` `dictycr-gateway` is `Programmed`, and every enabled route has an `Accepted` `HTTPRoute` and a `kubernetes.io/tls` Secret.
 → [Verification](reference/gateway/deployment.md#verification)
@@ -280,13 +303,13 @@ just gateway verify
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 → [Troubleshooting table](reference/gateway/deployment.md#troubleshooting)
 
 ---
 
-## 14. Related Documents
+## 15. Related Documents
 
 **Reference details for this guide:**
 - [Gateway deployment details](reference/gateway/deployment.md)
@@ -294,6 +317,7 @@ just gateway verify
 **Other documentation:**
 - Cluster setup and day-2 operations: [`kops-setup.md`](kops-setup.md)
 - Pulumi backend and namespaces: [`pulumi-setup.md`](pulumi-setup.md)
+- Backend services deployment: [`backend-service-deploy.md`](backend-service-deploy.md)
 - Frontend applications deployment: [`frontend-deploy.md`](frontend-deploy.md)
 - GraphQL server deployment: [`graphql-deploy.md`](graphql-deploy.md)
 - MCP server deployment: [`dcr-mcp-deploy.md`](dcr-mcp-deploy.md)

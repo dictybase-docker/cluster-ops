@@ -25,6 +25,7 @@ This document gives the details for the `gateway/` Pulumi project and the `just 
   - [MinIO Route](#minio-route)
   - [Logto Route](#logto-route)
   - [MCP Route](#mcp-route)
+  - [HTTP API Route](#http-api-route)
 - [TLS Certificate Issuance](#tls-certificate-issuance)
 - [Verification](#verification)
 - [Troubleshooting](#troubleshooting)
@@ -44,6 +45,7 @@ The `gateway/` Pulumi project creates the ACME `Issuer`, the Cilium `Gateway`, a
 | 5 | `gateway.networking.k8s.io/v1:HTTPRoute` | `minio-route` | **Optional (`routes.minio.enabled: true` by default).** Routes `/` to Service `minio` on port `9000`. |
 | 6 | `gateway.networking.k8s.io/v1:HTTPRoute` | `logto-route` | **Optional (`routes.logto.enabled: false` by default).** Routes `/` to Service `logto-api` on port `3001`. |
 | 7 | `gateway.networking.k8s.io/v1:HTTPRoute` | `mcp-route` | **Optional (`routes.mcp.enabled: false` by default).** Routes `/` (both `/mcp` and `/healthz`) to Service `dcr-mcp-api` on port `8080`. |
+| 8 | `gateway.networking.k8s.io/v1:HTTPRoute` | `api-route` | **Optional (`routes.api.enabled: false` by default).** Routes versioned resource prefixes on the dedicated HTTP API hostname (such as `/v1/stocks` to Service `stock-api` on port `9345`). |
 
 The project creates **no Namespace** and **no backend Service**. The `namespace-bootstrap` stack owns the namespace ([shared namespaces](../pulumi/namespaces.md)). The legacy `ingress/`, `ingress-controller/`, `redirect-ingress/`, `kcert/`, and `cert-issuer/` projects remain for the lab `dcr-experiments` cluster only.
 
@@ -60,7 +62,7 @@ Each component in the table below must be ready before you deploy the Gateway st
 | Cilium Gateway API | `spec.networking.cilium.gatewayAPI.enabled: true` in `config/kops/<cluster>/cluster.yaml` | `kubectl get gatewayclass cilium` | [`kops-setup.md`](../../kops-setup.md) |
 | Gateway API CRDs | Standard install bundle (`gateways`, `httproutes`, `gatewayclasses`, `referencegrants`) | `just gateway install-crds` | This guide |
 | `cert-manager` | Running with `--enable-gateway-api` on the controller container | `just gateway install-crds` | [`kops-setup.md`](../../kops-setup.md) |
-| Backend Services | Every Service referenced by an enabled route exists in the namespace | `just gateway check` | [`graphql-deploy.md`](../../graphql-deploy.md), [`dcr-mcp-deploy.md`](../../dcr-mcp-deploy.md), [`minio-deploy.md`](../../minio-deploy.md), [`logto-deploy.md`](../../logto-deploy.md) |
+| Backend Services | Every Service referenced by an enabled route exists in the namespace | `just gateway check` | [`backend-service-deploy.md`](../../backend-service-deploy.md), [`graphql-deploy.md`](../../graphql-deploy.md), [`dcr-mcp-deploy.md`](../../dcr-mcp-deploy.md), [`minio-deploy.md`](../../minio-deploy.md), [`logto-deploy.md`](../../logto-deploy.md) |
 
 On an existing kOps cluster where `spec.networking.cilium.gatewayAPI.enabled: true` was added to `config/kops/<cluster>/cluster.yaml`, follow the sequence in [Command Sequences and Dependencies](#command-sequences-and-dependencies) to make sure that the CRDs exist before Cilium reconciles.
 
@@ -200,11 +202,11 @@ Behavior:
 1. Requires `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, and `PULUMI_SECRET_PROVIDER` to be non-empty, and the credentials file to exist.
 2. Requires `gateway/Pulumi.<stack>.yaml` to exist, and `yq` on `PATH`.
 3. Checks that `name` and `gatewayClassName` are non-empty, `namespace` equals `--namespace`, and `issuer.email` and `issuer.secretName` are non-empty and contain no `<` or `>` placeholders.
-4. Checks each route (`frontend`, `graphql`, `minio`, `logto`, `mcp`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
+4. Checks each route (`frontend`, `api`, `graphql`, `minio`, `logto`, `mcp`). For every route where `enabled` is `true`, requires every entry in `hosts` and the `tlsSecret` to be non-empty and free of `<` or `>` placeholders. Requires at least one route to have `enabled: true`.
 5. Reads `pulumi -C namespace-bootstrap stack output appNamespace` and requires it to equal `--namespace`.
 6. Verifies that `GatewayClass` `cilium` exists and reports condition `Accepted=True`.
 7. Verifies that Deployment `cert-manager` exists in `kube-system` or `cert-manager` and passes `--enable-gateway-api` in its container arguments.
-8. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `graphql-api`, `minio`, `logto-api`, or `dcr-mcp-api`) exists in `--namespace`.
+8. For each enabled route, verifies that the target Kubernetes `Service` (`frontpage-api`, `stockcenter-api`, `publication-api`, `genomepage-api`, `stock-api`, `graphql-api`, `minio`, `logto-api`, or `dcr-mcp-api`) exists in `--namespace`.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
@@ -342,6 +344,15 @@ config:
         serviceName: dcr-mcp-api
         servicePort: 8080
         path: /
+      api:
+        enabled: false
+        hosts:
+          - <api-host>
+        tlsSecret: api-tls
+        services:
+          - name: stock-api
+            path: /v1/stocks
+            port: 9345
 ```
 
 **Keep all hostnames, service names, and TLS Secret names in plain text.** None of these values is a credential. `just gateway check` and `just gateway verify` inspect `gateway/Pulumi.<stack>.yaml` with `yq`.
@@ -435,13 +446,30 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.hosts.0 
 just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled --value true
 ```
 
+### HTTP API Route
+
+`properties.routes.api.enabled` defaults to **`false`** in the scaffold template. When enabled, `api-route` exposes the `grpc-gateway` HTTP endpoints of the `modware-*` backend Services on one dedicated hostname, with one `PathPrefix` rule per Service ([HTTP API routing details](../backend/http-api-routing.md)):
+
+| Path Prefix | Backend Service | Port | Current Endpoint |
+|-------------|-----------------|------|------------------|
+| `/v1/stocks` | `stock-api` | `9345` | `GET /v1/stocks/counts` |
+
+Additional `modware-*` HTTP APIs (such as `/v1/orders` on `order-api:9250`, `/v1/annotations` on `annotation-api:9250`, and `/v1/contents` on `content-api:9250`) attach as entries under `properties.routes.api.services` on the same hostname and `api-tls` certificate.
+
+Turn the HTTP API route on after `modware-stock` is deployed ([Backend service deploy](../../backend-service-deploy.md)):
+
+```bash
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value true
+```
+
 ---
 
 ## TLS Certificate Issuance
 
 1. Cilium provisions a GCP LoadBalancer for `Gateway` `dictycr-gateway` and writes the external IP address to `status.addresses[0].value`.
-2. Point the DNS A records for each enabled route hostname (`<frontend-host>`, `<graphql-host>`, `<minio-host>`, `<logto-host>`) at that external IP address.
-3. Because `dictycr-gateway` carries the annotation `cert-manager.io/issuer: letsencrypt-issuer`, `cert-manager` watches the HTTPS listeners and creates a `Certificate` resource for each listener's `tls.certificateRefs` Secret (`frontend-tls`, `graphql-tls`, `minio-tls`, `logto-tls`).
+2. Point the DNS A records for each enabled route hostname (`<frontend-host>`, `<graphql-host>`, `<minio-host>`, `<logto-host>`, `<mcp-host>`, `<api-host>`) at that external IP address.
+3. Because `dictycr-gateway` carries the annotation `cert-manager.io/issuer: letsencrypt-issuer`, `cert-manager` watches the HTTPS listeners and creates a `Certificate` resource for each listener's `tls.certificateRefs` Secret (`frontend-tls`, `graphql-tls`, `minio-tls`, `logto-tls`, `mcp-tls`, `api-tls`).
 4. `cert-manager` creates a temporary HTTP-01 solver `HTTPRoute` attached to `dictycr-gateway` on port `80`, completes the ACME challenge, and writes the signed certificate and key to the target `kubernetes.io/tls` Secret.
 
 ---

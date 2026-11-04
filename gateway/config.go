@@ -31,8 +31,12 @@ const (
 	defaultLogtoPort         = 3001
 	defaultMcpService        = "dcr-mcp-api"
 	defaultMcpPort           = 8080
+	defaultStockService      = "stock-api"
+	defaultStockPort         = 9345
+	defaultStockPath         = "/v1/stocks"
 	gatewayNetworkingVersion = "gateway.networking.k8s.io/v1"
 	routeKeyFrontend         = "frontend"
+	routeKeyAPI              = "api"
 	routeKeyGraphql          = "graphql"
 	routeKeyMinio            = "minio"
 	routeKeyLogto            = "logto"
@@ -59,6 +63,7 @@ type IssuerConfig struct {
 
 type RoutesConfig struct {
 	Frontend FrontendRouteConfig `json:"frontend"`
+	API      FrontendRouteConfig `json:"api"`
 	Graphql  ServiceRouteConfig  `json:"graphql"`
 	Minio    ServiceRouteConfig  `json:"minio"`
 	Logto    ServiceRouteConfig  `json:"logto"`
@@ -128,6 +133,27 @@ func (c *GatewayConfig) ApplyDefaults() {
 		c.Routes.Frontend.Services,
 		A.Map(applyFrontendBackendDefaults),
 	)
+	c.Routes.API.Services = F.Pipe2(
+		c.Routes.API.Services,
+		defaultAPIServiceBackends,
+		A.Map(applyAPIBackendDefaults),
+	)
+}
+
+func defaultAPIServiceBackends(
+	services []FrontendServiceBackend,
+) []FrontendServiceBackend {
+	return F.Pipe2(
+		services,
+		O.FromPredicate(A.IsNonEmpty[FrontendServiceBackend]),
+		O.GetOrElse(F.Constant([]FrontendServiceBackend{
+			{
+				Name: defaultStockService,
+				Port: defaultStockPort,
+				Path: defaultStockPath,
+			},
+		})),
+	)
 }
 
 func (r *ServiceRouteConfig) applyServiceDefaults(svc string, port int) {
@@ -142,38 +168,48 @@ func applyFrontendBackendDefaults(b FrontendServiceBackend) FrontendServiceBacke
 	return b
 }
 
-func (c *GatewayConfig) Validate() error {
-	return F.Pipe1(
-		validateGatewayConfig(c),
-		E.ToError[*GatewayConfig],
-	)
+func applyAPIBackendDefaults(b FrontendServiceBackend) FrontendServiceBackend {
+	b.Port = F.Pipe1(b.Port, defaultInt(defaultStockPort))
+	b.Path = F.Pipe1(b.Path, defaultStr(defaultStockPath))
+	return b
 }
 
-func validateGatewayConfig(c *GatewayConfig) E.Either[error, *GatewayConfig] {
-	return F.Pipe5(
+func extractFrontendRoute(cfg *GatewayConfig) FrontendRouteConfig {
+	return cfg.Routes.Frontend
+}
+
+func extractAPIRoute(cfg *GatewayConfig) FrontendRouteConfig {
+	return cfg.Routes.API
+}
+
+func extractGraphqlRoute(cfg *GatewayConfig) ServiceRouteConfig {
+	return cfg.Routes.Graphql
+}
+
+func extractMinioRoute(cfg *GatewayConfig) ServiceRouteConfig {
+	return cfg.Routes.Minio
+}
+
+func extractLogtoRoute(cfg *GatewayConfig) ServiceRouteConfig {
+	return cfg.Routes.Logto
+}
+
+func extractMcpRoute(cfg *GatewayConfig) ServiceRouteConfig {
+	return cfg.Routes.Mcp
+}
+
+func (c *GatewayConfig) Validate() error {
+	return F.Pipe9(
 		E.Of[error](c),
 		E.Chain(validateBaseFields),
 		E.Chain(validateAtLeastOneRoute),
-		E.Chain(validateFrontendRoute),
-		E.Chain(validateNamedServiceRoute(routeKeyGraphql, func(cfg *GatewayConfig) ServiceRouteConfig {
-			return cfg.Routes.Graphql
-		})),
-		E.Chain(validateRemainingServiceRoutes),
-	)
-}
-
-func validateRemainingServiceRoutes(c *GatewayConfig) E.Either[error, *GatewayConfig] {
-	return F.Pipe3(
-		E.Of[error](c),
-		E.Chain(validateNamedServiceRoute(routeKeyMinio, func(cfg *GatewayConfig) ServiceRouteConfig {
-			return cfg.Routes.Minio
-		})),
-		E.Chain(validateNamedServiceRoute(routeKeyLogto, func(cfg *GatewayConfig) ServiceRouteConfig {
-			return cfg.Routes.Logto
-		})),
-		E.Chain(validateNamedServiceRoute(routeKeyMcp, func(cfg *GatewayConfig) ServiceRouteConfig {
-			return cfg.Routes.Mcp
-		})),
+		E.Chain(validateMultiServiceRoute(routeKeyFrontend, extractFrontendRoute)),
+		E.Chain(validateMultiServiceRoute(routeKeyAPI, extractAPIRoute)),
+		E.Chain(validateNamedServiceRoute(routeKeyGraphql, extractGraphqlRoute)),
+		E.Chain(validateNamedServiceRoute(routeKeyMinio, extractMinioRoute)),
+		E.Chain(validateNamedServiceRoute(routeKeyLogto, extractLogtoRoute)),
+		E.Chain(validateNamedServiceRoute(routeKeyMcp, extractMcpRoute)),
+		E.ToError[*GatewayConfig],
 	)
 }
 
@@ -242,6 +278,7 @@ func validateBaseFields(c *GatewayConfig) E.Either[error, *GatewayConfig] {
 
 func anyRouteEnabled(c *GatewayConfig) bool {
 	return c.Routes.Frontend.Enabled ||
+		c.Routes.API.Enabled ||
 		c.Routes.Graphql.Enabled ||
 		c.Routes.Minio.Enabled ||
 		c.Routes.Logto.Enabled ||
@@ -304,19 +341,24 @@ func isInvalidFrontendBackend(b FrontendServiceBackend) bool {
 	return S.IsEmpty(b.Name) || S.IsEmpty(b.Path) || b.Port <= 0
 }
 
-func validateFrontendRoute(c *GatewayConfig) E.Either[error, *GatewayConfig] {
-	fe := c.Routes.Frontend
-	if !fe.Enabled {
+func validateMultiServiceRoute(
+	routeKey string,
+	extract func(*GatewayConfig) FrontendRouteConfig,
+) func(*GatewayConfig) E.Either[error, *GatewayConfig] {
+	return func(c *GatewayConfig) E.Either[error, *GatewayConfig] {
+		rt := extract(c)
+		if !rt.Enabled {
+			return E.Right[error](c)
+		}
+		var extra []string
+		if len(rt.Services) == 0 || F.Pipe1(rt.Services, A.Any(isInvalidFrontendBackend)) {
+			extra = append(extra, "services")
+		}
+		if err := validateRouteHostsAndSecret(routeKey, rt.Hosts, rt.TLSSecret, extra); err != nil {
+			return E.Left[*GatewayConfig](err)
+		}
 		return E.Right[error](c)
 	}
-	var extra []string
-	if len(fe.Services) == 0 || F.Pipe1(fe.Services, A.Any(isInvalidFrontendBackend)) {
-		extra = append(extra, "services")
-	}
-	if err := validateRouteHostsAndSecret(routeKeyFrontend, fe.Hosts, fe.TLSSecret, extra); err != nil {
-		return E.Left[*GatewayConfig](err)
-	}
-	return E.Right[error](c)
 }
 
 func validateNamedServiceRoute(

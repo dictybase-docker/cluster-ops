@@ -236,6 +236,9 @@ out=$(just gcp-pulumi scaffold-gateway-stack --stack dcr-kube1 2>&1) || {
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.minio.enabled')" = "true" ] || fail "routes.minio.enabled wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.logto.enabled')" = "false" ] || fail "routes.logto.enabled wrong"
 [ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.mcp.enabled')" = "false" ] || fail "routes.mcp.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.api.enabled')" = "false" ] || fail "routes.api.enabled wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.api.services[0].name')" = "stock-api" ] || fail "routes.api.services[0].name wrong"
+[ "$(yq_get "${gw_cfg}" '.config."gateway:properties".routes.api.services[0].path')" = "/v1/stocks" ] || fail "routes.api.services[0].path wrong"
 if [ -n "${gw_bak}" ]; then
     mv "${gw_bak}" "${gw_cfg}"
 else

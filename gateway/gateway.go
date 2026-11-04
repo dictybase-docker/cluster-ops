@@ -111,12 +111,20 @@ func buildHTTPSListener(routeKey string, idx int, host, tlsSecret string) pulumi
 func (g *GatewayStack) enabledRouteListeners() []routeListenerSpec {
 	cfg := g.Config
 	var specs []routeListenerSpec
-	if cfg.Routes.Frontend.Enabled {
-		specs = append(specs, routeListenerSpec{
-			routeKey:  routeKeyFrontend,
-			hosts:     cfg.Routes.Frontend.Hosts,
-			tlsSecret: cfg.Routes.Frontend.TLSSecret,
-		})
+	for _, named := range []struct {
+		key string
+		rt  FrontendRouteConfig
+	}{
+		{key: routeKeyFrontend, rt: cfg.Routes.Frontend},
+		{key: routeKeyAPI, rt: cfg.Routes.API},
+	} {
+		if named.rt.Enabled {
+			specs = append(specs, routeListenerSpec{
+				routeKey:  named.key,
+				hosts:     named.rt.Hosts,
+				tlsSecret: named.rt.TLSSecret,
+			})
+		}
 	}
 	for _, named := range []struct {
 		key string
