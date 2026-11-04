@@ -30,9 +30,10 @@ not edit the lab `experiments`/`local` stacks of `modware-order`,
   - [6.4 First deploy](#64-first-deploy)
   - [6.5 Publish CI credentials and variables](#65-publish-ci-credentials-and-variables)
   - [6.6 Render the tag workflow](#66-render-the-tag-workflow)
-- [7. Verify](#7-verify)
-- [8. Troubleshooting](#8-troubleshooting)
-- [9. Related Documents](#9-related-documents)
+- [7. Expose the HTTP APIs (Optional)](#7-expose-the-http-apis-optional)
+- [8. Verify](#8-verify)
+- [9. Troubleshooting](#9-troubleshooting)
+- [10. Related Documents](#10-related-documents)
 
 ## Quick Reference
 
@@ -45,6 +46,11 @@ just ci deploy-backend-services                 # 3. all services in config/serv
 git add modware-*/Pulumi.dcr-kube1.yaml && git commit && git push   # 4. stack files BEFORE any tag
 just ci pr-deploy-workflows                     # 5. open PRs in dictyBase/workflows + service repos
 # then: merge the PRs and cut tags
+
+# 7. Optional. Expose modware HTTP APIs (stock-api /v1/stocks) on a dedicated hostname:
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value true
+just gateway deploy
 ```
 
 Single-service rollout (recommended on a first cluster setup — run in
@@ -199,22 +205,38 @@ dead `staging-build.yaml`.
 just ci render-tag-deploy --app order --project modware-order --out tag-build.yaml
 ```
 
-## 7. Verify
+## 7. Expose the HTTP APIs (Optional)
+
+**Optional. The default is off. Run this step after `modware-stock` is deployed.**
+
+Expose the `grpc-gateway` HTTP endpoints (such as `GET /v1/stocks/counts` on `stock-api:9345`) on a dedicated hostname through the Cilium Gateway (`gateway/`) on production clusters, or through the `nginx` Ingress stack (`ingress/`) on `dcr-experiments`.
+→ [HTTP API routing details](reference/backend/http-api-routing.md) · [Gateway HTTP API route](reference/gateway/deployment.md#http-api-route)
+
+```bash
+# Production clusters (dcr-kube1 and new clusters: Cilium Gateway)
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
+just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled --value true
+just gateway deploy
+```
+
+## 8. Verify
 
 After the first tag deploy, the running image must match the tag. The service
 must answer inside the cluster.
-→ [Verification details](reference/backend/bootstrap-service.md#verification)
+→ [Verification details](reference/backend/bootstrap-service.md#verification) · [HTTP API verification](reference/backend/http-api-routing.md#verification)
 
 ```bash
 kubectl -n prod get deploy order-api-server -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 → [Troubleshooting details](reference/backend/troubleshooting.md)
 
-## 9. Related Documents
+## 10. Related Documents
 
+- [Gateway deploy guide](gateway-deploy.md)
+- [HTTP API routing details](reference/backend/http-api-routing.md)
 - [GraphQL server deploy guide](graphql-deploy.md)
 - [Aggregate deploy details](reference/backend/deploy-services.md)
 - [Upstream deploy refactor plan](plans/upstream-deploy-refactor.md)
