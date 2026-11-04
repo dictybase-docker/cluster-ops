@@ -2,6 +2,18 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnA4ND+oowTG1ROyWFu8fS0Q4dT6Wkhln4PqeU3lDibYSSQB2302FpGp6T4d06psnTufd/gas5gv/XiA1USgrxvQgxLbeWuXsaTwp/yk15r19KJoAVxv6GPtAvedAwL9rslSLaoMvs5vB+Ec=
 config:
   ingress:properties:
+    api:
+      enabled: false
+      hosts:
+        - <api-host>
+      label:
+        name: kcert.dev/ingress
+        value: managed
+      secret: api-tls
+      services:
+        - name: stock-api
+          path: /v1/stocks
+          port: 9345
     frontend:
       hosts:
         - dictybase.dev
