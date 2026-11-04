@@ -3,9 +3,9 @@ encryptedkey: CiQALAIOnA4ND+oowTG1ROyWFu8fS0Q4dT6Wkhln4PqeU3lDibYSSQB2302FpGp6T4
 config:
   ingress:properties:
     api:
-      enabled: false
+      enabled: true
       hosts:
-        - <api-host>
+        - api.dictybase.dev
       label:
         name: kcert.dev/ingress
         value: managed
