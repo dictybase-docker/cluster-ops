@@ -65,7 +65,7 @@ On `dcr-kube1` and new clusters, `gateway/Pulumi.<stack>.yaml` (rendered from `c
             port: 9345
 ```
 
-After `modware-stock` is deployed in the namespace, enable the route in the target cluster's `cluster-env` sub-shell ([Gateway HTTP API route](../gateway/deployment.md#http-api-route)):
+After `modware-stock` is deployed in the namespace, point the DNS `A` record for `<api-host>` to the Gateway IP (`just gateway show-ip`) if `dictycr-gateway` already exists, then enable the route in the target cluster's `cluster-env` sub-shell ([Gateway HTTP API route](../gateway/deployment.md#http-api-route)):
 
 ```bash
 just gcp-pulumi set-config --folder gateway --key properties.routes.api.hosts.0 --value <api-host>
@@ -73,7 +73,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.api.enabled 
 just gateway deploy
 ```
 
-Point the DNS `A` record for `<api-host>` to the external IP address printed by `just gateway show-ip`, then run `just gateway verify` to confirm that `HTTPRoute` `api-route` is `Accepted` and `cert-manager` has issued TLS Secret `api-tls`.
+If `dictycr-gateway` was just created for the first time, point the DNS `A` record for `<api-host>` to the new external IP address printed by `just gateway show-ip`. Then run `just gateway verify` to confirm that `HTTPRoute` `api-route` is `Accepted` and `cert-manager` has issued TLS Secret `api-tls`.
 
 ---
 
@@ -96,11 +96,15 @@ On `dcr-experiments` (`experiments` stack), `ingress/Pulumi.experiments.yaml` de
           port: 9345
 ```
 
-When `properties.api.enabled` is `true`, `ingress/` creates `Ingress` `api-ingress` (`ingressClassName: nginx`) in namespace `dev` with label `kcert.dev/ingress: managed` so `kcert` issues the production Let's Encrypt certificate into Secret `api-tls`.
+When `properties.api.enabled` is `true`, `ingress/` creates `Ingress` `api-ingress` (`ingressClassName: nginx`) in namespace `dev` with label `kcert.dev/ingress: managed` so `kcert` issues the production Let's Encrypt certificate into Secret `api-tls`. Because the `nginx` Ingress controller on `dcr-experiments` already has an external LoadBalancer IP address, point the DNS `A` record for `<api-host>` to that IP address **before** you apply the `ingress` stack so `kcert` passes the HTTP-01 challenge on the first try.
 
 **Run in the `dcr-experiments` `cluster-env` sub-shell (`just cluster-env --env dev --cluster dcr-experiments`):**
 
 ```bash
+# 1. Get the existing nginx Ingress external IP and point <api-host> DNS A record to it first
+kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+
+# 2. Configure and apply api-ingress
 just gcp-pulumi ensure-stack --folder ingress
 just gcp-pulumi set-config --folder ingress --key properties.api.hosts.0 --value <api-host>
 just gcp-pulumi set-config --folder ingress --key properties.api.enabled --value true
