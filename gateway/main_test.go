@@ -103,6 +103,8 @@ func TestConfigValidateDefaultsAndSuccess(t *testing.T) {
 	require.Equal(t, "dcr-mcp-api", cfg.Routes.Mcp.ServiceName)
 	require.Equal(t, 8080, cfg.Routes.Mcp.ServicePort)
 	require.Equal(t, "/", cfg.Routes.Mcp.Path)
+	require.Empty(t, cfg.Routes.Frontend.CORSAllowOrigin)
+	require.Equal(t, "*", cfg.Routes.API.CORSAllowOrigin)
 	require.Len(t, cfg.Routes.API.Services, 1)
 	require.Equal(t, "stock-api", cfg.Routes.API.Services[0].Name)
 	require.Equal(t, "/v1/stocks", cfg.Routes.API.Services[0].Path)
@@ -213,8 +215,10 @@ func TestInstallCreatesIssuerGatewayAndEnabledHTTPRoutes(t *testing.T) {
 	feRoute, hasFE := mocks.resources["frontend-route"]
 	require.True(t, hasFE)
 	require.Equal(t, "kubernetes:gateway.networking.k8s.io/v1:HTTPRoute", feRoute.TypeToken)
-	require.Contains(t, fmt.Sprint(feRoute.Inputs), "frontpage-api")
-	require.Contains(t, fmt.Sprint(feRoute.Inputs), "/stockcenter")
+	feInputs := fmt.Sprint(feRoute.Inputs)
+	require.Contains(t, feInputs, "frontpage-api")
+	require.Contains(t, feInputs, "/stockcenter")
+	require.NotContains(t, feInputs, "ResponseHeaderModifier")
 
 	gqlRoute, hasGQL := mocks.resources["graphql-route"]
 	require.True(t, hasGQL)
@@ -308,4 +312,8 @@ func TestInstallWithAPIEnabled(t *testing.T) {
 	require.Contains(t, apiInputs, "api.dictycr.org")
 	require.Contains(t, apiInputs, "stock-api")
 	require.Contains(t, apiInputs, "/v1/stocks")
+	require.Contains(t, apiInputs, "ResponseHeaderModifier")
+	require.Contains(t, apiInputs, "Access-Control-Allow-Origin")
+	require.Contains(t, apiInputs, "Access-Control-Allow-Methods")
+	require.Contains(t, apiInputs, "Access-Control-Allow-Headers")
 }

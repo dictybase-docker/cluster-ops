@@ -345,6 +345,7 @@ config:
         servicePort: 8080
         path: /
       api:
+        corsAllowOrigin: "*"
         enabled: false
         hosts:
           - <api-host>
@@ -448,7 +449,7 @@ just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled 
 
 ### HTTP API Route
 
-`properties.routes.api.enabled` defaults to **`false`** in the scaffold template. When enabled, `api-route` exposes the `grpc-gateway` HTTP endpoints of the `modware-*` backend Services on one dedicated hostname, with one `PathPrefix` rule per Service ([HTTP API routing details](../backend/http-api-routing.md)):
+`properties.routes.api.enabled` defaults to **`false`** and `properties.routes.api.corsAllowOrigin` defaults to **`"*"`** in the scaffold template. When enabled, `api-route` exposes the `grpc-gateway` HTTP endpoints of the `modware-*` backend Services on one dedicated hostname, with one `PathPrefix` rule per Service and a `ResponseHeaderModifier` CORS filter ([HTTP API routing details](../backend/http-api-routing.md)):
 
 | Path Prefix | Backend Service | Port | Current Endpoint |
 |-------------|-----------------|------|------------------|

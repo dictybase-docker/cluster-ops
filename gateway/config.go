@@ -20,30 +20,34 @@ const (
 	defaultIssuerName       = "letsencrypt-issuer"
 	defaultIssuerServer     = "https://acme-v02.api.letsencrypt.org/directory"
 	//nolint:gosec // G101: Kubernetes Secret name pointer, not a credential.
-	defaultIssuerSecretName  = "letsencrypt-account-key"
-	defaultRootPath          = "/"
-	defaultFrontendPort      = 3000
-	defaultGraphqlService    = "graphql-api"
-	defaultGraphqlPort       = 8080
-	defaultMinioService      = "minio"
-	defaultMinioPort         = 9000
-	defaultLogtoService      = "logto-api"
-	defaultLogtoPort         = 3001
-	defaultMcpService        = "dcr-mcp-api"
-	defaultMcpPort           = 8080
-	defaultStockService      = "stock-api"
-	defaultStockPort         = 9345
-	defaultStockPath         = "/v1/stocks"
-	gatewayNetworkingVersion = "gateway.networking.k8s.io/v1"
-	routeKeyFrontend         = "frontend"
-	routeKeyAPI              = "api"
-	routeKeyGraphql          = "graphql"
-	routeKeyMinio            = "minio"
-	routeKeyLogto            = "logto"
-	routeKeyMcp              = "mcp"
-	fieldNamespace           = "namespace"
-	fieldName                = "name"
-	fieldPort                = "port"
+	defaultIssuerSecretName   = "letsencrypt-account-key"
+	defaultRootPath           = "/"
+	defaultFrontendPort       = 3000
+	defaultGraphqlService     = "graphql-api"
+	defaultGraphqlPort        = 8080
+	defaultMinioService       = "minio"
+	defaultMinioPort          = 9000
+	defaultLogtoService       = "logto-api"
+	defaultLogtoPort          = 3001
+	defaultMcpService         = "dcr-mcp-api"
+	defaultMcpPort            = 8080
+	defaultStockService       = "stock-api"
+	defaultStockPort          = 9345
+	defaultStockPath          = "/v1/stocks"
+	defaultAPICORSAllowOrigin = "*"
+	defaultCORSAllowMethods   = "GET, POST, PUT, DELETE, OPTIONS"
+	defaultCORSAllowHeaders   = "Content-Type, Authorization"
+	gatewayNetworkingVersion  = "gateway.networking.k8s.io/v1"
+	routeKeyFrontend          = "frontend"
+	routeKeyAPI               = "api"
+	routeKeyGraphql           = "graphql"
+	routeKeyMinio             = "minio"
+	routeKeyLogto             = "logto"
+	routeKeyMcp               = "mcp"
+	fieldNamespace            = "namespace"
+	fieldName                 = "name"
+	fieldPort                 = "port"
+	fieldValue                = "value"
 )
 
 type GatewayConfig struct {
@@ -71,10 +75,11 @@ type RoutesConfig struct {
 }
 
 type FrontendRouteConfig struct {
-	Enabled   bool                     `json:"enabled"`
-	Hosts     []string                 `json:"hosts"`
-	TLSSecret string                   `json:"tlsSecret"`
-	Services  []FrontendServiceBackend `json:"services"`
+	Enabled         bool                     `json:"enabled"`
+	Hosts           []string                 `json:"hosts"`
+	TLSSecret       string                   `json:"tlsSecret"`
+	CORSAllowOrigin string                   `json:"corsAllowOrigin"`
+	Services        []FrontendServiceBackend `json:"services"`
 }
 
 type FrontendServiceBackend struct {
@@ -132,6 +137,10 @@ func (c *GatewayConfig) ApplyDefaults() {
 	c.Routes.Frontend.Services = F.Pipe1(
 		c.Routes.Frontend.Services,
 		A.Map(applyFrontendBackendDefaults),
+	)
+	c.Routes.API.CORSAllowOrigin = F.Pipe1(
+		c.Routes.API.CORSAllowOrigin,
+		defaultStr(defaultAPICORSAllowOrigin),
 	)
 	c.Routes.API.Services = F.Pipe2(
 		c.Routes.API.Services,

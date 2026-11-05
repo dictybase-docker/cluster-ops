@@ -5,10 +5,20 @@ import (
 
 	A "github.com/IBM/fp-go/v2/array"
 	F "github.com/IBM/fp-go/v2/function"
+	P "github.com/IBM/fp-go/v2/predicate"
+	S "github.com/IBM/fp-go/v2/string"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+var selectMultiServiceRuleBuilder = F.Pipe1(
+	S.IsNonEmpty,
+	P.Fold(
+		F.Constant1[string](buildFrontendRule),
+		F.Curry2(buildPathPrefixRuleWithCORS),
+	),
 )
 
 func (g *GatewayStack) createHTTPRoutes(
@@ -54,7 +64,7 @@ func (g *GatewayStack) createMultiServiceHTTPRoute(
 	routeName := fmt.Sprintf("%s-route", routeKey)
 	rules := F.Pipe1(
 		rt.Services,
-		A.Map(buildFrontendRule),
+		A.Map(F.Pipe1(rt.CORSAllowOrigin, selectMultiServiceRuleBuilder)),
 	)
 	return g.registerHTTPRoute(ctx, gw, routeName, rt.Hosts, toPulumiArray(rules))
 }
@@ -118,13 +128,46 @@ func buildFrontendRule(svc FrontendServiceBackend) pulumi.Input {
 	return buildPathPrefixRule(svc.Path, svc.Name, svc.Port)
 }
 
+func buildPathPrefixRuleWithCORS(
+	corsOrigin string,
+	svc FrontendServiceBackend,
+) pulumi.Input {
+	rule := buildPathPrefixRule(svc.Path, svc.Name, svc.Port)
+	rule["filters"] = buildCORSResponseHeaderFilters(corsOrigin)
+	return rule
+}
+
+func buildCORSResponseHeaderFilters(corsOrigin string) pulumi.Array {
+	return pulumi.Array{
+		pulumi.Map{
+			"type": pulumi.String("ResponseHeaderModifier"),
+			"responseHeaderModifier": pulumi.Map{
+				"set": pulumi.Array{
+					pulumi.Map{
+						fieldName:  pulumi.String("Access-Control-Allow-Origin"),
+						fieldValue: pulumi.String(corsOrigin),
+					},
+					pulumi.Map{
+						fieldName:  pulumi.String("Access-Control-Allow-Methods"),
+						fieldValue: pulumi.String(defaultCORSAllowMethods),
+					},
+					pulumi.Map{
+						fieldName:  pulumi.String("Access-Control-Allow-Headers"),
+						fieldValue: pulumi.String(defaultCORSAllowHeaders),
+					},
+				},
+			},
+		},
+	}
+}
+
 func buildPathPrefixRule(path, serviceName string, port int) pulumi.Map {
 	return pulumi.Map{
 		"matches": pulumi.Array{
 			pulumi.Map{
 				"path": pulumi.Map{
-					"type":  pulumi.String("PathPrefix"),
-					"value": pulumi.String(path),
+					"type":     pulumi.String("PathPrefix"),
+					fieldValue: pulumi.String(path),
 				},
 			},
 		},
