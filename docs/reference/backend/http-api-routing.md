@@ -51,10 +51,11 @@ The `modware-*` Pulumi projects (`internal/backend`) create only the `Deployment
 
 ## Production Clusters: Cilium Gateway
 
-On `dcr-kube1` and new clusters, `gateway/Pulumi.<stack>.yaml` (rendered from `config/templates/gateway-stack.yaml.tmpl`) includes the `routes.api` block with `enabled: false` and `stock-api:9345` pre-populated under `services`:
+On `dcr-kube1` and new clusters, `gateway/Pulumi.<stack>.yaml` (rendered from `config/templates/gateway-stack.yaml.tmpl`) includes the `routes.api` block with `enabled: false`, `corsAllowOrigin: "*"`, and `stock-api:9345` pre-populated under `services`:
 
 ```yaml
       api:
+        corsAllowOrigin: "*"
         enabled: false
         hosts:
           - <api-host>
@@ -64,6 +65,8 @@ On `dcr-kube1` and new clusters, `gateway/Pulumi.<stack>.yaml` (rendered from `c
             path: /v1/stocks
             port: 9345
 ```
+
+When `routes.api.corsAllowOrigin` is non-empty (default `"*"`), `api-route` attaches a `ResponseHeaderModifier` filter to each rule that sets `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` (`GET, POST, PUT, DELETE, OPTIONS`), and `Access-Control-Allow-Headers` (`Content-Type, Authorization`).
 
 After `modware-stock` is deployed in the namespace, point the DNS `A` record for `<api-host>` to the Gateway IP (`just gateway show-ip`) if `dictycr-gateway` already exists, then enable the route in the target cluster's `cluster-env` sub-shell ([Gateway HTTP API route](../gateway/deployment.md#http-api-route)):
 
@@ -79,10 +82,11 @@ If `dictycr-gateway` was just created for the first time, point the DNS `A` reco
 
 ## Legacy dcr-experiments: nginx Ingress
 
-On `dcr-experiments` (`experiments` stack), `ingress/Pulumi.experiments.yaml` defines the `api` block alongside `frontend` with `enabled: false` by default:
+On `dcr-experiments` (`experiments` stack), `ingress/Pulumi.experiments.yaml` defines the `api` block alongside `frontend` with `enabled: false` and `corsAllowOrigin: "*"` by default:
 
 ```yaml
     api:
+      corsAllowOrigin: "*"
       enabled: false
       hosts:
         - <api-host>
@@ -96,7 +100,7 @@ On `dcr-experiments` (`experiments` stack), `ingress/Pulumi.experiments.yaml` de
           port: 9345
 ```
 
-When `properties.api.enabled` is `true`, `ingress/` creates `Ingress` `api-ingress` (`ingressClassName: nginx`) in namespace `dev` with label `kcert.dev/ingress: managed` so `kcert` issues the production Let's Encrypt certificate into Secret `api-tls`. Because the `nginx` Ingress controller on `dcr-experiments` already has an external LoadBalancer IP address, point the DNS `A` record for `<api-host>` to that IP address **before** you apply the `ingress` stack so `kcert` passes the HTTP-01 challenge on the first try.
+When `properties.api.enabled` is `true`, `ingress/` creates `Ingress` `api-ingress` (`ingressClassName: nginx`) in namespace `dev` with label `kcert.dev/ingress: managed` so `kcert` issues the production Let's Encrypt certificate into Secret `api-tls`. When `properties.api.corsAllowOrigin` is non-empty (default `"*"`), `api-ingress` sets `nginx.ingress.kubernetes.io/enable-cors: "true"`, `nginx.ingress.kubernetes.io/cors-allow-origin`, and `nginx.ingress.kubernetes.io/cors-allow-credentials: "false"` so browser requests from `localhost` and deployed frontends succeed. Because the `nginx` Ingress controller on `dcr-experiments` already has an external LoadBalancer IP address, point the DNS `A` record for `<api-host>` to that IP address **before** you apply the `ingress` stack so `kcert` passes the HTTP-01 challenge on the first try.
 
 **Run in the `dcr-experiments` `cluster-env` sub-shell (`just cluster-env --env dev --cluster dcr-experiments`):**
 
@@ -141,13 +145,13 @@ just gcp-pulumi create-resource --folder ingress
 
 ## Verification
 
-After DNS resolves and the TLS certificate is ready, query the stock counts HTTP endpoint:
+After DNS resolves and the TLS certificate is ready, query the stock counts HTTP endpoint and verify the CORS header:
 
 ```bash
-curl -fsSL "https://<api-host>/v1/stocks/counts"
+curl -fsSL -D - -H "Origin: http://localhost:3000" "https://<api-host>/v1/stocks/counts"
 ```
 
-Expected response shape (`200 OK`, `application/json`):
+Expected response (`200 OK`, `application/json`, `Access-Control-Allow-Origin: *`):
 
 ```json
 {
