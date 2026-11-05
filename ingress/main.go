@@ -17,11 +17,16 @@ import (
 )
 
 const (
-	ingressKeyFrontend = "frontend"
-	ingressKeyAPI      = "api"
-	defaultStockSvc    = "stock-api"
-	defaultStockPort   = 9345
-	defaultStockPath   = "/v1/stocks"
+	ingressKeyFrontend        = "frontend"
+	ingressKeyAPI             = "api"
+	defaultStockSvc           = "stock-api"
+	defaultStockPort          = 9345
+	defaultStockPath          = "/v1/stocks"
+	defaultAPICORSAllowOrigin = "*"
+	annotEnableCORS           = "nginx.ingress.kubernetes.io/enable-cors"
+	annotCORSAllowOrigin      = "nginx.ingress.kubernetes.io/cors-allow-origin"
+	//nolint:gosec // G101: Kubernetes Ingress annotation key, not a credential.
+	annotCORSAllowCredentials = "nginx.ingress.kubernetes.io/cors-allow-credentials"
 )
 
 // Ingresses holds the configuration for the cluster Ingress resources.
@@ -51,11 +56,12 @@ type LabelConfig struct {
 
 // IngressConfig holds the configuration for a single Ingress resource.
 type IngressConfig struct {
-	Enabled  *bool            `json:"enabled"`
-	Hosts    []string         `json:"hosts"`
-	Label    LabelConfig      `json:"label"`
-	Secret   string           `json:"secret"`
-	Services []ServiceBackend `json:"services"`
+	Enabled         *bool            `json:"enabled"`
+	Hosts           []string         `json:"hosts"`
+	Label           LabelConfig      `json:"label"`
+	Secret          string           `json:"secret"`
+	CORSAllowOrigin string           `json:"corsAllowOrigin"`
+	Services        []ServiceBackend `json:"services"`
 }
 
 func main() {
@@ -133,10 +139,18 @@ func defaultAPIServices(services []ServiceBackend) []ServiceBackend {
 	)
 }
 
-// ApplyDefaults populates default toggles and default API service backends.
+func defaultStr(fallback string) func(string) string {
+	return F.Flow2(
+		O.FromPredicate(S.IsNonEmpty),
+		O.GetOrElse(F.Constant(fallback)),
+	)
+}
+
+// ApplyDefaults populates default toggles, CORS origin, and default API service backends.
 func (c *Config) ApplyDefaults() {
 	c.Frontend.Enabled = F.Pipe1(c.Frontend.Enabled, defaultBoolPtr(true))
 	c.API.Enabled = F.Pipe1(c.API.Enabled, defaultBoolPtr(false))
+	c.API.CORSAllowOrigin = F.Pipe1(c.API.CORSAllowOrigin, defaultStr(defaultAPICORSAllowOrigin))
 	c.API.Services = F.Pipe1(c.API.Services, defaultAPIServices)
 }
 
@@ -247,6 +261,9 @@ func placeholderIngressFields(ic IngressConfig) []string {
 	if hasAnglePlaceholder(ic.Secret) {
 		placeholders = append(placeholders, "secret")
 	}
+	if hasAnglePlaceholder(ic.CORSAllowOrigin) {
+		placeholders = append(placeholders, "corsAllowOrigin")
+	}
 	return placeholders
 }
 
@@ -297,10 +314,24 @@ func toLabelMap(l LabelConfig) pulumi.StringMap {
 	}
 }
 
-var buildIngressLabels = F.Pipe1(
-	hasLabelName,
-	P.Fold(F.Constant1[LabelConfig, pulumi.StringMap](nil), toLabelMap),
+var (
+	buildIngressLabels = F.Pipe1(
+		hasLabelName,
+		P.Fold(F.Constant1[LabelConfig, pulumi.StringMap](nil), toLabelMap),
+	)
+	buildIngressAnnotations = F.Pipe1(
+		S.IsNonEmpty,
+		P.Fold(F.Constant1[string, pulumi.StringMap](nil), toCORSAnnotationMap),
+	)
 )
+
+func toCORSAnnotationMap(origin string) pulumi.StringMap {
+	return pulumi.StringMap{
+		annotEnableCORS:           pulumi.String("true"),
+		annotCORSAllowOrigin:      pulumi.String(origin),
+		annotCORSAllowCredentials: pulumi.String("false"),
+	}
+}
 
 func createIngressMetadata(
 	ingressName string,
@@ -308,9 +339,10 @@ func createIngressMetadata(
 	cfg IngressConfig,
 ) *metav1.ObjectMetaArgs {
 	return &metav1.ObjectMetaArgs{
-		Name:      pulumi.String(ingressName),
-		Namespace: pulumi.String(namespace),
-		Labels:    buildIngressLabels(cfg.Label),
+		Name:        pulumi.String(ingressName),
+		Namespace:   pulumi.String(namespace),
+		Labels:      buildIngressLabels(cfg.Label),
+		Annotations: buildIngressAnnotations(cfg.CORSAllowOrigin),
 	}
 }
 

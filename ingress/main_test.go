@@ -62,7 +62,9 @@ func TestIngressConfigDefaultsAndValidation(t *testing.T) {
 	cfg := validSampleIngressConfig()
 	require.NoError(t, cfg.Validate())
 	require.True(t, cfg.Frontend.IsEnabled())
+	require.Empty(t, cfg.Frontend.CORSAllowOrigin)
 	require.False(t, cfg.API.IsEnabled())
+	require.Equal(t, "*", cfg.API.CORSAllowOrigin)
 	require.Len(t, cfg.API.Services, 1)
 	require.Equal(t, "stock-api", cfg.API.Services[0].Name)
 	require.Equal(t, "/v1/stocks", cfg.API.Services[0].Path)
@@ -123,14 +125,16 @@ func TestInstallCreatesFrontendAndOptionalApiIngress(t *testing.T) {
 		fe, hasFE := mocks.resources["frontend-ingress"]
 		require.True(t, hasFE)
 		require.Equal(t, "kubernetes:networking.k8s.io/v1:Ingress", fe.TypeToken)
-		require.Contains(t, fmt.Sprint(fe.Inputs), "dictybase.dev")
-		require.Contains(t, fmt.Sprint(fe.Inputs), "kcert.dev/ingress")
+		feSpec := fmt.Sprint(fe.Inputs)
+		require.Contains(t, feSpec, "dictybase.dev")
+		require.Contains(t, feSpec, "kcert.dev/ingress")
+		require.NotContains(t, feSpec, "nginx.ingress.kubernetes.io/enable-cors")
 
 		_, hasAPI := mocks.resources["api-ingress"]
 		require.False(t, hasAPI)
 	})
 
-	t.Run("api enabled creates api-ingress with stock-api rule", func(t *testing.T) {
+	t.Run("api enabled creates api-ingress with stock-api rule and cors annotations", func(t *testing.T) {
 		t.Parallel()
 		mocks := &ingressResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
 		cfg := validSampleIngressConfig()
@@ -155,5 +159,8 @@ func TestInstallCreatesFrontendAndOptionalApiIngress(t *testing.T) {
 		require.Contains(t, apiSpec, "stock-api")
 		require.Contains(t, apiSpec, "/v1/stocks")
 		require.Contains(t, apiSpec, "9345")
+		require.Contains(t, apiSpec, "nginx.ingress.kubernetes.io/enable-cors")
+		require.Contains(t, apiSpec, "nginx.ingress.kubernetes.io/cors-allow-origin")
+		require.Contains(t, apiSpec, "nginx.ingress.kubernetes.io/cors-allow-credentials")
 	})
 }
