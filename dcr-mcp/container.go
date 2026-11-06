@@ -6,6 +6,8 @@ import (
 
 	A "github.com/IBM/fp-go/v2/array"
 	F "github.com/IBM/fp-go/v2/function"
+	P "github.com/IBM/fp-go/v2/predicate"
+	S "github.com/IBM/fp-go/v2/string"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -16,8 +18,21 @@ const (
 	probePeriodSeconds  = 10
 )
 
+var buildGraphQLEndpointFlags = F.Pipe1(
+	S.IsNonEmpty,
+	P.Fold(F.Constant1[string, []string](nil), graphqlEndpointFlagPair),
+)
+
+func graphqlEndpointFlagPair(endpoint string) []string {
+	return []string{"--graphql-endpoint", endpoint}
+}
+
 func originFlagPair(origin string) []string {
 	return []string{"--allowed-origins", origin}
+}
+
+func (m *DcrMcp) graphqlEndpointFlags() []string {
+	return buildGraphQLEndpointFlags(m.Config.GraphQLEndpoint)
 }
 
 func (m *DcrMcp) allowedOriginsFlags() []string {
@@ -29,10 +44,8 @@ func (m *DcrMcp) allowedOriginsFlags() []string {
 
 func (m *DcrMcp) ContainerArgs() pulumi.StringArray {
 	cfg := m.Config
-	args := []string{
-		cfg.Command,
-		"--graphql-endpoint",
-		cfg.GraphQLEndpoint,
+	baseArgs := []string{cfg.Command}
+	hostAndServerArgs := []string{
 		"--host",
 		cfg.Host,
 		"--port",
@@ -41,7 +54,12 @@ func (m *DcrMcp) ContainerArgs() pulumi.StringArray {
 		"--rate-limit",
 		strconv.Itoa(cfg.RateLimit),
 	}
-	args = append(args, m.allowedOriginsFlags()...)
+	args := A.ArrayConcatAll(
+		baseArgs,
+		m.graphqlEndpointFlags(),
+		hostAndServerArgs,
+		m.allowedOriginsFlags(),
+	)
 	return pulumi.ToStringArray(args)
 }
 

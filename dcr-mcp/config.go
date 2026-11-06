@@ -173,19 +173,23 @@ func validateDcrMcpConfig(c *DcrMcpConfig) E.Either[error, *DcrMcpConfig] {
 }
 
 func validateBase(c *DcrMcpConfig) E.Either[error, *DcrMcpConfig] {
-	fields := []namedField{
+	required := []namedField{
 		{name: "namespace", val: c.Namespace},
 		{name: "image.tag", val: c.Image.Tag},
-		{name: "graphqlEndpoint", val: c.GraphQLEndpoint},
 	}
-	missing := missingFieldNames(fields)
+	missing := missingFieldNames(required)
 	if len(missing) > 0 {
 		return E.Left[*DcrMcpConfig](fmt.Errorf(
 			"dcr-mcp:properties is missing %s",
 			strings.Join(missing, ", "),
 		))
 	}
-	placeholders := placeholderFieldNames(fields)
+	checked := []namedField{
+		{name: "namespace", val: c.Namespace},
+		{name: "image.tag", val: c.Image.Tag},
+		{name: "graphqlEndpoint", val: c.GraphQLEndpoint},
+	}
+	placeholders := placeholderFieldNames(checked)
 	if len(placeholders) > 0 {
 		return E.Left[*DcrMcpConfig](fmt.Errorf(
 			"dcr-mcp:properties contains placeholder in %s",

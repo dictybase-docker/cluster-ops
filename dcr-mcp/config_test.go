@@ -28,8 +28,7 @@ func (m *mcpResourceMocks) NewResource(args pulumi.MockResourceArgs) (string, re
 
 func validBaseConfig() *DcrMcpConfig {
 	cfg := &DcrMcpConfig{
-		Namespace:       "prod",
-		GraphQLEndpoint: "https://graphql.dictycr.org/graphql",
+		Namespace: "prod",
 		Image: ImageConfig{
 			Tag: "v1.1.0",
 		},
@@ -47,6 +46,7 @@ func TestValidateDefaultsDisabled(t *testing.T) {
 	require.Equal(t, "0.0.0.0", cfg.Host)
 	require.Equal(t, 8080, cfg.Port)
 	require.Equal(t, 120, cfg.RateLimit)
+	require.Empty(t, cfg.GraphQLEndpoint)
 	require.True(t, cfg.StatelessValue())
 	require.Equal(t, "dictybase/dcr-mcp", cfg.Image.Name)
 	require.Equal(t, []string{"*"}, cfg.AllowedOrigins)
@@ -57,7 +57,7 @@ func TestValidateBaseMissingFields(t *testing.T) {
 	cfg := &DcrMcpConfig{}
 	cfg.ApplyDefaults()
 	err := cfg.Validate()
-	require.EqualError(t, err, "dcr-mcp:properties is missing namespace, image.tag, graphqlEndpoint")
+	require.EqualError(t, err, "dcr-mcp:properties is missing namespace, image.tag")
 }
 
 func TestValidateBasePlaceholderFields(t *testing.T) {
@@ -112,8 +112,7 @@ func TestInstallCreatesDeploymentAndServiceWithoutIngressByDefault(t *testing.T)
 	dep, hasDep := mocks.resources["dcr-mcp-api-server"]
 	require.True(t, hasDep)
 	require.Contains(t, fmt.Sprint(dep.Inputs), "dictybase/dcr-mcp:v1.1.0")
-	require.Contains(t, fmt.Sprint(dep.Inputs), "--graphql-endpoint")
-	require.Contains(t, fmt.Sprint(dep.Inputs), "https://graphql.dictycr.org/graphql")
+	require.NotContains(t, fmt.Sprint(dep.Inputs), "--graphql-endpoint")
 	require.Contains(t, fmt.Sprint(dep.Inputs), "--stateless=true")
 	require.Contains(t, fmt.Sprint(dep.Inputs), "/healthz")
 
@@ -153,4 +152,24 @@ func TestInstallWithIngressEnabled(t *testing.T) {
 	require.True(t, hasIng)
 	require.Contains(t, fmt.Sprint(ing.Inputs), "mcp.dictybase.dev")
 	require.Contains(t, fmt.Sprint(ing.Inputs), "dcr-mcp-api")
+}
+
+func TestInstallWithExplicitGraphQLEndpoint(t *testing.T) {
+	t.Parallel()
+	mocks := &mcpResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	cfg := validBaseConfig()
+	cfg.GraphQLEndpoint = "https://graphql.dictycr.org/graphql"
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return NewDcrMcp(cfg).Install(ctx)
+	}, pulumi.WithMocks("dcr-mcp", "test", mocks))
+	require.NoError(t, err)
+
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+
+	dep, hasDep := mocks.resources["dcr-mcp-api-server"]
+	require.True(t, hasDep)
+	require.Contains(t, fmt.Sprint(dep.Inputs), "--graphql-endpoint")
+	require.Contains(t, fmt.Sprint(dep.Inputs), "https://graphql.dictycr.org/graphql")
 }

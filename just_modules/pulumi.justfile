@@ -890,13 +890,13 @@ scaffold-event-messenger-stack stack="" nats_subject="OrderService.Create" ncbi_
 # Initializes the stack with the registry KMS secrets provider when absent, and
 # appends the baseline config block (`ingress.enabled: false`, `stateless: true`,
 # `rateLimit: 120`, `image.tag: bootstrap`) into dcr-mcp/Pulumi.<stack>.yaml.
-# Derives `graphqlEndpoint` from --graphql-endpoint when passed, else from
-# `gateway/Pulumi.<stack>.yaml` (`routes.graphql.hosts[0]` -> `https://<host>/graphql`),
-# else `https://graphql.dictybase.dev/graphql`.
+# By default `dcr-mcp` discovers `graphql-api` via Kubernetes `GRAPHQL_API_SERVICE_HOST`
+# and `GRAPHQL_API_SERVICE_PORT` environment variables; pass `--graphql-endpoint`
+# only to override with an explicit GraphQL URL.
 # Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
 # Usage: just gcp-pulumi scaffold-dcr-mcp-stack [--stack <name>] [--graphql-endpoint <url>] [--port <n>] [--rate-limit <n>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
-[arg("graphql_endpoint", long="graphql-endpoint", help="Upstream GraphQL endpoint URL (defaults to gateway routes.graphql.hosts[0], else https://graphql.dictybase.dev/graphql)")]
+[arg("graphql_endpoint", long="graphql-endpoint", help="Optional GraphQL endpoint URL override (default: omitted; resolved in-cluster via GRAPHQL_API_SERVICE_HOST/PORT)")]
 [arg("port", long="port", short="p", help="MCP HTTP server port (default 8080)")]
 [arg("rate_limit", long="rate-limit", help="Maximum /mcp requests per client IP per minute (default 120)")]
 [group('pulumi-management')]
@@ -929,16 +929,7 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     fi
     namespace=$(yq -r '.namespace' "${entry}")
     kms=$(yq -r '.kms_secrets_provider' "${entry}")
-
     gql_ep={{ quote(graphql_endpoint) }}
-    gw_cfg="gateway/Pulumi.${stack_name}.yaml"
-    if [ -z "${gql_ep}" ] && [ -f "${gw_cfg}" ]; then
-        gw_host=$(yq -r '.config."gateway:properties".routes.graphql.hosts[0] // ""' "${gw_cfg}" 2>/dev/null || true)
-        if [ -n "${gw_host}" ] && [ "${gw_host}" != "null" ] && [[ "${gw_host}" != *"<"* ]]; then
-            gql_ep="https://${gw_host}/graphql"
-        fi
-    fi
-    [ -z "${gql_ep}" ] && gql_ep="https://graphql.dictybase.dev/graphql"
 
     cfg="${folder}/Pulumi.${stack_name}.yaml"
     if [ -e "${cfg}" ]; then
@@ -958,9 +949,11 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
         -e "s|__NAMESPACE__|${namespace}|g" \
         -e "s|__PORT__|${port_val}|g" \
         -e "s|__RATE_LIMIT__|${rate_val}|g" \
-        -e "s|__GRAPHQL_ENDPOINT__|${gql_ep}|g" \
         config/templates/dcr-mcp-stack.yaml.tmpl > "${tmp}"
     cat "${tmp}" >> "${cfg}"
+    if [ -n "${gql_ep}" ]; then
+        printf '    graphqlEndpoint: %s\n' "${gql_ep}" >> "${cfg}"
+    fi
 
     yq -r '.config' "${cfg}" >/dev/null
     got_name=$(yq -r '.config."dcr-mcp:properties".name' "${cfg}")
@@ -975,7 +968,7 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     fi
 
     echo "Scaffolded ${cfg}"
-    echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} graphqlEndpoint=${gql_ep} port=${port_val}"
+    echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} port=${port_val}"
     echo "Next: just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>"
 
 # Scaffold a frontend_application stack config from the cluster registry + template.
