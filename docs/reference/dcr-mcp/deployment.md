@@ -8,6 +8,7 @@ This document gives the details for the `dcr-mcp/` Pulumi project and its deploy
 
 - [What the Project Creates](#what-the-project-creates)
 - [Prerequisites](#prerequisites)
+- [In-Cluster Service Discovery](#in-cluster-service-discovery)
 - [Create the Stack](#create-the-stack)
   - [Baseline Stack File](#baseline-stack-file)
   - [Keys That Change per Cluster](#keys-that-change-per-cluster)
@@ -55,11 +56,26 @@ Verify each component below before you deploy `dcr-mcp`.
 | Cluster shell | Active `cluster-env` sub-shell | `echo "$PULUMI_STACK"` | [`pulumi-setup.md`](../../pulumi-setup.md) |
 | Cluster registry | `config/clusters/<cluster>.yaml` exists and validates | `just gcp-cluster registry-show` | [Cluster registry](../backend/cluster-registry.md) |
 | Shared namespaces | `namespace-bootstrap` applied (`appNamespace` matches `properties.namespace`) | `pulumi -C namespace-bootstrap stack output appNamespace` | [`pulumi-setup.md`](../../pulumi-setup.md) |
-| GraphQL server | `graphql-api-server` running and serving `/graphql` | `kubectl -n <namespace> rollout status deployment/graphql-api-server` | [`graphql-deploy.md`](../../graphql-deploy.md) |
+| GraphQL server | Service `graphql-api` (`:8080`) and Deployment `graphql-api-server` serving `/graphql` | `kubectl -n <namespace> get svc graphql-api && kubectl -n <namespace> rollout status deployment/graphql-api-server` | [`graphql-deploy.md`](../../graphql-deploy.md) |
 | Cilium Gateway (Production) | `Gateway` `dictycr-gateway` and `Issuer` `letsencrypt-issuer` deployed | `just gateway verify` | [`gateway-deploy.md`](../../gateway-deploy.md) |
 | `nginx` + `kcert` (Legacy only) | Ingress controller and `kcert` certificate manager | **Only when `ingress.enabled` is `true`.** | — |
 
-Unlike `graphql_server` and `event-messenger`, `dcr-mcp` does **not** rely on Kubernetes `*_SERVICE_HOST` environment variable injection at container startup. It receives the GraphQL URL explicitly via `--graphql-endpoint`, so pod startup order relative to `graphql-api` never causes an exit-code `2` crash loop.
+---
+
+## In-Cluster Service Discovery
+
+By default, Pulumi passes no `--graphql-endpoint`, `--graphql-host`, or `--graphql-port` flags to the container. The `dcr-mcp` binary reads the standard Kubernetes service-discovery environment variables for Service `graphql-api` and constructs `http://<host>:<port>/graphql`:
+
+| Service | Environment variables the binary reads | Flag that gets the value | Default |
+|---------|----------------------------------------|--------------------------|---------|
+| `graphql-api` | `GRAPHQL_API_SERVICE_HOST` (`GRAPHQL_API_PORT_8080_TCP_ADDR`) | `--graphql-host` | — (required unless `--graphql-endpoint` is set) |
+| `graphql-api` | `GRAPHQL_API_SERVICE_PORT` (`GRAPHQL_API_PORT_8080_TCP_PORT`) | `--graphql-port` | `8080` |
+
+Kubernetes writes these variables into a pod only when Service `graphql-api` exists in the same namespace before the pod starts. If `dcr-mcp-api-server` starts before `graphql-api` exists (and `properties.graphqlEndpoint` is not set), the container exits with `graphql-endpoint or GRAPHQL_API_SERVICE_HOST must be set`. Restart the Deployment after `graphql-api` exists:
+
+```bash
+kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server
+```
 
 ---
 
@@ -68,24 +84,21 @@ Unlike `graphql_server` and `event-messenger`, `dcr-mcp` does **not** rely on Ku
 Run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.<stack>.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl` and the cluster registry entry (`config/clusters/<cluster>.yaml`).
 
 ```bash
-just gcp-pulumi scaffold-dcr-mcp-stack --graphql-endpoint https://<graphql-host>/graphql
+just gcp-pulumi scaffold-dcr-mcp-stack
 ```
 
 Behavior:
 
 1. Resolves the cluster registry entry matching `--stack` (`$PULUMI_STACK`) and reads `namespace` and `kms_secrets_provider`.
-2. Resolves `graphqlEndpoint` in this order:
-   - The `--graphql-endpoint` flag when provided.
-   - `https://<routes.graphql.hosts[0]>/graphql` from `gateway/Pulumi.<stack>.yaml` when that file exists and carries a non-placeholder host (for example, `https://graphql.dictycr.org/graphql` on `dcr-kube1`).
-   - `https://graphql.dictybase.dev/graphql` as the final fallback.
-3. Refuses to overwrite an existing `dcr-mcp/Pulumi.<stack>.yaml` (describe-then-create).
-4. Runs `pulumi -C dcr-mcp stack init <stack> --secrets-provider <kms>` and appends the rendered `config:` block (`ingress.enabled: false`, `stateless: true`, `rateLimit: 120`, `image.tag: bootstrap`).
+2. Refuses to overwrite an existing `dcr-mcp/Pulumi.<stack>.yaml` (describe-then-create).
+3. Runs `pulumi -C dcr-mcp stack init <stack> --secrets-provider <kms>` and appends the rendered `config:` block (`ingress.enabled: false`, `stateless: true`, `rateLimit: 120`, `image.tag: bootstrap`). By default `graphqlEndpoint` is omitted so the container uses Kubernetes Service discovery (`GRAPHQL_API_SERVICE_HOST` and `GRAPHQL_API_SERVICE_PORT`).
+4. When `--graphql-endpoint <url>` is passed, writes `properties.graphqlEndpoint` into `dcr-mcp/Pulumi.<stack>.yaml`.
 5. Validates that `name` is `dcr-mcp`, `namespace` matches the registry, and no `:latest` tag appears in the rendered file.
 
 | Flag | Required | Default | Notes |
 |------|----------|---------|-------|
 | `--stack` / `-s` | No | `$PULUMI_STACK` | Must match a `stack:` key in `config/clusters/*.yaml` |
-| `--graphql-endpoint` | No | Derived from `gateway/Pulumi.<stack>.yaml`, else `https://graphql.dictybase.dev/graphql` | Full URL to the GraphQL `/graphql` endpoint |
+| `--graphql-endpoint` | No | *(omitted — in-cluster `GRAPHQL_API_SERVICE_HOST`)* | Optional full URL override for `--graphql-endpoint` |
 | `--port` / `-p` | No | `8080` | Container and Service TCP port |
 | `--rate-limit` | No | `120` | Maximum `/mcp` requests per client IP per minute |
 
@@ -105,7 +118,6 @@ config:
     allowedOrigins:
       - "*"
     command: start-server
-    graphqlEndpoint: https://graphql.dictycr.org/graphql
     host: 0.0.0.0
     image:
       name: dictybase/dcr-mcp
@@ -128,7 +140,7 @@ config:
 | Key | Production (`dcr-kube1`, Recommended) | Legacy (`dcr-experiments`, Optional) |
 |-----|---------------------------------------|--------------------------------------|
 | `namespace` | `prod` | `dev` |
-| `graphqlEndpoint` | `https://graphql.dictycr.org/graphql` (or `http://graphql-api.prod.svc.cluster.local:8080/graphql`) | `https://graphql.dictybase.dev/graphql` |
+| `graphqlEndpoint` | omitted (resolved in-cluster from `GRAPHQL_API_SERVICE_HOST:GRAPHQL_API_SERVICE_PORT`, or set to `https://graphql.dictycr.org/graphql`) | omitted (resolved in-cluster from `GRAPHQL_API_SERVICE_HOST:GRAPHQL_API_SERVICE_PORT`, or set to `https://graphql.dictybase.dev/graphql`) |
 | `ingress.enabled` | `false` (routed via `gateway/` `routes.mcp`) | `true` (creates `nginx` Ingress `dcr-mcp-ingress`) |
 | `ingress.hosts` | omitted (set on `gateway/` `routes.mcp.hosts.0`, e.g. `mcp.dictycr.org`) | `<mcp-host>` (e.g. `mcp.dictybase.dev`, dedicated host) |
 | `ingress.path` | omitted (`gateway/` `routes.mcp.path` is `/`, no subpath) | `/` (root path, no subpath) |
@@ -140,26 +152,29 @@ config:
 
 ## GraphQL Endpoint
 
-`properties.graphqlEndpoint` is required and must be a non-empty URL without `<...>` placeholders. The Pulumi config validator rejects an empty or placeholder value before creating any resource (`dcr-mcp:properties is missing graphqlEndpoint` or `dcr-mcp:properties contains placeholder in graphqlEndpoint`).
+`dcr-mcp` resolves its upstream GraphQL URL in this priority order:
 
-You can point `properties.graphqlEndpoint` at either:
-1. **The public HTTPS GraphQL URL** of the cluster (for example, `https://graphql.dictycr.org/graphql`). `scaffold-dcr-mcp-stack` selects this automatically when `gateway/Pulumi.<stack>.yaml` has `routes.graphql.hosts[0]` configured.
-2. **The in-cluster Kubernetes Service URL** (`http://graphql-api.<namespace>.svc.cluster.local:8080/graphql`), which keeps GraphQL queries inside the cluster network without hair-pinning through the external LoadBalancer.
+1. **Explicit endpoint override (`--graphql-endpoint` / `GRAPHQL_ENDPOINT`):** When `properties.graphqlEndpoint` is set in `dcr-mcp/Pulumi.<stack>.yaml`, Pulumi passes `--graphql-endpoint <url>` to the container. The Pulumi config validator rejects `<...>` placeholders (`dcr-mcp:properties contains placeholder in graphqlEndpoint`).
+2. **In-cluster Kubernetes Service discovery (default):** When `properties.graphqlEndpoint` is omitted, Pulumi omits `--graphql-endpoint`. The `dcr-mcp` binary reads `--graphql-host` (`GRAPHQL_API_SERVICE_HOST` or `GRAPHQL_API_PORT_8080_TCP_ADDR`) and `--graphql-port` (`GRAPHQL_API_SERVICE_PORT` or `GRAPHQL_API_PORT_8080_TCP_PORT`, default `8080`) and builds `http://<host>:<port>/graphql`. This keeps all GraphQL traffic inside the cluster network without hair-pinning through the external LoadBalancer.
+
+If neither `--graphql-endpoint` nor `GRAPHQL_API_SERVICE_HOST` is set, the container fails closed at startup with `graphql-endpoint or GRAPHQL_API_SERVICE_HOST must be set`.
 
 ---
 
 ## Server Options and Container Flags
 
-The `dcr-mcp` binary uses `urfave/cli/v3` with the subcommand `start-server` (aliases `serve` and `start`). Every CLI flag below belongs to the `start-server` subcommand, so the Pulumi program passes `start-server` first, followed by the flags:
+The `dcr-mcp` binary uses `urfave/cli/v3` with the subcommand `start-server` (aliases `serve` and `start`). Every CLI flag below belongs to the `start-server` subcommand, so the Pulumi program passes `start-server` first, followed by the flags (and includes `--graphql-endpoint <graphqlEndpoint>` only when `properties.graphqlEndpoint` is non-empty):
 
 ```text
-start-server --graphql-endpoint <graphqlEndpoint> --host <host> --port <port> --stateless=<stateless> --rate-limit <rateLimit> --allowed-origins <origin>...
+start-server [--graphql-endpoint <graphqlEndpoint>] --host <host> --port <port> --stateless=<stateless> --rate-limit <rateLimit> --allowed-origins <origin>...
 ```
 
 | Pulumi config key | CLI flag | Env var in `dcr-mcp` | Default | Validation / Purpose |
 |-------------------|----------|----------------------|---------|----------------------|
 | `properties.command` | subcommand | — | `start-server` | Subcommand (`start-server`, `serve`, or `start`) |
-| `properties.graphqlEndpoint` | `--graphql-endpoint` (`--endpoint`) | `GRAPHQL_ENDPOINT` | Required in Pulumi | Upstream dictyBase GraphQL query URL (must be non-empty) |
+| `properties.graphqlEndpoint` | `--graphql-endpoint` (`--endpoint`) | `GRAPHQL_ENDPOINT` | *(omitted)* | Optional GraphQL URL override; takes precedence over `--graphql-host` |
+| — (Kubernetes Service env) | `--graphql-host` | `GRAPHQL_API_SERVICE_HOST`, `GRAPHQL_API_PORT_8080_TCP_ADDR` | *(none)* | Kubernetes `graphql-api` Service host (used when `--graphql-endpoint` is not set) |
+| — (Kubernetes Service env) | `--graphql-port` | `GRAPHQL_API_SERVICE_PORT`, `GRAPHQL_API_PORT_8080_TCP_PORT` | `8080` | Kubernetes `graphql-api` Service port |
 | `properties.host` | `--host` | `MCP_HOST` | `0.0.0.0` | HTTP bind address inside the container |
 | `properties.port` | `--port` | `MCP_PORT` | `8080` | TCP port (`0`–`65535`) for `/mcp` and `/healthz` |
 | `properties.stateless` | `--stateless=<bool>` | `MCP_STATELESS` | `true` | Streamable HTTP stateless mode (`--stateless=true` or `--stateless=false`) |
@@ -257,7 +272,7 @@ just gcp-pulumi preview --folder dcr-mcp
 | Recipe | Flag | Required | Default | Notes |
 |--------|------|----------|---------|-------|
 | `scaffold-dcr-mcp-stack` | `--stack` / `-s` | No | `$PULUMI_STACK` | Must match a `stack:` key in `config/clusters/*.yaml` |
-| `scaffold-dcr-mcp-stack` | `--graphql-endpoint` | No | `gateway` `routes.graphql.hosts[0]`, else `https://graphql.dictybase.dev/graphql` | Upstream GraphQL URL |
+| `scaffold-dcr-mcp-stack` | `--graphql-endpoint` | No | *(omitted — in-cluster `GRAPHQL_API_SERVICE_HOST`)* | Optional upstream GraphQL URL override |
 | `scaffold-dcr-mcp-stack` | `--port` / `-p` | No | `8080` | Container and Service TCP port |
 | `scaffold-dcr-mcp-stack` | `--rate-limit` | No | `120` | Requests per client IP per minute on `/mcp` |
 | `ensure-stack`, `preview`, `create-resource`, `set-config` | `--folder` / `-f` | Yes | — | Pass `dcr-mcp` |
@@ -351,13 +366,14 @@ Once `https://<mcp-host>/mcp` responds to `initialize`, connect your AI assistan
 |---------|-------|--------|
 | `ERROR: no stack name` | Recipe run outside the `cluster-env` sub-shell | Enter `just cluster-env --env <env> --cluster <cluster>` or pass `--stack <name>`. |
 | `ERROR: stack '<stack>' does not exist in dcr-mcp, and there is no Pulumi.<stack>.yaml to initialize it from` | Stack config file has not been scaffolded yet | Run `just gcp-pulumi scaffold-dcr-mcp-stack` ([create the stack](#create-the-stack)). |
-| `dcr-mcp:properties is missing namespace, image.tag, graphqlEndpoint` | Required base field is empty in `dcr-mcp/Pulumi.<stack>.yaml` | Set the missing key with `just gcp-pulumi set-config --folder dcr-mcp --key properties.<key> --value <val>`. |
-| `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint` | `image.tag` or `graphqlEndpoint` still contains `<...>` placeholder text | Pin a real tag and GraphQL URL with `just gcp-pulumi set-config`. |
+| `dcr-mcp:properties is missing namespace, image.tag` | Required base field is empty in `dcr-mcp/Pulumi.<stack>.yaml` | Set the missing key with `just gcp-pulumi set-config --folder dcr-mcp --key properties.<key> --value <val>`. |
+| `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint` | `image.tag` or `graphqlEndpoint` still contains `<...>` placeholder text | Pin a real tag (and replace or remove the placeholder `graphqlEndpoint`) with `just gcp-pulumi set-config`. |
+| Pod exits with `graphql-endpoint or GRAPHQL_API_SERVICE_HOST must be set` | `dcr-mcp-api-server` started before Service `graphql-api` existed in the namespace and `properties.graphqlEndpoint` is not set | Deploy `graphql_server` first ([`graphql-deploy.md`](../../graphql-deploy.md)), then run `kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server`. |
 | `ErrImagePull` / `ImagePullBackOff` on `dictybase/dcr-mcp:bootstrap` | Stack was applied before replacing the `bootstrap` placeholder tag | Resolve the latest tag with `just ci latest-tag --repo dictyBase/dcr-mcp`, set `properties.image.tag`, and re-run `create-resource`. |
 | `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` | Legacy Ingress was enabled before setting `hosts`, `path`, and `tlsSecret` | Set `ingress.hosts.0`, `ingress.path` (`/`), `ingress.tlsSecret`, and `ingress.label.*` before setting `ingress.enabled` to `true` ([legacy Ingress mode](#legacy-ingress-mode-dcr-experiments-only)). |
 | `just gateway check` fails with `Error from server (NotFound): services "dcr-mcp-api" not found` | `routes.mcp.enabled` was set to `true` in `gateway/` before deploying `dcr-mcp/` | Deploy `dcr-mcp` first (`just gcp-pulumi create-resource --folder dcr-mcp`), then run `just gateway deploy`. |
 | `just gateway check` fails with `route 'mcp' is enabled but contains an empty or placeholder host or tlsSecret` | `routes.mcp.hosts.0` still holds `<mcp-host>` in `gateway/Pulumi.<stack>.yaml` | Run `just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.hosts.0 --value <mcp-host>`. |
-| Tool calls fail with `listStockSuggestions query failed` or `searchStocks query failed` | `properties.graphqlEndpoint` is unreachable or points to the wrong cluster | Verify `graphql-api-server` is healthy (`kubectl -n <namespace> rollout status deployment/graphql-api-server`) and check `properties.graphqlEndpoint` in `dcr-mcp/Pulumi.<stack>.yaml`. |
+| Tool calls fail with `listStockSuggestions query failed` or `searchStocks query failed` | Upstream `graphql-api` Service or `properties.graphqlEndpoint` override is unreachable | Verify `graphql-api-server` is healthy (`kubectl -n <namespace> rollout status deployment/graphql-api-server`) and check `properties.graphqlEndpoint` (if set) in `dcr-mcp/Pulumi.<stack>.yaml`. |
 | Client receives HTTP `429 Too Many Requests` on `/mcp` | Client IP exceeded `properties.rateLimit` requests per minute | Raise `properties.rateLimit` with `just gcp-pulumi set-config --folder dcr-mcp --key properties.rateLimit --value <n>` and re-apply. |
 | `just ci deploy-backend-services --services dcr-mcp` fails with `no services matched` | `config/services.yaml` only lists ArangoDB-backed modware gRPC services | Use the individual recipes in [tag deploy setup](#tag-deploy-setup). |
 | Tag deploy workflow runs in GitHub Actions but deploys nothing or fails on missing stack | `dcr-mcp/Pulumi.<stack>.yaml` was not committed and pushed to cluster-ops `develop` | Commit and push `dcr-mcp/Pulumi.<stack>.yaml` to `develop`, then re-run the tag workflow (`gh run rerun <run-id> --repo dictyBase/dcr-mcp`). |

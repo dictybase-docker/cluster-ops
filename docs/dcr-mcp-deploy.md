@@ -1,6 +1,6 @@
 # dcr-mcp Server Deploy
 
-The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dictyBase Stock Center Model Context Protocol (MCP) server, into one namespace. The project creates the Deployment `dcr-mcp-api-server` and the NodePort Service `dcr-mcp-api` on port `8080`. The server exposes 12 read-only MCP tools and 4 research prompts over Streamable HTTP at `/mcp` and a health check at `/healthz`, and it queries the dictyBase GraphQL server over HTTP (`--graphql-endpoint`). It needs no database credentials, no Kubernetes Secret, and no PersistentVolumeClaim.
+The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dictyBase Stock Center Model Context Protocol (MCP) server, into one namespace. The project creates the Deployment `dcr-mcp-api-server` and the NodePort Service `dcr-mcp-api` on port `8080`. The server exposes 12 read-only MCP tools and 4 research prompts over Streamable HTTP at `/mcp` and a health check at `/healthz`, and it queries the dictyBase GraphQL server over HTTP (`graphql-api` in-cluster Service discovery by default, or an optional `--graphql-endpoint` override). It needs no database credentials, no Kubernetes Secret, and no PersistentVolumeClaim.
 
 **Production Gateway routing is the recommended setup (`properties.ingress.enabled: false` by default).** On production clusters (`dcr-kube1`), the `dcr-mcp/` stack creates the Deployment and the Service only, and the central Cilium Gateway ([`gateway-deploy.md`](gateway-deploy.md)) exposes `dcr-mcp-api` on its own dedicated hostname at root path `/` (no URL subpath). `dcr-mcp` is not deployed on the legacy `dcr-experiments` cluster by default. If you deploy it on a legacy cluster, turn on the per-app `nginx` Ingress ([Section 6](#6-configure-legacy-ingress-mode-optional)) with its own dedicated hostname and `path: /` (no subpath).
 
@@ -13,7 +13,7 @@ The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dic
 - [Quick Reference](#quick-reference)
 - [1. Verify the Upstream GraphQL Server](#1-verify-the-upstream-graphql-server)
 - [2. Scaffold or Select the Stack](#2-scaffold-or-select-the-stack)
-- [3. Configure the GraphQL Endpoint](#3-configure-the-graphql-endpoint)
+- [3. Override the GraphQL Endpoint (Optional)](#3-override-the-graphql-endpoint-optional)
 - [4. Pin the Image Tag](#4-pin-the-image-tag)
 - [5. Configure Server Options (Optional)](#5-configure-server-options-optional)
 - [6. Configure Legacy Ingress Mode (Optional)](#6-configure-legacy-ingress-mode-optional)
@@ -39,14 +39,15 @@ For experienced users. Full details in the sections below.
 # Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. Verify the upstream GraphQL server in the target namespace
+# 1. Verify the upstream GraphQL Service and server in the target namespace
+kubectl -n <namespace> get svc graphql-api
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 
 # 2. Scaffold the stack file on a new cluster, or select an existing stack
-just gcp-pulumi scaffold-dcr-mcp-stack --graphql-endpoint https://<graphql-host>/graphql
+just gcp-pulumi scaffold-dcr-mcp-stack
 just gcp-pulumi ensure-stack --folder dcr-mcp
 
-# 3. Set the upstream GraphQL endpoint URL
+# 3. Optional. Override the in-cluster GraphQL Service discovery with an explicit URL
 just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --value https://<graphql-host>/graphql
 
 # 4. Pin an immutable release or develop-<sha> image tag (replace 'bootstrap')
@@ -95,10 +96,11 @@ just ci render-tag-deploy --app dcr-mcp --project dcr-mcp --out bin/ci-render/dc
 
 ## 1. Verify the Upstream GraphQL Server
 
-`dcr-mcp` resolves all stock, gene, phenotype, and publication queries through the dictyBase GraphQL endpoint. Confirm that `graphql-api-server` is running in the namespace before you deploy `dcr-mcp`. Unlike `graphql_server` and `event-messenger`, `dcr-mcp` does not read Kubernetes `*_SERVICE_HOST` variables at startup, so pod startup order does not cause a crash loop.
-→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [GraphQL endpoint](reference/dcr-mcp/deployment.md#graphql-endpoint)
+Service `graphql-api` and Deployment `graphql-api-server` must exist in the namespace before the `dcr-mcp-api-server` pod starts. By default, `dcr-mcp` resolves `http://$GRAPHQL_API_SERVICE_HOST:$GRAPHQL_API_SERVICE_PORT/graphql` from the Kubernetes service-discovery variables (`--graphql-host` and `--graphql-port`), which Kubernetes injects only into pods that start after `graphql-api` exists.
+→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [Service discovery](reference/dcr-mcp/deployment.md#in-cluster-service-discovery)
 
 ```bash
+kubectl -n <namespace> get svc graphql-api
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 ```
 
@@ -106,12 +108,12 @@ kubectl -n <namespace> rollout status deployment/graphql-api-server
 
 ## 2. Scaffold or Select the Stack
 
-On a new cluster, run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl`. When `gateway/Pulumi.${PULUMI_STACK}.yaml` already defines `routes.graphql.hosts[0]`, the recipe derives `https://<graphql-host>/graphql` automatically. Pass `--graphql-endpoint` to override it. When the stack file already exists, run `ensure-stack` to select the stack.
+On a new cluster, run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl`. The baseline config omits `properties.graphqlEndpoint` so the pod uses Kubernetes Service discovery against `graphql-api:8080`. When the stack file already exists, run `ensure-stack` to select the stack.
 → [Create the stack](reference/dcr-mcp/deployment.md#create-the-stack)
 
 ```bash
 # New cluster (creates the stack and writes dcr-mcp/Pulumi.${PULUMI_STACK}.yaml)
-just gcp-pulumi scaffold-dcr-mcp-stack --graphql-endpoint https://<graphql-host>/graphql
+just gcp-pulumi scaffold-dcr-mcp-stack
 
 # Existing stack file
 just gcp-pulumi ensure-stack --folder dcr-mcp
@@ -119,9 +121,11 @@ just gcp-pulumi ensure-stack --folder dcr-mcp
 
 ---
 
-## 3. Configure the GraphQL Endpoint
+## 3. Override the GraphQL Endpoint (Optional)
 
-Set `properties.graphqlEndpoint` to the full GraphQL query URL of the target cluster (for example, `https://graphql.dictycr.org/graphql` on `dcr-kube1`, or `http://graphql-api.prod.svc.cluster.local:8080/graphql` for in-cluster HTTP). Pulumi passes this value to `--graphql-endpoint`.
+**Optional. The default is omitted (in-cluster Service discovery via `GRAPHQL_API_SERVICE_HOST`). Skip this section to query `graphql-api` inside the cluster.**
+
+Set `properties.graphqlEndpoint` only when `dcr-mcp` must query an external or custom GraphQL URL instead of the in-cluster `graphql-api` Service. When set, Pulumi passes `--graphql-endpoint <url>` to the container, which takes precedence over `GRAPHQL_API_SERVICE_HOST` and `GRAPHQL_API_SERVICE_PORT`.
 → [GraphQL endpoint](reference/dcr-mcp/deployment.md#graphql-endpoint)
 
 ```bash
