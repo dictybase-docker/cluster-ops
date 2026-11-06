@@ -39,7 +39,8 @@ For experienced users. Full details in the sections below.
 # Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. Verify the upstream GraphQL Service and server in the target namespace
+# 1. Verify the cluster registry and the upstream GraphQL server in the target namespace
+just gcp-cluster registry-show
 kubectl -n <namespace> get svc graphql-api
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 
@@ -96,10 +97,11 @@ just ci render-tag-deploy --app dcr-mcp --project dcr-mcp --out bin/ci-render/dc
 
 ## 1. Verify the Upstream GraphQL Server
 
-Service `graphql-api` and Deployment `graphql-api-server` must exist in the namespace before the `dcr-mcp-api-server` pod starts. By default, `dcr-mcp` resolves `http://$GRAPHQL_API_SERVICE_HOST:$GRAPHQL_API_SERVICE_PORT/graphql` from the Kubernetes service-discovery variables (`--graphql-host` and `--graphql-port`), which Kubernetes injects only into pods that start after `graphql-api` exists.
-→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [Service discovery](reference/dcr-mcp/deployment.md#in-cluster-service-discovery)
+Confirm that the cluster registry entry `config/clusters/<cluster>.yaml` exists (`just gcp-cluster register-cluster` creates it on unregistered clusters) and that Service `graphql-api` and Deployment `graphql-api-server` are running in the namespace before the `dcr-mcp-api-server` pod starts. By default, `dcr-mcp` resolves `http://$GRAPHQL_API_SERVICE_HOST:$GRAPHQL_API_SERVICE_PORT/graphql` from the Kubernetes service-discovery variables (`--graphql-host` and `--graphql-port`), which Kubernetes injects only into pods that start after `graphql-api` exists.
+→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [Cluster registry](reference/backend/cluster-registry.md) · [Service discovery](reference/dcr-mcp/deployment.md#in-cluster-service-discovery)
 
 ```bash
+just gcp-cluster registry-show
 kubectl -n <namespace> get svc graphql-api
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 ```
@@ -108,8 +110,8 @@ kubectl -n <namespace> rollout status deployment/graphql-api-server
 
 ## 2. Scaffold or Select the Stack
 
-On a new cluster, run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl`. The baseline config omits `properties.graphqlEndpoint` so the pod uses Kubernetes Service discovery against `graphql-api:8080`. When the stack file already exists, run `ensure-stack` to select the stack.
-→ [Create the stack](reference/dcr-mcp/deployment.md#create-the-stack)
+On a new cluster, run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl` and `config/clusters/<cluster>.yaml` (if `config/clusters/` has no entry matching `$PULUMI_STACK`, register the cluster first with `just gcp-cluster register-cluster`). The baseline config omits `properties.graphqlEndpoint` so the pod uses Kubernetes Service discovery against `graphql-api:8080`. When the stack file already exists, run `ensure-stack` to select the stack.
+→ [Create the stack](reference/dcr-mcp/deployment.md#create-the-stack) · [Cluster registry](reference/backend/cluster-registry.md#creating-an-entry-register-cluster)
 
 ```bash
 # New cluster (creates the stack and writes dcr-mcp/Pulumi.${PULUMI_STACK}.yaml)

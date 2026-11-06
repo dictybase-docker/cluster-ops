@@ -83,7 +83,13 @@ kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server
 
 Run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.<stack>.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl` and the cluster registry entry (`config/clusters/<cluster>.yaml`).
 
+`config/clusters/` ships `config/clusters/dcr-kube1.yaml` (`stack: dcr-kube1`). If the target cluster does not yet have a `config/clusters/<cluster>.yaml` file with `stack: <stack>` (for example, `dcr-experiments` with `stack: experiments`, or a newly provisioned cluster), register it first ([cluster registry](../backend/cluster-registry.md#creating-an-entry-register-cluster)):
+
 ```bash
+# Register the cluster in config/clusters/<cluster>.yaml if not yet registered
+just gcp-cluster register-cluster --env <env> --cluster <cluster>
+
+# Scaffold dcr-mcp/Pulumi.<stack>.yaml
 just gcp-pulumi scaffold-dcr-mcp-stack
 ```
 
@@ -235,7 +241,7 @@ What the `gateway/` stack creates when `routes.mcp.enabled` is `true`:
 
 ### Legacy Ingress Mode (`dcr-experiments` Only)
 
-`dcr-mcp` is not deployed on `dcr-experiments` by default. If you need to deploy `dcr-mcp` on `dcr-experiments` (or another legacy cluster without Cilium Gateway API), turn on the per-app `nginx` Ingress inside the `dcr-mcp/` stack.
+`dcr-mcp` is not deployed on `dcr-experiments` by default (`config/clusters/dcr-experiments.yaml` and `dcr-mcp/Pulumi.experiments.yaml` are not checked in). If you need to deploy `dcr-mcp` on `dcr-experiments` (or another legacy cluster without Cilium Gateway API), register the cluster first with `just gcp-cluster register-cluster --env dev --cluster dcr-experiments --ci-env DEV_STAGING`, scaffold the stack with `just gcp-pulumi scaffold-dcr-mcp-stack`, and turn on the per-app `nginx` Ingress inside the `dcr-mcp/` stack.
 
 Set `hosts.0`, `path`, `tlsSecret`, and `label` **before** you set `ingress.enabled` to `true`. The Pulumi config check fails closed with `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` if any required field is empty, and rejects `<...>` placeholders.
 
@@ -365,6 +371,7 @@ Once `https://<mcp-host>/mcp` responds to `initialize`, connect your AI assistan
 | Symptom | Cause | Action |
 |---------|-------|--------|
 | `ERROR: no stack name` | Recipe run outside the `cluster-env` sub-shell | Enter `just cluster-env --env <env> --cluster <cluster>` or pass `--stack <name>`. |
+| `ERROR: no registry entry with stack '<stack>' (checked config/clusters/*.yaml)` | You are in a shell for an unregistered cluster (for example, `dcr-experiments` with `PULUMI_STACK=experiments`), or `config/clusters/<cluster>.yaml` has not been created yet | Enter the registered cluster shell (`just cluster-env --env prod --cluster dcr-kube1`), or create the registry entry first with `just gcp-cluster register-cluster --env <env> --cluster <cluster>` ([cluster registry](../backend/cluster-registry.md#creating-an-entry-register-cluster)). |
 | `ERROR: stack '<stack>' does not exist in dcr-mcp, and there is no Pulumi.<stack>.yaml to initialize it from` | Stack config file has not been scaffolded yet | Run `just gcp-pulumi scaffold-dcr-mcp-stack` ([create the stack](#create-the-stack)). |
 | `dcr-mcp:properties is missing namespace, image.tag` | Required base field is empty in `dcr-mcp/Pulumi.<stack>.yaml` | Set the missing key with `just gcp-pulumi set-config --folder dcr-mcp --key properties.<key> --value <val>`. |
 | `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint` | `image.tag` or `graphqlEndpoint` still contains `<...>` placeholder text | Pin a real tag (and replace or remove the placeholder `graphqlEndpoint`) with `just gcp-pulumi set-config`. |
