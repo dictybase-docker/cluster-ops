@@ -10,8 +10,8 @@ cloud.google.com/go/compute/metadata v0.10.0 h1:pyKMUQSwchgkIBBJGdILqQbs/BNJXqwS
 cloud.google.com/go/compute/metadata v0.10.0/go.mod h1:rGFHRrIif570kSibjFTMbt6/4/tzgJWFGI/HVol4GIk=
 cloud.google.com/go/iam v1.15.1 h1:i6EXLKyIi0Sh72p+5+Fz0PfnzB63bkneVpaBCGrjlWs=
 cloud.google.com/go/iam v1.15.1/go.mod h1:nDJ/rfCzLKyBUY1AeiSQwOAJg/AN7zZ2QmNzRTcK2jM=
-cloud.google.com/go/kms v1.36.0 h1:Yewd4nwxa5IOaYJX0dpfzEM5PMCcg6d2LOdrW7V7bbQ=
-cloud.google.com/go/kms v1.36.0/go.mod h1:BZZ2mD9XlonF2JRr7DVIokrTeHKG/CKde5aSPHqeuS4=
+cloud.google.com/go/kms v1.36.1 h1:jIXDoN/lxjVt/zc219tIwqAWPVWVzcLJ7s6Oq3n0Y5U=
+cloud.google.com/go/kms v1.36.1/go.mod h1:1oVAwTvmgswE8PiQeyffdNxpRLw2F0UfQlLwTrYlRNg=
 cloud.google.com/go/logging v1.20.0 h1:l7yzCB8/JSY5PHT9RsaqdT1jaBGbM6KlSJDX210HlXM=
 cloud.google.com/go/logging v1.20.0/go.mod h1:ALUaJQZM691Eeujy9kFx0xREq3AMPuGd+pTRZuTYv+w=
 cloud.google.com/go/longrunning v1.3.0 h1:lZ6c8SJJBmILp/Wnr3vGnBLa0q+cYfSHRCcUfVI2hpI=
