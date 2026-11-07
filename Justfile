@@ -17,6 +17,7 @@ mod postgres 'just_modules/postgres.justfile'
 mod logto 'just_modules/logto.justfile'
 mod gateway 'just_modules/gateway.justfile'
 mod frontend 'just_modules/frontend.justfile'
+mod dcr-mcp 'just_modules/dcr-mcp.justfile'
 mod minio 'just_modules/minio.justfile'
 mod redis 'just_modules/redis.justfile'
 mod nats 'just_modules/nats.justfile'
@@ -300,6 +301,14 @@ test-frontend:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-frontend-recipes.sh"
 
+# Run dcr-mcp recipe contract tests
+[group('dev-tools')]
+[no-cd]
+test-dcr-mcp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-dcr-mcp-recipes.sh"
+
 # Run per-cluster tool-versions contract tests
 [group('dev-tools')]
 [no-cd]
@@ -331,7 +340,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-dcr-mcp test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint
