@@ -245,7 +245,7 @@ require (
 	cloud.google.com/go/serviceusage v1.16.0
 	github.com/IBM/fp-go/v2 v2.13.1
 	github.com/gruntwork-io/terratest v1.0.1
-	github.com/pulumi/pulumi-command/sdk v1.2.1
+	github.com/pulumi/pulumi-command/sdk v1.3.0
 	google.golang.org/genproto v0.0.0-20261012220534-4341edf3f941
 	google.golang.org/grpc v1.85.0
 	gopkg.in/yaml.v3 v3.0.1
