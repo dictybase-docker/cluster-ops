@@ -242,7 +242,7 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.10.0
 	cloud.google.com/go/iam v1.15.1
-	cloud.google.com/go/serviceusage v1.16.0
+	cloud.google.com/go/serviceusage v1.16.1
 	github.com/IBM/fp-go/v2 v2.13.1
 	github.com/gruntwork-io/terratest v1.0.1
 	github.com/pulumi/pulumi-command/sdk v1.3.0
