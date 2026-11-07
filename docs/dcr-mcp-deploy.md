@@ -1,8 +1,8 @@
 # dcr-mcp Server Deploy
 
-The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dictyBase Stock Center Model Context Protocol (MCP) server, into one namespace. The project creates the Deployment `dcr-mcp-api-server` and the NodePort Service `dcr-mcp-api` on port `8080`. The server exposes 12 read-only MCP tools and 4 research prompts over Streamable HTTP at `/mcp` and a health check at `/healthz`, and it queries the dictyBase GraphQL server over HTTP (`graphql-api` in-cluster Service discovery by default, or an optional `--graphql-endpoint` override). It needs no database credentials, no Kubernetes Secret, and no PersistentVolumeClaim.
+The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dictyBase Stock Center Model Context Protocol (MCP) server, into one namespace. The project creates the Deployment `dcr-mcp-api-server` and the NodePort Service `dcr-mcp-api` on port `8080`. The server reads the dictyBase GraphQL server over HTTP, and it needs no database, no Secret, and no volume.
 
-**Production Gateway routing is the recommended setup (`properties.ingress.enabled: false` by default).** On production clusters (`dcr-kube1`), the `dcr-mcp/` stack creates the Deployment and the Service only, and the central Cilium Gateway ([`gateway-deploy.md`](gateway-deploy.md)) exposes `dcr-mcp-api` on its own dedicated hostname at root path `/` (no URL subpath). `dcr-mcp` is not deployed on the legacy `dcr-experiments` cluster by default. If you deploy it on a legacy cluster, turn on the per-app `nginx` Ingress ([Section 6](#6-configure-legacy-ingress-mode-optional)) with its own dedicated hostname and `path: /` (no subpath).
+**The per-app TLS Ingress is optional, and it is off by default.** With the default, the stack creates the Deployment and the Service only, and the central Cilium Gateway ([`gateway-deploy.md`](gateway-deploy.md)) routes the external traffic to a dedicated hostname at root path `/`. [Section 6](#6-configure-legacy-ingress-mode-optional) gives the procedure to turn the Ingress on.
 
 **Status**: Production procedure. Run `just gcp-pulumi scaffold-dcr-mcp-stack` to create a new cluster stack file from the registry and template, or `just gcp-pulumi ensure-stack --folder dcr-mcp` when the stack file already exists.
 
@@ -11,10 +11,10 @@ The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dic
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)
-- [1. Verify the Upstream GraphQL Server](#1-verify-the-upstream-graphql-server)
+- [1. Check the Prerequisites](#1-check-the-prerequisites)
 - [2. Scaffold or Select the Stack](#2-scaffold-or-select-the-stack)
-- [3. Override the GraphQL Endpoint (Optional)](#3-override-the-graphql-endpoint-optional)
-- [4. Pin the Image Tag](#4-pin-the-image-tag)
+- [3. Pin the Image Tag](#3-pin-the-image-tag)
+- [4. Override the GraphQL Endpoint (Optional)](#4-override-the-graphql-endpoint-optional)
 - [5. Configure Server Options (Optional)](#5-configure-server-options-optional)
 - [6. Configure Legacy Ingress Mode (Optional)](#6-configure-legacy-ingress-mode-optional)
 - [7. Preview and Deploy](#7-preview-and-deploy)
@@ -22,10 +22,6 @@ The `dcr-mcp/` Pulumi project deploys **dcr-mcp** (`dictybase/dcr-mcp`), the dic
 - [9. Push the Stack Files](#9-push-the-stack-files)
 - [10. Verify the Rollout](#10-verify-the-rollout)
 - [11. Enable Production Tag Deploys](#11-enable-production-tag-deploys)
-  - [11.1 Create the Deployer Key](#111-create-the-deployer-key)
-  - [11.2 Prepare the Composite Deploy Workflow](#112-prepare-the-composite-deploy-workflow)
-  - [11.3 Publish CI Credentials and Variables](#113-publish-ci-credentials-and-variables)
-  - [11.4 Render the Tag Workflow](#114-render-the-tag-workflow)
 - [12. Troubleshooting](#12-troubleshooting)
 - [13. Related Documents](#13-related-documents)
 
@@ -39,46 +35,46 @@ For experienced users. Full details in the sections below.
 # Enter the cluster environment first
 just cluster-env --env <env> --cluster <cluster>
 
-# 1. Verify the cluster registry and the upstream GraphQL server in the target namespace
-just gcp-cluster registry-show
-kubectl -n <namespace> get svc graphql-api
-kubectl -n <namespace> rollout status deployment/graphql-api-server
+# 1. Check the registry entry, the namespace, and the upstream GraphQL server
+just dcr-mcp check
 
 # 2. Scaffold the stack file on a new cluster, or select an existing stack
 just gcp-pulumi scaffold-dcr-mcp-stack
 just gcp-pulumi ensure-stack --folder dcr-mcp
 
-# 3. Optional. Override the in-cluster GraphQL Service discovery with an explicit URL
-just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --value https://<graphql-host>/graphql
-
-# 4. Pin an immutable release or develop-<sha> image tag (replace 'bootstrap')
+# 3. Pin an immutable release or develop-<sha> tag (replace 'bootstrap')
+just ci latest-tag --repo dictyBase/dcr-mcp
 just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>
 
-# 5. Optional. Adjust stateless mode, rate limit, or CORS origins (defaults shown)
+# 4. Optional. Read a GraphQL server outside the cluster. The default is in-cluster.
+just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --value https://<graphql-host>/graphql
+
+# 5. Optional. Change the server options. The defaults are shown.
 just gcp-pulumi set-config --folder dcr-mcp --key properties.stateless --value true
 just gcp-pulumi set-config --folder dcr-mcp --key properties.rateLimit --value 120
 just gcp-pulumi set-config --folder dcr-mcp --key properties.allowedOrigins.0 --value "*"
 
-# 6. Optional (legacy dcr-experiments only). Keep false on Gateway clusters (default).
+# 6. Optional. Set the legacy Ingress mode. The default is false (no Ingress).
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.enabled --value false
 
 # 7. Read the plan, then apply it
 just gcp-pulumi preview --folder dcr-mcp
 just gcp-pulumi create-resource --folder dcr-mcp
 
-# 8. Expose dcr-mcp on its own host (path /, no subpath) through the production Gateway
+# 8. Set the dedicated hostname, then deploy the Gateway route
 just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.hosts.0 --value <mcp-host>
 just gcp-pulumi set-config --folder gateway --key properties.routes.mcp.enabled --value true
 just gateway deploy
+just gateway show-ip
 
-# 9. Push the stack files before any dcr-mcp release tag
+# 9. Push the stack files before each dcr-mcp release tag
 git add "dcr-mcp/Pulumi.${PULUMI_STACK}.yaml" "gateway/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "dcr-mcp: stack config" && git push
 
 # 10. Verify the rollout and the Gateway route
-kubectl -n <namespace> rollout status deployment/dcr-mcp-api-server
+just dcr-mcp verify
 just gateway verify
 
-# 11. Optional, one time per cluster. Wire automated GitHub Actions tag deploys.
+# 11. Optional, one time per cluster. Let release tags deploy.
 just ci create-deploy-key
 just ci render-composite-deploy
 just ci set-deploy-secret --repos dictyBase/dcr-mcp
@@ -90,28 +86,26 @@ just ci render-tag-deploy --app dcr-mcp --project dcr-mcp --out bin/ci-render/dc
 
 **All of the commands below run in the cluster-env sub-shell.**
 
-- Enter the sub-shell with `just cluster-env --env <env> --cluster <cluster>`. The sub-shell reads `.env.<env>.<cluster>` and exports `CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PROJECT_ID`, and `KUBECONFIG`.
-- Each recipe defaults `--stack` to `$PULUMI_STACK` and `--cluster` to `$CLUSTER_NAME`. No command below needs those flags.
-- Outside the sub-shell the recipes fail with `ERROR: no stack name` or `ERROR: no cluster name`.
+- Enter the sub-shell with `just cluster-env --env <env> --cluster <cluster>`. The sub-shell reads `.env.<env>.<cluster>` and exports `CLUSTER_NAME`, `CLUSTER_ENV`, `PULUMI_STACK`, `PULUMI_BACKEND_URL`, `PULUMI_GCP_CREDENTIALS`, `PROJECT_ID`, and `KUBECONFIG`.
+- Each recipe defaults `--stack` to `$PULUMI_STACK`. No command below needs the flag.
+- Outside the sub-shell the recipes fail with `Error: no stack name`.
 - Leave the sub-shell with `exit` or Ctrl-D.
 
-## 1. Verify the Upstream GraphQL Server
+## 1. Check the Prerequisites
 
-Confirm that the cluster registry entry `config/clusters/<cluster>.yaml` exists (`just gcp-cluster register-cluster` creates it on unregistered clusters) and that Service `graphql-api` and Deployment `graphql-api-server` are running in the namespace before the `dcr-mcp-api-server` pod starts. By default, `dcr-mcp` resolves `http://$GRAPHQL_API_SERVICE_HOST:$GRAPHQL_API_SERVICE_PORT/graphql` from the Kubernetes service-discovery variables (`--graphql-host` and `--graphql-port`), which Kubernetes injects only into pods that start after `graphql-api` exists.
-→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [Cluster registry](reference/backend/cluster-registry.md) · [Service discovery](reference/dcr-mcp/deployment.md#in-cluster-service-discovery)
+The recipe is read-only. It checks the cluster registry entry for this stack, the namespace, Service `graphql-api`, and the rollout of `graphql-api-server`.
+→ [Prerequisites](reference/dcr-mcp/deployment.md#prerequisites) · [Cluster registration](reference/dcr-mcp/deployment.md#cluster-registration-one-time-per-cluster)
 
 ```bash
-just gcp-cluster registry-show
-kubectl -n <namespace> get svc graphql-api
-kubectl -n <namespace> rollout status deployment/graphql-api-server
+just dcr-mcp check
 ```
 
 ---
 
 ## 2. Scaffold or Select the Stack
 
-On a new cluster, run `scaffold-dcr-mcp-stack` to initialize the stack with the cluster KMS key and render `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl` and `config/clusters/<cluster>.yaml` (if `config/clusters/` has no entry matching `$PULUMI_STACK`, register the cluster first with `just gcp-cluster register-cluster`). The baseline config omits `properties.graphqlEndpoint` so the pod uses Kubernetes Service discovery against `graphql-api:8080`. When the stack file already exists, run `ensure-stack` to select the stack.
-→ [Create the stack](reference/dcr-mcp/deployment.md#create-the-stack) · [Cluster registry](reference/backend/cluster-registry.md#creating-an-entry-register-cluster)
+On a new cluster, `scaffold-dcr-mcp-stack` initializes the stack with the cluster KMS key and writes `dcr-mcp/Pulumi.${PULUMI_STACK}.yaml` from the template and the registry entry. When the stack file already exists, run `ensure-stack` to select the stack.
+→ [Create the stack](reference/dcr-mcp/deployment.md#create-the-stack)
 
 ```bash
 # New cluster (creates the stack and writes dcr-mcp/Pulumi.${PULUMI_STACK}.yaml)
@@ -123,23 +117,10 @@ just gcp-pulumi ensure-stack --folder dcr-mcp
 
 ---
 
-## 3. Override the GraphQL Endpoint (Optional)
+## 3. Pin the Image Tag
 
-**Optional. The default is omitted (in-cluster Service discovery via `GRAPHQL_API_SERVICE_HOST`). Skip this section to query `graphql-api` inside the cluster.**
-
-Set `properties.graphqlEndpoint` only when `dcr-mcp` must query an external or custom GraphQL URL instead of the in-cluster `graphql-api` Service. When set, Pulumi passes `--graphql-endpoint <url>` to the container, which takes precedence over `GRAPHQL_API_SERVICE_HOST` and `GRAPHQL_API_SERVICE_PORT`.
-→ [GraphQL endpoint](reference/dcr-mcp/deployment.md#graphql-endpoint)
-
-```bash
-just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --value https://<graphql-host>/graphql
-```
-
----
-
-## 4. Pin the Image Tag
-
-The scaffold template sets `properties.image.tag` to the placeholder `bootstrap`. Resolve the latest published semver tag from `dictyBase/dcr-mcp` with `just ci latest-tag` or pin a specific release or `develop-<sha>` tag before you preview or deploy.
-→ [Server options and container flags](reference/dcr-mcp/deployment.md#server-options-and-container-flags)
+The template writes the placeholder `bootstrap`. Replace it with a release tag or a `develop-<sha>` tag before you preview.
+→ [Image tag](reference/dcr-mcp/deployment.md#image-tag)
 
 ```bash
 just ci latest-tag --repo dictyBase/dcr-mcp
@@ -148,11 +129,24 @@ just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <
 
 ---
 
+## 4. Override the GraphQL Endpoint (Optional)
+
+**Optional. The default is in-cluster. Skip this section to read `graphql-api` inside the cluster.**
+
+Set `properties.graphqlEndpoint` only when the server must read a GraphQL URL outside the cluster. The value replaces the in-cluster address.
+→ [GraphQL endpoint resolution](reference/dcr-mcp/deployment.md#graphql-endpoint-resolution)
+
+```bash
+just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --value https://<graphql-host>/graphql
+```
+
+---
+
 ## 5. Configure Server Options (Optional)
 
-**Optional. The scaffold template writes the production defaults (`stateless: true`, `rateLimit: 120`, `allowedOrigins: ["*"]`). Skip this section to keep the defaults.**
+**Optional. The template writes the production defaults. Skip this section to keep them.**
 
-Keep `properties.stateless` set to `true` so any pod replica can serve any Streamable HTTP request without sticky sessions. Adjust `properties.rateLimit` (maximum `/mcp` requests per client IP address per minute) or restrict `properties.allowedOrigins` when browser MCP clients require a closed CORS list.
+`properties.stateless` keeps each request independent, so any replica answers it. `properties.rateLimit` is the maximum number of `/mcp` requests for each client IP address in one minute, and `properties.allowedOrigins` is the CORS list for browser clients.
 → [Server options and container flags](reference/dcr-mcp/deployment.md#server-options-and-container-flags)
 
 ```bash
@@ -165,16 +159,16 @@ just gcp-pulumi set-config --folder dcr-mcp --key properties.allowedOrigins.0 --
 
 ## 6. Configure Legacy Ingress Mode (Optional)
 
-**Optional. The default is off (`false`). Keep the Ingress off on production clusters that use the Cilium Gateway.**
+**Optional. The default is off. Skip this section on a Gateway cluster.**
 
-`dcr-mcp` is not deployed on the legacy `dcr-experiments` cluster by default, and production clusters route traffic through the central Gateway ([Section 8](#8-expose-through-the-production-gateway)). If you deploy `dcr-mcp` onto a legacy cluster that uses the `nginx` Ingress controller and `kcert`, expose it on its own dedicated hostname at root path `/` (no subpath). Set `hosts.0`, `path`, `tlsSecret`, and `label` first, and then set `ingress.enabled` to `true`.
-→ [Routing architecture: Gateway vs Legacy Ingress](reference/dcr-mcp/deployment.md#routing-architecture-gateway-vs-legacy-ingress)
+The key `properties.ingress.enabled` defaults to `false`. To create the per-app `nginx` Ingress `dcr-mcp-ingress` on a legacy `kcert` cluster, set `hosts`, `path`, `tlsSecret`, and `label` first. Then set the key to `true`.
+→ [Legacy Ingress mode](reference/dcr-mcp/deployment.md#legacy-ingress-mode-dcr-experiments-only)
 
 ```bash
-# Keep the Ingress off on Gateway clusters (default)
+# Keep the Ingress off (default). You can also do nothing and omit the key.
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.enabled --value false
 
-# Or turn the Ingress on for a legacy nginx + kcert cluster (own host, path /, no subpath)
+# Turn the Ingress on. Set the four keys first. The host is dedicated, and the path is /.
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.hosts.0 --value <mcp-host>
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.path --value /
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.tlsSecret --value <mcp-tls-secret>
@@ -187,7 +181,7 @@ just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.enabled --v
 
 ## 7. Preview and Deploy
 
-Read the plan, then apply it. The apply is not interactive, and it stops by itself when the plan changes a protected resource. The stack creates Deployment `dcr-mcp-api-server` and NodePort Service `dcr-mcp-api` (`:8080`) in the target namespace.
+Read the plan, then apply it. The apply is not interactive, and it stops by itself when the plan changes a protected resource.
 → [Deploy behavior](reference/dcr-mcp/deployment.md#deploy-behavior)
 
 ```bash
@@ -199,7 +193,7 @@ just gcp-pulumi create-resource --folder dcr-mcp
 
 ## 8. Expose Through the Production Gateway
 
-On production clusters, expose `dcr-mcp-api` (`:8080`) on its own dedicated hostname at root path `/` (no subpath) through the `gateway/` stack. `just gateway check` requires Service `dcr-mcp-api` to exist before `routes.mcp.enabled` is set to `true`, so always run [Section 7](#7-preview-and-deploy) first. Point your DNS `A` record for `<mcp-host>` to the Gateway IP address printed by `just gateway show-ip`.
+The Gateway route needs Service `dcr-mcp-api`, so run [Section 7](#7-preview-and-deploy) first. Point the DNS `A` record for `<mcp-host>` at the address that `show-ip` prints.
 → [Production Gateway route](reference/dcr-mcp/deployment.md#production-gateway-route-recommended) · [Gateway MCP route](reference/gateway/deployment.md#mcp-route)
 
 ```bash
@@ -213,7 +207,7 @@ just gateway show-ip
 
 ## 9. Push the Stack Files
 
-**CAUTION: Push cluster-ops `develop` before you merge or tag `dictyBase/dcr-mcp`.** CI deploys clone cluster-ops at `develop`, so an unpushed stack file deploys nothing.
+**CAUTION: Push cluster-ops `develop` before you merge or tag `dictyBase/dcr-mcp`.** CI clones cluster-ops at `develop`, so a stack file that you did not push deploys nothing.
 → [CI deployment](reference/dcr-mcp/deployment.md#ci-deployment)
 
 ```bash
@@ -224,12 +218,11 @@ git add "dcr-mcp/Pulumi.${PULUMI_STACK}.yaml" "gateway/Pulumi.${PULUMI_STACK}.ya
 
 ## 10. Verify the Rollout
 
-Confirm that Deployment `dcr-mcp-api-server` rolled out, the running pod image matches `properties.image.tag`, and the Gateway `HTTPRoute` `mcp-route` and TLS Secret `mcp-tls` are ready.
+The recipe is read-only. It waits for the rollout, compares the running image with the tag in the stack file, and checks Service `dcr-mcp-api`.
 → [Verification](reference/dcr-mcp/deployment.md#verification)
 
 ```bash
-kubectl -n <namespace> rollout status deployment/dcr-mcp-api-server
-kubectl -n <namespace> get deploy dcr-mcp-api-server -o jsonpath='{.spec.template.spec.containers[0].image}'
+just dcr-mcp verify
 just gateway verify
 ```
 
@@ -239,42 +232,14 @@ just gateway verify
 
 **Optional. Do this one time for each cluster. Skip it while production deploys stay manual.**
 
-`dcr-mcp` is not listed in `config/services.yaml` (which holds ArangoDB-backed modware gRPC services), so `just ci deploy-backend-services` and `just ci pr-deploy-workflows` do not cover `dcr-mcp`. Run the four individual `just ci` steps below to wire automated GitHub Actions tag deploys for `dictyBase/dcr-mcp`.
-
-### 11.1 Create the Deployer Key
-
-Create or reuse the cluster deployer service account and key at `credentials/<cluster>/deployer.json`, and run the read-only credential preflight (`check-deploy-credentials`). If you already ran this step during [`backend-service-deploy.md`](backend-service-deploy.md), the recipe reuses the existing key file without minting a new key.
-→ [Deploy credential details](reference/backend/ci-credentials.md)
+`dcr-mcp` is absent from `config/services.yaml`, so the bulk backend recipes do not cover it. These five recipes mint the deployer key, publish the credential and the `<CI_ENV>_*` variables, and render a tag workflow file that does nothing until a pull request adds it to `dictyBase/dcr-mcp`.
+→ [Tag deploy setup](reference/dcr-mcp/deployment.md#tag-deploy-setup)
 
 ```bash
 just ci create-deploy-key
-```
-
-### 11.2 Prepare the Composite Deploy Workflow
-
-Publish the organization variable `PROD_PULUMI_STATE_STORAGE` and render `bin/ci-render/composite-deploy.yaml` so `dictyBase/workflows` routes `PROD_DEPLOY_SA_KEY` and the production Pulumi state bucket when `environment: production` is passed. If `dictyBase/workflows` already has this change merged on `develop`, the recipe reports that no pull request is needed.
-→ [Workflow render details](reference/backend/render-deploy-workflows.md)
-
-```bash
 just ci render-composite-deploy
-```
-
-### 11.3 Publish CI Credentials and Variables
-
-Grant `dictyBase/dcr-mcp` access to the organization secret `PROD_DEPLOY_SA_KEY` (preserving all previously selected repositories) and publish the five `<CI_ENV>_*` repository variables (`PROD_CLUSTER`, `PROD_KOPS_STATE_STORAGE`, `PROD_KOPS_VERSION`, `PROD_KUBECTL_VERSION`, `PROD_PULUMI_VERSION`) from `config/clusters/<cluster>.yaml`.
-→ [CI variables details](reference/backend/ci-variables.md) · [Tag deploy setup](reference/dcr-mcp/deployment.md#tag-deploy-setup)
-
-```bash
 just ci set-deploy-secret --repos dictyBase/dcr-mcp
 just ci sync-deploy-vars --repos dictyBase/dcr-mcp
-```
-
-### 11.4 Render the Tag Workflow
-
-Render the deploy-only `tag-build.yaml` workflow for `dictyBase/dcr-mcp` to `bin/ci-render/dcr-mcp-tag-build.yaml`. Copy the rendered file to `.github/workflows/tag-build.yaml` in `dictyBase/dcr-mcp` and open a pull request to activate automated release-tag deployments.
-→ [Tag deploy setup](reference/dcr-mcp/deployment.md#tag-deploy-setup) · [Workflow render details](reference/backend/render-deploy-workflows.md)
-
-```bash
 just ci render-tag-deploy --app dcr-mcp --project dcr-mcp --out bin/ci-render/dcr-mcp-tag-build.yaml
 ```
 
@@ -294,7 +259,7 @@ just ci render-tag-deploy --app dcr-mcp --project dcr-mcp --out bin/ci-render/dc
 **Other documents:**
 - Gateway routing (`gateway/`): [`gateway-deploy.md`](gateway-deploy.md)
 - Upstream GraphQL server (`graphql_server/`): [`graphql-deploy.md`](graphql-deploy.md)
-- Modware gRPC backend services: [`backend-service-deploy.md`](backend-service-deploy.md)
+- Cluster bootstrap and the `cluster-env` sub-shell: [`pulumi-setup.md`](pulumi-setup.md)
 - Cluster registry (`config/clusters/<cluster>.yaml`): [`reference/backend/cluster-registry.md`](reference/backend/cluster-registry.md)
 - CI credentials and variables: [`reference/backend/ci-credentials.md`](reference/backend/ci-credentials.md), [`reference/backend/ci-variables.md`](reference/backend/ci-variables.md)
 - Shared namespaces: [`reference/pulumi/namespaces.md`](reference/pulumi/namespaces.md)
