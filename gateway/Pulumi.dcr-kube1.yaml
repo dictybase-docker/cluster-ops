@@ -68,9 +68,9 @@ config:
         path: /
       api:
         corsAllowOrigin: "*"
-        enabled: false
+        enabled: true
         hosts:
-          - <api-host>
+          - api.dictycr.org
         tlsSecret: api-tls
         services:
           - name: stock-api
