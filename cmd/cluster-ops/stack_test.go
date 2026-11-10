@@ -42,7 +42,7 @@ func TestStackTreeFlagContract(t *testing.T) {
 		"ensure":   {dashFolder, dashStack, "--create", "--copy-config-from"},
 		"preview":  {dashFolder, dashStack, "--allow-protected"},
 		"up":       {dashFolder, dashStack, "--dry-run", "--allow-protected"},
-		destroyCmd: {dashFolder, dashStack, "--dry-run"},
+		destroyCmd: {dashFolder, dashStack, "--dry-run", "--confirm"},
 		"outputs":  {dashFolder, dashStack, "--key"},
 	} {
 		out := stackHelp(t, sub, "--help")

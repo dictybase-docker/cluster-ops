@@ -125,10 +125,14 @@ func TestStackDestroyRequiresConfirm(t *testing.T) {
 
 	app := stackTestApp()
 	app.ExitErrHandler = func(*cli.Context, error) {}
-	err := app.Run([]string{appName, "stack", destroyCmd, "--folder", "f", "--stack", "s1"})
+	err := app.Run([]string{appName, stackFlag, destroyCmd, dashFolder, "f", dashStack, "s1"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "confirm")
 	require.NotContains(t, opener.stack.log, destroyCmd)
+
+	err = app.Run([]string{appName, stackFlag, destroyCmd, dashFolder, "f", dashStack, "s1", "--confirm", confirmYes})
+	require.NoError(t, err)
+	require.Contains(t, opener.stack.log, destroyCmd)
 }
 
 // Shared fixtures (never real).

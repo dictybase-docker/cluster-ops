@@ -66,6 +66,7 @@ func stackCommand() *cli.Command {
 				Usage:  "Destroy the stack resources",
 				Action: stackDestroyAction,
 				Flags: append(stackFlags(),
+					&cli.StringFlag{Name: "confirm", Usage: "Pass exactly 'yes' to destroy"},
 					&cli.BoolFlag{Name: dryRunFlag}),
 			},
 			{

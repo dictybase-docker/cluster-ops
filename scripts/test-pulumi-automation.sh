@@ -102,7 +102,12 @@ just gcp-pulumi create-resource --folder arangodb-single --stack s1 >/dev/null 2
     || fail "create-resource failed: $(cat "${calls}")"
 grep -q "stack up --folder arangodb-single --stack s1" "${calls}" \
     || fail "stack up argv wrong: $(cat "${calls}")"
-echo "  preview/create-resource argv: PASS"
+: > "${calls}"
+just gcp-pulumi remove-resource --folder arangodb-restore --stack s1 >/dev/null 2>&1 \
+    || fail "remove-resource failed: $(cat "${calls}")"
+grep -q "stack destroy --folder arangodb-restore --stack s1 --confirm yes" "${calls}" \
+    || fail "stack destroy argv wrong: $(cat "${calls}")"
+echo "  preview/create-resource/remove-resource argv: PASS"
 
 echo "=== 6. set-config accepts shell-safe dot index keys ==="
 : > "${calls}"

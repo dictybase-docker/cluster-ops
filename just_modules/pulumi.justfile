@@ -259,18 +259,19 @@ create-resource folder stack="":
     go run ./cmd/cluster-ops stack up \
         --folder {{ quote(folder) }} --stack "${stack_name}"
 # Destroy resources for a stack.
-# Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>]
+# Usage: just gcp-pulumi remove-resource --folder <dir> [--stack <name>] [--confirm <yes|no>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
 [arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("confirm", long="confirm", short="c", help="Confirmation for stack destroy (default yes)")]
 [no-cd]
-remove-resource folder stack="":
+remove-resource folder stack="" confirm="yes":
     #!/usr/bin/env bash
     set -euo pipefail
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     stack_name={{ quote(stack) }}
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack destroy \
-        --folder {{ quote(folder) }} --stack "${stack_name}"
+        --folder {{ quote(folder) }} --stack "${stack_name}" --confirm {{ quote(confirm) }}
 # Remove a stack, preserving its config.
 # Usage: just gcp-pulumi cleanup-resource --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
