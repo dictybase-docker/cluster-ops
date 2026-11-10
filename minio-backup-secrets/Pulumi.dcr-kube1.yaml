@@ -1,0 +1,12 @@
+# Production configuration for minio-backup-secrets.
+# Creates Secret `minio-backup-auth` in namespace `prod`, consumed by
+# minio-backup and minio-restore.
+#
+# Configure required values via:
+#   just minio configure-backup-secrets --restic-password '<restic-pass>'
+config:
+  minio-backup-secrets:properties:
+    secret:
+      name: minio-backup-auth
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIJr+f/7r8xGx3qOIK5DLJBAjZ8iK/hqakB1yDhDFxGUSSQDjx5R/1033OzYQjQM6x+QFeZ0eoDf6wkyQGqlwgKeauSfk6pEIlFMQ5Fwn1nuwtZqVFdHBMpG/GDPvwhHHMtyVKfUSMKsdlf4=

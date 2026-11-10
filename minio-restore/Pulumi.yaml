@@ -1,0 +1,7 @@
+name: minio-restore
+runtime: go
+description: A Pulumi program for restoring MinIO buckets and policies from Restic snapshots in Google Cloud Storage
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

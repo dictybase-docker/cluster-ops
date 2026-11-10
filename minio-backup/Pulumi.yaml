@@ -1,0 +1,7 @@
+name: minio-backup
+runtime: go
+description: A Pulumi program for managing MinIO backups using Restic and Google Cloud Storage
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

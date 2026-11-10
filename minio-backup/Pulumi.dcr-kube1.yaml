@@ -1,0 +1,34 @@
+# Production configuration for minio-backup: the backup bucket
+# restic-minio-backup-dcr-kube1, a daily 01:30 CronJob, and an immediate
+# first-run Job. Applies AFTER minio-backup-secrets (Secret `minio-backup-auth`)
+# and `minio` (Secret `minio-root` and Service `minio`).
+#
+# Deploy with:
+#   just minio deploy-backup
+config:
+  minio-backup:properties:
+    bucket: restic-minio-backup-dcr-kube1
+    namespace: prod
+    server: minio
+    port: 9000
+    schedule: "30 1 * * *"
+    storage:
+      class: dictycr-balanced
+      name: minio-backup-ephemeral
+      size: 150Gi
+    minioSecret:
+      name: minio-root
+      userKey: rootUser
+      passKey: rootPassword
+    resticSecret:
+      name: minio-backup-auth
+      key: resticPass
+    bucketSecret:
+      name: minio-backup-auth
+      key: gcsCredentials
+    projectSecret:
+      name: minio-backup-auth
+      key: gcsProject
+  gcp:project: dcr-kube1
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIJr+f/7r8xGx3qOIK5DLJBAjZ8iK/hqakB1yDhDFxGUSSQDjx5R/1033OzYQjQM6x+QFeZ0eoDf6wkyQGqlwgKeauSfk6pEIlFMQ5Fwn1nuwtZqVFdHBMpG/GDPvwhHHMtyVKfUSMKsdlf4=
