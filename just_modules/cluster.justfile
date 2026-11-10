@@ -502,51 +502,117 @@ extract-logs label namespace="dev":
     rm bin/custodian
 
 # Exclude resources from backup by adding label 'velero.io/exclude-from-backup=true'
-# and exclude volumes from backup by adding 'backup.velero.io/backup-volumes-excludes' annotation
-# Usage: just exclude-from-backup [namespace]
+# and exclude volumes from backup by adding 'backup.velero.io/backup-volumes-excludes' annotation.
+# Usage: just gcp-cluster exclude-from-backup [--namespace <ns>]
+[arg("namespace", long="namespace", short="n", help="Kubernetes namespace (defaults to prod)")]
 [no-cd]
-exclude-from-backup namespace="dev":
+exclude-from-backup namespace="prod":
     #!/usr/bin/env bash
     set -euo pipefail
 
     # Check if KUBECONFIG is exported
     if [ -z "${KUBECONFIG:-}" ]; then
-        echo "Error: KUBECONFIG environment variable is not set."
-        echo "Please set KUBECONFIG to the path of your Kubernetes config file."
+        echo "Error: KUBECONFIG environment variable is not set." >&2
+        echo "Please set KUBECONFIG to the path of your Kubernetes config file." >&2
         exit 1
     fi
 
     # Build the custodian binary
     echo "Building custodian command..."
     go build -o bin/custodian cmd/custodian/main.go
+    trap 'rm -f bin/custodian' EXIT
 
     # Run the exclude-from-backup subcommand
-    echo "Running exclude-from-backup..."
-    ./bin/custodian exclude-from-backup --namespace "{{ namespace }}"
+    echo "Running exclude-from-backup in namespace {{ quote(namespace) }}..."
+    ./bin/custodian exclude-from-backup --namespace {{ quote(namespace) }}
 
     # Run the exclude-volumes-from-backup subcommand
-    echo "Running exclude-volumes-from-backup..."
-    ./bin/custodian exclude-volumes-from-backup --namespace "{{ namespace }}"
+    echo "Running exclude-volumes-from-backup in namespace {{ quote(namespace) }}..."
+    ./bin/custodian exclude-volumes-from-backup --namespace {{ quote(namespace) }}
 
-    # Clean up the binary
-    rm bin/custodian
-
+# Exclude datastore resources and pod volumes in the application namespace,
+# then initialize, preview, and apply the install-velero stack.
+# Usage: just gcp-cluster setup-cluster-backup [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Application namespace to exclude from backup (defaults to prod)")]
 [no-cd]
-setup-cluster-backup:
+setup-cluster-backup stack="" namespace="prod":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Check if Velero is installed
-    if ! command -v velero &> /dev/null; then
-        echo "Error: Velero is not installed or not in the PATH."
-        echo "Please install Velero and make sure it's accessible in your PATH."
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
         exit 1
     fi
 
-    # If Velero is installed, proceed with the setup
-    just gcp-cluster exclude-from-backup dev
-    just gcp-pulumi preview --folder install-velero --stack experiments
-    just gcp-pulumi create-resource --folder install-velero --stack experiments
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set." >&2
+        exit 1
+    fi
+
+    # Check if Velero is installed
+    if ! command -v velero &> /dev/null; then
+        echo "Error: Velero is not installed or not in the PATH." >&2
+        echo "Run 'just prepare-tools' inside the cluster-env shell first." >&2
+        exit 1
+    fi
+
+    config_file="install-velero/Pulumi.${stack_name}.yaml"
+    if [ ! -f "${config_file}" ]; then
+        echo "Error: stack config missing: ${config_file}" >&2
+        exit 1
+    fi
+
+    velero_ns=$(yq -r '.config."install-velero:properties".namespace // "operators"' "${config_file}")
+    velero client config set "namespace=${velero_ns}"
+
+    just gcp-cluster exclude-from-backup --namespace {{ quote(namespace) }}
+    just gcp-pulumi ensure-stack --folder install-velero --stack "${stack_name}"
+    just gcp-pulumi preview --folder install-velero --stack "${stack_name}"
+    just gcp-pulumi create-resource --folder install-velero --stack "${stack_name}"
+
+# Verify the Velero deployment, BackupStorageLocation, Schedule, and initial Backup.
+# Usage: just gcp-cluster verify-cluster-backup [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[no-cd]
+verify-cluster-backup stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set." >&2
+        exit 1
+    fi
+
+    config_file="install-velero/Pulumi.${stack_name}.yaml"
+    if [ ! -f "${config_file}" ]; then
+        echo "Error: stack config missing: ${config_file}" >&2
+        exit 1
+    fi
+
+    velero_ns=$(yq -r '.config."install-velero:properties".namespace // "operators"' "${config_file}")
+    schedule_name=$(yq -r '.config."install-velero:properties".schedule.name // ""' "${config_file}")
+
+    kubectl -n "${velero_ns}" rollout status deployment/velero --timeout=120s
+    bsl_phase=$(kubectl -n "${velero_ns}" get backupstoragelocation default -o jsonpath='{.status.phase}')
+    if [ "${bsl_phase}" != "Available" ]; then
+        echo "Error: BackupStorageLocation default phase is '${bsl_phase}', expected 'Available'." >&2
+        exit 1
+    fi
+
+    if [ -n "${schedule_name}" ]; then
+        kubectl -n "${velero_ns}" get schedule.velero.io "${schedule_name}"
+        kubectl -n "${velero_ns}" get backup.velero.io "${schedule_name}-initial"
+    fi
 
 [no-cd]
 cluster-info:
