@@ -424,6 +424,92 @@ fork-stack to-stack="" from-stack="" folder="":
     echo "Forked ${created}, skipped ${skipped}. Review the diff and commit the deltas, then:"
     echo "  just create-cluster-env --env <env> --cluster ${to} --pulumi-stack ${to} --force yes"
 
+# Clone the infrastructure and datastore stack configs from a base stack
+# (default dcr-kube1) to the target stack, stripping foreign KMS headers and
+# encrypted secret blocks and rewriting gcp:project and bucket suffixes to
+# the target project. Skips application stacks that have dedicated
+# scaffold-*-stack recipes. Never overwrites an existing Pulumi.<to>.yaml.
+# Usage: just gcp-pulumi clone-datastore-stacks [--to-stack <name>] [--from-stack <base>] [--project <id>] [--folder <dir>]
+[arg("from_stack", long="from-stack", short="F", help="Base stack name (defaults to dcr-kube1)")]
+[arg("to_stack", long="to-stack", short="t", help="Target stack name (defaults to PULUMI_STACK)")]
+[arg("project", long="project", short="p", help="Target GCP project ID (defaults to PROJECT_ID)")]
+[arg("folder", long="folder", short="f", help="Limit to one project folder")]
+[group('pulumi-management')]
+[no-cd]
+clone-datastore-stacks to_stack="" from_stack="dcr-kube1" project="" folder="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    root="{{ justfile_directory() }}"
+    to={{ quote(to_stack) }}
+    [ -z "${to}" ] && to="${PULUMI_STACK:-}"
+    if [ -z "${to}" ]; then
+        echo "ERROR: no target stack — set PULUMI_STACK (via cluster env) or pass --to-stack." >&2
+        exit 1
+    fi
+    from={{ quote(from_stack) }}
+    proj={{ quote(project) }}
+    [ -z "${proj}" ] && proj="${PROJECT_ID:-}"
+    if [ -z "${proj}" ]; then
+        echo "ERROR: no target project — set PROJECT_ID (via cluster env) or pass --project." >&2
+        exit 1
+    fi
+    only={{ quote(folder) }}
+
+    datastore_folders=(
+        storage_class
+        namespace-bootstrap
+        arangodb-operator
+        arangodb-cluster
+        arangodb-backup
+        arangodb-restore
+        backup_secrets
+        source_backup_secrets
+        create-arangodb-databases
+        reset-root-password
+        cloudnative-pg-operator
+        cnpg-backup-plugin
+        cloudnative-pg-cluster
+        minio
+        minio-backup-secrets
+        minio-backup
+        minio-restore
+        nats
+        redis-standalone
+        redis-backup-secrets
+        redis-backup
+        redis-restore
+    )
+
+    created=0
+    skipped=0
+    for d_name in "${datastore_folders[@]}"; do
+        if [ -n "${only}" ] && [ "${d_name}" != "${only}" ]; then
+            continue
+        fi
+        src="${root}/${d_name}/Pulumi.${from}.yaml"
+        dst="${root}/${d_name}/Pulumi.${to}.yaml"
+        [ -f "${src}" ] || continue
+        if [ -f "${dst}" ]; then
+            echo "exists, skipped: ${d_name}/Pulumi.${to}.yaml"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        yq 'del(.secretsprovider) | del(.encryptedkey) | del(.. | select(tag == "!!map" and has("secure") and (keys | length == 1)))' "${src}" \
+            | sed "s/${from}/${proj}/g" > "${dst}"
+        echo "created: ${d_name}/Pulumi.${to}.yaml"
+        created=$((created + 1))
+    done
+
+    if [ "${created}" -eq 0 ] && [ "${skipped}" -eq 0 ]; then
+        echo "ERROR: no datastore project ships Pulumi.${from}.yaml — nothing cloned." >&2
+        exit 1
+    fi
+
+    echo
+    echo "Cloned ${created} datastore stack config(s), skipped ${skipped}."
+    echo "Next: just gcp-cluster deploy-foundation"
+
 # Apply the StorageClass stack, then verify the classes it declares. Expected
 # class names and provisioner are derived from storage_class/Pulumi.<stack>.yaml,
 # so prod (two classes) and lab/local (one class, different provisioner) verify

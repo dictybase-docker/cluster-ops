@@ -614,6 +614,92 @@ verify-cluster-backup stack="":
         kubectl -n "${velero_ns}" get backup.velero.io "${schedule_name}-initial"
     fi
 
+# Deploy the cluster foundation on a new or cloned cluster: StorageClasses,
+# shared namespaces, Gateway API CRDs + Cilium bind, NATS, Redis, and the
+# CloudNativePG and ArangoDB operators.
+# Usage: just gcp-cluster deploy-foundation [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Application namespace (defaults to prod)")]
+[no-cd]
+deploy-foundation stack="" namespace="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set." >&2
+        exit 1
+    fi
+
+    ns={{ quote(namespace) }}
+
+    echo "=== 1. Validating HA topology and stateful-db pool ==="
+    just gcp-cluster validate-kops-ha
+    just arangodb check-pool
+
+    echo "=== 2. Applying StorageClasses and shared namespaces ==="
+    just gcp-pulumi apply-storageclass --stack "${stack_name}"
+    just gcp-pulumi apply-namespaces --stack "${stack_name}"
+
+    echo "=== 3. Installing Gateway API CRDs and binding Cilium ==="
+    just gateway install-crds
+    just gateway restart-cilium
+
+    echo "=== 4. Deploying NATS and standalone Redis ==="
+    just nats deploy --namespace "${ns}" --stack "${stack_name}"
+    just redis deploy --namespace "${ns}" --stack "${stack_name}"
+
+    echo "=== 5. Deploying CloudNativePG and ArangoDB operators ==="
+    just postgres deploy-operator --stack "${stack_name}"
+    just arangodb deploy-operator --stack "${stack_name}"
+
+    echo "Foundation ready."
+
+# Run the read-only verification suite across a cloned or production cluster.
+# Usage: just gcp-cluster verify-clone [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Application namespace (defaults to prod)")]
+[no-cd]
+verify-clone stack="" namespace="prod":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "Error: no stack name — set PULUMI_STACK (via cluster env) or pass --stack." >&2
+        exit 1
+    fi
+    if [ -z "${KUBECONFIG:-}" ]; then
+        echo "Error: KUBECONFIG environment variable is not set." >&2
+        exit 1
+    fi
+
+    ns={{ quote(namespace) }}
+
+    just gcp-cluster validate-hardening
+    just gcp-pulumi check-storageclass --classes "dictycr-balanced,dictycr-ssd"
+    just arangodb verify --namespace "${ns}"
+    just postgres verify --namespace "${ns}"
+    just minio verify --namespace "${ns}"
+    just redis verify --namespace "${ns}"
+    just nats verify --namespace "${ns}"
+
+    if [ -f "dcr-mcp/Pulumi.${stack_name}.yaml" ]; then
+        just dcr-mcp verify --stack "${stack_name}" --namespace "${ns}"
+    fi
+    if [ -f "frontend_application/Pulumi.${stack_name}.yaml" ]; then
+        just frontend verify --stack "${stack_name}" --namespace "${ns}"
+    fi
+    if [ -f "gateway/Pulumi.${stack_name}.yaml" ]; then
+        just gateway verify --stack "${stack_name}" --namespace "${ns}"
+    fi
+
 [no-cd]
 cluster-info:
     kops get cluster -o yaml

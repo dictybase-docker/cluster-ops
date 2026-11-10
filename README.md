@@ -30,6 +30,8 @@ Everything is driven through `just` recipes. Cluster identity and shape live in 
 | Deploy frontend applications (`frontend_application`) | [`docs/frontend-deploy.md`](docs/frontend-deploy.md) |
 | Deploy Event Messenger (`event-messenger`) | [`docs/event-messenger-deploy.md`](docs/event-messenger-deploy.md) |
 | Deploy Cilium Gateway and `cert-manager` routes | [`docs/gateway-deploy.md`](docs/gateway-deploy.md) |
+| Clone a production `dcr-kube` cluster end to end | [`docs/cluster-clone.md`](docs/cluster-clone.md) |
+| Back up the cluster with Velero (`install-velero`) | [`docs/velero-deploy.md`](docs/velero-deploy.md) |
 | Understand the architecture and cost trade-offs | [`docs/kops-gcp-architecture.md`](docs/kops-gcp-architecture.md) |
 
 Run them in that order for a greenfield project. Each guide opens with a Quick Reference block if you have done it before.
