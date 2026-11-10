@@ -79,5 +79,8 @@ config:
       name: dictycr
       key: gcsProject
     noLock: false
+    confirmTarget: prod/arangodb/drill-20261109-171835
+    restoreId: drill-20261109-171835
+    snapshot: latest
 secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
 encryptedkey: CiQAMO2WIPA203UsdHuHigU+XF+OlSs39JNb2KkgGxVSX8hsqaISSQDjx5R/gznuub/er3METnlbTTAtX48jPXfk7tOe/Qx7P1aAPmGrBB0ohAW8voQqmouZ04YHCEWkEPTAhi85+oYNuH2559Tnh9U=
