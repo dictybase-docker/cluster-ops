@@ -62,7 +62,7 @@ just redis deploy-backup
 
 ## Restore
 
-Reserved for a future revision — no in-cluster restore recipe exists yet. The restic repository in `gs://restic-redis-backup-<project-id>` is readable with the backup key (`restic -r gs:... snapshots` via any restic container with the Secret mounted), but nothing in this repo wires a restore Job; recovery today is manual.
+For same-cluster disaster recovery (`just redis configure-restore` + `just redis apply-restore`) and cross-cluster bootstrap (`just redis bootstrap-from-snapshot`), refer to [Redis Restore and Cross-Cluster Bootstrap Details](restore.md).
 
 ## Hazards
 

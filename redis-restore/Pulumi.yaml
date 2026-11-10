@@ -1,0 +1,7 @@
+name: redis-restore
+runtime: go
+description: A Pulumi program for restoring Redis from Restic snapshots in Google Cloud Storage
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

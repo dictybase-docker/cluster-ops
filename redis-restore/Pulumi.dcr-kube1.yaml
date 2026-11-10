@@ -1,0 +1,33 @@
+# Production configuration template for redis-restore.
+#
+# Configure a same-cluster DR restore with:
+#   just redis configure-restore --namespace prod
+#   just redis apply-restore
+#
+# Configure and run a cross-cluster bootstrap restore with:
+#   just redis bootstrap-from-snapshot --namespace prod --bucket <source-bucket>
+config:
+  redis-restore:properties:
+    namespace: prod
+    server: redis
+    port: 6379
+    bucket: restic-redis-backup-dcr-kube1
+    storage:
+      class: dictycr-balanced
+      size: 10Gi
+    resticSecret:
+      name: redis-backup-auth
+      key: resticPass
+    bucketSecret:
+      name: redis-backup-auth
+      key: gcsCredentials
+    projectSecret:
+      name: redis-backup-auth
+      key: gcsProject
+    noLock: false
+    overwrite: true
+    confirmTarget: prod/redis/drill-20261110-000000
+    restoreId: drill-20261110-000000
+    snapshot: latest
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIJr+f/7r8xGx3qOIK5DLJBAjZ8iK/hqakB1yDhDFxGUSSQDjx5R/1033OzYQjQM6x+QFeZ0eoDf6wkyQGqlwgKeauSfk6pEIlFMQ5Fwn1nuwtZqVFdHBMpG/GDPvwhHHMtyVKfUSMKsdlf4=

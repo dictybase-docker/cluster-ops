@@ -47,6 +47,17 @@ just redis verify
 
 Optional steps:
 ```bash
+# Cross-cluster bootstrap from a source cluster's GCS backup bucket
+just redis configure-source-secrets \
+  --restic-password '<source-restic-pass>' \
+  --gcs-project <source-project-id> \
+  --gcs-key-file credentials/<source-project-id>/redis-restic-reader.json
+just redis bootstrap-from-snapshot --namespace prod --bucket restic-redis-backup-<source-project-id>
+
+# Same-cluster DR restore from gs://restic-redis-backup-<project-id>
+just redis configure-restore --namespace prod
+just redis apply-restore
+
 # Teardown (clone only, destructive — deletes the data PVC = all Redis data)
 just redis teardown --namespace prod --delete-pvc yes
 ```
@@ -84,8 +95,8 @@ just redis deploy
 
 ## 3. Backup & Restore
 
-Daily restic backup to `gs://restic-redis-backup-<project-id>` through the redis-scoped `redis-backup-sa` identity, plus an immediate first run. Run **after** `deploy` — the backup jobs read the live `redis` service.
-→ [Backup details](reference/redis/backup.md)
+Daily restic backup to `gs://restic-redis-backup-<project-id>` through the redis-scoped `redis-backup-sa` identity, plus an immediate first run. For same-cluster recovery (`configure-restore` + `apply-restore`) or cross-cluster bootstrap (`bootstrap-from-snapshot`), refer to the restore reference.
+→ [Backup details](reference/redis/backup.md) · [Restore and bootstrap details](reference/redis/restore.md)
 
 ```bash
 just redis configure-backup-secrets --restic-password '<restic-pass>'
@@ -128,6 +139,7 @@ just redis verify
 - [Pool requirements](reference/redis/pool-requirements.md)
 - [Install details](reference/redis/install.md)
 - [Backup details](reference/redis/backup.md)
+- [Restore and bootstrap details](reference/redis/restore.md)
 - [Teardown details](reference/redis/teardown.md)
 - [Verify details](reference/redis/verify.md)
 - [Troubleshooting](reference/redis/troubleshooting.md)

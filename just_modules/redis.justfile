@@ -431,6 +431,18 @@ deploy-backup namespace="prod" stack="" retries="90" interval="10":
     just gcp-pulumi set-config --folder "$FOLDER" --stack "$STACK" \
         --key 'gcp:project' --value "$PROJECT"
 
+    SOURCE_SECRET="redis-backup-source"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    for key in resticSecret bucketSecret projectSecret; do
+        configured=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path "properties.${key}.name" 2>/dev/null || true)
+        if [[ "$configured" == "$SOURCE_SECRET" ]]; then
+            echo "Error: properties.${key}.name is '$SOURCE_SECRET' on $FOLDER stack '$STACK'." >&2
+            echo "That Secret is the read-only cross-project BOOTSTRAP identity and must never drive backups." >&2
+            echo "Fix: set it back to 'redis-backup-auth' (re-run configure-backup-secrets if needed)." >&2
+            exit 1
+        fi
+    done
+
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
@@ -444,3 +456,404 @@ deploy-backup namespace="prod" stack="" retries="90" interval="10":
 
     echo
     kubectl get cronjob -n "$NS" "$CRONJOB"
+
+# ── restore and cross-cluster bootstrap ──────────────────────────────────────
+
+# Print a Secret value from the active (source) cluster environment.
+# Defaults to the restic repository password in Secret `redis-backup-auth`.
+# Usage: just redis source-secret-value [--namespace <ns>] [--secret <name>] [--key <key>]
+[arg("namespace", long="namespace", short="n", help="Namespace containing the Secret (default prod)")]
+[arg("secret", long="secret", short="s", help="Secret name (default redis-backup-auth)")]
+[arg("key", long="key", short="k", help="Secret data key (default resticPass)")]
+[group('redis')]
+[no-cd]
+source-secret-value namespace="prod" secret="redis-backup-auth" key="resticPass":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    NS={{ quote(namespace) }}
+    SECRET={{ quote(secret) }}
+    KEY={{ quote(key) }}
+    if [[ -z "$NS" || -z "$SECRET" || -z "$KEY" ]]; then
+        echo "Error: --namespace, --secret and --key must be non-empty." >&2
+        exit 1
+    fi
+    if [[ -z "${CLUSTER_ENV:-}" || -z "${CLUSTER_NAME:-}" || \
+          -z "${KUBECONFIG:-}" || ! -r "$KUBECONFIG" ]]; then
+        echo "Error: enter the source cluster with 'just cluster-env' before reading its Secret." >&2
+        exit 1
+    fi
+    if ! secret_json=$(kubectl get secret "$SECRET" -n "$NS" -o json 2>&1); then
+        echo "Error: unable to read Secret '$SECRET' in namespace '$NS': $secret_json" >&2
+        exit 1
+    fi
+    if ! value_b64=$(printf '%s\n' "$secret_json" | jq -er --arg key "$KEY" '.data[$key] | strings' 2>/dev/null); then
+        echo "Error: Secret '$SECRET' in '$NS' is missing a valid '$KEY' key." >&2
+        exit 1
+    fi
+    if ! value=$(printf '%s' "$value_b64" | base64 -d 2>/dev/null) || [[ -z "$value" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' has an invalid or empty '$KEY' value." >&2
+        exit 1
+    fi
+    printf '%s\n' "$value"
+
+# Create a read-only service account in the SOURCE GCP project and grant it
+# objectViewer on the source Redis restic bucket.
+# Usage: just redis grant-source-bucket-reader [--bucket <name>] [--source-project <id>] [--sa-name <n>] [--key-file <path>] [--stack <name>]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (optional; inferred from redis-backup stack config)")]
+[arg("source_project", long="source-project", short="p", help="SOURCE GCP project id (defaults to PROJECT_ID env var)")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name to create/reuse")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key (default credentials/<source-project>/<sa-name>.json)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack for bucket inference (defaults to PULUMI_STACK)")]
+[group('redis')]
+[no-cd]
+grant-source-bucket-reader bucket="" source_project="" sa_name="redis-restic-reader" key_file="" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    SOURCE_BUCKET={{ quote(bucket) }}
+    SOURCE_PROJECT={{ quote(source_project) }}
+    [ -z "${SOURCE_PROJECT}" ] && SOURCE_PROJECT="${PROJECT_ID:-}"
+    SA_NAME={{ quote(sa_name) }}
+    KEY_FILE={{ quote(key_file) }}
+
+    if [[ -z "$SOURCE_PROJECT" ]]; then
+        echo "Error: --source-project (or PROJECT_ID) is required." >&2
+        exit 1
+    fi
+
+    if [[ -z "$SOURCE_BUCKET" ]]; then
+        STACK=$(just redis _require-stack --stack {{ quote(stack) }}) || exit 1
+        STACK_YAML="redis-backup/Pulumi.${STACK}.yaml"
+        if [[ -f "$STACK_YAML" ]]; then
+            SOURCE_BUCKET=$(yq -r '.config."redis-backup:properties".bucket // ""' "$STACK_YAML" 2>/dev/null || true)
+        fi
+        if [[ -z "$SOURCE_BUCKET" ]]; then
+            SOURCE_BUCKET="restic-redis-backup-${SOURCE_PROJECT}"
+        fi
+        echo "Using source bucket: $SOURCE_BUCKET"
+    fi
+
+    if ! gcloud storage buckets describe "gs://${SOURCE_BUCKET}" \
+            --project "${SOURCE_PROJECT}" --format="value(name)" >/dev/null 2>&1; then
+        echo "Error: bucket 'gs://${SOURCE_BUCKET}' not found in project '${SOURCE_PROJECT}' (or you lack access to it)." >&2
+        exit 1
+    fi
+
+    SA_EMAIL="${SA_NAME}@${SOURCE_PROJECT}.iam.gserviceaccount.com"
+    KEY_FILE="${KEY_FILE:-credentials/${SOURCE_PROJECT}/${SA_NAME}.json}"
+
+    echo "Source project : ${SOURCE_PROJECT}"
+    echo "Source bucket  : gs://${SOURCE_BUCKET}"
+    echo "Service account: ${SA_EMAIL}"
+    echo "Key file       : ${KEY_FILE}"
+    echo
+
+    go run ./cmd/cluster-ops sa setup-reader \
+        --source-project "$SOURCE_PROJECT" --name "$SA_NAME" \
+        --display-name "Redis restic cross-project reader" \
+        --bucket "$SOURCE_BUCKET" --role roles/storage.objectViewer \
+        --key-file "$KEY_FILE"
+    echo "Warning: service account keys accumulate. Audit with 'keys list' and delete unused ones."
+
+    echo
+    echo "Next: just redis configure-source-secrets --restic-password '<source pw>' --gcs-project '$SOURCE_PROJECT' --gcs-key-file '$KEY_FILE'"
+
+# Create Secret `redis-backup-source` in the target cluster for cross-project bootstrap.
+# Usage: just redis configure-source-secrets --restic-password <pw> --gcs-project <source-id> --gcs-key-file <path> [--key-name <k>] [--secret-name <n>] [--namespace <ns>] [--stack <name>]
+[arg("restic_password", long="restic-password", short="p", help="SOURCE restic repository password (required)")]
+[arg("gcs_project", long="gcs-project", short="g", help="SOURCE GCP project id that owns the source bucket (required)")]
+[arg("gcs_key_file", long="gcs-key-file", short="f", help="Path to the SOURCE service account JSON key (required)")]
+[arg("key_name", long="key-name", short="k", help="Data key the JSON is stored under inside the Secret")]
+[arg("secret_name", long="secret-name", short="e", help="Name of the source Secret")]
+[arg("namespace", long="namespace", short="n", help="Namespace the Secret is created in")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('redis')]
+[no-cd]
+configure-source-secrets restic_password gcs_project gcs_key_file key_name="gcsCredentials" secret_name="redis-backup-source" namespace="prod" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-backup-secrets"
+    NS={{ quote(namespace) }}
+    RESTIC_PASSWORD={{ quote(restic_password) }}
+    GCS_PROJECT={{ quote(gcs_project) }}
+    KEY_FILE={{ quote(gcs_key_file) }}
+    KEY_NAME={{ quote(key_name) }}
+    SECRET_NAME={{ quote(secret_name) }}
+
+    if [[ -z "$RESTIC_PASSWORD" || -z "$GCS_PROJECT" || -z "$KEY_FILE" ]]; then
+        echo "Error: --restic-password, --gcs-project and --gcs-key-file are all required." >&2
+        exit 1
+    fi
+    if [[ ! -f "$KEY_FILE" ]]; then
+        echo "Error: source service account key '$KEY_FILE' does not exist on this machine." >&2
+        exit 1
+    fi
+    KEY_FILE=$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")
+
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "$FOLDER:properties.sourceSecret.name=$SECRET_NAME" \
+        --secret "$FOLDER:properties.sourceSecret.resticPass=$RESTIC_PASSWORD" \
+        --secret "$FOLDER:properties.sourceSecret.gcsProject=$GCS_PROJECT" \
+        --secret "$FOLDER:properties.sourceSecret.serviceAccount.keyname=$KEY_NAME" \
+        --secret "$FOLDER:properties.sourceSecret.serviceAccount.filepath=$KEY_FILE"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    echo
+    kubectl get secret "$SECRET_NAME" -n "$NS"
+    echo "Reminder: $SECRET_NAME is READ-ONLY bootstrap identity. Never point deploy-backup at it."
+
+# Configure the redis-restore stack for a same-cluster DR restore.
+# Usage: just redis configure-restore [--namespace <ns>] [--server <svc>] [--restore-id <id>] [--snapshot <snap>] [--overwrite <yes|no>] [--stack <name>]
+[arg("namespace", long="namespace", short="n", help="Target namespace (default prod)")]
+[arg("server", long="server", short="v", help="Redis Service name (default redis)")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default drill-<UTC timestamp>)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id or 'latest' (default latest)")]
+[arg("overwrite", long="overwrite", short="w", help="Flush target Redis before migrating keys: yes|no (default yes)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('redis')]
+[no-cd]
+configure-restore namespace="prod" server="redis" restore_id="" snapshot="latest" overwrite="yes" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-restore"
+    NAMESPACE={{ quote(namespace) }}
+    SERVER={{ quote(server) }}
+    RESTORE_ID={{ quote(restore_id) }}
+    SNAPSHOT={{ quote(snapshot) }}
+    OVERWRITE={{ quote(overwrite) }}
+    MAX_RESTORE_ID_LEN=49
+
+    case "$OVERWRITE" in
+        yes|true) OVERWRITE_VALUE="true" ;;
+        no|false) OVERWRITE_VALUE="false" ;;
+        *)
+            echo "Error: --overwrite takes yes or no; got '$OVERWRITE'." >&2
+            exit 1
+            ;;
+    esac
+
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="drill-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+    if [[ ! "$RESTORE_ID" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || (( ${#RESTORE_ID} > MAX_RESTORE_ID_LEN )); then
+        echo "Error: restore id '$RESTORE_ID' must be a valid DNS-1123 label of at most ${MAX_RESTORE_ID_LEN} chars." >&2
+        exit 1
+    fi
+
+    CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "redis-restore:properties.namespace=$NAMESPACE" \
+        --plaintext "redis-restore:properties.server=$SERVER" \
+        --plaintext "redis-restore:properties.restoreId=$RESTORE_ID" \
+        --plaintext "redis-restore:properties.snapshot=$SNAPSHOT" \
+        --plaintext "redis-restore:properties.overwrite=$OVERWRITE_VALUE" \
+        --plaintext "redis-restore:properties.confirmTarget=$CONFIRM_TARGET"
+
+    echo "redis-restore configured for ${CONFIRM_TARGET} (snapshot: ${SNAPSHOT})."
+    echo "Next: just redis apply-restore"
+
+# Run the redis-restore Job configured by configure-restore or configure-bootstrap.
+# Usage: just redis apply-restore [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 90)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('redis')]
+[no-cd]
+apply-restore stack="" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-restore"
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    NS=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.namespace)
+    RESTORE_ID=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.restoreId)
+    SERVER=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.server)
+    SNAPSHOT=$(pulumi -C "$FOLDER" config get --stack "$STACK" --path properties.snapshot)
+    JOB="redis-restore-${RESTORE_ID}"
+
+    echo "Restoring Redis into ${NS}/${SERVER} as job ${JOB} from snapshot '${SNAPSHOT}'..."
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    for i in $(seq 1 "$RETRIES"); do
+        phase=$(kubectl get pods -n "$NS" -l "restore-id=$RESTORE_ID" \
+            -o jsonpath='{.items[0].status.initContainerStatuses[0].state.terminated.reason}' 2>/dev/null || true)
+        code=$(kubectl get pods -n "$NS" -l "restore-id=$RESTORE_ID" \
+            -o jsonpath='{.items[0].status.initContainerStatuses[0].state.terminated.exitCode}' 2>/dev/null || true)
+        if [[ "$phase" == "Completed" ]]; then
+            echo "restic-restore completed."
+            break
+        fi
+        if [[ -n "$phase" && "$code" != "0" && -n "$code" ]]; then
+            echo "Error: restic-restore terminated with reason '$phase' (exit $code)." >&2
+            kubectl logs -n "$NS" "job/$JOB" -c restic-restore --tail=100 || true
+            exit 1
+        fi
+        echo "Waiting for restic-restore (try $i/$RETRIES)..."
+        sleep "$INTERVAL"
+    done
+
+    echo "--- restic-restore log ---"
+    kubectl logs -n "$NS" "job/$JOB" -c restic-restore --tail=50 || true
+
+    just redis _wait-job --namespace "$NS" --job "$JOB" \
+        --retries "$RETRIES" --interval "$INTERVAL"
+
+    echo "--- redis-restore log ---"
+    kubectl logs -n "$NS" "job/$JOB" -c redis-restore --tail=50 || true
+    echo "Next: just redis verify"
+
+# Point the redis-restore stack at the SOURCE project's restic repository.
+# Usage: just redis configure-bootstrap --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>]
+[arg("namespace", long="namespace", short="n", help="Target namespace (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id or 'latest' (default latest)")]
+[arg("server", long="server", short="v", help="Redis Service name (default redis)")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default bootstrap-<UTC timestamp>)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('redis')]
+[no-cd]
+configure-bootstrap namespace bucket snapshot="latest" server="redis" restore_id="" secret="redis-backup-source" stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-restore"
+    NAMESPACE={{ quote(namespace) }}
+    BUCKET={{ quote(bucket) }}
+    SNAPSHOT={{ quote(snapshot) }}
+    SERVER={{ quote(server) }}
+    RESTORE_ID={{ quote(restore_id) }}
+    SECRET={{ quote(secret) }}
+    MAX_RESTORE_ID_LEN=49
+
+    if [[ -z "$NAMESPACE" || -z "$BUCKET" ]]; then
+        echo "Error: --namespace and --bucket are required." >&2
+        exit 1
+    fi
+    if [[ -z "$SNAPSHOT" ]]; then
+        SNAPSHOT="latest"
+    fi
+
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+
+    if [[ -z "$RESTORE_ID" ]]; then
+        RESTORE_ID="bootstrap-$(date -u +%Y%m%d-%H%M%S)"
+    fi
+    if [[ ! "$RESTORE_ID" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || (( ${#RESTORE_ID} > MAX_RESTORE_ID_LEN )); then
+        echo "Error: restore id '$RESTORE_ID' must be a valid DNS-1123 label of at most ${MAX_RESTORE_ID_LEN} chars." >&2
+        exit 1
+    fi
+
+    CONFIRM_TARGET="${NAMESPACE}/${SERVER}/${RESTORE_ID}"
+
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "redis-restore:properties.namespace=$NAMESPACE" \
+        --plaintext "redis-restore:properties.server=$SERVER" \
+        --plaintext "redis-restore:properties.restoreId=$RESTORE_ID" \
+        --plaintext "redis-restore:properties.snapshot=$SNAPSHOT" \
+        --plaintext "redis-restore:properties.confirmTarget=$CONFIRM_TARGET" \
+        --plaintext "redis-restore:properties.bucket=$BUCKET" \
+        --plaintext "redis-restore:properties.resticSecret.name=$SECRET" \
+        --plaintext "redis-restore:properties.resticSecret.key=resticPass" \
+        --plaintext "redis-restore:properties.bucketSecret.name=$SECRET" \
+        --plaintext "redis-restore:properties.bucketSecret.key=gcsCredentials" \
+        --plaintext "redis-restore:properties.projectSecret.name=$SECRET" \
+        --plaintext "redis-restore:properties.projectSecret.key=gcsProject" \
+        --plaintext "redis-restore:properties.noLock=true" \
+        --plaintext "redis-restore:properties.overwrite=true"
+
+    echo "redis-restore bootstrap config written for ${CONFIRM_TARGET} from gs://${BUCKET}."
+
+# Reset the redis-restore stack to this cluster's DR defaults after bootstrap.
+# Usage: just redis reset-restore-config [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[group('redis')]
+[no-cd]
+reset-restore-config stack="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="redis-restore"
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+    PROJECT="${PROJECT_ID:-$STACK}"
+    PROD_BUCKET="restic-redis-backup-${PROJECT}"
+    PROD_SECRET="redis-backup-auth"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+
+    pulumi -C "$FOLDER" config set-all --stack "$STACK" --path \
+        --plaintext "redis-restore:properties.bucket=$PROD_BUCKET" \
+        --plaintext "redis-restore:properties.resticSecret.name=$PROD_SECRET" \
+        --plaintext "redis-restore:properties.bucketSecret.name=$PROD_SECRET" \
+        --plaintext "redis-restore:properties.projectSecret.name=$PROD_SECRET" \
+        --plaintext "redis-restore:properties.noLock=false"
+
+    for key in snapshot restoreId confirmTarget; do
+        pulumi -C "$FOLDER" config rm --stack "$STACK" --path "properties.$key" 2>/dev/null || true
+    done
+
+    echo "redis-restore reset to DR defaults (bucket: $PROD_BUCKET, secret: $PROD_SECRET)."
+
+# One command for cross-project Redis bootstrap from a source restic bucket:
+# configure-bootstrap -> apply-restore -> reset-restore-config via EXIT trap.
+# Usage: just redis bootstrap-from-snapshot --namespace <ns> --bucket <source-bucket> [--snapshot <id>] [--server <svc>] [--restore-id <id>] [--secret <name>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("namespace", long="namespace", short="n", help="Target namespace (required)")]
+[arg("bucket", long="bucket", short="b", help="SOURCE GCS bucket holding the restic repository (required)")]
+[arg("snapshot", long="snapshot", short="p", help="Restic snapshot id or 'latest' (default latest)")]
+[arg("server", long="server", short="v", help="Redis Service name (default redis)")]
+[arg("restore_id", long="restore-id", short="i", help="DNS-1123 restore id (default bootstrap-<UTC timestamp>)")]
+[arg("secret", long="secret", short="c", help="Secret holding the SOURCE resticPass/gcsProject/gcsCredentials")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Probe attempts per phase (default 90)")]
+[arg("interval", long="interval", short="t", help="Seconds between probes (default 10)")]
+[group('redis')]
+[no-cd]
+bootstrap-from-snapshot namespace bucket snapshot="latest" server="redis" restore_id="" secret="redis-backup-source" stack="" retries="90" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    STACK=$(just redis _require-stack --stack {{ quote(stack) }})
+    trap 'just redis reset-restore-config --stack "$STACK" || true' EXIT
+
+    just redis configure-bootstrap \
+        --namespace {{ quote(namespace) }} \
+        --bucket {{ quote(bucket) }} \
+        --snapshot {{ quote(snapshot) }} \
+        --server {{ quote(server) }} \
+        --restore-id {{ quote(restore_id) }} \
+        --secret {{ quote(secret) }} \
+        --stack "$STACK"
+
+    just redis apply-restore \
+        --stack "$STACK" \
+        --retries {{ quote(retries) }} \
+        --interval {{ quote(interval) }}
+
+    echo "Redis bootstrap restore complete. Next: just redis deploy-backup"
