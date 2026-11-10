@@ -4,6 +4,8 @@ Provisioning guide for production **Logto** (`svhd/logto`), backed by the Postgr
 
 **Status**: Production procedure. Once the production stack config exists, `just logto install` is the entire installation — it folds check → `ensure-stack` → preview → apply → rollout wait → verify into one run. The `log-to` project ships only the lab `dev`/`experiments` stacks: **no production `log-to/Pulumi.<prod-cluster>.yaml` exists in this repository yet**, so `just logto install` stops at `Error: stack config missing` until that file is written and reviewed. Never apply a lab stack against production.
 
+![Logto Deploy Workflow](reference/logto/logto-deploy-workflow.png)
+
 ## Table of Contents
 
 - [Table of Contents](#table-of-contents)

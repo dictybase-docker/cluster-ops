@@ -10,6 +10,10 @@ Before creating or editing any file under `docs/`, read
 - Never duplicate content between docs — link instead.
 - Commands show minimal invocation; defaults come from `just cluster-env`.
 - Keep TOC, Quick Reference, and cross-doc anchors in sync on every edit.
+- **Include a workflow diagram in every guide.** Every guide (`docs/<topic>.md`)
+  must include a workflow diagram (`![<Topic> Workflow](reference/<area>/<topic>-workflow.png)`)
+  that shows every step of the workflow in execution order. `just docs docs-lint`
+  enforces that every guide has a workflow diagram and that the image file exists.
 - **Always use `just` recipes, never raw `kubectl` or manual YAML assembly.**
   If a project lacks a `scaffold-*-stack` or `verify` recipe, build the recipe
   and template first, then document the recipe.

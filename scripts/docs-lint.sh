@@ -11,7 +11,8 @@
 #   5. Guide section numbering has no gaps after the first numbered section
 #   6. Guide section shape: no prose after the command block (STYLE.md rule 2)
 #   7. Guide section has a reference link (STYLE.md rule 2)
-#   8. Shell command blocks must not contain unquoted [...] glob tokens
+#   8. Guide includes a workflow diagram ![...](reference/...png) (STYLE.md rule 4)
+#   9. Shell command blocks must not contain unquoted [...] glob tokens
 #      (e.g. hosts[0]), which fail in zsh with 'no matches found'
 #   9. Recipe echoes in just_modules/ point at recipes, not section numbers
 #      or titles (STYLE.md rule 8)
@@ -151,6 +152,9 @@ if secs and "## Table of Contents" in text:
             p(f"section {n}: no reference-doc link — every command section "
               f"links its reference doc (STYLE.md rule 2)", start)
             bad += 1
+    if not re.search(r"!\[[^\]]+\]\(reference/[^)]+\.(png|svg)\)", text):
+        p("guide has no workflow diagram ![...](reference/...png) (STYLE.md rule 4)", 1)
+        bad += 1
 
 # 8. shell command blocks must not contain unquoted [...] glob tokens
 #    (e.g. hosts[0] or args[0]), which fail in zsh with 'no matches found'.

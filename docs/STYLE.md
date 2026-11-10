@@ -108,11 +108,16 @@ guide, not per section.
 Guides open with, in order:
 
 1. **Title + status line** (e.g. "Production procedure. Use Pulumi.<cluster>.yaml…").
-2. **Table of Contents** with anchor links — keep it in sync with headings.
-3. **Quick Reference** — the full flow as one numbered bash block for
+2. **Workflow diagram** showing every step in execution order. Every guide must
+   include a workflow diagram (`just docs docs-lint` enforces this rule):
+   ```markdown
+   ![<Topic> Workflow](reference/<area>/<topic>-workflow.png)
+   ```
+3. **Table of Contents** with anchor links — keep it in sync with headings.
+4. **Quick Reference** — the full flow as one numbered bash block for
    experienced users, plus a separate optional-steps block. Comments in this
    block are terse (`# 1. …`, `# 2. …`).
-4. **Numbered sections** in execution order, ending with Verify,
+5. **Numbered sections** in execution order, ending with Verify,
    Troubleshooting (link only), and Related Documents.
 
 ## 5. Links and Anchors
