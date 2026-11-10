@@ -92,11 +92,12 @@ just arangodb update-cluster
 
 Each member role (`agents`, `dbservers`, `coordinators`) accepts an optional `args` string list under `arangodb-cluster:properties.<role>.args`. When `args` is non-empty, the program writes `spec.<role>.args` on the `ArangoDeployment` custom resource, and the `kube-arangodb` operator appends those flags to the `arangod` container command line. When `args` is omitted or empty, the program omits `spec.<role>.args`.
 
-Production `Pulumi.dcr-kube1.yaml` sets one startup flag on `dbservers`:
+Production `Pulumi.dcr-kube1.yaml` sets startup flags on `dbservers` and `coordinators`:
 
 | Role | Argument | Purpose |
 |------|----------|---------|
 | `dbservers` | `--rocksdb.block-cache-shard-bits=4` | Sets the RocksDB block cache to `16` shards (`2^4`) instead of the ArangoDB default (`-1`, auto-sized by CPU/memory). This setting reduces cache mutex contention on the 3 DBServer pods. |
+| `dbservers`, `coordinators` | `--cluster.force-one-shard=true` | Forces `OneShard` mode (`numberOfShards: 1`, `distributeShardsLike: "_graphs"`) on all newly created collections so all collections of a database co-locate on one DBServer leader and use the `cluster-one-shard` AQL optimizer rule. |
 
 ### Rolling Restart Lifecycle
 
