@@ -2200,6 +2200,8 @@ apply-restore stack="" retries="180" interval="10":
     echo "Restoring into ${NS}/${SERVER} as job ${JOB} from snapshot '${SNAPSHOT}'."
     echo
 
+    just arangodb _refresh-before-job --folder "$FOLDER" --namespace "$NS" \
+        --selector "app=arangodb-restore" --stack "$STACK"
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
