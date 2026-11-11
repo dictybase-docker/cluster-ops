@@ -12,7 +12,7 @@ config:
     host: 0.0.0.0
     image:
       name: dictybase/dcr-mcp
-      tag: bootstrap
+      tag: develop-4e47267
     ingress:
       enabled: true
       hosts:
