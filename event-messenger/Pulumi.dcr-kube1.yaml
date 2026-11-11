@@ -40,7 +40,7 @@ config:
           senderName:
             secure: v1:qCMTGJNtnGkmt/Kk:PdZgIPUb+Al6HYzLsWJjKFQ9DUej/lslCC2oKyx3J/VKAQ==
           cc:
-            secure: v1:RrJm7dDTswAWeAX+:31baUu7E0MG61doyWRqBiicvBCHo520wc2tJDhDVQRBgOEECeR9pf4Qio7A6QJ/I
+            secure: v1:GXFFcPiXM8ZFO1l+:UyfCQEh+5boZsS43fDgCmUDJMLIbjIi/TAolz7s//dg82g7j5NzhsJ9bvZs=
           ncbiApiKey:
             secure: v1:Rk9NiYh+ue78YwAM:JVoGeNqLHkkDlX10BSG42bFK9Dg1LZn9R9OR0t/ZiCSaCkm60ZmOcABONkbxX0WOc9rcdw==
     image:
