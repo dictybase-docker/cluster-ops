@@ -72,16 +72,17 @@ just gcp-cluster register-cluster --env "${env_name}" --cluster "${cluster}" \
 [ "$(yq_get "${entry}" '.kops_state')" = "gs://alt-state-${cluster}" ] || fail "kops-state override not applied"
 echo "  overrides: PASS"
 
-echo "=== 3. overwrite refusal (throwaway + real dcr-kube1) ==="
-if out=$(just gcp-cluster register-cluster --env "${env_name}" --cluster "${cluster}" 2>&1); then
-    fail "overwrite accepted"
-fi
-printf '%s' "${out}" | grep -q "already exists" || fail "overwrite refusal unnamed:\n${out}"
-if out=$(just gcp-cluster register-cluster --env prod --cluster dcr-kube1 2>&1); then
-    fail "real dcr-kube1 overwrite accepted"
-fi
-printf '%s' "${out}" | grep -q "already exists" || fail "dcr-kube1 refusal unnamed"
-echo "  overwrite refusal: PASS (incl. real dcr-kube1)"
+echo "=== 3. idempotent when entry already exists (throwaway + real dcr-kube1) ==="
+out=$(just gcp-cluster register-cluster --env "${env_name}" --cluster "${cluster}" --namespace ignored 2>&1) \
+    || fail "existing entry should succeed idempotently:\n${out}"
+printf '%s' "${out}" | grep -q "already exists — keeping existing entry" \
+    || fail "idempotent message missing:\n${out}"
+[ "$(yq_get "${entry}" '.namespace')" = "prod" ] || fail "existing entry was overwritten"
+out=$(just gcp-cluster register-cluster --env prod --cluster dcr-kube1 2>&1) \
+    || fail "real dcr-kube1 should succeed idempotently:\n${out}"
+printf '%s' "${out}" | grep -q "already exists — keeping existing entry" \
+    || fail "dcr-kube1 idempotent message missing:\n${out}"
+echo "  idempotent existing entry: PASS (incl. real dcr-kube1)"
 
 echo "=== 4. missing env file fails with the create-cluster-env hint ==="
 rm -f "${env_file}" "${manifest}" "${entry}"

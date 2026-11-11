@@ -1011,7 +1011,7 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     done
     if [ -z "${entry}" ]; then
         echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
-        echo "       Add one, then re-run. See docs/reference/backend/cluster-registry.md." >&2
+        echo "       Run: just gcp-cluster register-cluster (see docs/reference/backend/cluster-registry.md)." >&2
         exit 1
     fi
     namespace=$(yq -r '.namespace' "${entry}")
@@ -1019,14 +1019,16 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     gql_ep={{ quote(graphql_endpoint) }}
 
     cfg="${folder}/Pulumi.${stack_name}.yaml"
-    if [ -e "${cfg}" ]; then
-        echo "ERROR: ${cfg} already exists — refusing to overwrite (describe-then-create)." >&2
-        echo "       Edit it by hand, or delete it only if you own it." >&2
-        exit 1
+    if [ -e "${cfg}" ] && grep -q '^config:' "${cfg}" 2>/dev/null; then
+        echo "Stack config ${cfg} already exists — keeping existing config."
+        exit 0
     fi
 
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
-    pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}"
+    if ! pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}" 2>/dev/null; then
+        pulumi -C "${folder}" stack select "${stack_name}" --secrets-provider "${kms}" 2>/dev/null \
+            || pulumi -C "${folder}" stack select "${stack_name}"
+    fi
 
     tmp=$(mktemp /tmp/dcr-mcp-stack-XXXXXX)
     trap 'rm -f "${tmp}"' EXIT
@@ -1056,7 +1058,7 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
 
     echo "Scaffolded ${cfg}"
     echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} port=${port_val}"
-    echo "Next: just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>"
+    echo "Next: configure stack options, push ${cfg} to cluster-ops develop, or pin properties.image.tag"
 
 # Scaffold a frontend_application stack config from the cluster registry + template.
 # Initializes the stack with the registry KMS secrets provider when absent, and

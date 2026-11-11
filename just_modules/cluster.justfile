@@ -2647,9 +2647,10 @@ verify-deployer-access cluster="" sa_key="":
 # PULUMI_STACK, and the asdf tool manifest; reads the tool versions from that
 # manifest (v-prefix normalized); derives kops_state from the gs://kops-state-<cluster>
 # convention, namespace from --env, and ci_env from the uppercased env name.
-# Describe-then-create: refuses when the registry entry already exists. Ends by
-# running registry-show over the new entry so it is validated the moment it
-# exists. Run after create-cluster (or later — the recipe only reads files).
+# Describe-then-create: keeps an existing registry entry without overwriting it,
+# or creates a new one from the cluster bootstrap files. Always ends by running
+# registry-show over the entry so it is validated. Run after create-cluster
+# (or later — the recipe only reads files).
 # Usage: just gcp-cluster register-cluster --env <env> --cluster <name> [--namespace <ns>] [--ci-env <PREFIX>] [--kops-state <uri>]
 [arg("env", long="env", short="e", help="Environment name (.env.<env>.<cluster> source)")]
 [arg("cluster", long="cluster", short="c", help="Cluster name")]
@@ -2672,13 +2673,13 @@ register-cluster env="" cluster="" namespace="" ci_env="" kops_state="":
         exit 1
     fi
 
-    # Refuse the overwrite before validating any sources: the guard must fire
-    # even when the env file is absent (CI and fresh clones have none).
+    # Describe-then-create: when the registry entry already exists, keep it
+    # untouched, validate it with registry-show, and exit 0.
     entry="config/clusters/${name}.yaml"
     if [ -e "${entry}" ]; then
-        echo "ERROR: ${entry} already exists — refusing to overwrite (describe-then-create)." >&2
-        echo "       Edit it by hand, or delete it only if you own it." >&2
-        exit 1
+        echo "Registry entry ${entry} already exists — keeping existing entry."
+        just gcp-cluster registry-show --cluster "${name}"
+        exit 0
     fi
 
     env_file=".env.${env_name}.${name}"

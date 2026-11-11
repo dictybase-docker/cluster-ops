@@ -35,8 +35,9 @@ Behavior:
 3. Derives `kops_state` from the `gs://kops-state-<cluster>` convention,
    `namespace` from the env name, `ci_env` from the uppercased env name —
    each overridable.
-4. Writes the entry describe-then-create — an existing file is never
-   overwritten.
+4. Writes the entry describe-then-create — when `config/clusters/<cluster>.yaml`
+   already exists, the recipe keeps the existing file without overwriting it,
+   validates it with `registry-show`, and exits `0`.
 5. Runs `registry-show` over the new entry, so it is validated the moment it
    exists, and prints the next steps.
 

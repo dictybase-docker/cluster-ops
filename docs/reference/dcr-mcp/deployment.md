@@ -2,7 +2,7 @@
 
 Back to: [dcr-mcp Server Deploy Guide](../../dcr-mcp-deploy.md)
 
-Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two read-only recipes (`check` and `verify`), the cluster registration prerequisite, the stack scaffold, the GraphQL endpoint resolution, the container flags, the two routing modes, the release-tag pipeline, and the troubleshooting table.
+Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two read-only recipes (`check` and `verify`), the cluster registration prerequisite, the stack scaffold, the bootstrap order that gives the project its first image, the GraphQL endpoint resolution, the container flags, the two routing modes, the two CI pipelines, and the troubleshooting table.
 
 ## Table of Contents
 
@@ -10,10 +10,14 @@ Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two rea
 - [Prerequisites](#prerequisites)
   - [just dcr-mcp check](#just-dcr-mcp-check)
 - [Cluster Registration (One Time per Cluster)](#cluster-registration-one-time-per-cluster)
+  - [Supported Target Clusters](#supported-target-clusters)
 - [Create the Stack](#create-the-stack)
   - [Baseline Stack File](#baseline-stack-file)
   - [Keys That Change per Cluster](#keys-that-change-per-cluster)
+- [Bootstrap Order on a New Cluster](#bootstrap-order-on-a-new-cluster)
+  - [Why the Order Is Circular Without It](#why-the-order-is-circular-without-it)
 - [Image Tag](#image-tag)
+  - [Find a Published Tag](#find-a-published-tag)
 - [GraphQL Endpoint Resolution](#graphql-endpoint-resolution)
 - [Server Options and Container Flags](#server-options-and-container-flags)
   - [Stateless Streamable HTTP and Caching](#stateless-streamable-http-and-caching)
@@ -22,12 +26,15 @@ Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two rea
   - [Citation Links Emitted by Tools](#citation-links-emitted-by-tools)
 - [Routing Architecture: Gateway vs Legacy Ingress](#routing-architecture-gateway-vs-legacy-ingress)
   - [Production Gateway Route (Recommended)](#production-gateway-route-recommended)
-  - [Legacy Ingress Mode (`dcr-experiments` Only)](#legacy-ingress-mode-dcr-experiments-only)
+  - [Legacy Ingress Mode (`dcr-experiments`)](#legacy-ingress-mode-dcr-experiments)
   - [Turn the Legacy Ingress Off](#turn-the-legacy-ingress-off)
 - [Deploy Behavior](#deploy-behavior)
   - [Recipe Flags](#recipe-flags)
 - [Verification](#verification)
 - [CI Deployment](#ci-deployment)
+  - [Developer CI on `develop`](#developer-ci-on-develop)
+  - [Release Tag CI](#release-tag-ci)
+  - [Push Order](#push-order)
 - [Tag Deploy Setup](#tag-deploy-setup)
 - [Troubleshooting](#troubleshooting)
 
@@ -87,7 +94,7 @@ On success it prints the stack and namespace, then `Next: just gcp-pulumi scaffo
 
 ## Cluster Registration (One Time per Cluster)
 
-Every scaffold recipe reads `config/clusters/*.yaml` and matches the entry whose `stack:` key equals the active stack. A cluster gets its entry one time, during cluster bootstrap, and never again. `config/clusters/` ships `dcr-kube1.yaml` (`stack: dcr-kube1`) only.
+Every scaffold recipe reads `config/clusters/*.yaml` and matches the entry whose `stack:` key equals the active stack. A cluster gets its entry one time, during cluster bootstrap, and never again. A cluster without an entry fails the scaffold with `ERROR: no registry entry with stack '<stack>' (checked config/clusters/*.yaml).`
 
 `register-cluster` reads files; it creates nothing in the cloud. It therefore runs **after** the env file and the tool manifest exist and carry the Pulumi lines, and **inside** the target cluster's own sub-shell, where `CLUSTER_ENV` and `CLUSTER_NAME` default `--env` and `--cluster`:
 
@@ -107,20 +114,31 @@ just gcp-cluster register-cluster
 
 Full behavior, the eleven keys, and the flag table: [cluster registry](../backend/cluster-registry.md). Cluster bootstrap order: [`pulumi-setup.md`](../../pulumi-setup.md).
 
-**`ERROR: no registry entry with stack '<stack>' (checked config/clusters/*.yaml)` has two causes.** Both appear the same way, so check the shell first:
+**`ERROR: no registry entry with stack '<stack>' (checked config/clusters/*.yaml)` has two causes.** Both appear the same way, so read `echo "$PULUMI_STACK"` first and compare it with the table below:
 
 | Cause | Symptom | Fix |
 |-------|---------|-----|
-| Wrong sub-shell | `echo "$PULUMI_STACK"` prints a stack with no entry, for example `experiments` in the `dcr-experiments` shell | Leave with `exit`, then enter the production shell: `just cluster-env --env prod --cluster dcr-kube1` |
-| Unregistered cluster | `echo "$PULUMI_STACK"` prints the expected stack, and `config/clusters/<cluster>.yaml` is absent | Run `just gcp-cluster register-cluster` in that cluster's sub-shell, as shown above |
+| Unregistered cluster | `$PULUMI_STACK` holds the expected stack, and `config/clusters/<cluster>.yaml` is absent | Run `just gcp-cluster register-cluster` in that cluster's sub-shell, as shown above |
+| Wrong sub-shell | `$PULUMI_STACK` holds a stack that belongs to another cluster, or is empty | Leave with `exit`, then enter the correct shell: `just cluster-env --env <env> --cluster <cluster>` |
 
-`register-cluster` is describe-then-create: an existing entry is never overwritten. Editing the registry by hand stays a manual action.
+`register-cluster` is describe-then-create and idempotent: when `config/clusters/<cluster>.yaml` already exists, the recipe keeps the existing entry without overwriting it, validates it with `registry-show`, and exits `0`. Editing the registry by hand stays a manual action.
+
+### Supported Target Clusters
+
+Both entries exist in `config/clusters/`. The `stack:` key of the entry is the Pulumi stack name, and it does not need to equal the cluster name.
+
+| Registry entry | `stack` | `namespace` | `ci_env` | External route | Pinned tool versions |
+|----------------|---------|-------------|----------|----------------|----------------------|
+| `dcr-kube1.yaml` | `dcr-kube1` | `prod` | `PROD` | Cilium Gateway + `cert-manager` ([Gateway route](#production-gateway-route-recommended)) | kOps `1.36.1`, kubectl `1.35.8`, Pulumi `3.255.0` |
+| `dcr-experiments.yaml` | `experiments` | `dev` | `DEV` | `nginx` Ingress + `kcert` ([legacy Ingress](#legacy-ingress-mode-dcr-experiments)) | kOps `1.29.2`, kubectl `1.28.8`, Pulumi `3.108.0` |
+
+`experiments` is the stack that the developer CI workflow of `dictyBase/dcr-mcp` deploys on each push to `develop` ([developer CI](#developer-ci-on-develop)). `PULUMI_STACK=experiments` in the `dcr-experiments` sub-shell is therefore correct, not a shell mistake.
 
 ---
 
 ## Create the Stack
 
-`scaffold-dcr-mcp-stack` initializes the stack with the registry KMS key and renders `dcr-mcp/Pulumi.<stack>.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl`.
+`scaffold-dcr-mcp-stack` initializes the stack with the registry KMS key and renders `dcr-mcp/Pulumi.<stack>.yaml` from `config/templates/dcr-mcp-stack.yaml.tmpl`. The recipe does two things that the CI deploy depends on: it creates the stack **in the Pulumi backend** of that cluster, and it writes the stack file that CI reads from Git ([bootstrap order](#bootstrap-order-on-a-new-cluster)).
 
 ```bash
 just gcp-pulumi scaffold-dcr-mcp-stack
@@ -130,12 +148,12 @@ Behavior:
 
 1. Resolves the stack name from `--stack` or `$PULUMI_STACK`.
 2. Finds the registry entry whose `stack:` key matches, and reads `namespace` and `kms_secrets_provider` from it. A missing entry fails ([cluster registration](#cluster-registration-one-time-per-cluster)).
-3. Refuses to overwrite an existing `dcr-mcp/Pulumi.<stack>.yaml`.
-4. Runs `pulumi stack init` with the registry KMS key, then appends the rendered `config:` block.
+3. Keeps an existing `dcr-mcp/Pulumi.<stack>.yaml` without overwriting it and exits `0`.
+4. Initializes or selects the stack with the registry KMS key, then appends the rendered `config:` block.
 5. Appends `graphqlEndpoint` only when `--graphql-endpoint` gives a URL. Without the flag the key stays absent, and the server reads `graphql-api` inside the cluster ([endpoint resolution](#graphql-endpoint-resolution)).
 6. Validates that `name` is `dcr-mcp`, that `namespace` equals the registry value, and that the file holds no `:latest` tag.
 
-It prints `Next: just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>`.
+It prints `Next: configure stack options, push <stack file> to cluster-ops develop, or pin properties.image.tag`.
 
 When `dcr-mcp/Pulumi.<stack>.yaml` already exists in Git, select the stack instead:
 
@@ -168,9 +186,9 @@ config:
 
 ### Keys That Change per Cluster
 
-`dcr-mcp` is not deployed on the legacy `dcr-experiments` cluster: the project ships no `Pulumi.experiments.yaml`, and `config/clusters/` has no `dcr-experiments.yaml`. The second column describes the posture to use if you deploy it there.
+`dcr-mcp/` ships no `Pulumi.<stack>.yaml` for either cluster yet, so both columns describe a stack that the scaffold creates. The `experiments` column follows the pattern that `graphql_server/Pulumi.experiments.yaml` already uses on the same cluster.
 
-| Key | Production (`dcr-kube1`) | Legacy `nginx` cluster |
+| Key | Production (`dcr-kube1`) | Legacy (`experiments`) |
 |-----|--------------------------|------------------------|
 | `namespace` | `prod` | `dev` |
 | `graphqlEndpoint` | absent — read in-cluster | absent — read in-cluster |
@@ -179,20 +197,74 @@ config:
 | `ingress.path` | absent; the Gateway route uses `/` | `/` |
 | `ingress.tlsSecret` | absent; the Gateway route uses `mcp-tls` | `kcert`-managed Secret name |
 | `ingress.label` | absent | `name: kcert.dev/ingress`, `value: managed` |
-| `image.tag` | release tag or `develop-<sha>` | release tag or `develop-<sha>` |
+| `image.tag` | `develop-<sha>` until a release tag exists | `develop-<sha>` written by the developer CI run |
+
+---
+
+## Bootstrap Order on a New Cluster
+
+The first setup of `dcr-mcp` has no published image, no release tag, and no stack file in Git. These six steps are the only order that works. Steps 1, 2, 3, and 6 run in the cluster-env sub-shell of the target cluster. Step 5 runs in GitHub Actions.
+
+| Step | Action | Why it is in this position |
+|------|--------|----------------------------|
+| 1 | `just gcp-cluster register-cluster` (one time), then `just dcr-mcp check` | Every scaffold recipe resolves the namespace and the KMS key from the registry entry ([cluster registration](#cluster-registration-one-time-per-cluster)) |
+| 2 | `just gcp-pulumi scaffold-dcr-mcp-stack` | Creates the stack in the Pulumi backend and writes `dcr-mcp/Pulumi.<stack>.yaml` with `image.tag: bootstrap`. CI cannot select a stack that does not exist. |
+| 3 | `set-config` for the optional keys, including `ingress.*` on `experiments` | A later CI run overwrites `image.tag` only, so every other key must be correct before the first `pulumi up` |
+| 4 | Commit and push `dcr-mcp/Pulumi.<stack>.yaml` to cluster-ops `develop` | CI clones this repository at `develop` and applies the stack file that the clone holds ([CI deployment](#ci-deployment)) |
+| 5 | Push or merge into `develop` in `dictyBase/dcr-mcp` | The run publishes `dictybase/dcr-mcp:develop-<sha>` to Docker Hub, then sets `properties.image.tag` in its own clone and runs `pulumi up` |
+| 6 | `set-config properties.image.tag <develop-sha>`, then push to cluster-ops `develop` | The CI clone is thrown away, so the deployed tag reaches Git only when you write it there ([image tag](#image-tag)) |
+
+**`bootstrap` in the pushed stack file of step 4 is correct.** CI replaces the tag in its clone before `pulumi up`, so the placeholder never reaches a pod. Step 6 makes the repository agree with the cluster, which is what `just dcr-mcp verify` compares.
+
+### Why the Order Is Circular Without It
+
+Three dependencies make every other order fail:
+
+- **No tag to pin.** `dictyBase/dcr-mcp` carries no semver tag, so `just ci latest-tag --repo dictyBase/dcr-mcp` fails with `ERROR: no semver tags found for dictyBase/dcr-mcp.` Pinning a tag before the first build is not possible.
+- **No image to pull.** Docker Hub receives `dictybase/dcr-mcp:<tag>` only from a CI run. A local `create-resource` with any invented tag ends in `ErrImagePull`.
+- **CI reads this repository, not your working copy.** The deploy step clones `dictybase-docker/cluster-ops` at `develop`. A stack file that stays on your machine is invisible to it.
+
+The two failures that follow a wrong order are distinct, and the error text identifies which one happened:
+
+| Missing piece | What CI does | Error |
+|---------------|--------------|-------|
+| Step 2 skipped (no stack in the Pulumi backend) | Fails at the config step, before `pulumi up` | `error: no stack named '<stack>' found` |
+| Step 4 skipped (stack file not pushed) | Writes a stack file that holds `image.tag` only, then fails in `pulumi up` | `dcr-mcp:properties is missing namespace` |
+
+In both cases the image publish step already finished, because it runs before the deploy step. The `develop-<sha>` tag is therefore on Docker Hub, and you can finish the rollout with `preview` and `create-resource` after you repair the missing step.
 
 ---
 
 ## Image Tag
 
-The template writes `image.tag: bootstrap`, which is a placeholder, not a published tag. A deploy that keeps it ends in `ErrImagePull`, and `just dcr-mcp verify` fails early with `tag is 'bootstrap'`.
+The template writes `image.tag: bootstrap`, which is a placeholder, not a published tag. A deploy that keeps it ends in `ErrImagePull`, and `just dcr-mcp verify` fails early with `tag is 'bootstrap'`. The Pulumi config check also rejects a tag that holds `<...>` placeholder text, and the scaffold rejects `:latest`.
 
 ```bash
-just ci latest-tag --repo dictyBase/dcr-mcp
 just gcp-pulumi set-config --folder dcr-mcp --key properties.image.tag --value <immutable-tag>
 ```
 
-The Pulumi config check also rejects a tag that still holds `<...>` placeholder text, and the scaffold rejects `:latest`. A production stack always carries an immutable tag, because a CI tag deploy rewrites this one key and nothing else ([CI deployment](#ci-deployment)).
+Two tag forms are valid here, and each one identifies one commit:
+
+| Form | Who writes it | Source |
+|------|---------------|--------|
+| `develop-<7-char sha>` | The developer CI run on `develop` | The commit at the head of `develop` in `dictyBase/dcr-mcp` |
+| `<semver>` (for example `v1.2.0`) | A release tag run, after [tag deploy setup](#tag-deploy-setup) | The Git tag name, used verbatim |
+
+### Find a Published Tag
+
+`just ci latest-tag --repo dictyBase/dcr-mcp` reads GitHub release tags. It is the right command **after** the first release tag exists, and it fails with `ERROR: no semver tags found for dictyBase/dcr-mcp.` until then. Until that day, build the `develop-<sha>` tag from the head of `develop`:
+
+```bash
+# Tag that the last successful develop run published
+echo "develop-$(gh api repos/dictyBase/dcr-mcp/commits/develop --jq '.sha[0:7]')"
+
+# Release tags, after the first one exists
+just ci latest-tag --repo dictyBase/dcr-mcp
+```
+
+The CI run shortens the commit hash to 7 characters, so the two values always agree when the run deployed the current head of `develop`. At the time of writing, Docker Hub holds one `dictybase/dcr-mcp` tag, `develop-4e47267`, and `dictyBase/dcr-mcp` holds no release tag.
+
+A production stack always carries one of these two forms, never `latest`, because a CI deploy rewrites this one key and nothing else ([CI deployment](#ci-deployment)).
 
 ---
 
@@ -276,7 +348,7 @@ In both modes **`dcr-mcp` takes one dedicated hostname and the root path `/`, ne
 | Mode | Cluster | Path to `dcr-mcp-api:8080` | `ingress.enabled` | Certificate manager |
 |------|---------|----------------------------|-------------------|---------------------|
 | Gateway (recommended) | `dcr-kube1` and new clusters | `Gateway` `dictycr-gateway` + `HTTPRoute` `mcp-route` from the `gateway/` stack | `false` | `cert-manager`, `Issuer` `letsencrypt-issuer` to Secret `mcp-tls` |
-| Legacy (optional) | `dcr-experiments` and other `nginx` clusters | `Ingress` `dcr-mcp-ingress` from the `dcr-mcp/` stack | `true` | `kcert`, label `kcert.dev/ingress: managed` |
+| Legacy (optional) | `dcr-experiments` (stack `experiments`) and other `nginx` clusters | `Ingress` `dcr-mcp-ingress` from the `dcr-mcp/` stack | `true` | `kcert`, label `kcert.dev/ingress: managed` |
 
 ### Production Gateway Route (Recommended)
 
@@ -290,9 +362,11 @@ just gateway deploy
 
 The `gateway/` stack then creates an HTTP listener (`http-mcp-0`, port `80`) and an HTTPS listener (`https-mcp-0`, port `443`, Secret `mcp-tls`) for `<mcp-host>`, plus `HTTPRoute` `mcp-route` from `PathPrefix` `/` to `dcr-mcp-api:8080`. `cert-manager` completes the Let's Encrypt HTTP-01 challenge and writes `mcp-tls` only after the DNS `A` record for `<mcp-host>` resolves to the address from `just gateway show-ip` ([Gateway MCP route](../gateway/deployment.md#mcp-route)).
 
-### Legacy Ingress Mode (`dcr-experiments` Only)
+### Legacy Ingress Mode (`dcr-experiments`)
 
-Register the cluster first ([cluster registration](#cluster-registration-one-time-per-cluster)), scaffold the stack, then set `hosts.0`, `path`, `tlsSecret`, and `label` **before** `enabled`. The config check fails closed with `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` when a field is empty, and rejects `<...>` placeholder text in `hosts` or `tlsSecret`.
+The `experiments` stack owns its external route, because that cluster has no Gateway. Register the cluster first ([cluster registration](#cluster-registration-one-time-per-cluster)), scaffold the stack, then set `hosts.0`, `path`, `tlsSecret`, and `label` **before** `enabled`. The config check fails closed with `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` when a field is empty, and rejects `<...>` placeholder text in `hosts` or `tlsSecret`.
+
+Set these keys before the first CI run ([bootstrap order](#bootstrap-order-on-a-new-cluster)): a CI deploy rewrites `image.tag` only, so an unconfigured Ingress stays absent until you push the keys and the next run applies them. `graphql_server/Pulumi.experiments.yaml` on the same cluster shows the house pattern: host `graphql.dictybase.dev`, `tlsSecret: graphql-tls-secret`, label `kcert.dev/ingress: managed`.
 
 ```bash
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.hosts.0 --value <mcp-host>
@@ -380,19 +454,52 @@ Once `initialize` answers, connect an AI assistant (Claude.ai, Claude Desktop, C
 
 ## CI Deployment
 
-In `dictyBase/dcr-mcp`, `.github/workflows/ci.yml` runs the unit tests and the coverage upload on pushes to `develop`. It deploys nothing, because `dcr-mcp` does not run on the legacy lab cluster.
+Two pipelines build and deploy `dcr-mcp`, and both of them call `composite-deploy.yaml` in `dictyBase/workflows`. One exists today; the other needs [tag deploy setup](#tag-deploy-setup) first.
 
-A release tag triggers `.github/workflows/tag-build.yaml`, which calls `composite-deploy.yaml` in `dictyBase/workflows`. That workflow:
+| Pipeline | Trigger | Workflow file | Target stack | Image tag |
+|----------|---------|---------------|--------------|-----------|
+| Developer CI | Push or merge into `develop` in `dictyBase/dcr-mcp` | `.github/workflows/ci.yml` (exists) | `experiments` on `dcr-experiments` | `develop-<7-char sha>` |
+| Release tag | A Git tag in `dictyBase/dcr-mcp` | `.github/workflows/tag-build.yaml` (not added yet) | `$PULUMI_STACK` of the rendered file, for example `dcr-kube1` | The tag name, verbatim |
 
-1. Builds the distroless image from `build/package/Dockerfile` and publishes `dictybase/dcr-mcp:<tag>` to Docker Hub.
-2. Authenticates to GCP with `secrets.PROD_DEPLOY_SA_KEY` and exports the cluster kubeconfig from `vars.PROD_KOPS_STATE_STORAGE`.
-3. Clones `dictybase-docker/cluster-ops` at branch **`develop`**, selects the stack in folder `dcr-mcp/` from `vars.PROD_PULUMI_STATE_STORAGE`, sets `properties.image.tag` to the tag, and runs `pulumi up`.
+Both pipelines perform the same four actions in this order, and the order explains every partial failure:
 
-**Push order: commit and push `dcr-mcp/Pulumi.<stack>.yaml` to cluster-ops `develop` before you cut the release tag.** The clone at step 3 sees only what `develop` holds, so an unpushed stack file deploys nothing.
+1. Build the distroless image from `build/package/Dockerfile`, and publish it to Docker Hub.
+2. Export the cluster kubeconfig from the kOps state bucket of the target cluster.
+3. Clone `dictybase-docker/cluster-ops` at branch **`develop`**, then run `pulumi -C dcr-mcp -s <stack> config set --path properties.image.tag <tag>` inside that clone.
+4. Run `pulumi -C dcr-mcp -s <stack> up` against the cloned tree.
+
+**The clone is thrown away at the end of the run.** The new tag never returns to this repository, so record it with `set-config` and push it ([image tag](#image-tag)). When step 1 succeeds and step 4 fails, the image stays on Docker Hub, and you can pin that tag and apply the stack from your shell.
+
+### Developer CI on `develop`
+
+`.github/workflows/ci.yml` in `dictyBase/dcr-mcp` runs on pushes to `develop`. The `test` job runs `go test`, and the `call-build-deploy` job then calls `dictyBase/workflows/.github/workflows/composite-deploy.yaml@develop` with these inputs:
+
+| Input | Value | Effect |
+|-------|-------|--------|
+| `app`, `project`, `docker_image` | `dcr-mcp` | Folder `dcr-mcp/` in this repository, image `dictybase/dcr-mcp` |
+| `stack` | `experiments` | Needs `config/clusters/dcr-experiments.yaml` and `dcr-mcp/Pulumi.experiments.yaml` |
+| `cluster` | `vars.DEV_STAGING_CLUSTER` | The `dcr-experiments` kOps cluster |
+| `cluster_state_storage` | `vars.DEV_STAGING_KOPS_STATE_STORAGE` | `gs://kops-state-dcr-experiments/` |
+| `dockerfile` | `build/package/Dockerfile` | Distroless build context in the service repository |
+| `environment` | *(omitted — defaults to `development`)* | Selects `secrets.DEPLOY_SA_KEY` and the org variable `PULUMI_STATE_STORAGE` (`gs://pulumi-state-dcr-experiments`), **not** the `PROD_*` pair |
+
+Each organization variable that this path reads (`DEV_STAGING_CLUSTER`, `DEV_STAGING_KOPS_STATE_STORAGE`, `PULUMI_STATE_STORAGE`) and the credential `DEPLOY_SA_KEY` already exist for the lab cluster, with visibility for all repositories. **No `just ci` recipe is necessary before the first `develop` build.** The workflow also omits `kops_version`, `kubectl_version`, and `pulumi_version`, and the composite defaults (`1.29.2`, `1.28.8`, `3.108.0`) are the versions that `config/clusters/dcr-experiments.yaml` pins.
+
+### Release Tag CI
+
+A release tag deploys only after a pull request adds the rendered `tag-build.yaml` to `dictyBase/dcr-mcp` ([tag deploy setup](#tag-deploy-setup)). That file sets `environment: production`, which routes the composite workflow to `secrets.PROD_DEPLOY_SA_KEY` and `vars.PROD_PULUMI_STATE_STORAGE` (`gs://pulumi-state-dcr-kube1`), and it reads the cluster from the `<CI_ENV>_*` repository variables that `just ci sync-deploy-vars` publishes. `PROD_DEPLOY_SA_KEY` is visible to selected repositories only, so `just ci set-deploy-secret --repos dictyBase/dcr-mcp` must add this repository to that list before the first production tag.
+
+### Push Order
+
+**Push `dcr-mcp/Pulumi.<stack>.yaml` to cluster-ops `develop` before you start a build in `dictyBase/dcr-mcp`.** The clone at step 3 sees only what `develop` holds. The same rule covers each later change to the stack file or to `dcr-mcp/*.go`: push it first, or the next run deploys the older tree. [Bootstrap order](#bootstrap-order-on-a-new-cluster) gives the full first-setup sequence.
+
+The workflow files of the service repository are not in this repository. The inputs above come from `.github/workflows/ci.yml` in `dictyBase/dcr-mcp`, from the composite workflow in `dictyBase/workflows`, and from the deploy module that the composite workflow calls, all read at the time of writing.
 
 ---
 
 ## Tag Deploy Setup
+
+This setup is for release tag deploys to a production cluster. It is not necessary for the `develop` path on `experiments`, which already has its organization variables ([developer CI](#developer-ci-on-develop)).
 
 `config/services.yaml` lists the ArangoDB-backed modware gRPC services only, and `dcr-mcp` is not one of them. `just ci deploy-backend-services` and `just ci pr-deploy-workflows` therefore skip it, and the five recipes below do the same work for one repository. Run them in the production `cluster-env` sub-shell.
 
@@ -429,23 +536,27 @@ The rendered file is inert until it lands in the service repository. Copy `bin/c
 | Symptom | Cause | Action |
 |---------|-------|--------|
 | `no stack name — set PULUMI_STACK (via cluster env) or pass --stack` | The recipe ran outside the `cluster-env` sub-shell | Enter `just cluster-env --env <env> --cluster <cluster>`, or pass `--stack <name>`. |
-| `no registry entry with stack '<stack>' (checked config/clusters/*.yaml)` | Wrong sub-shell, or the cluster has no registry entry | Compare `echo "$PULUMI_STACK"` with the two causes in [cluster registration](#cluster-registration-one-time-per-cluster). |
+| `ERROR: no registry entry with stack '<stack>' (checked config/clusters/*.yaml)` from a scaffold recipe | The cluster has no registry entry, or the sub-shell belongs to another cluster | Run `just gcp-cluster register-cluster` one time, or `just gcp-cluster registry-show` to read the existing entry ([supported clusters](#supported-target-clusters)). |
 | `Error: namespace '<ns>' not found` from `just dcr-mcp check` | `namespace-bootstrap` has not run on this cluster | Run `just gcp-pulumi apply-namespaces`. |
 | `Error: service/graphql-api not found` from `just dcr-mcp check` | The upstream GraphQL server is not deployed in that namespace | Deploy it ([`graphql-deploy.md`](../../graphql-deploy.md)), then run `just dcr-mcp check` again. |
 | `Error: yq not found on PATH — run prepare-tools` | The pinned tools are not installed for this cluster | Run `just prepare-tools` in the sub-shell. |
 | `ERROR: stack '<stack>' does not exist in dcr-mcp, and there is no Pulumi.<stack>.yaml to initialize it from` | First deploy on this cluster. `ensure-stack` creates a stack only from a stack file that exists. | Run `just gcp-pulumi scaffold-dcr-mcp-stack` ([create the stack](#create-the-stack)). |
-| `ERROR: dcr-mcp/Pulumi.<stack>.yaml already exists — refusing to overwrite` | The stack file exists | Run `ensure-stack`, or edit the file with `set-config`. |
+| `Stack config dcr-mcp/Pulumi.<stack>.yaml already exists — keeping existing config.` | The stack file already exists | Edit the file with `set-config`, or run `ensure-stack` to select the stack. |
 | `dcr-mcp:properties is missing namespace, image.tag` | A required key is empty | Set it with `just gcp-pulumi set-config --folder dcr-mcp --key properties.<key> --value <val>`. |
+| `dcr-mcp:properties is missing namespace` in a CI run only | `dcr-mcp/Pulumi.<stack>.yaml` is absent from cluster-ops `develop`, so CI deployed a file that holds `image.tag` alone | Push the stack file, then re-run the workflow ([bootstrap order](#bootstrap-order-on-a-new-cluster)). |
+| `error: no stack named '<stack>' found` in a CI run | The stack was never initialized in the Pulumi backend of that cluster | Run `just gcp-pulumi scaffold-dcr-mcp-stack` in the cluster-env sub-shell, push the stack file, then re-run the workflow. |
+| `ERROR: no semver tags found for dictyBase/dcr-mcp.` | The repository carries no release tag yet, so `just ci latest-tag` has nothing to print | Use the `develop-<sha>` tag that the developer CI run published ([find a published tag](#find-a-published-tag)). |
 | `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint` | The value still holds `<...>` text | Pin a real tag ([image tag](#image-tag)), and set or remove `graphqlEndpoint`. |
 | Pod exits with `graphql-endpoint or GRAPHQL_API_SERVICE_HOST must be set` | The pod started before Service `graphql-api` existed, and no endpoint override is set | Deploy `graphql_server`, then run `kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server` ([endpoint resolution](#graphql-endpoint-resolution)). |
 | `FAIL dcr-mcp: tag is 'bootstrap'` | The placeholder tag was never replaced | Pin a tag ([image tag](#image-tag)), then apply again. |
 | `FAIL dcr-mcp: running image <a>, stack file says <b>` | The stack file changed and `create-resource` did not run, or a CI run set another tag | Run `preview` and `create-resource` again. |
 | `FAIL dcr-mcp: service/dcr-mcp-api not found` | The Service was deleted, or `properties.name` changed | Run `create-resource` again ([deploy behavior](#deploy-behavior)). |
-| `ErrImagePull` with a real tag | The tag does not exist on Docker Hub | Resolve the published tag with `just ci latest-tag --repo dictyBase/dcr-mcp`. |
-| `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` | The Ingress was enabled before the four keys were set | Set `hosts.0`, `path`, `tlsSecret`, and `label.*` first ([legacy Ingress mode](#legacy-ingress-mode-dcr-experiments-only)). |
+| `ErrImagePull` with a real tag | No CI run published that tag to Docker Hub | Read the published tag ([find a published tag](#find-a-published-tag)), then apply again. |
+| `ingress.enabled=true but ingress is missing hosts, path, tlsSecret` | The Ingress was enabled before the four keys were set | Set `hosts.0`, `path`, `tlsSecret`, and `label.*` first ([legacy Ingress mode](#legacy-ingress-mode-dcr-experiments)). |
 | `just gateway check` reports `services "dcr-mcp-api" not found` | `routes.mcp.enabled` was set before the `dcr-mcp` stack was applied | Run `just gcp-pulumi create-resource --folder dcr-mcp`, then `just gateway deploy`. |
 | `just gateway check` reports an empty or placeholder host for route `mcp` | `routes.mcp.hosts.0` still holds `<mcp-host>` | Set the real hostname with `set-config` on the `gateway` folder. |
 | Tool calls fail with `listStockSuggestions query failed` or `searchStocks query failed` | The upstream GraphQL server is unreachable from the pod | Check `graphql-api-server` with `just dcr-mcp check`, and check `properties.graphqlEndpoint` when it is set. |
 | Clients receive HTTP `429` on `/mcp` | One client IP address passed `properties.rateLimit` in a minute | Raise `properties.rateLimit`, then apply again. |
 | `just ci deploy-backend-services --services dcr-mcp` reports no match | `config/services.yaml` lists ArangoDB-backed services only | Use the recipes in [tag deploy setup](#tag-deploy-setup). |
-| A tag deploy runs in GitHub Actions but changes nothing | `dcr-mcp/Pulumi.<stack>.yaml` was not pushed to cluster-ops `develop` | Push the stack file, then re-run the workflow ([CI deployment](#ci-deployment)). |
+| A CI run deploys, and the stack file in Git still says `bootstrap` | Expected. The CI clone sets the tag and is then thrown away. | Record the deployed tag with `set-config`, then push it ([image tag](#image-tag)). |
+| The `call-build-deploy` job fails, and the image is on Docker Hub | The build step finished before the failed deploy step | Repair the missing step, then pin that tag and run `preview` and `create-resource` ([bootstrap order](#bootstrap-order-on-a-new-cluster)). |
