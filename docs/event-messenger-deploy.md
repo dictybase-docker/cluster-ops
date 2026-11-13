@@ -52,6 +52,8 @@ just gcp-pulumi set-secret --folder event-messenger --key properties.emailDeploy
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.owner
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.repository
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.token
+# Optional. Turns on OpenRouter Jev issue labeling.
+just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.openrouterApiKey
 
 # 5. Pin a release or develop-<sha> image tag (replace the scaffold 'bootstrap' placeholder)
 just gcp-pulumi set-config --folder event-messenger --key properties.image.tag --value <immutable-tag>
@@ -126,13 +128,16 @@ just gcp-pulumi set-secret --folder event-messenger --key properties.emailDeploy
 
 ## 4. Populate GitHub Issue Subscriber Credentials
 
-The program creates the issue Secret from `properties.issueDeployment.secrets.values.*`. All three GitHub values (`owner`, `repository`, `token`) are required at container startup. If you forget to set `values.*`, the Kubernetes Secret still applies with empty strings, and the pod exits at startup because `--token`, `--repository`, and `--owner` receive empty values. Keep `secrets.name` and `secrets.keys.*` in plain text.
-→ [GitHub issue subscriber configuration](reference/event-messenger/deployment.md#github-issue-subscriber-configuration)
+The program creates the issue Secret from `properties.issueDeployment.secrets.values.*`. The three GitHub values (`owner`, `repository`, `token`) are required at container startup, and the pod exits when one of them is empty. The fourth value, `openrouterApiKey`, is optional and stays unset by default — set it to turn on automated OpenRouter Jev issue labeling, which sends order metadata to OpenRouter. Keep `secrets.name` and `secrets.keys.*` in plain text.
+→ [GitHub issue subscriber configuration](reference/event-messenger/deployment.md#github-issue-subscriber-configuration) · [OpenRouter Jev labeling](reference/event-messenger/deployment.md#openrouter-jev-labeling-optional)
 
 ```bash
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.owner
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.repository
 just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.token
+
+# Optional. Turns on OpenRouter Jev issue labeling.
+just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.openrouterApiKey
 ```
 
 ---

@@ -8,12 +8,22 @@ This document gives the details for the `event-messenger/` Pulumi project: the r
 
 - [What the Project Creates](#what-the-project-creates)
 - [Prerequisites](#prerequisites)
+  - [Check the Prerequisites](#check-the-prerequisites)
 - [In-Cluster Service Discovery](#in-cluster-service-discovery)
 - [Create the Stack](#create-the-stack)
+  - [Baseline Stack File](#baseline-stack-file)
+  - [Keys That Change per Cluster](#keys-that-change-per-cluster)
 - [Email Subscriber Configuration](#email-subscriber-configuration)
+  - [Secret Pointers vs Secret Values](#secret-pointers-vs-secret-values)
 - [GitHub Issue Subscriber Configuration](#github-issue-subscriber-configuration)
+  - [OpenRouter Jev Labeling (Optional)](#openrouter-jev-labeling-optional)
+  - [Empty-Values Pitfall and Token Rotation](#empty-values-pitfall-and-token-rotation)
 - [Image and Command Wiring](#image-and-command-wiring)
+  - [Global Flag Order (`--log-level` before the Subcommand)](#global-flag-order---log-level-before-the-subcommand)
+  - [Asymmetry in `image.pullPolicy`](#asymmetry-in-imagepullpolicy)
+  - [Hardcoded Pricing Flags](#hardcoded-pricing-flags)
 - [Deploy Behavior](#deploy-behavior)
+  - [Recipe Flags](#recipe-flags)
 - [CI Deployment](#ci-deployment)
 - [Tag Deploy Setup](#tag-deploy-setup)
 - [Verification](#verification)
@@ -29,7 +39,7 @@ The program creates four resources in the namespace in a fixed order: the email 
 |-------|----------|--------------|---------|
 | 1 | Secret | `email-event` (`emailevent` on `experiments`) | Holds the Mailgun and NCBI eUtils values from `properties.emailDeployment.secrets.values.*`. |
 | 2 | Deployment | `event-messenger-email` | Pod label `app: event-messenger-email`. One container `event-messenger-email` that runs subcommand `send-email`. Depends on the email Secret (`3m` create timeout). |
-| 3 | Secret | `issue-event` (`issueevent` on `experiments`) | Holds the GitHub owner, repository, and token values from `properties.issueDeployment.secrets.values.*`. |
+| 3 | Secret | `issue-event` (`issueevent` on `experiments`) | Holds the GitHub owner, repository, and token values from `properties.issueDeployment.secrets.values.*`, plus the optional OpenRouter API key when `values.openrouterApiKey` holds a value. |
 | 4 | Deployment | `event-messenger-issue` | Pod label `app: event-messenger-issue`. One container `event-messenger-issue` that runs subcommand `gh-issue`. Depends on the issue Secret (`3m` create timeout). |
 
 The program creates **no Namespace**, **no Service**, and **no Ingress**. Both containers act as NATS subscribers and outbound clients only. The `namespace-bootstrap` project creates the namespace ([shared namespaces](../pulumi/namespaces.md)). Unlike `graphql_server` and the `modware-*` projects, which read pre-existing Kubernetes Secrets created by datastore stacks, `event-messenger` creates its own two Kubernetes Secrets directly from the stack configuration.
@@ -45,7 +55,7 @@ Each upstream Service must exist in the target namespace before the two subscrib
 | Namespace | `dev` or `prod` | Target namespace | [`pulumi-setup.md`](../../pulumi-setup.md) |
 | NATS | Service `nats` (`:4222`) | Publishes `OrderService.Create` events from `modware-order` | [`nats-deploy.md`](../../nats-deploy.md) |
 | modware gRPC | Services `stock-api` (`:9345`) and `annotation-api` (`:9250`) | Stock, strain, plasmid, and annotation metadata lookup for order emails and GitHub issues | [`backend-service-deploy.md`](../../backend-service-deploy.md) |
-| Outbound HTTPS | External network access | Reaches Mailgun (`api.mailgun.net`), NCBI eUtils (`eutils.ncbi.nlm.nih.gov`), and the GitHub REST API (`api.github.com`) | — |
+| Outbound HTTPS | External network access | Reaches Mailgun (`api.mailgun.net`), NCBI eUtils (`eutils.ncbi.nlm.nih.gov`), the GitHub REST API (`api.github.com`), and OpenRouter (`openrouter.ai`) when `issueDeployment.secrets.values.openrouterApiKey` is set | — |
 
 `event-messenger` does not dial `order-api` directly, but `modware-order` (`order-api-server`) is the publisher of the `OrderService.Create` messages on NATS.
 
@@ -137,6 +147,7 @@ config:
       name: event-messenger-issue
       secrets:
         keys:
+          openrouterApiKey: eventMessenger.openrouter.apiKey
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
@@ -159,6 +170,7 @@ For the full shape with encrypted `values.*` blocks, read `event-messenger/Pulum
 | `issueDeployment.secrets.name` | `issueevent` (no hyphen) | `issue-event` | `issue-event` |
 | `emailDeployment.secrets.values.*` | Sandbox Mailgun domain and test recipients | Sandbox values | Production Mailgun domain, sender, CC address, and NCBI API key |
 | `issueDeployment.secrets.values.*` | `dictybase-playground` / `learn-github-action` + PAT | **Absent** (incomplete) | Production GitHub owner, repository, and PAT |
+| `issueDeployment.secrets.values.openrouterApiKey` | Absent (deterministic labels only) | Absent | Optional. Set it to turn on [OpenRouter Jev labeling](#openrouter-jev-labeling-optional) |
 | `image.tag` | the last tag from CI (`develop-<sha>`) | `develop-0217a41` | an immutable `develop-<sha>` tag or a release tag |
 
 **Warning on `Pulumi.dev.yaml` vs `Pulumi.experiments.yaml`**:
@@ -193,13 +205,46 @@ Deployment `event-messenger-email` runs subcommand `send-email`. The program cre
 
 ## GitHub Issue Subscriber Configuration
 
-Deployment `event-messenger-issue` runs subcommand `gh-issue`. The program creates the Kubernetes Secret named in `properties.issueDeployment.secrets.name` and injects three environment variables into the container via `secretKeyRef` (all with `optional` unset, so required).
+Deployment `event-messenger-issue` runs subcommand `gh-issue`. The program creates the Kubernetes Secret named in `properties.issueDeployment.secrets.name` and injects the three required GitHub environment variables into the container via `secretKeyRef` (all with `optional` unset, so required), plus the optional `OPENROUTER_API_KEY`.
 
-| Container env var | Config key for the Secret key (`keys.*`) | Config key for the Secret value (`values.*`) | Required at startup | CLI flag fed by argv |
-|-------------------|------------------------------------------|----------------------------------------------|---------------------|----------------------|
+| Container env var | Config key for the Secret key (`keys.*`) | Config key for the Secret value (`values.*`) | Required at startup | CLI flag fed by env / argv |
+|-------------------|------------------------------------------|----------------------------------------------|---------------------|----------------------------|
 | `GITHUB_OWNER` | `issueDeployment.secrets.keys.owner` | `issueDeployment.secrets.values.owner` | Yes | `--owner $(GITHUB_OWNER)` |
 | `GITHUB_REPOSITORY` | `issueDeployment.secrets.keys.repository` | `issueDeployment.secrets.values.repository` | Yes | `--repository $(GITHUB_REPOSITORY)` |
 | `GITHUB_TOKEN` | `issueDeployment.secrets.keys.token` | `issueDeployment.secrets.values.token` | Yes | `--token $(GITHUB_TOKEN)` |
+| `OPENROUTER_API_KEY` | `issueDeployment.secrets.keys.openrouterApiKey` | `issueDeployment.secrets.values.openrouterApiKey` | No (`optional: true`) | `OPENROUTER_API_KEY` (`--openrouter-token`) |
+
+### OpenRouter Jev Labeling (Optional)
+
+**Optional. The default is off.** The scaffold template and the current stack files set the pointer `issueDeployment.secrets.keys.openrouterApiKey` to `eventMessenger.openrouter.apiKey`, but no stack file sets `values.openrouterApiKey`. Populate the value only when you want the issue subscriber to label new order issues through OpenRouter.
+
+```bash
+just gcp-pulumi set-secret --folder event-messenger --key properties.issueDeployment.secrets.values.openrouterApiKey
+```
+
+Keep `keys.openrouterApiKey` in plain text like every other `secrets.keys.*` pointer. Encrypt `values.openrouterApiKey` with `set-secret`, and omit `--value` so the key stays out of the shell history and out of the process arguments.
+
+**Notice the delivery difference from the GitHub values:** the program expands `GITHUB_OWNER`, `GITHUB_REPOSITORY`, and `GITHUB_TOKEN` in the container `args` with `$(VAR)` syntax, but it does **not** pass `--openrouter-token` in `args`. The `gh-issue` subcommand reads `OPENROUTER_API_KEY` directly from the container environment.
+
+The key pointer and the key value control two separate outcomes:
+
+| State in `Pulumi.<stack>.yaml` | Secret data key | Container env var | Labeling behavior |
+|--------------------------------|-----------------|-------------------|-------------------|
+| `keys.openrouterApiKey` and `values.openrouterApiKey` both set | Written | Injected, resolves to the key | Deterministic labels plus Jev labels |
+| `keys.openrouterApiKey` set, `values.openrouterApiKey` absent or empty | Omitted | Injected with `optional: true`, resolves to nothing | Deterministic labels only |
+| `keys.openrouterApiKey` absent (older stack file) | Omitted | Not injected | Deterministic labels only |
+
+In every row the pod starts normally. A missing OpenRouter key is never a startup failure, because the `secretKeyRef` carries `optional: true` and the `--openrouter-token` flag is not required.
+
+#### What Leaves the Cluster
+
+**Setting this key is a privacy decision, not only a credential change.** With `OPENROUTER_API_KEY` present, `gh-issue` sends the order metadata to OpenRouter for each new order: order ID, purchaser, consumer and payer email addresses, payment method, purchase-order number, courier, comments, the ordered items, the full shipping address (name, organization, street, city, state, ZIP, country), the billing organization and location, and the strain and plasmid inventory rows. OpenRouter answers with the institution type, Minority Serving Institution, payment, location, and stock-category labels. `gh-issue` keeps an answer only at a confidence score of `0.75` or above, and it adds the kept labels to the deterministic labels.
+
+The request uses the model `~typesafe/jev-latest` unless the container environment sets `JEV_MODEL`. The Pulumi program sets no `JEV_MODEL` variable, so every cluster uses the default model.
+
+#### Failure Behavior
+
+Jev labeling never blocks issue creation. The request has a 10-second timeout. When it fails or times out, `gh-issue` logs `openrouter jev label classification failed: <cause>` and creates the GitHub issue with the deterministic stock and order labels only.
 
 ### Empty-Values Pitfall and Token Rotation
 
@@ -209,7 +254,7 @@ The Pulumi program does **not** validate that `secrets.values.*` are non-empty b
 - `SecretKeyRef` succeeds because the keys exist in the Secret, and Kubernetes expands `$(GITHUB_TOKEN)`, `$(GITHUB_REPOSITORY)`, and `$(GITHUB_OWNER)` to `""` in the container arguments.
 - At startup, `urfave/cli` v3 rejects the empty required flags with `Required flags "token, repository, owner" not set` and exits with code `2`, putting the pod into `CrashLoopBackOff`.
 
-When you rotate the GitHub personal access token (`properties.issueDeployment.secrets.values.token`) or Mailgun API key (`properties.emailDeployment.secrets.values.mailgunApiKey`):
+When you rotate the GitHub personal access token (`properties.issueDeployment.secrets.values.token`), the OpenRouter API key (`properties.issueDeployment.secrets.values.openrouterApiKey`), or the Mailgun API key (`properties.emailDeployment.secrets.values.mailgunApiKey`):
 
 1. Update the value with `just gcp-pulumi set-secret --folder event-messenger --key <path>`.
 2. Run `just gcp-pulumi preview --folder event-messenger` and `just gcp-pulumi create-resource --folder event-messenger` to update the Kubernetes Secret in place.
@@ -339,5 +384,6 @@ kubectl -n <namespace> get secret <issue-secret-name> -o jsonpath='{.data}' | jq
 | Pod `CreateContainerConfigError` on Secret `email-event` (`emailevent`) or `issue-event` (`issueevent`) | A `secrets.keys.*` entry in `Pulumi.<stack>.yaml` is empty or does not match the key written to the Secret. | Restore the `secrets.keys.*` map from the [baseline stack file](#baseline-stack-file) in plain text and re-apply. |
 | Issue pod logs `401 Bad credentials` from GitHub when an order arrives | The GitHub PAT in `issueDeployment.secrets.values.token` is expired or revoked, or the pod is still running with an old Secret value after rotation. | Verify whether the pod environment matches the Secret (`kubectl -n <namespace> get secret <issue-secret-name> -o jsonpath='{.data}' \| jq 'keys'`), update `values.token` with `just gcp-pulumi set-secret`, run `create-resource`, and run `kubectl -n <namespace> rollout restart deployment/event-messenger-issue`. |
 | Email pod logs a Mailgun `401` or domain error when an order arrives | `mailgunApiKey` or `domain` is wrong for the target Mailgun region/domain, or the pod was not restarted after rotating the Secret. | Update `emailDeployment.secrets.values.mailgunApiKey` and `domain` with `just gcp-pulumi set-secret`, run `create-resource`, and restart `deployment/event-messenger-email`. |
+| Issue pod logs `openrouter jev label classification failed: ...` and the new issue carries the stock and order labels only | A configured OpenRouter key is in the pod, but the request failed or passed its 10-second timeout: `issueDeployment.secrets.values.openrouterApiKey` is wrong or revoked, the pod still runs with the Secret value from before a rotation, or `openrouter.ai` is unreachable from the cluster. An absent or empty key never logs this line, because the subscriber then skips the OpenRouter call. | Issue creation is not affected, so fix this at your own pace. Confirm the Secret carries the key (`kubectl -n <namespace> get secret <issue-secret-name> -o jsonpath='{.data}' \| jq 'keys'`), update `properties.issueDeployment.secrets.values.openrouterApiKey` with `just gcp-pulumi set-secret`, run `create-resource`, and run `kubectl -n <namespace> rollout restart deployment/event-messenger-issue` ([OpenRouter Jev labeling](#openrouter-jev-labeling-optional)). |
 | Both pods are `Running` with no errors, but new orders trigger no email or GitHub issue | `properties.nats.subject` does not match the subject published by `modware-order` (`OrderService.Create`), or `order-api-server` is not publishing to NATS. | Check `properties.nats.subject` in `Pulumi.<stack>.yaml` and check the logs of `deployment/order-api-server`. |
 | A CI deploy ignores a recent cluster-ops change | The cluster-ops change is local, or it is on an unmerged branch. CI always clones `cluster-ops@develop`. | Merge and push cluster-ops `develop`, then run the workflow again. |
