@@ -33,6 +33,7 @@ config:
       name: event-messenger-issue
       secrets:
         keys:
+          openrouterApiKey: eventMessenger.openrouter.apiKey
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token

@@ -205,6 +205,8 @@ out=$(just gcp-pulumi scaffold-event-messenger-stack --stack dcr-kube1 2>&1) || 
 [ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".emailDeployment.secrets.values.ncbiTool')" = "eventmessenger" ] || fail "ncbiTool wrong"
 [ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.name')" = "event-messenger-issue" ] || fail "issueDeployment.name wrong"
 [ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.secrets.name')" = "issue-event" ] || fail "issueDeployment.secrets.name wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.secrets.keys.openrouterApiKey')" = "eventMessenger.openrouter.apiKey" ] || fail "issueDeployment.secrets.keys.openrouterApiKey wrong"
+[ "$(yq_get "${em_cfg}" '.config."event-messenger:properties".issueDeployment.secrets.values.openrouterApiKey // ""')" = "" ] || fail "issueDeployment.secrets.values.openrouterApiKey must be omitted by default"
 grep -q ':latest' "${em_cfg}" && fail "mutable :latest tag in rendered config"
 if [ -n "${em_bak}" ]; then
     mv "${em_bak}" "${em_cfg}"

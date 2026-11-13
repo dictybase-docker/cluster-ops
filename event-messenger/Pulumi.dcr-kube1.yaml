@@ -50,6 +50,7 @@ config:
       name: event-messenger-issue
       secrets:
         keys:
+          openrouterApiKey: eventMessenger.openrouter.apiKey
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
@@ -61,6 +62,8 @@ config:
             secure: v1:Zzj/qgXNRpWldxlj:JjgRVml/j9W5OkiShcLztrCfnvvJE1u4qE5j2Zz8hAnkBd0=
           token:
             secure: v1:nTc2LlGCb+aDFqJv:Vl2ODPMfncKEqL8lskgUTlpulkNVKvpjT+bKS/9+KIteoifsLQVh9rFfh+RXrvjYgKsM6BDDcVA=
+          openrouterApiKey:
+            secure: v1:vP+KbHRYppqA0R+F:DfOwVjhts+Y1v1p3vAqIn0ZWNo6n548QbBbAT2TdJj+trl2d5fnwhE1qRPJ0O6xbAKVvZ5l6Rl60OcoJPPX1N7Nv3a/LOWBIHeaFO4EEViBQdZDDhkYZtow=
     logLevel: error
     namespace: prod
     nats:

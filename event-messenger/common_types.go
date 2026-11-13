@@ -1,6 +1,10 @@
 package main
 
-const appLabel = "app"
+const (
+	appLabel     = "app"
+	flagLogLevel = "--log-level"
+	flagSubject  = "--subject"
+)
 
 type EmailDeployment struct {
 	Name    string
@@ -47,15 +51,17 @@ type IssueSecrets struct {
 }
 
 type IssueSecretKeys struct {
-	Owner      string
-	Repository string
-	Token      string
+	Owner            string `json:"owner"`
+	Repository       string `json:"repository"`
+	Token            string `json:"token"`
+	OpenRouterAPIKey string `json:"openrouterApiKey"`
 }
 
 type IssueSecretValues struct {
-	Owner      string
-	Repository string
-	Token      string
+	Owner            string `json:"owner"`
+	Repository       string `json:"repository"`
+	Token            string `json:"token"`
+	OpenRouterAPIKey string `json:"openrouterApiKey"`
 }
 
 type EventMessengerConfig struct {

@@ -37,11 +37,14 @@ config:
       name: event-messenger-issue
       secrets:
         keys:
+          openrouterApiKey: eventMessenger.openrouter.apiKey
           owner: eventMessenger.github.owner
           repository: eventMessenger.github.repository
           token: eventMessenger.github.token
         name: issueevent
         values:
+          openrouterApiKey:
+            secure: v1:CFcm/mKw8TFWcihT:+zg6W9qS/YRlocSMEIE/rb+N+bKmEvHFkqaS7eQ4HLM7/UY1MjwFdmpB5c0fZV95fopk1pg9V9Ar5ExqG0Kt/588KTFlz1vemWewoyr7tX4f92ikeNgticU=
           owner:
             secure: v1:nX8zPACzkgIuNfYA:uM1XvJNHWTwaYcPM8yymvLOx4jG65IbJsLC6Upj7ikERYc0d
           repository:
