@@ -112,8 +112,10 @@ func poll(
 	if we, ok := errors.AsType[*Error](err); ok {
 		return we
 	}
-	//nolint:staticcheck // SA1019: ErrWaitTimeout still returned by this apimachinery version
-	if errors.Is(err, wait.ErrWaitTimeout) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return &Error{Kind: KindAPI, Msg: fmt.Sprintf("wait cancelled: %v", ctx.Err())}
+	}
+	if wait.Interrupted(err) || errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Kind: KindTimeout, Msg: fmt.Sprintf("timed out after %s", cfg.Timeout)}
 	}
 	if ctx.Err() != nil {

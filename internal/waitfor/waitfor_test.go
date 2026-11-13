@@ -281,3 +281,61 @@ func TestCRDEstablished(t *testing.T) {
 		require.Equal(t, waitfor.KindTimeout, we.Kind)
 	})
 }
+
+func TestParentContextCancellationAndDeadlineClassification(t *testing.T) {
+	t.Run("explicit parent cancellation classifies as KindAPI", func(t *testing.T) {
+		clients, _ := testClients(podNamed("a-1", "Running", false))
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(150 * time.Millisecond)
+			cancel()
+		}()
+		err := waitResult(
+			waitfor.PodsReady(
+				ctx,
+				clients,
+				waitfor.WaitConfig{
+					Timeout:  5 * time.Second,
+					Interval: 50 * time.Millisecond,
+				},
+				waitfor.PodReadyCondition{
+					Namespace: testNS,
+					Selector:  testSel,
+					Count:     1,
+				},
+			),
+		)
+		var we *waitfor.Error
+		require.ErrorAs(t, err, &we)
+		require.Equal(t, waitfor.KindAPI, we.Kind)
+		require.Contains(t, we.Msg, "wait cancelled")
+	})
+
+	t.Run("expired parent deadline classifies as KindTimeout", func(t *testing.T) {
+		clients, _ := testClients(podNamed("a-1", "Running", false))
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			150*time.Millisecond,
+		)
+		defer cancel()
+
+		err := waitResult(
+			waitfor.PodsReady(
+				ctx,
+				clients,
+				waitfor.WaitConfig{
+					Timeout:  5 * time.Second,
+					Interval: 50 * time.Millisecond,
+				},
+				waitfor.PodReadyCondition{
+					Namespace: testNS,
+					Selector:  testSel,
+					Count:     1,
+				},
+			),
+		)
+		var we *waitfor.Error
+		require.ErrorAs(t, err, &we)
+		require.Equal(t, waitfor.KindTimeout, we.Kind)
+	})
+}
