@@ -10,7 +10,16 @@ import (
 	"sync"
 	"time"
 
+	A "github.com/IBM/fp-go/v2/array"
+	E "github.com/IBM/fp-go/v2/either"
+	F "github.com/IBM/fp-go/v2/function"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
+	L "github.com/IBM/fp-go/v2/optics/lens"
+	O "github.com/IBM/fp-go/v2/option"
+	P "github.com/IBM/fp-go/v2/predicate"
+	S "github.com/IBM/fp-go/v2/string"
+	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/portforward"
@@ -267,24 +276,166 @@ func pickLocalPort(localPort int) (int, error) {
 	return port, l.Close()
 }
 
-// resolvePod resolves a Service to its first ready backing pod. A missing
-// Service fails fast (NotFound); a Service without Endpoints or ready pods is
-// a retryable "no ready pods" error — pods may not be scheduled yet.
-func resolvePod(ctx context.Context, kube kubernetes.Interface, ns, svc string) (string, error) {
-	if _, err := kube.CoreV1().Services(ns).Get(ctx, svc, metav1.GetOptions{}); err != nil {
-		return "", err
-	}
-	eps, err := kube.CoreV1().Endpoints(ns).Get(ctx, svc, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("no ready pods for service %s/%s: %w", ns, svc, err)
-	}
-	for _, subset := range eps.Subsets {
-		for _, addr := range subset.Addresses {
-			const podKind = "Pod"
-			if addr.TargetRef != nil && addr.TargetRef.Kind == podKind && addr.TargetRef.Name != "" {
-				return addr.TargetRef.Name, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("no ready pods for service %s/%s", ns, svc)
+const podTargetKind = "Pod"
+
+var (
+	listOptsLabelSelLens = L.MakeLens(
+		func(o metav1.ListOptions) string { return o.LabelSelector },
+		func(o metav1.ListOptions, v string) metav1.ListOptions {
+			o.LabelSelector = v
+			return o
+		},
+	)
+
+	sliceListItemsLens = L.MakeLensRef(
+		func(l *discoveryv1.EndpointSliceList) []discoveryv1.EndpointSlice {
+			return l.Items
+		},
+		func(
+			l *discoveryv1.EndpointSliceList,
+			v []discoveryv1.EndpointSlice,
+		) *discoveryv1.EndpointSliceList {
+			l.Items = v
+			return l
+		},
+	)
+
+	sliceEndpointsLens = L.MakeLens(
+		func(s discoveryv1.EndpointSlice) []discoveryv1.Endpoint { return s.Endpoints },
+		func(
+			s discoveryv1.EndpointSlice,
+			v []discoveryv1.Endpoint,
+		) discoveryv1.EndpointSlice {
+			s.Endpoints = v
+			return s
+		},
+	)
+
+	endpointCondsLens = L.MakeLens(
+		func(e discoveryv1.Endpoint) discoveryv1.EndpointConditions {
+			return e.Conditions
+		},
+		func(
+			e discoveryv1.Endpoint,
+			v discoveryv1.EndpointConditions,
+		) discoveryv1.Endpoint {
+			e.Conditions = v
+			return e
+		},
+	)
+
+	condReadyLens = L.MakeLens(
+		func(c discoveryv1.EndpointConditions) *bool { return c.Ready },
+		func(
+			c discoveryv1.EndpointConditions,
+			v *bool,
+		) discoveryv1.EndpointConditions {
+			c.Ready = v
+			return c
+		},
+	)
+
+	endpointTargetRefLens = L.MakeLens(
+		func(e discoveryv1.Endpoint) *corev1.ObjectReference { return e.TargetRef },
+		func(
+			e discoveryv1.Endpoint,
+			v *corev1.ObjectReference,
+		) discoveryv1.Endpoint {
+			e.TargetRef = v
+			return e
+		},
+	)
+
+	objRefKindLens = L.MakeLensRef(
+		func(r *corev1.ObjectReference) string { return r.Kind },
+		func(r *corev1.ObjectReference, v string) *corev1.ObjectReference {
+			r.Kind = v
+			return r
+		},
+	)
+
+	objRefNameLens = L.MakeLensRef(
+		func(r *corev1.ObjectReference) string { return r.Name },
+		func(r *corev1.ObjectReference, v string) *corev1.ObjectReference {
+			r.Name = v
+			return r
+		},
+	)
+
+	isEndpointReady = F.Flow3(
+		F.Flow2(endpointCondsLens.Get, condReadyLens.Get),
+		O.FromNillable2[bool],
+		O.GetOrElse(F.Constant(true)),
+	)
+
+	isPodTargetRef = F.Pipe1(
+		P.IsStrictEqual[string]()(podTargetKind),
+		P.ContraMap(objRefKindLens.Get),
+	)
+
+	readyPodNameFromEndpoint = F.Flow5(
+		O.FromPredicate(isEndpointReady),
+		O.Chain(F.Flow2(endpointTargetRefLens.Get, O.FromPredicate(P.IsNonZero[*corev1.ObjectReference]()))),
+		O.Chain(O.FromPredicate(isPodTargetRef)),
+		O.Map(objRefNameLens.Get),
+		O.Chain(O.FromPredicate(S.IsNonEmpty)),
+	)
+
+	firstReadyPodInSlices = F.Flow3(
+		sliceListItemsLens.Get,
+		A.Chain(sliceEndpointsLens.Get),
+		A.FindFirstMap(readyPodNameFromEndpoint),
+	)
+)
+
+func listServiceEndpointSlices(
+	ctx context.Context,
+	kube kubernetes.Interface,
+	ns string,
+	svc string,
+) IOE.IOEither[error, *discoveryv1.EndpointSliceList] {
+	return F.Pipe1(
+		IOE.TryCatchError(func() (*discoveryv1.EndpointSliceList, error) {
+			return kube.DiscoveryV1().EndpointSlices(ns).List(
+				ctx,
+				F.Pipe1(
+					metav1.ListOptions{},
+					listOptsLabelSelLens.Set(discoveryv1.LabelServiceName+"="+svc),
+				),
+			)
+		}),
+		IOE.MapLeft[*discoveryv1.EndpointSliceList](func(err error) error {
+			return fmt.Errorf("no ready pods for service %s/%s: %w", ns, svc, err)
+		}),
+	)
+}
+
+// resolvePod resolves a Service to its first ready backing pod via
+// discoveryv1.EndpointSlice. A missing Service fails fast (NotFound); a Service
+// without EndpointSlices or ready pods is a retryable "no ready pods" error —
+// pods may not be scheduled yet.
+func resolvePod(
+	ctx context.Context,
+	kube kubernetes.Interface,
+	ns string,
+	svc string,
+) (string, error) {
+	return E.UnwrapError(
+		F.Pipe3(
+			IOE.TryCatchError(func() (*corev1.Service, error) {
+				return kube.CoreV1().Services(ns).Get(ctx, svc, metav1.GetOptions{})
+			}),
+			IOE.Chain(
+				F.Constant1[*corev1.Service](
+					listServiceEndpointSlices(ctx, kube, ns, svc),
+				),
+			),
+			IOE.Map[error](firstReadyPodInSlices),
+			IOE.ChainEitherK(
+				E.FromOption[string](func() error {
+					return fmt.Errorf("no ready pods for service %s/%s", ns, svc)
+				}),
+			),
+		)(),
+	)
 }
