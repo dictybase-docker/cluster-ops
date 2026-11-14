@@ -3,7 +3,7 @@ module github.com/dictybase-docker/cluster-ops
 go 1.26.10
 
 require (
-	cloud.google.com/go/kms v1.36.1
+	cloud.google.com/go/kms v1.37.0
 	cloud.google.com/go/storage v1.70.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/deckarep/golang-set/v2 v2.9.0
@@ -22,7 +22,7 @@ require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.24.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
-	cloud.google.com/go/longrunning v1.3.0 // indirect
+	cloud.google.com/go/longrunning v1.5.0 // indirect
 	cloud.google.com/go/monitoring v1.30.0 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
