@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	A "github.com/IBM/fp-go/v2/array"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,20 @@ func (m *mcpResourceMocks) NewResource(args pulumi.MockResourceArgs) (string, re
 	defer m.mu.Unlock()
 	m.resources[args.Name] = args
 	return args.Name, args.Inputs, nil
+}
+
+const (
+	testGraphQLEndpoint = "https://graphql.dictycr.org/graphql"
+	testLinkoutBaseURL  = "https://dictycr.org"
+)
+
+// defaultServerArgs is the flag tail that the defaults of validBaseConfig give.
+var defaultServerArgs = []string{
+	"--host", "0.0.0.0",
+	"--port", "8080",
+	"--stateless=true",
+	"--rate-limit", "120",
+	"--allowed-origins", "*",
 }
 
 func validBaseConfig() *DcrMcpConfig {
@@ -47,6 +62,7 @@ func TestValidateDefaultsDisabled(t *testing.T) {
 	require.Equal(t, 8080, cfg.Port)
 	require.Equal(t, 120, cfg.RateLimit)
 	require.Empty(t, cfg.GraphQLEndpoint)
+	require.Empty(t, cfg.LinkoutBaseURL)
 	require.True(t, cfg.StatelessValue())
 	require.Equal(t, "dictybase/dcr-mcp", cfg.Image.Name)
 	require.Equal(t, []string{"*"}, cfg.AllowedOrigins)
@@ -64,9 +80,14 @@ func TestValidateBasePlaceholderFields(t *testing.T) {
 	t.Parallel()
 	cfg := validBaseConfig()
 	cfg.GraphQLEndpoint = "https://<graphql-host>/graphql"
+	cfg.LinkoutBaseURL = "https://<linkout-host>"
 	cfg.Image.Tag = "<immutable-tag>"
 	err := cfg.Validate()
-	require.EqualError(t, err, "dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint")
+	require.EqualError(
+		t,
+		err,
+		"dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint, linkoutBaseURL",
+	)
 }
 
 func TestValidateIngressEnabledMissingFields(t *testing.T) {
@@ -113,6 +134,7 @@ func TestInstallCreatesDeploymentAndServiceWithoutIngressByDefault(t *testing.T)
 	require.True(t, hasDep)
 	require.Contains(t, fmt.Sprint(dep.Inputs), "dictybase/dcr-mcp:v1.1.0")
 	require.NotContains(t, fmt.Sprint(dep.Inputs), "--graphql-endpoint")
+	require.NotContains(t, fmt.Sprint(dep.Inputs), "--linkout-base-url")
 	require.Contains(t, fmt.Sprint(dep.Inputs), "--stateless=true")
 	require.Contains(t, fmt.Sprint(dep.Inputs), "/healthz")
 
@@ -158,7 +180,7 @@ func TestInstallWithExplicitGraphQLEndpoint(t *testing.T) {
 	t.Parallel()
 	mocks := &mcpResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
 	cfg := validBaseConfig()
-	cfg.GraphQLEndpoint = "https://graphql.dictycr.org/graphql"
+	cfg.GraphQLEndpoint = testGraphQLEndpoint
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		return NewDcrMcp(cfg).Install(ctx)
@@ -171,5 +193,47 @@ func TestInstallWithExplicitGraphQLEndpoint(t *testing.T) {
 	dep, hasDep := mocks.resources["dcr-mcp-api-server"]
 	require.True(t, hasDep)
 	require.Contains(t, fmt.Sprint(dep.Inputs), "--graphql-endpoint")
-	require.Contains(t, fmt.Sprint(dep.Inputs), "https://graphql.dictycr.org/graphql")
+	require.Contains(t, fmt.Sprint(dep.Inputs), testGraphQLEndpoint)
+}
+
+func TestInstallWithExplicitLinkoutBaseURL(t *testing.T) {
+	t.Parallel()
+	mocks := &mcpResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	cfg := validBaseConfig()
+	cfg.LinkoutBaseURL = testLinkoutBaseURL
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return NewDcrMcp(cfg).Install(ctx)
+	}, pulumi.WithMocks("dcr-mcp", "test", mocks))
+	require.NoError(t, err)
+
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+
+	dep, hasDep := mocks.resources["dcr-mcp-api-server"]
+	require.True(t, hasDep)
+	require.Contains(t, fmt.Sprint(dep.Inputs), "--linkout-base-url")
+	require.Contains(t, fmt.Sprint(dep.Inputs), testLinkoutBaseURL)
+}
+
+func TestContainerArgsOrderWithOverrides(t *testing.T) {
+	t.Parallel()
+	cfg := validBaseConfig()
+	cfg.GraphQLEndpoint = testGraphQLEndpoint
+	cfg.LinkoutBaseURL = testLinkoutBaseURL
+	want := pulumi.ToStringArray(A.ArrayConcatAll(
+		[]string{
+			"start-server",
+			"--graphql-endpoint", testGraphQLEndpoint,
+			"--linkout-base-url", testLinkoutBaseURL,
+		},
+		defaultServerArgs,
+	))
+	require.Equal(t, want, NewDcrMcp(cfg).ContainerArgs())
+}
+
+func TestContainerArgsOmitLinkoutBaseURLByDefault(t *testing.T) {
+	t.Parallel()
+	want := pulumi.ToStringArray(A.ArrayConcatAll([]string{"start-server"}, defaultServerArgs))
+	require.Equal(t, want, NewDcrMcp(validBaseConfig()).ContainerArgs())
 }

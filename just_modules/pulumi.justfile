@@ -980,15 +980,18 @@ scaffold-event-messenger-stack stack="" nats_subject="OrderService.Create" ncbi_
 # By default `dcr-mcp` discovers `graphql-api` via Kubernetes `GRAPHQL_API_SERVICE_HOST`
 # and `GRAPHQL_API_SERVICE_PORT` environment variables; pass `--graphql-endpoint`
 # only to override with an explicit GraphQL URL.
+# The image builds gene, strain, plasmid, and publication links on
+# https://dictybase.dev; pass `--linkout-base-url` only to override that origin.
 # Describe-then-create: refuses to overwrite an existing Pulumi.<stack>.yaml.
-# Usage: just gcp-pulumi scaffold-dcr-mcp-stack [--stack <name>] [--graphql-endpoint <url>] [--port <n>] [--rate-limit <n>]
+# Usage: just gcp-pulumi scaffold-dcr-mcp-stack [--stack <name>] [--graphql-endpoint <url>] [--linkout-base-url <url>] [--port <n>] [--rate-limit <n>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("graphql_endpoint", long="graphql-endpoint", help="Optional GraphQL endpoint URL override (default: omitted; resolved in-cluster via GRAPHQL_API_SERVICE_HOST/PORT)")]
+[arg("linkout_base_url", long="linkout-base-url", help="Optional website origin for gene, strain, plasmid, and publication links (default: omitted; image default https://dictybase.dev)")]
 [arg("port", long="port", short="p", help="MCP HTTP server port (default 8080)")]
 [arg("rate_limit", long="rate-limit", help="Maximum /mcp requests per client IP per minute (default 120)")]
 [group('pulumi-management')]
 [no-cd]
-scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120":
+scaffold-dcr-mcp-stack stack="" graphql_endpoint="" linkout_base_url="" port="8080" rate_limit="120":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -1017,6 +1020,7 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     namespace=$(yq -r '.namespace' "${entry}")
     kms=$(yq -r '.kms_secrets_provider' "${entry}")
     gql_ep={{ quote(graphql_endpoint) }}
+    linkout_url={{ quote(linkout_base_url) }}
 
     cfg="${folder}/Pulumi.${stack_name}.yaml"
     if [ -e "${cfg}" ] && grep -q '^config:' "${cfg}" 2>/dev/null; then
@@ -1042,6 +1046,9 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" port="8080" rate_limit="120"
     cat "${tmp}" >> "${cfg}"
     if [ -n "${gql_ep}" ]; then
         printf '    graphqlEndpoint: %s\n' "${gql_ep}" >> "${cfg}"
+    fi
+    if [ -n "${linkout_url}" ]; then
+        printf '    linkoutBaseURL: %s\n' "${linkout_url}" >> "${cfg}"
     fi
 
     yq -r '.config' "${cfg}" >/dev/null

@@ -53,6 +53,8 @@ just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --v
 just gcp-pulumi set-config --folder dcr-mcp --key properties.stateless --value true
 just gcp-pulumi set-config --folder dcr-mcp --key properties.rateLimit --value 120
 just gcp-pulumi set-config --folder dcr-mcp --key properties.allowedOrigins.0 --value "*"
+# Optional. Change the website of the record links. The default is https://dictybase.dev.
+just gcp-pulumi set-config --folder dcr-mcp --key properties.linkoutBaseURL --value https://<website-host>
 
 # 5. Optional, legacy 'experiments' cluster only. The default is false (no Ingress).
 just gcp-pulumi set-config --folder dcr-mcp --key properties.ingress.enabled --value false
@@ -148,10 +150,16 @@ just gcp-pulumi set-config --folder dcr-mcp --key properties.graphqlEndpoint --v
 `properties.stateless` keeps each request independent, so any replica answers it. `properties.rateLimit` is the maximum number of `/mcp` requests for each client IP address in one minute, and `properties.allowedOrigins` is the CORS list for browser clients.
 → [Server options and container flags](reference/dcr-mcp/deployment.md#server-options-and-container-flags)
 
+`properties.linkoutBaseURL` is absent by default, and the tools then link gene, strain, plasmid, and publication pages on `https://dictybase.dev`. Set it only to send those links to a different website. The image must be `v0.1.0` or later.
+→ [Record links emitted by tools](reference/dcr-mcp/deployment.md#record-links-emitted-by-tools)
+
 ```bash
 just gcp-pulumi set-config --folder dcr-mcp --key properties.stateless --value true
 just gcp-pulumi set-config --folder dcr-mcp --key properties.rateLimit --value 120
 just gcp-pulumi set-config --folder dcr-mcp --key properties.allowedOrigins.0 --value "*"
+
+# Optional. Override the website of the record links.
+just gcp-pulumi set-config --folder dcr-mcp --key properties.linkoutBaseURL --value https://<website-host>
 ```
 
 ---

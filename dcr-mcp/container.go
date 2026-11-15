@@ -23,8 +23,19 @@ var buildGraphQLEndpointFlags = F.Pipe1(
 	P.Fold(F.Constant1[string, []string](nil), graphqlEndpointFlagPair),
 )
 
+var buildLinkoutBaseURLFlags = F.Pipe1(
+	S.IsNonEmpty,
+	P.Fold(F.Constant1[string, []string](nil), linkoutBaseURLFlagPair),
+)
+
 func graphqlEndpointFlagPair(endpoint string) []string {
 	return []string{"--graphql-endpoint", endpoint}
+}
+
+// linkoutBaseURLFlagPair overrides the website origin of the gene, strain,
+// plasmid, and publication links. The image default is https://dictybase.dev.
+func linkoutBaseURLFlagPair(baseURL string) []string {
+	return []string{"--linkout-base-url", baseURL}
 }
 
 func originFlagPair(origin string) []string {
@@ -33,6 +44,10 @@ func originFlagPair(origin string) []string {
 
 func (m *DcrMcp) graphqlEndpointFlags() []string {
 	return buildGraphQLEndpointFlags(m.Config.GraphQLEndpoint)
+}
+
+func (m *DcrMcp) linkoutBaseURLFlags() []string {
+	return buildLinkoutBaseURLFlags(m.Config.LinkoutBaseURL)
 }
 
 func (m *DcrMcp) allowedOriginsFlags() []string {
@@ -57,6 +72,7 @@ func (m *DcrMcp) ContainerArgs() pulumi.StringArray {
 	args := A.ArrayConcatAll(
 		baseArgs,
 		m.graphqlEndpointFlags(),
+		m.linkoutBaseURLFlags(),
 		hostAndServerArgs,
 		m.allowedOriginsFlags(),
 	)

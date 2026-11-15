@@ -23,7 +23,7 @@ Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two rea
   - [Stateless Streamable HTTP and Caching](#stateless-streamable-http-and-caching)
   - [Rate Limiting and Proxy Headers](#rate-limiting-and-proxy-headers)
   - [CORS Origins](#cors-origins)
-  - [Citation Links Emitted by Tools](#citation-links-emitted-by-tools)
+  - [Record Links Emitted by Tools](#record-links-emitted-by-tools)
 - [Routing Architecture: Gateway vs Legacy Ingress](#routing-architecture-gateway-vs-legacy-ingress)
   - [Production Gateway Route (Recommended)](#production-gateway-route-recommended)
   - [Legacy Ingress Mode (`dcr-experiments`)](#legacy-ingress-mode-dcr-experiments)
@@ -151,6 +151,7 @@ Behavior:
 3. Keeps an existing `dcr-mcp/Pulumi.<stack>.yaml` without overwriting it and exits `0`.
 4. Initializes or selects the stack with the registry KMS key, then appends the rendered `config:` block.
 5. Appends `graphqlEndpoint` only when `--graphql-endpoint` gives a URL. Without the flag the key stays absent, and the server reads `graphql-api` inside the cluster ([endpoint resolution](#graphql-endpoint-resolution)).
+   It appends `linkoutBaseURL` only when `--linkout-base-url` gives a URL. Without the flag the key stays absent, and the links use the image default ([record links](#record-links-emitted-by-tools)).
 6. Validates that `name` is `dcr-mcp`, that `namespace` equals the registry value, and that the file holds no `:latest` tag.
 
 It prints `Next: configure stack options, push <stack file> to cluster-ops develop, or pin properties.image.tag`.
@@ -192,6 +193,7 @@ config:
 |-----|--------------------------|------------------------|
 | `namespace` | `prod` | `dev` |
 | `graphqlEndpoint` | absent — read in-cluster | absent — read in-cluster |
+| `linkoutBaseURL` | absent — image default `https://dictybase.dev`; set it to override | absent — image default `https://dictybase.dev` |
 | `ingress.enabled` | `false`; the `gateway/` stack routes `routes.mcp` | `true`; the stack creates `dcr-mcp-ingress` |
 | `ingress.hosts` | absent; set `gateway/` `routes.mcp.hosts.0` | dedicated host, for example `mcp.dictybase.dev` |
 | `ingress.path` | absent; the Gateway route uses `/` | `/` |
@@ -294,16 +296,17 @@ kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server
 
 ## Server Options and Container Flags
 
-The binary uses the subcommand `start-server` (aliases `serve` and `start`). Pulumi passes the subcommand first, then the flags, and includes `--graphql-endpoint` only when `properties.graphqlEndpoint` is non-empty:
+The binary uses the subcommand `start-server` (aliases `serve` and `start`). Pulumi passes the subcommand first, then the flags. It includes `--graphql-endpoint` only when `properties.graphqlEndpoint` is non-empty, and `--linkout-base-url` only when `properties.linkoutBaseURL` is non-empty:
 
 ```text
-start-server [--graphql-endpoint <url>] --host <host> --port <port> --stateless=<bool> --rate-limit <n> --allowed-origins <origin>...
+start-server [--graphql-endpoint <url>] [--linkout-base-url <url>] --host <host> --port <port> --stateless=<bool> --rate-limit <n> --allowed-origins <origin>...
 ```
 
 | Pulumi config key | CLI flag | Environment variable | Default | Purpose |
 |-------------------|----------|----------------------|---------|---------|
 | `properties.command` | subcommand | — | `start-server` | `start-server`, `serve`, or `start` |
 | `properties.graphqlEndpoint` | `--graphql-endpoint` | `GRAPHQL_ENDPOINT` | *(absent)* | [Endpoint override](#graphql-endpoint-resolution) |
+| `properties.linkoutBaseURL` | `--linkout-base-url` | — | *(absent)*; the image uses `https://dictybase.dev` | [Website of the record links](#record-links-emitted-by-tools) |
 | `properties.host` | `--host` | `MCP_HOST` | `0.0.0.0` | Bind address inside the container |
 | `properties.port` | `--port` | `MCP_PORT` | `8080` | TCP port for `/mcp` and `/healthz`. Range `0`–`65535`. |
 | `properties.stateless` | `--stateless=<bool>` | `MCP_STATELESS` | `true` | Streamable HTTP stateless mode |
@@ -328,16 +331,34 @@ The Pulumi program applies the same defaults when a key is absent, so an omitted
 - Browser MCP clients send a preflight `OPTIONS /mcp` request with `Content-Type`, `Accept`, `Mcp-Session-Id`, and `MCP-Protocol-Version`. The server allows and exposes those headers.
 - Server-to-server connectors (Claude.ai, ChatGPT, Claude Code, Codex CLI, Cursor) ignore CORS headers. Keep `["*"]` unless you must limit browser origins.
 
-### Citation Links Emitted by Tools
+### Record Links Emitted by Tools
 
-Tool responses carry fixed citation base domains, which are compiled into the image and are not configurable:
+Tool responses carry links to record pages. The website origin of the gene, strain, plasmid, and publication links comes from `--linkout-base-url`. The PubMed and DOI links are external and do not change.
 
 | Target | URL pattern |
 |--------|-------------|
-| Strain page | `https://dictycr.org/strains/<DBS_ID>` |
-| Plasmid page | `https://dictycr.org/plasmids/<DBP_ID>` |
+| Gene page | `<base-url>/gene/<id>` |
+| Strain page | `<base-url>/stockcenter/strains/<DBS_ID>` |
+| Plasmid page | `<base-url>/stockcenter/plasmids/<DBP_ID>` |
+| Publication page | `<base-url>/publication/<id>` |
 | PubMed record | `https://pubmed.ncbi.nlm.nih.gov/<PMID>/` |
 | DOI | `https://doi.org/<DOI>` |
+
+**The default `<base-url>` is `https://dictybase.dev`.** When `properties.linkoutBaseURL` is absent, Pulumi passes no flag, and the image default applies. To send the links to a different website, set the key and apply the stack again:
+
+```bash
+just gcp-pulumi set-config --folder dcr-mcp --key properties.linkoutBaseURL --value https://<website-host>
+just gcp-pulumi preview --folder dcr-mcp
+just gcp-pulumi create-resource --folder dcr-mcp
+```
+
+Rules for the value:
+
+- Give an origin only: `http` or `https`, a host, and an optional port from `1` through `65535`. A path, a query, a fragment, or user information makes the container exit at startup.
+- The value does not change the GraphQL endpoint or the HTTP bind address.
+- The flag exists in `dictybase/dcr-mcp` `v0.1.0` and later. An older image, such as `develop-4e47267`, exits at startup when the key is set. Remove the key, or pin a later tag.
+
+To remove the override, delete the key from `dcr-mcp/Pulumi.<stack>.yaml`, then apply the stack again.
 
 ---
 
@@ -400,6 +421,7 @@ just gcp-pulumi preview --folder dcr-mcp
 |--------|------|----------|---------|-------|
 | `scaffold-dcr-mcp-stack` | `--stack` / `-s` | No | `$PULUMI_STACK` | Must match a `stack:` key in `config/clusters/*.yaml` |
 | `scaffold-dcr-mcp-stack` | `--graphql-endpoint` | No | *(omitted — read in-cluster)* | Writes `properties.graphqlEndpoint` |
+| `scaffold-dcr-mcp-stack` | `--linkout-base-url` | No | *(omitted — image default `https://dictybase.dev`)* | Writes `properties.linkoutBaseURL` |
 | `scaffold-dcr-mcp-stack` | `--port` / `-p` | No | `8080` | Container and Service TCP port |
 | `scaffold-dcr-mcp-stack` | `--rate-limit` | No | `120` | Requests for each client IP address in one minute |
 | `ensure-stack`, `preview`, `create-resource`, `set-config` | `--folder` / `-f` | Yes | — | Pass `dcr-mcp` |
@@ -546,7 +568,9 @@ The rendered file is inert until it lands in the service repository. Copy `bin/c
 | `dcr-mcp:properties is missing namespace` in a CI run only | `dcr-mcp/Pulumi.<stack>.yaml` is absent from cluster-ops `develop`, so CI deployed a file that holds `image.tag` alone | Push the stack file, then re-run the workflow ([bootstrap order](#bootstrap-order-on-a-new-cluster)). |
 | `error: no stack named '<stack>' found` in a CI run | The stack was never initialized in the Pulumi backend of that cluster | Run `just gcp-pulumi scaffold-dcr-mcp-stack` in the cluster-env sub-shell, push the stack file, then re-run the workflow. |
 | `ERROR: no semver tags found for dictyBase/dcr-mcp.` | The repository carries no release tag yet, so `just ci latest-tag` has nothing to print | Use the `develop-<sha>` tag that the developer CI run published ([find a published tag](#find-a-published-tag)). |
-| `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint` | The value still holds `<...>` text | Pin a real tag ([image tag](#image-tag)), and set or remove `graphqlEndpoint`. |
+| `dcr-mcp:properties contains placeholder in image.tag, graphqlEndpoint, linkoutBaseURL` | The value still holds `<...>` text | Pin a real tag ([image tag](#image-tag)), and set or remove `graphqlEndpoint` and `linkoutBaseURL`. |
+| Pod exits with `flag provided but not defined: -linkout-base-url` | `properties.linkoutBaseURL` is set, and the image is older than `v0.1.0` | Pin `v0.1.0` or a later tag, or remove the key ([record links](#record-links-emitted-by-tools)). |
+| Pod exits with an error that starts with `linkout-base-url must be` | `properties.linkoutBaseURL` is not a plain `http` or `https` origin | Remove the path, the query, the fragment, and any user information from the value ([record links](#record-links-emitted-by-tools)). |
 | Pod exits with `graphql-endpoint or GRAPHQL_API_SERVICE_HOST must be set` | The pod started before Service `graphql-api` existed, and no endpoint override is set | Deploy `graphql_server`, then run `kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server` ([endpoint resolution](#graphql-endpoint-resolution)). |
 | `FAIL dcr-mcp: tag is 'bootstrap'` | The placeholder tag was never replaced | Pin a tag ([image tag](#image-tag)), then apply again. |
 | `FAIL dcr-mcp: running image <a>, stack file says <b>` | The stack file changed and `create-resource` did not run, or a CI run set another tag | Run `preview` and `create-resource` again. |

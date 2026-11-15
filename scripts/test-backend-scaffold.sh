@@ -266,16 +266,18 @@ out=$(just gcp-pulumi scaffold-dcr-mcp-stack --stack dcr-kube1 2>&1) || {
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".namespace')" = "prod" ] || fail "namespace wrong"
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".command')" = "start-server" ] || fail "command wrong"
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".graphqlEndpoint // ""')" = "" ] || fail "graphqlEndpoint should be omitted by default"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".linkoutBaseURL // ""')" = "" ] || fail "linkoutBaseURL should be omitted by default"
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".ingress.enabled')" = "false" ] || fail "ingress.enabled wrong"
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".stateless')" = "true" ] || fail "stateless wrong"
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".rateLimit')" = "120" ] || fail "rateLimit wrong"
 grep -q ':latest' "${mcp_cfg}" && fail "mutable :latest tag in rendered config"
 rm -f "${mcp_cfg}"
-out=$(just gcp-pulumi scaffold-dcr-mcp-stack --stack dcr-kube1 --graphql-endpoint https://graphql.dictycr.org/graphql 2>&1) || {
+out=$(just gcp-pulumi scaffold-dcr-mcp-stack --stack dcr-kube1 --graphql-endpoint https://graphql.dictycr.org/graphql --linkout-base-url https://dictycr.org 2>&1) || {
     [ -n "${mcp_bak}" ] && mv "${mcp_bak}" "${mcp_cfg}"
-    fail "scaffold-dcr-mcp-stack with --graphql-endpoint failed:\n${out}"
+    fail "scaffold-dcr-mcp-stack with --graphql-endpoint and --linkout-base-url failed:\n${out}"
 }
 [ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".graphqlEndpoint')" = "https://graphql.dictycr.org/graphql" ] || fail "graphqlEndpoint override wrong"
+[ "$(yq_get "${mcp_cfg}" '.config."dcr-mcp:properties".linkoutBaseURL')" = "https://dictycr.org" ] || fail "linkoutBaseURL override wrong"
 if [ -n "${mcp_bak}" ]; then
     mv "${mcp_bak}" "${mcp_cfg}"
 else

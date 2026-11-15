@@ -21,3 +21,4 @@ config:
     rateLimit: 120
     stateless: true
     graphqlEndpoint: https://graphql.dictycr.org/graphql
+    linkoutBaseURL: https://dictycr.org

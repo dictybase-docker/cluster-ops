@@ -33,6 +33,7 @@ type DcrMcpConfig struct {
 	Stateless       *bool         `json:"stateless"`
 	RateLimit       int           `json:"rateLimit"`
 	GraphQLEndpoint string        `json:"graphqlEndpoint"`
+	LinkoutBaseURL  string        `json:"linkoutBaseURL"`
 	AllowedOrigins  []string      `json:"allowedOrigins"`
 	Image           ImageConfig   `json:"image"`
 	Ingress         IngressConfig `json:"ingress"`
@@ -188,6 +189,7 @@ func validateBase(c *DcrMcpConfig) E.Either[error, *DcrMcpConfig] {
 		{name: "namespace", val: c.Namespace},
 		{name: "image.tag", val: c.Image.Tag},
 		{name: "graphqlEndpoint", val: c.GraphQLEndpoint},
+		{name: "linkoutBaseURL", val: c.LinkoutBaseURL},
 	}
 	placeholders := placeholderFieldNames(checked)
 	if len(placeholders) > 0 {
