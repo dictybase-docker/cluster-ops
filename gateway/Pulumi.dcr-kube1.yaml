@@ -59,9 +59,9 @@ config:
         servicePort: 3001
         path: /
       mcp:
-        enabled: false
+        enabled: true
         hosts:
-          - <mcp-host>
+          - mcp.dictycr.org
         tlsSecret: mcp-tls
         serviceName: dcr-mcp-api
         servicePort: 8080
