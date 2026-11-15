@@ -1,0 +1,23 @@
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIHTX3J2P/gl2lInvhRpk3jv57fGXLTpA6pt9Lrb9lA0SSQDjx5R/hnBYuYsS4tonpiJ2SiKePd042MUvTyi1+coLQfoXdpnk3dalNKhLT4XiqKRYlDc8CacC8lKygQzds05P0UYPN/batGk=
+# Template for a dcr-mcp stack config.
+# Rendered by `just gcp-pulumi scaffold-dcr-mcp-stack` — the config block is
+# appended to Pulumi.<stack>.yaml after `pulumi stack init` writes the
+# secretsprovider + encryptedkey lines.
+config:
+  dcr-mcp:properties:
+    allowedOrigins:
+      - "*"
+    command: start-server
+    host: 0.0.0.0
+    image:
+      name: dictybase/dcr-mcp
+      tag: bootstrap
+    ingress:
+      enabled: false
+    name: dcr-mcp
+    namespace: prod
+    port: 8080
+    rateLimit: 120
+    stateless: true
+    graphqlEndpoint: https://graphql.dictycr.org/graphql
