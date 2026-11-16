@@ -1695,6 +1695,23 @@ _setup-backup-sa bucket="restic-arangodb-backup-prod" project="" sa_name="backup
     echo "Key file       : ${KEY_FILE}"
     echo
 
+    # Preflight: minting a key needs iam.serviceAccountKeyAdmin, which only
+    # sa-manager holds. gcloud uses the active account; the key mint uses
+    # GOOGLE_APPLICATION_CREDENTIALS. Fail before any mutation if either is
+    # kops-cluster-creator.
+    GCLOUD_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+    ADC_ACCOUNT=""
+    if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" && -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]]; then
+        ADC_ACCOUNT="$(jq -r '.client_email // empty' "$GOOGLE_APPLICATION_CREDENTIALS" 2>/dev/null || true)"
+    fi
+    for ACCOUNT in "$GCLOUD_ACCOUNT" "$ADC_ACCOUNT"; do
+        if [[ "$ACCOUNT" == kops-cluster-creator@* ]]; then
+            echo "Error: identity ${ACCOUNT} cannot list or create SA keys (gcloud account or GOOGLE_APPLICATION_CREDENTIALS)." >&2
+            echo "Rotate to sa-manager first: just gcp-cluster rotate-to-manager, then re-enter cluster-env." >&2
+            exit 1
+        fi
+    done
+
     # Idempotent: probe first so a re-run does not spew a conflict ERROR.
     if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
         echo "Service account already exists — continuing."
