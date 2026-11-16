@@ -8,5 +8,14 @@ config:
   minio-backup-secrets:properties:
     secret:
       name: minio-backup-auth
+      gcsProject:
+        secure: v1:gVbLp30akfkW0cCu:j/TIvmzY6VLySbp3/bitHdg2Kk1tk6yKQQ==
+      resticPass:
+        secure: v1:pumLrxt5Hs/mHDQk:8BRu26amwUaM6a9irKfGfoCSMqiZIMdpl8fNVzaSZCele4tHJw==
+      serviceAccount:
+        filepath:
+          secure: v1:iWHAQQADirurjCLX:jS91zCiT3L3Yefb9FMxGz+cAgoByWGUSg/UVuZ717o09HIPk7YHNh9gqDexWZxsg7Rw70vQSP7tJtmPQUensnd1IZbn7s1VrqBGm2SAZye5qyY7AIyGsPr1qky4AQ9peKEz041Zt2COX2rk=
+        keyname:
+          secure: v1:jF9PkKnIujoHMPri:dSO6JbyxuM6bVzezdcEtxSEgzOZzfZrTr6YGQs26
 secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
 encryptedkey: CiQAMO2WIJr+f/7r8xGx3qOIK5DLJBAjZ8iK/hqakB1yDhDFxGUSSQDjx5R/1033OzYQjQM6x+QFeZ0eoDf6wkyQGqlwgKeauSfk6pEIlFMQ5Fwn1nuwtZqVFdHBMpG/GDPvwhHHMtyVKfUSMKsdlf4=
