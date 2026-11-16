@@ -536,6 +536,19 @@ deploy-backup namespace="prod" stack="" retries="90" interval="10":
         fi
     done
 
+    # An interrupted run (Ctrl-C, stale lock) can leave the immediate Job in the
+    # cluster but out of Pulumi state; `pulumi up` then fails with "already
+    # exists". Delete the Job only when the stack state does not own it.
+    if kubectl get job -n "$NS" "$JOB" >/dev/null 2>&1; then
+        JOB_URN="urn:pulumi:${STACK}::${FOLDER}::kubernetes:batch/v1:Job::${JOB}"
+        # Fail closed: a failed export must stop the recipe, never mean "orphan".
+        STATE_JSON="$(pulumi -C "$FOLDER" stack export --stack "$STACK")"
+        if ! jq -e --arg urn "$JOB_URN" '.deployment.resources // [] | any(.urn == $urn)' <<<"$STATE_JSON" >/dev/null; then
+            echo "Job $JOB exists in $NS but not in stack '$STACK' state (orphan from an interrupted run) — deleting it."
+            kubectl delete job -n "$NS" "$JOB" --cascade=foreground --wait=true
+        fi
+    fi
+
     just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
     just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
 
