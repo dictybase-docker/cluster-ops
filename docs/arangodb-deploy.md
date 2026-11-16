@@ -132,6 +132,7 @@ just arangodb check-pool
 ## 2. Prerequisites
 
 Creates the backup service account + key, and Secret `dictycr`. StorageClasses, the `prod`/`operators` namespaces, and each project's `Pulumi.<cluster>.yaml` must already exist — see the [prerequisite list](reference/arangodb/pool-requirements.md#prerequisites).
+Run `configure-backup-secrets` as `sa-manager` (`just gcp-cluster rotate-to-manager`). The `kops-cluster-creator` identity cannot create SA keys.
 → [Backup secret details](reference/arangodb/backup.md#configure-backup-secrets)
 
 ```bash

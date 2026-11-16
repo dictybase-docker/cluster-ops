@@ -20,6 +20,8 @@ Each backup Job runs two containers in sequence, sharing an ephemeral scratch PV
 
 ## Commands
 
+**Prerequisite:** Run `configure-backup-secrets` as `sa-manager`. The `kops-cluster-creator` identity does not have `iam.serviceAccountKeys.list` or `iam.serviceAccountKeys.create`, and the recipe stops before any change. Rotate with `just gcp-cluster rotate-to-manager`, re-enter `cluster-env`, and rotate back with `just gcp-cluster rotate-to-creator` after the backup deploys.
+
 ```bash
 just minio configure-backup-secrets --restic-password '<restic-pass>'
 just minio deploy-backup

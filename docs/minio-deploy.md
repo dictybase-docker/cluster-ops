@@ -155,6 +155,7 @@ just minio import-bucket \
 ## 4. Backup & Restore
 
 Daily **01:30** `restic` backup of all MinIO buckets and anonymous policies to `gs://restic-minio-backup-<project-id>` through the `minio-backup-sa` identity, plus an immediate first run. For same-cluster disaster recovery (`configure-restore` + `apply-restore`), refer to the restore reference.
+Run `configure-backup-secrets` as `sa-manager` (`just gcp-cluster rotate-to-manager`). The `kops-cluster-creator` identity cannot create SA keys.
 → [Backup details](reference/minio/backup.md) · [Restore details](reference/minio/restore.md)
 
 ```bash

@@ -38,6 +38,8 @@ Creates none — reads existing secrets:
 
 ## Renew the Backup SA Key
 
+**Prerequisite:** Run `configure-backup-secrets` and `setup-backup-sa` as `sa-manager`. The `kops-cluster-creator` identity does not have `iam.serviceAccountKeys.list` or `iam.serviceAccountKeys.create`, and the recipe stops before any change. Rotate with `just gcp-cluster rotate-to-manager`, re-enter `cluster-env`, and rotate back with `just gcp-cluster rotate-to-creator` after the backup deploys.
+
 `configure-backup-secrets` sets the SA up every run, so this standalone recipe only exists to mint a **new** key after you deleted the file on disk or pruned old keys:
 
 ```bash

@@ -96,6 +96,7 @@ just redis deploy
 ## 3. Backup & Restore
 
 Daily restic backup to `gs://restic-redis-backup-<project-id>` through the redis-scoped `redis-backup-sa` identity, plus an immediate first run. For same-cluster recovery (`configure-restore` + `apply-restore`) or cross-cluster bootstrap (`bootstrap-from-snapshot`), refer to the restore reference.
+Run `configure-backup-secrets` as `sa-manager` (`just gcp-cluster rotate-to-manager`). The `kops-cluster-creator` identity cannot create SA keys.
 → [Backup details](reference/redis/backup.md) · [Restore and bootstrap details](reference/redis/restore.md)
 
 ```bash
