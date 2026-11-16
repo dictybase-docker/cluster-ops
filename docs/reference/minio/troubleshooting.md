@@ -7,6 +7,7 @@ Back to: [MinIO Deploy Guide](../../minio-deploy.md)
 | `Error: no stack name` | Recipe run outside the cluster-env sub-shell | Enter `just cluster-env --env prod --cluster <prod-cluster>` first, or pass `--stack <name>` |
 | Pod Pending | No node matches `pool=database` + taint toleration, or pool missing | `just minio check-pool`; see [pool requirements](pool-requirements.md) |
 | `ImagePullBackOff` | Chart 17 image moved to `bitnamilegacy/minio` | `minio/Pulumi.dcr-kube1.yaml` already pins the legacy repo — lab configs missing `image.repository` default to it; check for typos in a hand-set override |
+| Backup or restore Job `Init:ImagePullBackOff` on `minio/mc` (`insufficient_scope`) | MinIO removed its public `minio/mc` images from Docker Hub | The `minio-backup` and `minio-restore` stacks default to `bitnamilegacy/minio-client:2025.7.21-debian-12-r3`. Remove any `mcImage` override that still points at `minio/mc`, then run the deploy recipe again |
 | Helm values rejected on apply | Lab-era values leaked in (`disableWebUI`) | Chart 17 removed `disableWebUI`; this program no longer emits it — confirm the stack is on the chart 17 program and `Pulumi.dcr-kube1.yaml` |
 | App cannot connect | Wrong Service or Secret | API is `minio.prod.svc.cluster.local:9000`; credentials in Secret `minio-root` (`kubectl get secret minio-root -n prod -o jsonpath='{.data.rootPassword}' \| base64 -d`) |
 | Import stalls at start | The forward to `svc/minio` failed: no ready endpoint behind the Service | Check the pod is up (`just minio verify`) and re-run `import-bucket` |

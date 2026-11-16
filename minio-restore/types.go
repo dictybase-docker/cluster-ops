@@ -18,8 +18,8 @@ const (
 	defaultSnapshot       = "latest"
 	defaultResticImage    = "restic/restic"
 	defaultResticImageTag = "0.17.0"
-	defaultMCImage        = "minio/mc"
-	defaultMCImageTag     = "RELEASE.2025-08-13T08-35-41Z"
+	defaultMCImage        = "bitnamilegacy/minio-client"
+	defaultMCImageTag     = "2025.7.21-debian-12-r3"
 	defaultStorageName    = "minio-restore-scratch"
 
 	scratchMountPath  = "/restore"

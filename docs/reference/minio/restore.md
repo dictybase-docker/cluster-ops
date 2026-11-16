@@ -9,7 +9,7 @@ The `minio-restore` stack creates a one-off Kubernetes Job (`minio-restore-<rest
 The Job runs two containers in sequence, sharing an ephemeral scratch PVC (`minio-restore-scratch`, `150Gi` `dictycr-balanced`) mounted at `/restore`:
 
 1. **`restic-restore`** (`restic/restic:0.17.0`): Restores `/backup/buckets/*` and `/backup/policies/*.json` from `gs:<bucket>:/` into `/restore`. When `noLock: true` is set (cross-project bootstrap), prepends `--no-lock`. When `s3Bucket` is set, passes `--include /backup/buckets/<s3Bucket>` and `--include /backup/policies/<s3Bucket>.json` to restore only that bucket.
-2. **`mc-restore`** (`minio/mc:RELEASE.2025-08-13T08-35-41Z`): Reads root credentials from Secret `minio-root`, creates each missing bucket on `http://minio:9000` (`mc mb --ignore-existing`), mirrors the restored objects (`mc mirror --preserve --overwrite --retry`), and applies the saved anonymous policy JSON (`mc anonymous set-json`).
+2. **`mc-restore`** (`bitnamilegacy/minio-client:2025.7.21-debian-12-r3`): Reads root credentials from Secret `minio-root`, creates each missing bucket on `http://minio:9000` (`mc mb --ignore-existing`), mirrors the restored objects (`mc mirror --preserve --overwrite --retry`), and applies the saved anonymous policy JSON (`mc anonymous set-json`).
 
 ---
 

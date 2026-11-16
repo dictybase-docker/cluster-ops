@@ -213,7 +213,10 @@ func (mb *MinioBackup) createMCDumpContainer() *corev1.ContainerArgs {
 		Name:    pulumi.String(initContainerName),
 		Image:   pulumi.String(mcImageRef(cfg)),
 		Command: pulumi.StringArray{pulumi.String("sh")},
-		Args:    pulumi.ToStringArray(buildMCDumpArgs()),
+		// bitnamilegacy/minio-client runs as UID 1001; the scratch PVC is
+		// root-owned, so run mc as root like the restic container.
+		SecurityContext: &corev1.SecurityContextArgs{RunAsUser: pulumi.Int(0)},
+		Args:            pulumi.ToStringArray(buildMCDumpArgs()),
 		Env: corev1.EnvVarArray{
 			&corev1.EnvVarArgs{
 				Name:  pulumi.String("MINIO_HOST"),

@@ -13,7 +13,7 @@ Two stacks and two composite commands back up all buckets and anonymous S3 polic
 
 Each backup Job runs two containers in sequence, sharing an ephemeral scratch PVC (`minio-backup-ephemeral`, `150Gi` `dictycr-balanced`) mounted at `/backup`:
 
-1. **Init container `mc-dump`** (`minio/mc:RELEASE.2025-08-13T08-35-41Z`): Reads root credentials from Secret `minio-root` (`rootUser`, `rootPassword`), connects to `http://minio:9000`, mirrors every bucket into `/backup/buckets/<bucket>` (`mc mirror --preserve --overwrite --retry`), and exports each bucket's anonymous policy into `/backup/policies/<bucket>.json` (`mc anonymous get-json`).
+1. **Init container `mc-dump`** (`bitnamilegacy/minio-client:2025.7.21-debian-12-r3`): Reads root credentials from Secret `minio-root` (`rootUser`, `rootPassword`), connects to `http://minio:9000`, mirrors every bucket into `/backup/buckets/<bucket>` (`mc mirror --preserve --overwrite --retry`), and exports each bucket's anonymous policy into `/backup/policies/<bucket>.json` (`mc anonymous get-json`).
 2. **Main container `restic-backup`** (`restic/restic:0.17.0`): Mounts `/var/secret/gcs-credentials` from Secret `minio-backup-auth`, initializes the restic repository in `gs:restic-minio-backup-<project-id>:/` on first run, and snapshots `/backup` with tag `minio-backup`.
 
 ---

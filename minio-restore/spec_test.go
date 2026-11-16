@@ -114,5 +114,5 @@ func TestMinioRestoreInstallCreatesJob(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "kubernetes:batch/v1:Job", job.TypeToken)
 	require.Contains(t, fmt.Sprint(job.Inputs), "restic/restic:0.17.0")
-	require.Contains(t, fmt.Sprint(job.Inputs), "minio/mc:RELEASE.2025-08-13T08-35-41Z")
+	require.Contains(t, fmt.Sprint(job.Inputs), "bitnamilegacy/minio-client:2025.7.21-debian-12-r3")
 }
