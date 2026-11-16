@@ -21,7 +21,7 @@ Back to: [Backend Service Deploy Guide](../../backend-service-deploy.md)
 | Tag deploy authenticates with the dev key | `dictyBase/workflows` key-selection change not merged | Merge it, then re-run the workflow |
 | Tag deploy does not trigger | `tag-build.yaml` not merged into the service repo | Merge the rendered file ([render details](render-deploy-workflows.md)) |
 | Tag deploy: workflow queued, never starts | `concurrency` group serialized behind another run | Wait; or cancel the queued run and re-push |
-| Pulumi: `the stack is already locked` | Another `pulumi up` holds the lock (crashed runner, parallel deploy) | `pulumi -C <folder> -s <stack> cancel` **only after confirming** the holder is dead; never cancel a live run |
+| Pulumi: `the stack is already locked` | Another `pulumi up` holds the lock (crashed runner, parallel deploy) | `just gcp-pulumi cancel --folder <folder>` **only after confirming** the holder is dead; never cancel a live run |
 | Deploy green but clients fail | Service answers only inside the cluster (ClusterIP) | Probe from an in-cluster pod: `kubectl run --rm -i grpcurl-probe --image=fullstorydev/grpcurl -- <service>.<ns>.svc.cluster.local:<port> list` |
 | App CrashLoops on ArangoDB connect | App connects through `svc/arangodb` (`ARANGODB_SERVICE_HOST`), not pod exec | The prereq gate probes the same Service — a green gate but failing app means an app-side flag (`--is-secure`, database name), not the database |
 | `gh secret set` in `set-deploy-secret` fails | Token lacks org Actions secrets write | Re-auth `gh` with org-admin scope — see [credentials details](ci-credentials.md) |

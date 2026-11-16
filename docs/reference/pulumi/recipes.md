@@ -27,6 +27,7 @@ All recipes accept `--stack <name>`. If omitted they use `$PULUMI_STACK`, fallin
 
 | Recipe | What it does | Environment variables |
 |--------|--------------|-----------------------|
+| `just gcp-pulumi cancel` | Releases a stale stack lock after an interrupted `pulumi up`. Prints every lock holder, refuses when the holder process still runs on this host, and asks for confirmation (`--yes` skips the prompt) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL` (else `gs://pulumi-state-$PROJECT_ID`), `PULUMI_STACK` |
 | `just gcp-pulumi preview` | `stack preview`: structured diff summary + protected-resource gate ([details](../backend/pulumi-automation.md)) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_BACKEND_URL`, `PULUMI_STACK` |
 | `just gcp-pulumi apply-storageclass` | `ensure-stack` + `preview` + `create-resource` on `storage_class`, then verify the classes/provisioner derived from `Pulumi.<stack>.yaml` (retries while not visible) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL`, `PULUMI_STACK`, `KUBECONFIG` |
 | `just gcp-pulumi apply-namespaces` | `ensure-stack` + `preview` + `create-resource` on `namespace-bootstrap`, then verify the namespaces declared in `Pulumi.<stack>.yaml` ([namespaces](namespaces.md)) | `PULUMI_GCP_CREDENTIALS`, `PULUMI_SECRET_PROVIDER`, `PULUMI_BACKEND_URL`, `PULUMI_STACK`, `KUBECONFIG` |

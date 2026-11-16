@@ -217,6 +217,62 @@ preview folder stack="":
     stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
     go run ./cmd/cluster-ops stack preview \
         --folder {{ quote(folder) }} --stack "${stack_name}"
+# Release a stale stack lock left by an interrupted `pulumi up` (Ctrl-C,
+# crashed runner). Prints every lock holder first. Refuses when a holder is a
+# live process on THIS host; otherwise asks for confirmation (skip with --yes).
+# Never cancel a lock that a live run on another machine or CI runner holds.
+# Usage: just gcp-pulumi cancel --folder <dir> [--stack <name>] [--yes]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
+[arg("folder", long="folder", short="f", help="Folder containing the Pulumi project")]
+[arg("yes", long="yes", short="y", value="true", help="Skip the confirmation prompt")]
+[no-cd]
+cancel folder stack="" yes="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    folder={{ quote(folder) }}
+    stack_name={{ quote(stack) }}
+    stack_name="${stack_name:-${PULUMI_STACK:-dev}}"
+    backend="${PULUMI_BACKEND_URL:-}"
+    if [[ -z "$backend" && -n "${PROJECT_ID:-}" ]]; then
+        backend="gs://pulumi-state-${PROJECT_ID}"
+    fi
+    if [[ "$backend" != gs://* ]]; then
+        echo "Error: no GCS Pulumi backend — enter 'just cluster-env' (it exports PULUMI_BACKEND_URL)." >&2
+        exit 1
+    fi
+    if [[ ! -f "${folder}/Pulumi.yaml" ]]; then
+        echo "Error: ${folder}/Pulumi.yaml not found." >&2
+        exit 1
+    fi
+    project="$(sed -n 's/^name:[[:space:]]*//p' "${folder}/Pulumi.yaml" | head -1 | tr -d "\"'")"
+    lock_dir="${backend%/}/.pulumi/locks/organization/${project}/${stack_name}"
+
+    # Preflight (read-only): list holders and refuse a live local holder.
+    locks="$(gcloud storage ls "${lock_dir}/" 2>/dev/null || true)"
+    if [[ -z "$locks" ]]; then
+        echo "No lock on ${project}/${stack_name} — nothing to cancel."
+        exit 0
+    fi
+    this_host="$(hostname -s)"
+    while IFS= read -r lock; do
+        [[ -n "$lock" ]] || continue
+        info="$(gcloud storage cat "$lock")"
+        pid="$(jq -r '.pid' <<<"$info")"
+        host="$(jq -r '.hostname' <<<"$info")"
+        echo "Lock: $(jq -r '"\(.username)@\(.hostname) pid \(.pid) at \(.timestamp)"' <<<"$info")"
+        if [[ "${host%%.*}" == "$this_host" ]] && kill -0 "$pid" 2>/dev/null; then
+            echo "Error: pid ${pid} still runs on this host. Stop it first (kill ${pid}), then retry." >&2
+            exit 1
+        fi
+    done <<<"$locks"
+
+    if [[ {{ quote(yes) }} != "true" ]]; then
+        read -rp "Release the lock on ${project}/${stack_name}? The holder must be dead. [y/N] " answer
+        [[ "$answer" == [yY] ]] || { echo "Aborted."; exit 1; }
+    fi
+    PULUMI_BACKEND_URL="$backend" pulumi -C "$folder" cancel --stack "$stack_name" --yes
+    echo "Lock released. If the next 'pulumi up' reports pending operations, run 'pulumi -C ${folder} refresh --stack ${stack_name}'."
 # Create a new Pulumi stack in a given folder.
 # Usage: just gcp-pulumi new-stack --folder <dir> [--stack <name>]
 [arg("stack", long="stack", short="s", help="New Pulumi stack name (defaults to PULUMI_STACK, else dev)")]
