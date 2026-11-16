@@ -30,6 +30,7 @@ func (m *mcpResourceMocks) NewResource(args pulumi.MockResourceArgs) (string, re
 const (
 	testGraphQLEndpoint = "https://graphql.dictycr.org/graphql"
 	testLinkoutBaseURL  = "https://dictycr.org"
+	testChallengeToken  = "test-domain-verification-value"
 )
 
 // defaultServerArgs is the flag tail that the defaults of validBaseConfig give.
@@ -236,4 +237,15 @@ func TestContainerArgsOmitLinkoutBaseURLByDefault(t *testing.T) {
 	t.Parallel()
 	want := pulumi.ToStringArray(A.ArrayConcatAll([]string{"start-server"}, defaultServerArgs))
 	require.Equal(t, want, NewDcrMcp(validBaseConfig()).ContainerArgs())
+}
+
+func TestContainerArgsWithOpenAIAppsChallenge(t *testing.T) {
+	t.Parallel()
+	cfg := validBaseConfig()
+	cfg.OpenAIAppsChallenge = testChallengeToken
+	want := pulumi.ToStringArray(A.ArrayConcatAll(
+		[]string{defaultCommand, "--openai-apps-challenge", testChallengeToken},
+		defaultServerArgs,
+	))
+	require.Equal(t, want, NewDcrMcp(cfg).ContainerArgs())
 }

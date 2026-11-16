@@ -24,6 +24,7 @@ Details for the `dcr-mcp/` Pulumi project: the Kubernetes resources, the two rea
   - [Rate Limiting and Proxy Headers](#rate-limiting-and-proxy-headers)
   - [CORS Origins](#cors-origins)
   - [Record Links Emitted by Tools](#record-links-emitted-by-tools)
+  - [OpenAI Apps Domain Verification](#openai-apps-domain-verification)
 - [Routing Architecture: Gateway vs Legacy Ingress](#routing-architecture-gateway-vs-legacy-ingress)
   - [Production Gateway Route (Recommended)](#production-gateway-route-recommended)
   - [Legacy Ingress Mode (`dcr-experiments`)](#legacy-ingress-mode-dcr-experiments)
@@ -194,6 +195,7 @@ config:
 | `namespace` | `prod` | `dev` |
 | `graphqlEndpoint` | absent — read in-cluster | absent — read in-cluster |
 | `linkoutBaseURL` | absent — image default `https://dictybase.dev`; set it to override | absent — image default `https://dictybase.dev` |
+| `openaiAppsChallenge` | token for `mcp.dictycr.org` from the OpenAI portal | absent — the route returns `404` |
 | `ingress.enabled` | `false`; the `gateway/` stack routes `routes.mcp` | `true`; the stack creates `dcr-mcp-ingress` |
 | `ingress.hosts` | absent; set `gateway/` `routes.mcp.hosts.0` | dedicated host, for example `mcp.dictybase.dev` |
 | `ingress.path` | absent; the Gateway route uses `/` | `/` |
@@ -296,10 +298,10 @@ kubectl -n <namespace> rollout restart deployment/dcr-mcp-api-server
 
 ## Server Options and Container Flags
 
-The binary uses the subcommand `start-server` (aliases `serve` and `start`). Pulumi passes the subcommand first, then the flags. It includes `--graphql-endpoint` only when `properties.graphqlEndpoint` is non-empty, and `--linkout-base-url` only when `properties.linkoutBaseURL` is non-empty:
+The binary uses the subcommand `start-server` (aliases `serve` and `start`). Pulumi passes the subcommand first, then the flags. It includes `--graphql-endpoint` only when `properties.graphqlEndpoint` is non-empty, `--linkout-base-url` only when `properties.linkoutBaseURL` is non-empty, and `--openai-apps-challenge` only when `properties.openaiAppsChallenge` is non-empty:
 
 ```text
-start-server [--graphql-endpoint <url>] [--linkout-base-url <url>] --host <host> --port <port> --stateless=<bool> --rate-limit <n> --allowed-origins <origin>...
+start-server [--graphql-endpoint <url>] [--linkout-base-url <url>] [--openai-apps-challenge <token>] --host <host> --port <port> --stateless=<bool> --rate-limit <n> --allowed-origins <origin>...
 ```
 
 | Pulumi config key | CLI flag | Environment variable | Default | Purpose |
@@ -307,6 +309,7 @@ start-server [--graphql-endpoint <url>] [--linkout-base-url <url>] --host <host>
 | `properties.command` | subcommand | — | `start-server` | `start-server`, `serve`, or `start` |
 | `properties.graphqlEndpoint` | `--graphql-endpoint` | `GRAPHQL_ENDPOINT` | *(absent)* | [Endpoint override](#graphql-endpoint-resolution) |
 | `properties.linkoutBaseURL` | `--linkout-base-url` | — | *(absent)*; the image uses `https://dictybase.dev` | [Website of the record links](#record-links-emitted-by-tools) |
+| `properties.openaiAppsChallenge` | `--openai-apps-challenge` | `OPENAI_APPS_CHALLENGE_TOKEN` | *(absent)*; the route returns `404` | [OpenAI Apps domain verification](#openai-apps-domain-verification) |
 | `properties.host` | `--host` | `MCP_HOST` | `0.0.0.0` | Bind address inside the container |
 | `properties.port` | `--port` | `MCP_PORT` | `8080` | TCP port for `/mcp` and `/healthz`. Range `0`–`65535`. |
 | `properties.stateless` | `--stateless=<bool>` | `MCP_STATELESS` | `true` | Streamable HTTP stateless mode |
@@ -361,6 +364,21 @@ Rules for the value:
 To remove the override, delete the key from `dcr-mcp/Pulumi.<stack>.yaml`, then apply the stack again.
 
 ---
+
+### OpenAI Apps Domain Verification
+
+**The default is absent.** Without the key, `GET /.well-known/openai-apps-challenge` returns `404`.
+
+OpenAI verifies the host of the submitted MCP URL. The server returns the token as `text/plain` with status `200`. The route is public and has no rate limit. Each host has its own token, so set the key only on the stack that serves the submitted host:
+
+```bash
+just gcp-pulumi set-config --folder dcr-mcp --key properties.openaiAppsChallenge --value <token> --plaintext yes
+just gcp-pulumi preview --folder dcr-mcp
+just gcp-pulumi create-resource --folder dcr-mcp
+curl -i https://<mcp-host>/.well-known/openai-apps-challenge
+```
+
+The token is public by design, so keep it plain text. The flag needs a `dictybase/dcr-mcp` image that includes the route. An older image exits at startup when the key is set.
 
 ## Routing Architecture: Gateway vs Legacy Ingress
 

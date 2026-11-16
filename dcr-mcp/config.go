@@ -25,18 +25,21 @@ const (
 )
 
 type DcrMcpConfig struct {
-	Name            string        `json:"name"`
-	Namespace       string        `json:"namespace"`
-	Command         string        `json:"command"`
-	Host            string        `json:"host"`
-	Port            int           `json:"port"`
-	Stateless       *bool         `json:"stateless"`
-	RateLimit       int           `json:"rateLimit"`
-	GraphQLEndpoint string        `json:"graphqlEndpoint"`
-	LinkoutBaseURL  string        `json:"linkoutBaseURL"`
-	AllowedOrigins  []string      `json:"allowedOrigins"`
-	Image           ImageConfig   `json:"image"`
-	Ingress         IngressConfig `json:"ingress"`
+	Name            string `json:"name"`
+	Namespace       string `json:"namespace"`
+	Command         string `json:"command"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Stateless       *bool  `json:"stateless"`
+	RateLimit       int    `json:"rateLimit"`
+	GraphQLEndpoint string `json:"graphqlEndpoint"`
+	LinkoutBaseURL  string `json:"linkoutBaseURL"`
+	// OpenAIAppsChallenge is the OpenAI Apps domain verification token for the
+	// public host of this stack. Empty omits the flag.
+	OpenAIAppsChallenge string        `json:"openaiAppsChallenge"`
+	AllowedOrigins      []string      `json:"allowedOrigins"`
+	Image               ImageConfig   `json:"image"`
+	Ingress             IngressConfig `json:"ingress"`
 }
 
 type ImageConfig struct {
@@ -190,6 +193,7 @@ func validateBase(c *DcrMcpConfig) E.Either[error, *DcrMcpConfig] {
 		{name: "image.tag", val: c.Image.Tag},
 		{name: "graphqlEndpoint", val: c.GraphQLEndpoint},
 		{name: "linkoutBaseURL", val: c.LinkoutBaseURL},
+		{name: "openaiAppsChallenge", val: c.OpenAIAppsChallenge},
 	}
 	placeholders := placeholderFieldNames(checked)
 	if len(placeholders) > 0 {

@@ -28,6 +28,11 @@ var buildLinkoutBaseURLFlags = F.Pipe1(
 	P.Fold(F.Constant1[string, []string](nil), linkoutBaseURLFlagPair),
 )
 
+var buildOpenAIAppsChallengeFlags = F.Pipe1(
+	S.IsNonEmpty,
+	P.Fold(F.Constant1[string, []string](nil), openAIAppsChallengeFlagPair),
+)
+
 func graphqlEndpointFlagPair(endpoint string) []string {
 	return []string{"--graphql-endpoint", endpoint}
 }
@@ -36,6 +41,12 @@ func graphqlEndpointFlagPair(endpoint string) []string {
 // plasmid, and publication links. The image default is https://dictybase.dev.
 func linkoutBaseURLFlagPair(baseURL string) []string {
 	return []string{"--linkout-base-url", baseURL}
+}
+
+// openAIAppsChallengeFlagPair sets the token that the image serves at
+// /.well-known/openai-apps-challenge for OpenAI Apps domain verification.
+func openAIAppsChallengeFlagPair(token string) []string {
+	return []string{"--openai-apps-challenge", token}
 }
 
 func originFlagPair(origin string) []string {
@@ -48,6 +59,10 @@ func (m *DcrMcp) graphqlEndpointFlags() []string {
 
 func (m *DcrMcp) linkoutBaseURLFlags() []string {
 	return buildLinkoutBaseURLFlags(m.Config.LinkoutBaseURL)
+}
+
+func (m *DcrMcp) openAIAppsChallengeFlags() []string {
+	return buildOpenAIAppsChallengeFlags(m.Config.OpenAIAppsChallenge)
 }
 
 func (m *DcrMcp) allowedOriginsFlags() []string {
@@ -73,6 +88,7 @@ func (m *DcrMcp) ContainerArgs() pulumi.StringArray {
 		baseArgs,
 		m.graphqlEndpointFlags(),
 		m.linkoutBaseURLFlags(),
+		m.openAIAppsChallengeFlags(),
 		hostAndServerArgs,
 		m.allowedOriginsFlags(),
 	)

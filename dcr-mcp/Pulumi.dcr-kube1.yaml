@@ -22,3 +22,4 @@ config:
     stateless: true
     graphqlEndpoint: https://graphql.dictycr.org/graphql
     linkoutBaseURL: https://dictycr.org
+    openaiAppsChallenge: 45jls52vChbBT8RNoVaV9eoT7iKPfIOcUv4OxAnOOMg
