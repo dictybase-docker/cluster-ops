@@ -1,0 +1,28 @@
+# Read-only ArangoDB user for the local MCP server (see docs/reference/arangodb/mcp.md).
+# Shares the create-arangodb-databases program. `just arangodb create-mcp-reader`
+# sets the encrypted user and password and the run id.
+secretsprovider: gcpkms://projects/dcr-kube1/locations/us-central1/keyRings/dcr-kube1/cryptoKeys/dcr-kube1
+encryptedkey: CiQAMO2WIP3Ys31L49xuASdNEDpkP0RAsN/RUij02dTPXf9l5SESSQDjx5R/nyQPrK7yN8dUE3qzCosptqrTh44AhEvVw2xrfrb471w7mJsZ3pDn+pyndx4ymgBRcxSl5y4n/cJC3t+aQcoEunEyE5E=
+config:
+  create-arangodb-databases:properties:
+    arangodbCredentials:
+      name: arangodb-pass
+      passkey: password
+    arangodbSecret:
+      name: arangodb-mcp
+      passkey: password
+      userkey: user
+    createDatabases: false
+    databases:
+      - annotation
+      - order
+      - stock
+      - content
+      - cgm_ddb
+      - chado
+      - annofeature
+    grant: ro
+    image:
+      name: ghcr.io/dictybase-docker/arangoadmin
+      tag: fec50dd
+    namespace: prod

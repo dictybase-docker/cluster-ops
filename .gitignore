@@ -61,3 +61,6 @@ pulumi-files/local-state/.pulumi
 # Isolated worktrees (used by task worktrees)
 worktrees/
 /.tool-versions.dev.dcr-experiments
+
+# Local runtime state (arangodb mcp-up)
+.state/

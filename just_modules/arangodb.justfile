@@ -1322,6 +1322,300 @@ verify-app-credentials namespace="prod" stack="":
     go run ./cmd/cluster-ops preflight arango-app-credentials "${args[@]}"
     echo "Application credentials verified on all configured databases."
 
+# Create or update the read-only `mcp-reader` user for the local MCP server.
+# Stack `<stack>-mcp-reader` of create-arangodb-databases owns Secret
+# `arangodb-mcp` and grants `ro` on every app database. Omit
+# --reader-password to enter it at a hidden prompt (out of shell history).
+# Usage: just arangodb create-mcp-reader [--reader-password <pw>] [--namespace <ns>] [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("reader_password", long="reader-password", short="p", help="Password for mcp-reader; omit for a hidden prompt")]
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB (defaults to the stack config namespace)")]
+[arg("stack", long="stack", short="s", help="Base Pulumi stack (defaults to PULUMI_STACK); -mcp-reader is appended")]
+[arg("retries", long="retries", short="r", help="Job probe attempts (default 60)")]
+[arg("interval", long="interval", short="i", help="Seconds between probes (default 10)")]
+[group('arangodb')]
+[no-cd]
+create-mcp-reader reader_password="" namespace="" stack="" retries="60" interval="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FOLDER="create-arangodb-databases"
+    NS={{ quote(namespace) }}
+    READER_USER="mcp-reader"
+    READER_SECRET="arangodb-mcp"
+    READER_PASSWORD={{ quote(reader_password) }}
+
+    # --- Preflight: no mutation before this block passes ---
+    if [[ -z "${KUBECONFIG:-}" || ! -r "${KUBECONFIG}" ]]; then
+        echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
+        exit 1
+    fi
+    if [[ -z "${PULUMI_GCP_CREDENTIALS:-}" || ! -r "$PULUMI_GCP_CREDENTIALS" ]]; then
+        echo "Error: PULUMI_GCP_CREDENTIALS must point to a readable credential file." >&2
+        exit 1
+    fi
+    BASE_STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    STACK="${BASE_STACK}-mcp-reader"
+    STACK_CONFIG="$FOLDER/Pulumi.${STACK}.yaml"
+    if [[ ! -f "$STACK_CONFIG" ]]; then
+        echo "Error: stack config '$STACK_CONFIG' is missing." >&2
+        exit 1
+    fi
+    CFG_NS=$(yq -r '.config."create-arangodb-databases:properties".namespace' "$STACK_CONFIG")
+    CFG_SECRET=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.name' "$STACK_CONFIG")
+    CFG_GRANT=$(yq -r '.config."create-arangodb-databases:properties".grant' "$STACK_CONFIG")
+    CFG_CREATE=$(yq -r '.config."create-arangodb-databases:properties".createDatabases' "$STACK_CONFIG")
+    DATABASES=$(yq -r '.config."create-arangodb-databases:properties".databases[]' "$STACK_CONFIG")
+    NS="${NS:-$CFG_NS}"
+    if [[ -z "$NS" || "$CFG_NS" != "$NS" ]]; then
+        echo "Error: --namespace '$NS' does not match '$CFG_NS' in '$STACK_CONFIG'." >&2
+        exit 1
+    fi
+    if [[ "$CFG_SECRET" != "$READER_SECRET" || "$CFG_GRANT" != "ro" || "$CFG_CREATE" != "false" ]]; then
+        echo "Error: '$STACK_CONFIG' must set arangodbSecret.name=$READER_SECRET, grant=ro, createDatabases=false." >&2
+        exit 1
+    fi
+    if [[ -z "$DATABASES" ]]; then
+        echo "Error: no databases are configured in '$STACK_CONFIG'." >&2
+        exit 1
+    fi
+    if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
+        echo "Error: namespace '$NS' does not exist." >&2
+        exit 1
+    fi
+    ROOT_PASSWORD=$(kubectl get secret arangodb-pass -n "$NS" -o jsonpath='{.data.password}' | base64 -d)
+    if [[ -z "$ROOT_PASSWORD" ]]; then
+        echo "Error: admin Secret arangodb-pass is missing its password key in '$NS'." >&2
+        exit 1
+    fi
+    APP_PASSWORD=$(kubectl get secret backend -n "$NS" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
+    if [[ -z "$READER_PASSWORD" ]]; then
+        read -rsp "Password for $READER_USER: " READER_PASSWORD; echo >&2
+    fi
+    if [[ ${#READER_PASSWORD} -lt 16 ]]; then
+        echo "Error: the reader password must have at least 16 characters." >&2
+        exit 1
+    fi
+    if [[ "$READER_PASSWORD" == "$ROOT_PASSWORD" || "$READER_PASSWORD" == "$APP_PASSWORD" ]]; then
+        echo "Error: the reader password must differ from the root and application passwords." >&2
+        exit 1
+    fi
+
+    # --- Mutation ---
+    just gcp-pulumi ensure-stack --folder "$FOLDER" --stack "$STACK"
+    just arangodb _refresh-before-job --folder "$FOLDER" --namespace "$NS" \
+        --selector app=arangodb-create-databases --stack "$STACK"
+
+    RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$"
+    JOB="${READER_SECRET}-configure-app-credentials-${RUN_ID}"
+    if [[ ${#JOB} -gt 63 ]]; then
+        echo "Error: Job name '$JOB' has more than 63 characters (Kubernetes label limit)." >&2
+        exit 1
+    fi
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS}"
+    # Secrets go through stdin, never argv.
+    # The user name is not a secret; a secret value is masked in every resource name.
+    pulumi -C "$FOLDER" config set --stack "$STACK" --path --plaintext \
+        "$FOLDER:properties.arangodbSecret.user" "$READER_USER"
+    printf '%s' "$READER_PASSWORD" | pulumi -C "$FOLDER" config set --stack "$STACK" --path --secret \
+        "$FOLDER:properties.arangodbSecret.pass"
+    pulumi -C "$FOLDER" config set --stack "$STACK" --path \
+        "$FOLDER:properties.runId" "$RUN_ID"
+
+    just gcp-pulumi preview --folder "$FOLDER" --stack "$STACK"
+    just gcp-pulumi create-resource --folder "$FOLDER" --stack "$STACK"
+
+    just arangodb _wait-job --namespace "$NS" --job "$JOB" \
+        --retries {{ quote(retries) }} --interval {{ quote(interval) }}
+
+    # --- Verify: reader logs in, and a write attempt is refused ---
+    FIRST_DB=$(printf '%s\n' "$DATABASES" | head -n1)
+    export READER_USER READER_PASSWORD FIRST_DB
+    go run ./cmd/cluster-ops forward run \
+        --kubeconfig "$KUBECONFIG" --ns "$NS" --svc arangodb --remote-port 8529 -- \
+        bash -c '
+            set -euo pipefail
+            base="http://127.0.0.1:${FORWARD_PORT}"
+            body=$(jq -nc "{username: env.READER_USER, password: env.READER_PASSWORD}")
+            jwt=$(curl -fsS -X POST "$base/_open/auth" --data-binary @- <<< "$body" | jq -r .jwt)
+            if [[ -z "$jwt" || "$jwt" == null ]]; then
+                echo "Error: $READER_USER cannot log in." >&2
+                exit 1
+            fi
+            code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: bearer $jwt" \
+                -X POST "$base/_db/${FIRST_DB}/_api/collection" -d "{\"name\":\"mcp_write_probe\"}")
+            if [[ "$code" != 401 && "$code" != 403 ]]; then
+                echo "Error: write probe on ${FIRST_DB} returned HTTP $code; expected 403." >&2
+                exit 1
+            fi
+            echo "Verified: $READER_USER logs in, and writes on ${FIRST_DB} are refused (HTTP $code)."
+        '
+    echo "Secret '$READER_SECRET' in '$NS' holds the $READER_USER credentials."
+
+# Start the local ArangoDB MCP server for Pi: a background `forward hold` on
+# 127.0.0.1:<forward-port> (default 18529) and the arangodb/mcp-arangodb container (HTTP mode) on
+# 127.0.0.1:8530. Run outside nono. Stop with `just arangodb mcp-down`.
+# Usage: just arangodb mcp-up [--namespace <ns>] [--stack <name>] [--database <db>] [--forward-port <port>]
+[arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB (defaults to the stack config namespace)")]
+[arg("stack", long="stack", short="s", help="Base Pulumi stack (defaults to PULUMI_STACK)")]
+[arg("database", long="database", short="d", help="Default database for the MCP server (defaults to the first configured database)")]
+[arg("forward_port", long="forward-port", short="p", help="Local forward port (defaults to ARANGODB_MCP_FORWARD_PORT, else 18529)")]
+[group('arangodb')]
+[no-cd]
+mcp-up namespace="" stack="" database="" forward_port="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Repo-local (gitignored) so Pi inside nono can read reader.env.
+    STATE="$PWD/.state/arangodb-mcp"
+    CONTAINER="arangodb-mcp"
+    IMAGE="arangodb/mcp-arangodb:latest"
+    FWD_PORT={{ quote(forward_port) }}
+    FWD_PORT="${FWD_PORT:-${ARANGODB_MCP_FORWARD_PORT:-18529}}"
+    if [[ ! "$FWD_PORT" =~ ^[0-9]+$ || "$FWD_PORT" == 8530 ]]; then
+        echo "Error: --forward-port '$FWD_PORT' must be a number other than 8530." >&2
+        exit 1
+    fi
+
+    # --- Preflight: no mutation before this block passes ---
+    if [[ -z "${KUBECONFIG:-}" || ! -r "${KUBECONFIG}" ]]; then
+        echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
+        exit 1
+    fi
+    BASE_STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
+    STACK_CONFIG="create-arangodb-databases/Pulumi.${BASE_STACK}-mcp-reader.yaml"
+    if [[ ! -f "$STACK_CONFIG" ]]; then
+        echo "Error: stack config '$STACK_CONFIG' is missing." >&2
+        exit 1
+    fi
+    CFG_NS=$(yq -r '.config."create-arangodb-databases:properties".namespace' "$STACK_CONFIG")
+    SECRET=$(yq -r '.config."create-arangodb-databases:properties".arangodbSecret.name' "$STACK_CONFIG")
+    NS={{ quote(namespace) }}
+    NS="${NS:-$CFG_NS}"
+    if [[ "$NS" != "$CFG_NS" ]]; then
+        echo "Error: --namespace '$NS' does not match '$CFG_NS' in '$STACK_CONFIG'." >&2
+        exit 1
+    fi
+    DB={{ quote(database) }}
+    DB="${DB:-$(yq -r '.config."create-arangodb-databases:properties".databases[0]' "$STACK_CONFIG")}"
+    if ! docker info >/dev/null 2>&1; then
+        echo "Error: Docker is not reachable. Start Docker and run this recipe outside nono." >&2
+        exit 1
+    fi
+    if docker container inspect "$CONTAINER" >/dev/null 2>&1 || [[ -f "$STATE/forward.pid" ]]; then
+        echo "Error: the MCP server is already running or left state behind — run 'just arangodb mcp-down' first." >&2
+        exit 1
+    fi
+    for port in "$FWD_PORT" 8530; do
+        if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            echo "Error: local port $port is in use." >&2
+            exit 1
+        fi
+    done
+    READER_USER=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.user}' | base64 -d)
+    READER_PASSWORD=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.password}' | base64 -d)
+    if [[ -z "$READER_USER" || -z "$READER_PASSWORD" ]]; then
+        echo "Error: Secret '$SECRET' in '$NS' is missing — run 'just arangodb create-mcp-reader' first." >&2
+        exit 1
+    fi
+
+    # --- Mutation ---
+    mkdir -p "$STATE"
+    chmod 700 "$STATE"
+    cleanup_on_error() { just arangodb mcp-down >/dev/null 2>&1 || true; }
+    trap cleanup_on_error ERR
+
+    # A built binary (not `go run`) so the saved PID is the forward itself.
+    go build -o "$STATE/cluster-ops" ./cmd/cluster-ops
+    nohup "$STATE/cluster-ops" forward hold --kubeconfig "$KUBECONFIG" \
+        --ns "$NS" --svc arangodb --remote-port 8529 --local-port "$FWD_PORT" \
+        >"$STATE/forward.log" 2>&1 &
+    echo $! >"$STATE/forward.pid"
+    echo "$FWD_PORT" >"$STATE/forward.port"
+
+    (umask 077; printf 'ARANGO_USERNAME=%s\nARANGO_PASSWORD=%s\n' "$READER_USER" "$READER_PASSWORD" >"$STATE/reader.env")
+
+    docker run -d --name "$CONTAINER" -p 127.0.0.1:8530:8080 \
+        --env-file "$STATE/reader.env" \
+        -e MCP_TRANSPORT=http -e MCP_REQUIRE_AUTH=true -e FASTMCP_PORT=8080 \
+        -e ARANGO_HOSTS="http://host.docker.internal:${FWD_PORT}" \
+        -e ARANGO_DEFAULT_DB_NAME="$DB" -e ARANGO_VERIFY_SSL=false \
+        "$IMAGE" >/dev/null
+
+    delay=1
+    for attempt in 1 2 3 4 5 6 7; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8530/health || true)
+        [[ "$code" == 200 ]] && break
+        if [[ $attempt == 7 ]]; then
+            echo "Error: /health returned '$code'. Logs: $STATE/forward.log and 'docker logs $CONTAINER'." >&2
+            docker logs --tail 20 "$CONTAINER" >&2 || true
+            false
+        fi
+        sleep "$delay"; delay=$(( delay * 2 > 8 ? 8 : delay * 2 ))
+    done
+    trap - ERR
+    echo "MCP server ready: http://localhost:8530/ (namespace $NS, database $DB, forward port $FWD_PORT)."
+
+# Stop the local ArangoDB MCP server and its forward. Idempotent.
+# Usage: just arangodb mcp-down
+[group('arangodb')]
+[no-cd]
+mcp-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Repo-local (gitignored) so Pi inside nono can read reader.env.
+    STATE="$PWD/.state/arangodb-mcp"
+    docker rm -f arangodb-mcp >/dev/null 2>&1 || true
+    if [[ -f "$STATE/forward.pid" ]]; then
+        kill "$(cat "$STATE/forward.pid")" 2>/dev/null || true
+    fi
+    rm -rf "$STATE"
+    echo "MCP server stopped."
+
+# Show the state of the local ArangoDB MCP server.
+# Usage: just arangodb mcp-status
+[group('arangodb')]
+[no-cd]
+mcp-status:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # Repo-local (gitignored) so Pi inside nono can read reader.env.
+    STATE="$PWD/.state/arangodb-mcp"
+    if [[ -f "$STATE/forward.pid" ]] && kill -0 "$(cat "$STATE/forward.pid")" 2>/dev/null; then
+        echo "forward  : running (pid $(cat "$STATE/forward.pid"))"
+    else
+        echo "forward  : stopped"
+    fi
+    STATUS=$(docker container inspect arangodb-mcp 2>/dev/null | jq -r '.[0].State.Status' || true)
+    echo "container: ${STATUS:-absent}"
+    echo "health   : HTTP $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8530/health)"
+
+# Register the local ArangoDB MCP server in ~/.pi/agent/mcp.json. Each
+# connection fetches a fresh JWT through scripts/arangodb-mcp-token.sh.
+# Other servers in the file stay unchanged. Idempotent.
+# Usage: just arangodb mcp-configure-pi
+[group('arangodb')]
+[no-cd]
+mcp-configure-pi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    CONFIG="$HOME/.pi/agent/mcp.json"
+    TOKEN_SCRIPT="$PWD/scripts/arangodb-mcp-token.sh"
+    if [[ ! -x "$TOKEN_SCRIPT" ]]; then
+        echo "Error: '$TOKEN_SCRIPT' is missing or not executable." >&2
+        exit 1
+    fi
+    [[ -f "$CONFIG" ]] || echo '{"mcpServers":{}}' >"$CONFIG"
+    TMP=$(mktemp "${CONFIG}.XXXXXX")
+    trap 'rm -f "$TMP"' EXIT
+    jq --arg cmd "!$TOKEN_SCRIPT" '.mcpServers.arangodb = {
+        url: "http://localhost:8530/",
+        headers: {Authorization: $cmd},
+        description: "Read-only AQL queries against the cluster ArangoDB (start with: just arangodb mcp-up)"
+    }' "$CONFIG" >"$TMP"
+    mv "$TMP" "$CONFIG"
+    trap - EXIT
+    echo "Added server 'arangodb' to $CONFIG. Check it with: pi mcp list"
+
 # Internal: run one arangosh expression against the coordinator in a
 # short-lived pod and print its stdout. Root credentials come from Secret
 # `arangodb-pass` (same wiring as reset-root-password), and the image tag is

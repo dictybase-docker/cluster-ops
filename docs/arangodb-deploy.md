@@ -28,7 +28,8 @@ Provisioning guide for production ArangoDB **Cluster** on kOps `stateful-db`.
 - [7. Teardown](#7-teardown)
 - [8. Troubleshooting](#8-troubleshooting)
 - [9. Optional: Databases by Hand](#9-optional-databases-by-hand)
-- [10. Related Documents](#10-related-documents)
+- [10. Optional: MCP Access for Pi](#10-optional-mcp-access-for-pi)
+- [11. Related Documents](#11-related-documents)
 
 ---
 
@@ -107,6 +108,13 @@ just arangodb teardown --namespace prod --delete-pvcs yes
 # One database only: point-in-time from own bucket, or cross-cluster import
 just arangodb restore-database --namespace <ns> --database <db>
 just arangodb import-database --namespace <ns> --bucket <source-bucket> --database <db>
+```
+
+```bash
+# 10. Optional: MCP access for Pi (run outside nono)
+just arangodb create-mcp-reader
+just arangodb mcp-configure-pi
+just arangodb mcp-up      # stop with: just arangodb mcp-down
 ```
 
 ---
@@ -318,7 +326,20 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 ---
 
-## 10. Related Documents
+## 10. Optional: MCP Access for Pi
+
+**Optional — skip unless you query ArangoDB from Pi.** Run the recipes outside nono.
+→ [MCP access details](reference/arangodb/mcp.md)
+
+```bash
+just arangodb create-mcp-reader
+just arangodb mcp-configure-pi
+just arangodb mcp-up
+```
+
+---
+
+## 11. Related Documents
 
 **Reference details for this guide:**
 - [Pool requirements](reference/arangodb/pool-requirements.md)
@@ -327,6 +348,7 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 - [Databases details](reference/arangodb/databases.md)
 - [Bootstrap details](reference/arangodb/bootstrap.md)
 - [Content storage URLs](reference/arangodb/content-urls.md)
+- [MCP access details](reference/arangodb/mcp.md)
 - [Import details](reference/arangodb/import.md)
 - [Backup details](reference/arangodb/backup.md)
 - [Restore details](reference/arangodb/restore.md)
