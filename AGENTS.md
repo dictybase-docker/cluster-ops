@@ -37,6 +37,13 @@ mechanical subset; the rest are review rules.
 - Bind identity, project, stack, and namespace explicitly (from the
   `cluster-env` file or stack exports). Never read ambient
   `$GOOGLE_CLOUD_PROJECT`, `$PULUMI_STACK`, or default gcloud config.
+- **Recipe arguments default from the environment.** Every recipe argument
+  defaults to `""` and resolves in this order: (1) explicit command-line
+  flag, (2) the `just cluster-env` variable (`PULUMI_STACK`, `KUBECONFIG`,
+  ...) or the stack config value (`properties.namespace`), (3) fail with an
+  error that names the missing flag. Never hardcode a cluster-specific
+  default such as `namespace="prod"`. When a flag and the stack config both
+  exist, the recipe rejects a mismatch before the first mutation.
 - One source of truth per resource name — derive producer and consumer from
   a single helper/variable; never hardcode a name that Pulumi autonames or a
   chart generates.
