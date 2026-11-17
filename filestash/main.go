@@ -54,6 +54,9 @@ func (f *Filestash) Install(ctx *pulumi.Context) error {
 	if err := f.CreateService(ctx, deployment); err != nil {
 		return err
 	}
+	if err := f.CreateStateBackup(ctx, deployment, pvc); err != nil {
+		return err
+	}
 	return f.CreateIngress(ctx)
 }
 

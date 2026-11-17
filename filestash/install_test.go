@@ -271,3 +271,78 @@ func TestSeedDisablesConsole(t *testing.T) {
 	require.EqualValues(t, 5, dig(t, seed, "features", "search", "explore_timeout"))
 	require.Equal(t, false, dig(t, seed, "log", "telemetry"))
 }
+
+func cronJobPod(t *testing.T, m *resourceMocks) map[string]any {
+	t.Helper()
+	cj := mapped(t, m, "filestash-state-backup")
+	require.Equal(t, "Forbid", dig(t, cj, "spec", "concurrencyPolicy"))
+	require.Equal(t, "30 */4 * * *", dig(t, cj, "spec", "schedule"))
+	pod, ok := dig(t, cj, "spec", "jobTemplate", "spec", "template", "spec").(map[string]any)
+	require.True(t, ok)
+	return pod
+}
+
+func TestStateBackupCronJob(t *testing.T) {
+	t.Parallel()
+	m := install(t, validConfig())
+	pod := cronJobPod(t, m)
+	require.Equal(t, "filestash-state-backup", pod["serviceAccountName"])
+	require.Equal(t, "Never", pod["restartPolicy"])
+	require.Contains(t, fmt.Sprint(pod["volumes"]), "claimName:filestash-state")
+	aff := dig(t, pod, "affinity", "podAffinity", "requiredDuringSchedulingIgnoredDuringExecution", 0)
+	require.Equal(t, "kubernetes.io/hostname", dig(t, aff, "topologyKey"))
+	require.Equal(t, "filestash", dig(t, aff, "labelSelector", "matchLabels", "app.kubernetes.io/name"))
+	require.Equal(t, []string{"scale-down", "copy"}, initNames(t, pod))
+	require.Contains(t, fmt.Sprint(initContainer(t, pod, "copy")["image"]), "@sha256:")
+	main := dig(t, pod, "containers", 0)
+	require.Equal(t, "scale-up", dig(t, main, "name"))
+
+	cj := mapped(t, m, "filestash-state-backup")
+	labels := fmt.Sprint(dig(t, cj, "spec", "jobTemplate", "spec", "template", "metadata", "labels"))
+	require.NotContains(t, labels, "app.kubernetes.io/name:filestash",
+		"the backup pod must not match the Filestash selector")
+
+	role := fmt.Sprint(mapped(t, m, "filestash-state-backup-role"))
+	require.Contains(t, role, "deployments/scale")
+	require.Contains(t, fmt.Sprint(mapped(t, m, "filestash-state-backup-binding")), "filestash-state-backup")
+}
+
+func TestStateBackupScalesDownFirst(t *testing.T) {
+	t.Parallel()
+	pod := cronJobPod(t, install(t, validConfig()))
+	down := fmt.Sprint(initContainer(t, pod, "scale-down")["command"])
+	require.Contains(t, down, "scale deployment/filestash --replicas=0")
+	require.Contains(t, down, "exit 0", "an init step never fails, so scale-up always runs")
+	up := fmt.Sprint(dig(t, pod, "containers", 0, "command"))
+	scale := strings.Index(up, "scale deployment/filestash --replicas=1")
+	check := strings.Index(up, "copy.status")
+	require.GreaterOrEqual(t, scale, 0)
+	require.Greater(t, check, scale, "scale up before the status check")
+}
+
+func TestStateBackupCommandOrder(t *testing.T) {
+	t.Parallel()
+	pod := cronJobPod(t, install(t, validConfig()))
+	cmd := fmt.Sprint(initContainer(t, pod, "copy")["command"])
+	order := []string{
+		"B=$S/backups",
+		"scale.status",
+		"P=\"$B/.partial-$TS\"",
+		".backup",
+		"PRAGMA integrity_check",
+		"config/config.json",
+		"SHA256SUMS",
+		"manifest.json",
+		"mv \"$P\" \"$B/$TS\"",
+		"-name '.partial-*' -mmin +60",
+		"tail -n +$((KEEP + 1))",
+	}
+	last := -1
+	for _, step := range order {
+		idx := strings.Index(cmd, step)
+		require.Greater(t, idx, last, "step %q out of order", step)
+		last = idx
+	}
+	require.Contains(t, cmd, "[ -f \"$d/manifest.json\" ]", "prune only completed copies")
+	require.Contains(t, cmd, "KEEP=7")
+}

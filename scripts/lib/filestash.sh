@@ -144,3 +144,39 @@ fs_lock_release() {
         kubectl -n "$NS" delete lease filestash-publish >/dev/null
     fi
 }
+
+FS_VELERO_NS="${FS_VELERO_NS:-operators}"
+
+# fs_render <manifest> <namespace> prints the manifest with its placeholders filled.
+fs_render() {
+    sed -e "s|__NAMESPACE__|$2|g" -e "s|__SQLITE_IMAGE__|$(fs_sqlite_image)|g" "$1"
+}
+
+# fs_sqlite_image prints backup.sqliteImage, or the code default.
+fs_sqlite_image() {
+    local img
+    img=$(fs_prop backup.sqliteImage)
+    [[ -n "$img" ]] || img="keinos/sqlite3:3.54.1@sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17"
+    printf '%s' "$img"
+}
+
+# fs_run_restore_job <namespace> runs the restore Job and waits for it.
+fs_run_restore_job() {
+    kubectl -n "$1" delete job filestash-state-restore --ignore-not-found >/dev/null
+    fs_render filestash/manifests/restore-job.yaml "$1" | kubectl create -f -
+    if ! kubectl -n "$1" wait --for=condition=complete job/filestash-state-restore --timeout=600s; then
+        kubectl -n "$1" logs job/filestash-state-restore || true
+        fs_die "restore job failed in '$1'."
+    fi
+    kubectl -n "$1" logs job/filestash-state-restore
+}
+
+# fs_wait_no_pods <namespace> waits until no Filestash pod runs.
+fs_wait_no_pods() {
+    local i
+    for ((i = 0; i < 90; i++)); do
+        [[ -z "$(kubectl -n "$1" get pods -l app.kubernetes.io/name=filestash -o name)" ]] && return 0
+        sleep 2
+    done
+    fs_die "a Filestash pod still runs in '$1'."
+}

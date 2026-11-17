@@ -1,0 +1,55 @@
+# Replaces the live SQLite files and config.json on pvc/filestash-state with
+# the newest completed copy in backups/. Checks SHA256SUMS before the
+# replacement and the table row counts after it. The recipe fills
+# __NAMESPACE__ and __SQLITE_IMAGE__ and runs it only while Filestash is down.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: filestash-state-restore
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/component: state-restore
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: state-restore
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: restore
+          image: __SQLITE_IMAGE__
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              S=/app/data/state; B=$S/backups
+              latest=$(ls -1d "$B"/2*/ 2>/dev/null | sort | tail -n 1)
+              latest=${latest%/}
+              [ -n "$latest" ] && [ -f "$latest/manifest.json" ] || { echo "no completed copy in $B"; exit 1; }
+              (cd "$latest" && sha256sum -c SHA256SUMS)
+              mkdir -p "$S/db" "$S/config"
+              rm -f "$S"/db/*.sql "$S"/db/*.sql-wal "$S"/db/*.sql-shm
+              for f in "$latest"/db/*.sql; do [ -e "$f" ] && cp "$f" "$S/db/"; done
+              cp "$latest/config/config.json" "$S/config/config.json"
+              if [ -f "$latest/counts.txt" ]; then
+                while read -r n t c; do
+                  got=$(sqlite3 "$S/db/$n" "SELECT count(*) FROM \"$t\"")
+                  [ "$got" = "$c" ] || { echo "row count $n/$t: $got, want $c"; exit 1; }
+                done < "$latest/counts.txt"
+              fi
+              echo "restored state from $latest"
+          volumeMounts:
+            - name: state
+              mountPath: /app/data/state
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: filestash-state

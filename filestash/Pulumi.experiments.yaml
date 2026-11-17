@@ -28,6 +28,10 @@ config:
       label:
         name: kcert.dev/ingress
         value: managed
+    backup:
+      # Recovery point target in hours. Deployment blocker: set it, then
+      # deploy. `just filestash verify` fails when a copy is older.
+      maxAgeHours: 0
     plugins:
       image:
         name: dictybase/filestash-plugins

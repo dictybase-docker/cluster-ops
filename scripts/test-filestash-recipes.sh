@@ -79,6 +79,8 @@ env_value() { [[ -f "$1" ]] || exit 1; awk -F= -v k="$2" '$1 == k {sub(/^[^=]*=/
 args="$*"
 case "$args" in
     *"get namespace ${STUB_NS_MISSING:-none}"*) exit 1 ;;
+    *"get namespace filestash-restore-new"*) exit 1 ;;
+    *"get namespace ${STUB_NS_EXISTS:-none} -o jsonpath"*) printf '%s' "${STUB_NS_LABEL:-}" ;;
     *"get namespace"*) exit 0 ;;
     *"get secret minio-root -o jsonpath={.data.rootUser}"*) b64 rootuser ;;
     *"get secret minio-root -o jsonpath={.data.rootPassword}"*) b64 "root-pass-SECRET" ;;
@@ -95,7 +97,29 @@ case "$args" in
     *"create secret generic filestash --from-env-file="*"--dry-run=client"*)
         f="${args##*--from-env-file=}"; cat "${f%% *}" ;;
     *"label --local -f -"*) cat ;;
-    *"apply -f -"*) cat > "${STUB_DIR}/filestash.env" ;;
+    *"apply -f -"*)
+        body=$(cat)
+        case "$body" in
+            *NetworkPolicy*) printf 'kubectl-applied NetworkPolicy\n' >> "${STUB_LOG}" ;;
+            *'"kind": "Deployment"'*) printf 'kubectl-applied Deployment %s\n' "$(jq -r .metadata.namespace <<<"$body")" >> "${STUB_LOG}" ;;
+            *) printf '%s\n' "$body" > "${STUB_DIR}/filestash.env" ;;
+        esac ;;
+    *"exec deployment/filestash -c filestash -- sh -c"*) printf '%s' "${STUB_BACKUP_AGE:-1}" ;;
+    *"exec deployment/filestash -c filestash -- curl"*) exit 0 ;;
+    *"get pvc filestash-state -o jsonpath={.metadata.labels"*) printf '%s' "${STUB_PVC_EXCLUDE:-}" ;;
+    *"get pods -l app.kubernetes.io/name=filestash -o jsonpath"*) printf '%s' "${STUB_POD_EXCL:-}" ;;
+    *"get pods -l app.kubernetes.io/name=filestash -o name"*) exit 0 ;;
+    *"get schedules.velero.io -o json"*)
+        sched_default='{"items":[{"spec":{"template":{}}}]}'
+        printf '%s' "${STUB_SCHED_JSON:-$sched_default}" ;;
+    *"create job --from=cronjob/filestash-state-backup"*) exit 0 ;;
+    *"wait --for=condition=complete"*) exit 0 ;;
+    *" logs "*) echo "restored state from /app/data/state/backups/x" ;;
+    *"delete job filestash-state-restore"*) exit 0 ;;
+    *"get deployment filestash -o json"*) printf '{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"filestash","namespace":"prod","uid":"u1"},"status":{}}' ;;
+    *"get deployment filestash"*) exit 0 ;;
+    *"scale deployment/filestash"*) exit 0 ;;
+    *"create namespace"*|*"label namespace"*|*"delete namespace"*) exit 0 ;;
     *"label secret"*) exit 0 ;;
     *"get service ${STUB_SERVICE_MISSING:-none}"*) exit 1 ;;
     *"get service"*) exit 0 ;;
@@ -108,8 +132,14 @@ case "$args" in
         printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/sdb 5000 500 4500 %s%% /app/data/state\n' "${STUB_DF_USE:-10}" ;;
     *"exec deployment/filestash -c filestash -- ls"*) echo "share.sql" ;;
     *"create -f -"*)
-        [[ "${STUB_LEASE_HELD:-0}" == 1 ]] && { cat >/dev/null; echo 'Error from server (AlreadyExists)' >&2; exit 1; }
-        cat > "${STUB_DIR}/lease.yaml" ;;
+        body=$(cat)
+        if [[ "$body" == *"kind: Lease"* ]]; then
+            [[ "${STUB_LEASE_HELD:-0}" == 1 ]] && { echo 'Error from server (AlreadyExists)' >&2; exit 1; }
+            printf '%s\n' "$body" > "${STUB_DIR}/lease.yaml"
+        else
+            printf '%s\n' "$body" > "${STUB_DIR}/created.yaml"
+            printf 'kubectl-created %s\n' "$(awk '/^kind:/ {print $2; exit}' <<<"$body")" >> "${STUB_LOG}"
+        fi ;;
     *"get lease filestash-publish -o jsonpath={.spec.holderIdentity}"*)
         if [[ -n "${STUB_LEASE_HOLDER:-}" ]]; then printf '%s' "$STUB_LEASE_HOLDER"
         elif [[ -f "${STUB_DIR}/lease.yaml" ]]; then awk '/holderIdentity:/ {printf "%s", $2}' "${STUB_DIR}/lease.yaml"
@@ -146,6 +176,22 @@ case "$*" in
     "admin user info"*) printf '{"policyName":"%s"}\n' "${STUB_ATTACHED:-}" ;;
     "anonymous get-json"*) cat "${STUB_ANON_FILE:-filestash/policies/downloads-anonymous.json}" ;;
     "anonymous get minio/uploads") echo 'Access permission for `minio/uploads` is `private`' ;;
+esac
+MOCK
+
+cat > "${tmp_dir}/bin/velero" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'velero %s\n' "$*" >> "${STUB_LOG}"
+case "$*" in
+    *"backup get -o json"*) jq -n '{items: [{spec: {}, status: {phase: "Completed", completionTimestamp: (now - 3600 | todate)}}]}' ;;
+    *"backup get "*"-o json"*) printf '{"status":{"phase":"%s"}}' "${STUB_VELERO_PHASE:-Completed}" ;;
+    *"backup describe"*) printf '%s\n' "${STUB_VELERO_DETAILS:-Resource List:
+  v1/PersistentVolumeClaim:
+    - prod/filestash-state
+  v1/Secret:
+    - prod/filestash
+    - prod/filestash-users}" ;;
 esac
 MOCK
 
@@ -285,6 +331,8 @@ config:
     namespace: prod
     storage:
       size: 5Gi
+    backup:
+      maxAgeHours: 6
 YAML
 
 echo "=== 5. stack and namespace resolution ==="
@@ -459,5 +507,65 @@ assert_no_call 'delete lease'
 run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash release-lock --holder alice@host:9 >/dev/null
 [[ ! -e "$stub_dir/lease.yaml" ]]
 echo '  test_release_lock_checks_holder: PASS'
+
+echo "=== 13. backup and restore ==="
+expect_failure 'newest state copy age' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_BACKUP_AGE=7" "$just_bin" filestash verify
+echo '  test_verify_fails_on_stale_backup: PASS'
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_PVC_EXCLUDE=true" "$just_bin" filestash verify
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_POD_EXCL=state" "$just_bin" filestash verify
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" 'STUB_SCHED_JSON={"items":[{"spec":{"template":{"excludedNamespaces":["prod"]}}}]}' "$just_bin" filestash verify
+echo '  test_verify_fails_on_velero_exclusion: PASS'
+sed -i.bak 's/maxAgeHours: 6/maxAgeHours: 0/' "$cfg_file" && rm -f "$cfg_file.bak"
+expect_failure 'backup.maxAgeHours is unset' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify
+sed -i.bak 's/maxAgeHours: 0/maxAgeHours: 6/' "$cfg_file" && rm -f "$cfg_file.bak"
+echo '  test_verify_requires_max_age: PASS'
+
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now >/dev/null
+rg -q '^kubectl -n prod create job --from=cronjob/filestash-state-backup filestash-state-backup-now-' "$log_file"
+rg -q '^velero -n operators backup create filestash-[0-9]+ --include-namespaces prod --selector app.kubernetes.io/name=filestash --wait$' "$log_file"
+echo '  test_backup_now: PASS'
+
+: > "$log_file"
+expect_failure "is the live namespace 'prod'" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace prod
+assert_no_call 'create namespace'
+echo '  test_restore_state_refuses_live_namespace: PASS'
+: > "$log_file"
+expect_failure 'has no Secret prod/filestash' env "PULUMI_STACK=$stack" "STUB_VELERO_DETAILS=  - prod/filestash-state" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new
+assert_no_call 'create namespace'
+assert_no_call 'restore create'
+echo '  test_restore_state_requires_secret: PASS'
+expect_failure "phase 'PartiallyFailed'" env "PULUMI_STACK=$stack" "STUB_VELERO_PHASE=PartiallyFailed" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new
+expect_failure "namespace 'filestash-restore-old' exists" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-old
+
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new >/dev/null
+line_of() { rg -n -m1 -- "$1" "$log_file" | cut -d: -f1; }
+describe=$(line_of 'backup describe b1')
+created=$(line_of 'kubectl create namespace filestash-restore-new')
+netpol=$(line_of 'kubectl-applied NetworkPolicy')
+restore=$(line_of 'restore create')
+job=$(line_of 'kubectl-created Job')
+deploy=$(line_of 'kubectl-applied Deployment filestash-restore-new')
+(( describe < created )) || { echo "preflight after mutation" >&2; exit 1; }
+echo '  test_restore_state_preflight_precedes_mutation: PASS'
+(( netpol < restore && restore < job && job < deploy )) || { echo "restore order wrong: netpol=$netpol restore=$restore job=$job deploy=$deploy" >&2; exit 1; }
+rg -q 'restore create filestash-restore-[0-9]+ --from-backup b1 --namespace-mappings prod:filestash-restore-new --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps --wait' "$log_file"
+echo '  test_restore_state_applies_deny_egress_first: PASS'
+
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --in-place yes >/dev/null
+down=$(line_of 'scale deployment/filestash --replicas=0')
+job=$(line_of 'kubectl-created Job')
+up=$(line_of 'scale deployment/filestash --replicas=1')
+(( down < job && job < up )) || { echo "in-place order wrong" >&2; exit 1; }
+assert_no_call '^velero '
+echo '  test_restore_state_in_place: PASS'
+
+expect_failure "is not a restore test namespace" env "PULUMI_STACK=$stack" "STUB_NS_EXISTS=other" "$just_bin" filestash restore-cleanup --target-namespace other
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "STUB_NS_EXISTS=filestash-restore-done" "STUB_NS_LABEL=true" "$just_bin" filestash restore-cleanup --target-namespace filestash-restore-done >/dev/null
+rg -q '^kubectl delete namespace filestash-restore-done$' "$log_file"
+echo '  test_restore_cleanup_checks_label: PASS'
 
 echo "All filestash recipe contract tests passed."

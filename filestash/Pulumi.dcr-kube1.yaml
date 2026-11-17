@@ -21,6 +21,10 @@ config:
       label: dictycr-minio
     ingress:
       enabled: false
+    backup:
+      # Recovery point target in hours. Deployment blocker: set it, then
+      # deploy. `just filestash verify` fails when a copy is older.
+      maxAgeHours: 0
     plugins:
       image:
         name: dictybase/filestash-plugins

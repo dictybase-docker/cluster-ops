@@ -408,6 +408,43 @@ verify stack="" namespace="":
         bad "bucket policies"
     fi
 
+    max=$(fs_prop backup.maxAgeHours)
+    if [[ ! "$max" =~ ^[1-9][0-9]*$ ]]; then
+        bad "backup.maxAgeHours is unset in $CFG (recovery point target)"
+    else
+        # shellcheck disable=SC2016
+        age=$(kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c '
+            n=$(ls -1 /app/data/state/backups 2>/dev/null | grep -E "^[0-9]{8}T[0-9]{6}Z$" | sort | tail -n 1)
+            [ -n "$n" ] && [ -f "/app/data/state/backups/$n/manifest.json" ] || exit 2
+            t=$(date -u -d "$(echo "$n" | sed -E "s/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3 \4:\5:\6/")" +%s)
+            echo $(( ($(date -u +%s) - t) / 3600 ))' 2>/dev/null || true)
+        if [[ "$age" =~ ^[0-9]+$ && "$age" -lt "$max" ]]; then
+            ok "newest state copy ${age}h old (limit ${max}h)"
+        else
+            bad "newest state copy age '${age}h' (limit ${max}h) — run: just filestash backup-now"
+        fi
+        vage=$(velero -n "$FS_VELERO_NS" backup get -o json 2>/dev/null | jq -r --arg ns "$NS" '
+            [(.items // [.])[] | select(.status.phase == "Completed")
+              | select((.spec.includedNamespaces // ["*"]) | (index("*") or index($ns)))
+              | select(((.spec.excludedNamespaces // []) | index($ns)) | not)
+              | .status.completionTimestamp | sub("\\.[0-9]+"; "") | fromdateiso8601]
+            | max | if . == null then "none" else ((now - .) / 3600 | floor) end' || echo none)
+        if [[ "$vage" =~ ^[0-9]+$ && "$vage" -lt "$max" ]]; then
+            ok "newest velero backup of '$NS' ${vage}h old"
+        else
+            bad "newest velero backup of '$NS' age '${vage}h' (limit ${max}h)"
+        fi
+    fi
+    excl=$(kubectl -n "$NS" get pvc filestash-state -o jsonpath='{.metadata.labels.velero\.io/exclude-from-backup}' 2>/dev/null || true)
+    vols=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=filestash -o jsonpath='{.items[*].metadata.annotations.backup\.velero\.io/backup-volumes-excludes}' 2>/dev/null || true)
+    sched=$(kubectl -n "$FS_VELERO_NS" get schedules.velero.io -o json 2>/dev/null \
+        | jq -r --arg ns "$NS" '[.items[].spec.template.excludedNamespaces // [] | index($ns)] | any' || echo unknown)
+    if [[ "$excl" != "true" && ",${vols}," != *",state,"* && "$sched" == "false" ]]; then
+        ok "velero includes pvc/filestash-state"
+    else
+        bad "velero excludes the state (pvc label '$excl', pod volume excludes '$vols', schedule excludes namespace '$sched')"
+    fi
+
     if [[ "$failures" -gt 0 ]]; then
         echo "filestash verify: $failures check group(s) failed." >&2
         exit 1
@@ -608,3 +645,116 @@ release-lock holder="" stack="" namespace="":
     [[ "$got" == "$WANT" ]] || fs_die "lease holder is '$got', not '$WANT'. Nothing deleted."
     kubectl -n "$NS" delete lease filestash-publish
     echo "Released lease/filestash-publish (holder '$got')."
+
+# Make a state copy now, then a Velero backup of the Filestash resources
+# (PVC, Secrets, ConfigMap, Deployment). Filestash stops for the copy.
+# Usage: just filestash backup-now [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+backup-now stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    ts=$(date -u +%Y%m%d%H%M%S)
+    job="filestash-state-backup-now-$ts"
+    kubectl -n "$NS" create job --from=cronjob/filestash-state-backup "$job"
+    if ! kubectl -n "$NS" wait --for=condition=complete "job/$job" --timeout=600s; then
+        kubectl -n "$NS" logs "job/$job" --all-containers || true
+        fs_die "state copy job $job failed."
+    fi
+    backup="filestash-$ts"
+    velero -n "$FS_VELERO_NS" backup create "$backup" --include-namespaces "$NS" \
+        --selector app.kubernetes.io/name=filestash --wait
+    phase=$(velero -n "$FS_VELERO_NS" backup get "$backup" -o json | jq -r '.status.phase')
+    [[ "$phase" == "Completed" ]] || fs_die "velero backup $backup phase '$phase'."
+    echo "State copy and velero backup $backup completed."
+    echo "Next: just filestash restore-state --backup $backup --target-namespace filestash-restore-test"
+
+# Restore test: restore a Velero backup into an isolated namespace with no
+# egress, replace the state with the newest completed copy, and start one
+# Filestash pod with no Service and no route. With --in-place yes: disaster
+# recovery on the live PVC from its own newest completed copy (destructive).
+# Usage: just filestash restore-state --backup <name> --target-namespace <ns>
+#        just filestash restore-state --in-place yes
+[arg("backup", long="backup", help="Velero backup name (test restore)")]
+[arg("target_namespace", long="target-namespace", help="New namespace for the test restore; must not exist")]
+[arg("in_place", long="in-place", help="yes: replace the live state from its newest completed copy")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+restore-state backup="" target_namespace="" in_place="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    BACKUP={{ quote(backup) }}
+    TARGET={{ quote(target_namespace) }}
+    if [[ {{ quote(in_place) }} == "yes" ]]; then
+        [[ -z "$BACKUP" && -z "$TARGET" ]] || fs_die "--in-place yes takes no --backup or --target-namespace."
+        kubectl -n "$NS" get deployment filestash >/dev/null || fs_die "deployment/filestash not found in '$NS'."
+        echo "Replacing the live state in '$NS' from its newest completed copy."
+        trap 'kubectl -n "$NS" scale deployment/filestash --replicas=1 >/dev/null' EXIT
+        kubectl -n "$NS" scale deployment/filestash --replicas=0
+        fs_wait_no_pods "$NS"
+        fs_run_restore_job "$NS"
+        echo "Live state restored in '$NS'. Next: just filestash verify"
+        exit 0
+    fi
+
+    # Preflight: everything below runs before the first change.
+    [[ -n "$BACKUP" ]] || fs_die "pass --backup <velero-backup> (or --in-place yes)."
+    [[ -n "$TARGET" ]] || fs_die "pass --target-namespace <new-namespace>."
+    [[ "$TARGET" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || fs_die "invalid --target-namespace '$TARGET'."
+    [[ "$TARGET" != "$NS" ]] || fs_die "--target-namespace is the live namespace '$NS'. Use --in-place yes for disaster recovery."
+    if kubectl get namespace "$TARGET" >/dev/null 2>&1; then
+        fs_die "namespace '$TARGET' exists. The test restore needs a new namespace."
+    fi
+    phase=$(velero -n "$FS_VELERO_NS" backup get "$BACKUP" -o json | jq -r '.status.phase')
+    [[ "$phase" == "Completed" ]] || fs_die "velero backup $BACKUP phase '$phase' (want Completed)."
+    details=$(velero -n "$FS_VELERO_NS" backup describe "$BACKUP" --details)
+    [[ "$details" == *"$NS/filestash-state"* ]] || fs_die "backup $BACKUP has no pvc $NS/filestash-state."
+    grep -Eq "^[[:space:]]+- $NS/filestash$" <<<"$details" || fs_die "backup $BACKUP has no Secret $NS/filestash (CONFIG_SECRET)."
+    live=$(kubectl -n "$NS" get deployment filestash -o json)
+
+    kubectl create namespace "$TARGET"
+    kubectl label namespace "$TARGET" filestash-restore-test=true
+    fs_render filestash/manifests/restore-deny-egress.yaml "$TARGET" | kubectl apply -f -
+    velero -n "$FS_VELERO_NS" restore create "filestash-restore-$(date -u +%Y%m%d%H%M%S)" \
+        --from-backup "$BACKUP" --namespace-mappings "$NS:$TARGET" \
+        --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps --wait
+    fs_run_restore_job "$TARGET"
+    jq --arg t "$TARGET" 'del(.status, .metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
+        .metadata.managedFields, .metadata.annotations, .metadata.generation) | .metadata.namespace = $t' \
+        <<<"$live" | kubectl apply -f -
+    kubectl -n "$TARGET" rollout status deployment/filestash --timeout=300s
+    kubectl -n "$TARGET" exec deployment/filestash -c filestash -- curl -fsS http://localhost:8334/healthz >/dev/null \
+        || fs_die "restored Filestash in '$TARGET' fails /healthz."
+    echo "Restore test passed in '$TARGET'."
+    echo "Next: just filestash restore-cleanup --target-namespace $TARGET"
+
+# Delete a restore test namespace. Refuses a namespace without the
+# filestash-restore-test=true label that restore-state sets.
+# Usage: just filestash restore-cleanup --target-namespace <ns>
+[arg("target_namespace", long="target-namespace", help="Restore test namespace to delete (required)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+restore-cleanup target_namespace="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    TARGET={{ quote(target_namespace) }}
+    [[ -n "$TARGET" && "$TARGET" != "$NS" ]] || fs_die "pass --target-namespace (not the live namespace '$NS')."
+    label=$(kubectl get namespace "$TARGET" -o jsonpath='{.metadata.labels.filestash-restore-test}')
+    [[ "$label" == "true" ]] || fs_die "namespace '$TARGET' is not a restore test namespace."
+    kubectl delete namespace "$TARGET"
+    echo "Deleted restore test namespace '$TARGET'."

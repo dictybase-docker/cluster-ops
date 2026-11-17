@@ -22,6 +22,7 @@ func validConfig() *FilestashConfig {
 		Image:          ImageConfig{Tag: "latest", Digest: testDigest},
 		Storage:        StorageConfig{Size: "2Gi"},
 		S3:             S3Config{Endpoint: "http://minio.dev.svc.cluster.local:9000"},
+		Backup:         BackupConfig{MaxAgeHours: 6},
 		Plugins: PluginsConfig{Image: ImageConfig{
 			Name: "dictybase/filestash-plugins", Tag: "2026.11.17", Digest: testDigest,
 		}},
@@ -45,6 +46,11 @@ func TestApplyDefaults(t *testing.T) {
 	require.Equal(t, "dictycr-minio", cfg.S3.Label)
 	require.Equal(t, "nginx", cfg.Ingress.ClassName)
 	require.Empty(t, cfg.Storage.Size, "storage.size has no code default")
+	require.Equal(t, "30 */4 * * *", cfg.Backup.Schedule)
+	require.Equal(t, 7, cfg.Backup.Keep)
+	require.Zero(t, cfg.Backup.MaxAgeHours, "backup.maxAgeHours has no code default")
+	require.Contains(t, cfg.Backup.SqliteImage, "keinos/sqlite3:3.54.1@sha256:")
+	require.Contains(t, cfg.Backup.KubectlImage, "alpine/kubectl:1.35.4@sha256:")
 }
 
 func TestValidateAcceptsValidConfig(t *testing.T) {
@@ -70,6 +76,8 @@ func TestValidateRejects(t *testing.T) {
 		{"two replicas", func(c *FilestashConfig) { c.Replicas = 2 }, "replicas"},
 		{"placeholder url", func(c *FilestashConfig) { c.ApplicationURL = "https://<filestash-host>" }, "applicationURL"},
 		{"http url", func(c *FilestashConfig) { c.ApplicationURL = "http://" + testHost }, "applicationURL"},
+		{"no backup max age", func(c *FilestashConfig) { c.Backup.MaxAgeHours = 0 }, "backup.maxAgeHours"},
+		{"bad backup keep", func(c *FilestashConfig) { c.Backup.Keep = -1 }, "backup.keep"},
 		{"empty plugins digest", func(c *FilestashConfig) { c.Plugins.Image.Digest = "" }, "plugins.image.digest"},
 		{"empty plugins name", func(c *FilestashConfig) { c.Plugins.Image.Name = "" }, "plugins.image.name"},
 		{"placeholder plugins tag", func(c *FilestashConfig) { c.Plugins.Image.Tag = "<plugins-tag>" }, "plugins.image.tag"},

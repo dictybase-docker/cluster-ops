@@ -30,6 +30,12 @@ const (
 	defaultS3Label      = "dictycr-minio"
 	defaultIngressClass = "nginx"
 	minStateSize        = "1Gi"
+	defaultBackupCron   = "30 */4 * * *"
+	defaultBackupKeep   = 7
+	defaultSqliteImage  = "keinos/sqlite3:3.54.1@sha256:" +
+		"b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17"
+	defaultKubectlImage = "alpine/kubectl:1.35.4@sha256:" +
+		"9ccd823647622b620dce092d0f1406b8b41d152ce08ac963e3d4683770b14dfd"
 )
 
 // FilestashConfig is the `filestash:properties` stack value.
@@ -46,6 +52,18 @@ type FilestashConfig struct {
 	S3             S3Config      `json:"s3"`
 	Ingress        IngressConfig `json:"ingress"`
 	Plugins        PluginsConfig `json:"plugins"`
+	Backup         BackupConfig  `json:"backup"`
+}
+
+// BackupConfig drives the SQLite-consistent state copy CronJob.
+// MaxAgeHours is the recovery point target: `just filestash verify` fails
+// when the newest copy or Velero backup is older. It has no default.
+type BackupConfig struct {
+	Schedule     string `json:"schedule"`
+	Keep         int    `json:"keep"`
+	MaxAgeHours  int    `json:"maxAgeHours"`
+	SqliteImage  string `json:"sqliteImage"`
+	KubectlImage string `json:"kubectlImage"`
 }
 
 // PluginsConfig points at the plugin bundle image built by
@@ -162,6 +180,10 @@ func (c *FilestashConfig) ApplyDefaults() {
 	c.S3.Region = strOr(defaultS3Region, c.S3.Region)
 	c.S3.Label = strOr(defaultS3Label, c.S3.Label)
 	c.Ingress.ClassName = strOr(defaultIngressClass, c.Ingress.ClassName)
+	c.Backup.Schedule = strOr(defaultBackupCron, c.Backup.Schedule)
+	c.Backup.Keep = intOr(defaultBackupKeep, c.Backup.Keep)
+	c.Backup.SqliteImage = strOr(defaultSqliteImage, c.Backup.SqliteImage)
+	c.Backup.KubectlImage = strOr(defaultKubectlImage, c.Backup.KubectlImage)
 }
 
 // Validate rejects `<...>` placeholders first, then invalid values.
@@ -185,6 +207,8 @@ func invalidChecks(c *FilestashConfig) []fieldCheck {
 			PR.MakePair("storage.size", isBadStateSize(c.Storage.Size)),
 			PR.MakePair("cacheSizeLimit", isBadQuantity(c.CacheSizeLimit)),
 			PR.MakePair("s3.endpoint", S.IsEmpty(c.S3.Endpoint)),
+			PR.MakePair("backup.maxAgeHours", c.Backup.MaxAgeHours < 1),
+			PR.MakePair("backup.keep", c.Backup.Keep < 1),
 			PR.MakePair("plugins.image.name", S.IsEmpty(c.Plugins.Image.Name)),
 			PR.MakePair("plugins.image.tag", S.IsEmpty(c.Plugins.Image.Tag)),
 			PR.MakePair("plugins.image.digest", isInvalidDigest(c.Plugins.Image.Digest)),

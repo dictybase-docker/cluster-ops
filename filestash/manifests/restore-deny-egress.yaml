@@ -1,0 +1,13 @@
+# Restore test namespace: no egress, so a restored Filestash cannot reach
+# MinIO or SMTP with restored credentials. Ingress stays open inside the
+# cluster for the port-forward check. The recipe fills __NAMESPACE__.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-egress
+  namespace: __NAMESPACE__
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []
