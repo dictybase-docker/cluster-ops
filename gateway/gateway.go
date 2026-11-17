@@ -134,6 +134,7 @@ func (g *GatewayStack) enabledRouteListeners() []routeListenerSpec {
 		{key: routeKeyMinio, rt: cfg.Routes.Minio},
 		{key: routeKeyLogto, rt: cfg.Routes.Logto},
 		{key: routeKeyMcp, rt: cfg.Routes.Mcp},
+		{key: routeKeyFilestash, rt: cfg.Routes.Filestash},
 	} {
 		if named.rt.Enabled {
 			specs = append(specs, routeListenerSpec{

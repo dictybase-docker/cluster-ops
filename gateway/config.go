@@ -31,6 +31,8 @@ const (
 	defaultLogtoPort          = 3001
 	defaultMcpService         = "dcr-mcp-api"
 	defaultMcpPort            = 8080
+	defaultFilestashService   = "filestash"
+	defaultFilestashPort      = 8334
 	defaultStockService       = "stock-api"
 	defaultStockPort          = 9345
 	defaultStockPath          = "/v1/stocks"
@@ -44,6 +46,7 @@ const (
 	routeKeyMinio             = "minio"
 	routeKeyLogto             = "logto"
 	routeKeyMcp               = "mcp"
+	routeKeyFilestash         = "filestash"
 	fieldNamespace            = "namespace"
 	fieldName                 = "name"
 	fieldPort                 = "port"
@@ -66,12 +69,13 @@ type IssuerConfig struct {
 }
 
 type RoutesConfig struct {
-	Frontend FrontendRouteConfig `json:"frontend"`
-	API      FrontendRouteConfig `json:"api"`
-	Graphql  ServiceRouteConfig  `json:"graphql"`
-	Minio    ServiceRouteConfig  `json:"minio"`
-	Logto    ServiceRouteConfig  `json:"logto"`
-	Mcp      ServiceRouteConfig  `json:"mcp"`
+	Frontend  FrontendRouteConfig `json:"frontend"`
+	API       FrontendRouteConfig `json:"api"`
+	Graphql   ServiceRouteConfig  `json:"graphql"`
+	Minio     ServiceRouteConfig  `json:"minio"`
+	Logto     ServiceRouteConfig  `json:"logto"`
+	Mcp       ServiceRouteConfig  `json:"mcp"`
+	Filestash ServiceRouteConfig  `json:"filestash"`
 }
 
 type FrontendRouteConfig struct {
@@ -95,6 +99,9 @@ type ServiceRouteConfig struct {
 	ServiceName string   `json:"serviceName"`
 	ServicePort int      `json:"servicePort"`
 	Path        string   `json:"path"`
+	// BlockedPathPrefixes get a rule that redirects to / and has no backend,
+	// so the internet cannot reach those paths (for example /admin).
+	BlockedPathPrefixes []string `json:"blockedPathPrefixes"`
 }
 
 func ReadConfig(ctx *pulumi.Context) (*GatewayConfig, error) {
@@ -134,6 +141,7 @@ func (c *GatewayConfig) ApplyDefaults() {
 	c.Routes.Minio.applyServiceDefaults(defaultMinioService, defaultMinioPort)
 	c.Routes.Logto.applyServiceDefaults(defaultLogtoService, defaultLogtoPort)
 	c.Routes.Mcp.applyServiceDefaults(defaultMcpService, defaultMcpPort)
+	c.Routes.Filestash.applyServiceDefaults(defaultFilestashService, defaultFilestashPort)
 	c.Routes.Frontend.Services = F.Pipe1(
 		c.Routes.Frontend.Services,
 		A.Map(applyFrontendBackendDefaults),
@@ -207,8 +215,12 @@ func extractMcpRoute(cfg *GatewayConfig) ServiceRouteConfig {
 	return cfg.Routes.Mcp
 }
 
+func extractFilestashRoute(cfg *GatewayConfig) ServiceRouteConfig {
+	return cfg.Routes.Filestash
+}
+
 func (c *GatewayConfig) Validate() error {
-	return F.Pipe9(
+	return F.Pipe11(
 		E.Of[error](c),
 		E.Chain(validateBaseFields),
 		E.Chain(validateAtLeastOneRoute),
@@ -218,6 +230,8 @@ func (c *GatewayConfig) Validate() error {
 		E.Chain(validateNamedServiceRoute(routeKeyMinio, extractMinioRoute)),
 		E.Chain(validateNamedServiceRoute(routeKeyLogto, extractLogtoRoute)),
 		E.Chain(validateNamedServiceRoute(routeKeyMcp, extractMcpRoute)),
+		E.Chain(validateNamedServiceRoute(routeKeyFilestash, extractFilestashRoute)),
+		E.Chain(validateBlockedPaths(routeKeyFilestash, extractFilestashRoute)),
 		E.ToError[*GatewayConfig],
 	)
 }
@@ -291,7 +305,8 @@ func anyRouteEnabled(c *GatewayConfig) bool {
 		c.Routes.Graphql.Enabled ||
 		c.Routes.Minio.Enabled ||
 		c.Routes.Logto.Enabled ||
-		c.Routes.Mcp.Enabled
+		c.Routes.Mcp.Enabled ||
+		c.Routes.Filestash.Enabled
 }
 
 func validateAtLeastOneRoute(c *GatewayConfig) E.Either[error, *GatewayConfig] {
@@ -391,4 +406,24 @@ func validateNamedServiceRoute(
 		}
 		return E.Right[error](c)
 	}
+}
+
+var isRelativePath = P.Not(S.HasPrefix(defaultRootPath))
+
+func validateBlockedPaths(
+	routeKey string,
+	extract func(*GatewayConfig) ServiceRouteConfig,
+) func(*GatewayConfig) E.Either[error, *GatewayConfig] {
+	return func(c *GatewayConfig) E.Either[error, *GatewayConfig] {
+		return F.Pipe3(
+			extract(c).BlockedPathPrefixes,
+			A.FindFirst(isRelativePath),
+			O.Map(F.Bind1st(blockedPathError, routeKey)),
+			O.Fold(F.Constant(E.Right[error](c)), E.Left[*GatewayConfig, error]),
+		)
+	}
+}
+
+func blockedPathError(routeKey, path string) error {
+	return fmt.Errorf("routes.%s.blockedPathPrefixes must start with / (got %s)", routeKey, path)
 }

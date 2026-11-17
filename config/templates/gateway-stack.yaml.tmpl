@@ -63,6 +63,16 @@ config:
         serviceName: dcr-mcp-api
         servicePort: 8080
         path: /
+      filestash:
+        enabled: false
+        hosts:
+          - <filestash-host>
+        tlsSecret: filestash-tls
+        serviceName: filestash
+        servicePort: 8334
+        path: /
+        blockedPathPrefixes:
+          - /admin
       api:
         corsAllowOrigin: "*"
         enabled: false

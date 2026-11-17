@@ -13,6 +13,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+const (
+	blockedRedirectStatus = 302
+	fieldType             = "type"
+	fieldPath             = "path"
+)
+
 var selectMultiServiceRuleBuilder = F.Pipe1(
 	S.IsNonEmpty,
 	P.Fold(
@@ -44,6 +50,7 @@ func (g *GatewayStack) createHTTPRoutes(
 		{key: routeKeyMinio, rt: g.Config.Routes.Minio},
 		{key: routeKeyLogto, rt: g.Config.Routes.Logto},
 		{key: routeKeyMcp, rt: g.Config.Routes.Mcp},
+		{key: routeKeyFilestash, rt: g.Config.Routes.Filestash},
 	} {
 		if err := g.createServiceHTTPRoute(ctx, gw, named.key, named.rt); err != nil {
 			return err
@@ -79,10 +86,11 @@ func (g *GatewayStack) createServiceHTTPRoute(
 		return nil
 	}
 	routeName := fmt.Sprintf("%s-route", routeKey)
-	rules := pulumi.Array{
-		buildPathPrefixRule(rt.Path, rt.ServiceName, rt.ServicePort),
-	}
-	return g.registerHTTPRoute(ctx, gw, routeName, rt.Hosts, rules)
+	rules := A.ArrayConcatAll(
+		[]pulumi.Input{buildPathPrefixRule(rt.Path, rt.ServiceName, rt.ServicePort)},
+		F.Pipe1(rt.BlockedPathPrefixes, A.Map(buildBlockedPathRule)),
+	)
+	return g.registerHTTPRoute(ctx, gw, routeName, rt.Hosts, toPulumiArray(rules))
 }
 
 func (g *GatewayStack) registerHTTPRoute(
@@ -140,7 +148,7 @@ func buildPathPrefixRuleWithCORS(
 func buildCORSResponseHeaderFilters(corsOrigin string) pulumi.Array {
 	return pulumi.Array{
 		pulumi.Map{
-			"type": pulumi.String("ResponseHeaderModifier"),
+			fieldType: pulumi.String("ResponseHeaderModifier"),
 			"responseHeaderModifier": pulumi.Map{
 				"set": pulumi.Array{
 					pulumi.Map{
@@ -165,8 +173,8 @@ func buildPathPrefixRule(path, serviceName string, port int) pulumi.Map {
 	return pulumi.Map{
 		"matches": pulumi.Array{
 			pulumi.Map{
-				"path": pulumi.Map{
-					"type":     pulumi.String("PathPrefix"),
+				fieldPath: pulumi.Map{
+					fieldType:  pulumi.String("PathPrefix"),
 					fieldValue: pulumi.String(path),
 				},
 			},
@@ -175,6 +183,34 @@ func buildPathPrefixRule(path, serviceName string, port int) pulumi.Map {
 			pulumi.Map{
 				fieldName: pulumi.String(serviceName),
 				fieldPort: pulumi.Int(port),
+			},
+		},
+	}
+}
+
+// buildBlockedPathRule matches a path prefix and redirects it to / with no
+// backendRefs. Gateway API picks the longest prefix, so this rule wins over
+// the / rule for every path under the prefix.
+func buildBlockedPathRule(path string) pulumi.Input {
+	return pulumi.Map{
+		"matches": pulumi.Array{
+			pulumi.Map{
+				fieldPath: pulumi.Map{
+					fieldType:  pulumi.String("PathPrefix"),
+					fieldValue: pulumi.String(path),
+				},
+			},
+		},
+		"filters": pulumi.Array{
+			pulumi.Map{
+				fieldType: pulumi.String("RequestRedirect"),
+				"requestRedirect": pulumi.Map{
+					fieldPath: pulumi.Map{
+						fieldType:         pulumi.String("ReplaceFullPath"),
+						"replaceFullPath": pulumi.String(defaultRootPath),
+					},
+					"statusCode": pulumi.Int(blockedRedirectStatus),
+				},
 			},
 		},
 	}

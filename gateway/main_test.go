@@ -317,3 +317,106 @@ func TestInstallWithAPIEnabled(t *testing.T) {
 	require.Contains(t, apiInputs, "Access-Control-Allow-Methods")
 	require.Contains(t, apiInputs, "Access-Control-Allow-Headers")
 }
+
+func filestashGatewayConfig() *GatewayConfig {
+	cfg := validSampleGatewayConfig()
+	//nolint:gosec // G101: Kubernetes Secret name pointer, not a credential.
+	cfg.Routes.Filestash = ServiceRouteConfig{
+		Enabled:             true,
+		Hosts:               []string{"files.dictycr.org"},
+		TLSSecret:           "filestash-tls",
+		BlockedPathPrefixes: []string{"/admin"},
+	}
+	cfg.ApplyDefaults()
+	return cfg
+}
+
+func installGateway(t *testing.T, cfg *GatewayConfig) *gatewayResourceMocks {
+	t.Helper()
+	mocks := &gatewayResourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return NewGatewayStack(cfg).Install(ctx)
+	}, pulumi.WithMocks("gateway", "test", mocks))
+	require.NoError(t, err)
+	return mocks
+}
+
+func routeRules(t *testing.T, mocks *gatewayResourceMocks, name string) []any {
+	t.Helper()
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+	route, ok := mocks.resources[name]
+	require.True(t, ok, "route %s missing", name)
+	spec, ok := route.Inputs.Mappable()["spec"].(map[string]any)
+	require.True(t, ok)
+	rules, ok := spec["rules"].([]any)
+	require.True(t, ok)
+	return rules
+}
+
+func TestFilestashRouteBlocksAdmin(t *testing.T) {
+	t.Parallel()
+	rules := routeRules(t, installGateway(t, filestashGatewayConfig()), "filestash-route")
+	require.Len(t, rules, 2)
+
+	root, ok := rules[0].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, fmt.Sprint(root["matches"]), "value:/]")
+	require.Contains(t, fmt.Sprint(root["backendRefs"]), "name:filestash")
+	require.Contains(t, fmt.Sprint(root["backendRefs"]), "port:8334")
+
+	block, ok := rules[1].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, fmt.Sprint(block["matches"]), "type:PathPrefix value:/admin")
+	require.NotContains(t, block, "backendRefs", "a blocked path must not reach the service")
+	filters := fmt.Sprint(block["filters"])
+	require.Contains(t, filters, "type:RequestRedirect")
+	require.Contains(t, filters, "replaceFullPath:/")
+	require.Contains(t, filters, "type:ReplaceFullPath")
+	require.Contains(t, filters, "statusCode:302")
+}
+
+func TestFilestashRouteDisabledByDefault(t *testing.T) {
+	t.Parallel()
+	mocks := installGateway(t, validSampleGatewayConfig())
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+	_, hasRoute := mocks.resources["filestash-route"]
+	require.False(t, hasRoute)
+	require.NotContains(t, fmt.Sprint(mocks.resources["dictycr-gateway"].Inputs), "filestash")
+}
+
+func TestFilestashRouteAddsListeners(t *testing.T) {
+	t.Parallel()
+	mocks := installGateway(t, filestashGatewayConfig())
+	mocks.mu.Lock()
+	defer mocks.mu.Unlock()
+	gwSpec := fmt.Sprint(mocks.resources["dictycr-gateway"].Inputs)
+	require.Contains(t, gwSpec, "https-filestash-0")
+	require.Contains(t, gwSpec, "filestash-tls")
+}
+
+func TestValidateBlockedPaths(t *testing.T) {
+	t.Parallel()
+	t.Run("blocked path without slash", func(t *testing.T) {
+		t.Parallel()
+		cfg := filestashGatewayConfig()
+		cfg.Routes.Filestash.BlockedPathPrefixes = []string{"admin"}
+		require.EqualError(t, cfg.Validate(),
+			"routes.filestash.blockedPathPrefixes must start with / (got admin)")
+	})
+	t.Run("placeholder host on enabled filestash route", func(t *testing.T) {
+		t.Parallel()
+		cfg := filestashGatewayConfig()
+		cfg.Routes.Filestash.Hosts = []string{"<filestash-host>"}
+		require.EqualError(t, cfg.Validate(),
+			"routes.filestash.enabled=true but routes.filestash contains placeholder in hosts")
+	})
+	t.Run("disabled filestash route with placeholder is valid", func(t *testing.T) {
+		t.Parallel()
+		cfg := validSampleGatewayConfig()
+		cfg.Routes.Filestash = ServiceRouteConfig{Hosts: []string{"<filestash-host>"}}
+		cfg.ApplyDefaults()
+		require.NoError(t, cfg.Validate())
+	})
+}
