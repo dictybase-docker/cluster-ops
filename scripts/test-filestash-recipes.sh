@@ -107,6 +107,14 @@ case "$args" in
     *"exec deployment/filestash -c filestash -- df -P"*)
         printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/sdb 5000 500 4500 %s%% /app/data/state\n' "${STUB_DF_USE:-10}" ;;
     *"exec deployment/filestash -c filestash -- ls"*) echo "share.sql" ;;
+    *"create -f -"*)
+        [[ "${STUB_LEASE_HELD:-0}" == 1 ]] && { cat >/dev/null; echo 'Error from server (AlreadyExists)' >&2; exit 1; }
+        cat > "${STUB_DIR}/lease.yaml" ;;
+    *"get lease filestash-publish -o jsonpath={.spec.holderIdentity}"*)
+        if [[ -n "${STUB_LEASE_HOLDER:-}" ]]; then printf '%s' "$STUB_LEASE_HOLDER"
+        elif [[ -f "${STUB_DIR}/lease.yaml" ]]; then awk '/holderIdentity:/ {printf "%s", $2}' "${STUB_DIR}/lease.yaml"
+        else exit 1; fi ;;
+    *"delete lease filestash-publish"*) rm -f "${STUB_DIR}/lease.yaml" ;;
     *) echo "unexpected kubectl call: $*" >&2; exit 1 ;;
 esac
 MOCK
@@ -130,7 +138,10 @@ cat > "${tmp_dir}/bin/mc" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'mc %s\n' "$*" >> "${STUB_LOG}"
+{ printf 'mc-args'; printf ' [%s]' "$@"; printf '\n'; } >> "${STUB_LOG}"
 case "$*" in
+    "ls --recursive --json"*) printf '%s\n' "${STUB_MC_KEYS:-}" | jq -cR 'select(length > 0) | {type: "file", key: .}' ;;
+    "stat "*) [[ -n "${STUB_MC_EXISTING:-}" && "${@: -1}" == *"${STUB_MC_EXISTING}" ]] || exit 1 ;;
     "admin user add"*) n=$(wc -l | tr -d ' '); printf 'mc-stdin-lines %s\n' "$n" >> "${STUB_LOG}" ;;
     "admin user info"*) printf '{"policyName":"%s"}\n' "${STUB_ATTACHED:-}" ;;
     "anonymous get-json"*) cat "${STUB_ANON_FILE:-filestash/policies/downloads-anonymous.json}" ;;
@@ -388,5 +399,65 @@ f="filestash/Pulumi.fs-scaffold-gw-$$.yaml"
 [[ "$(yq -r '.config."filestash:properties".namespace' "$f")" == prod ]]
 [[ "$(yq -r '.config."filestash:properties".applicationURL' "$f")" == https://files.example.org ]]
 echo '  test_scaffold_selects_ingress_mode: PASS'
+
+echo "=== 12. publish, unpublish-file, release-lock ==="
+keys=$'table.csv\nraw/x.unknown\nmy file #1 %ü.csv'
+rm -f "$stub_dir/lease.yaml"
+: > "$log_file"
+out=$(run_recipe env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org)
+rg -qF 'mc-args [cp] [--attr] [Content-Type=text/csv] [minio/uploads/alice/batch/table.csv] [minio/downloads/ds1/table.csv]' "$log_file"
+rg -qF 'mc-args [cp] [--attr] [Content-Type=application/octet-stream] [minio/uploads/alice/batch/raw/x.unknown] [minio/downloads/ds1/raw/x.unknown]' "$log_file"
+echo '  test_publish_sets_content_type: PASS'
+rg -qF 'mc-args [stat] [minio/downloads/ds1/my file #1 %ü.csv]' "$log_file"
+rg -qF 'mc-args [cp] [--attr] [Content-Type=text/csv] [minio/uploads/alice/batch/my file #1 %ü.csv] [minio/downloads/ds1/my file #1 %ü.csv]' "$log_file"
+echo '  test_publish_quotes_special_keys: PASS'
+printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/my%20file%20%231%20%25%C3%BC.csv'
+printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/raw/x.unknown'
+echo '  test_publish_encodes_urls: PASS'
+rg -q '^kubectl -n prod delete lease filestash-publish$' "$log_file"
+[[ ! -e "$stub_dir/lease.yaml" ]]
+assert_no_call '^kubectl apply'
+echo '  test_publish_never_applies_lease: PASS'
+rg -q 'secret filestash-users -o jsonpath=\{.data.publisherAccessKey\}' "$log_file"
+assert_no_call 'jsonpath=\{.data.rootUser\}'
+assert_no_call 'operatorAccessKey'
+echo '  test_publish_uses_publisher_keys: PASS'
+
+: > "$log_file"
+expect_failure 'publish never replaces a file' env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "STUB_MC_EXISTING=ds1/table.csv" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org
+assert_no_call '^mc cp '
+echo '  test_publish_refuses_existing_key: PASS'
+
+: > "$log_file"
+expect_failure "invalid --source 'alice/../bob'" env "PULUMI_STACK=$stack" "$just_bin" filestash publish --source alice/../bob --dataset ds1 --url-host storage.example.org
+assert_no_call '^mc '
+assert_no_call 'create -f -'
+echo '  test_publish_rejects_dotdot: PASS'
+expect_failure "invalid --dataset 'Bad Name'" env "PULUMI_STACK=$stack" "$just_bin" filestash publish --source alice/batch --dataset 'Bad Name'
+
+: > "$log_file"
+expect_failure "holder 'bob@ci:1'" env "PULUMI_STACK=$stack" "STUB_LEASE_HELD=1" "STUB_LEASE_HOLDER=bob@ci:1" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org
+assert_no_call '^mc '
+assert_no_call 'delete lease'
+echo '  test_publish_fails_when_lease_held: PASS'
+
+expect_failure 'pass --url-host' env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "$just_bin" filestash publish --source alice/batch --dataset ds1
+out=$(run_recipe env "PULUMI_STACK=dcr-kube1" "STUB_MC_KEYS=table.csv" "$just_bin" filestash publish --source alice/batch --dataset ds1)
+printf '%s' "$out" | rg -qF 'https://storage.dictycr.org/downloads/ds1/table.csv'
+echo '  test_publish_url_host_from_gateway: PASS'
+
+expect_failure 'Pass --confirm yes' env "PULUMI_STACK=$stack" "$just_bin" filestash unpublish-file --key ds1/table.csv
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash unpublish-file --key ds1/table.csv --confirm yes >/dev/null
+rg -qF 'mc-args [rm] [minio/downloads/ds1/table.csv]' "$log_file"
+echo '  test_unpublish_file_requires_confirm: PASS'
+
+printf 'spec:\n  holderIdentity: alice@host:9\n' > "$stub_dir/lease.yaml"
+: > "$log_file"
+expect_failure "lease holder is 'alice@host:9', not 'other'" env "PULUMI_STACK=$stack" "$just_bin" filestash release-lock --holder other
+assert_no_call 'delete lease'
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash release-lock --holder alice@host:9 >/dev/null
+[[ ! -e "$stub_dir/lease.yaml" ]]
+echo '  test_release_lock_checks_holder: PASS'
 
 echo "All filestash recipe contract tests passed."

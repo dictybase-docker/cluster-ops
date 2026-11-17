@@ -108,3 +108,39 @@ fs_filestash_run() {
     go run ./cmd/cluster-ops forward run --ns "$NS" --svc filestash --remote-port 8334 -- \
         bash -c 'set -euo pipefail; export FS_URL="http://localhost:${FORWARD_PORT}"; eval "$FS_SCRIPT"'
 }
+
+# fs_downloads_host prints the public MinIO host for direct file URLs: a
+# `storage.*` host of the Gateway minio route, else its first host, else the
+# minio apiIngress hostname (clusters with no Gateway stack).
+fs_downloads_host() {
+    local gw="gateway/Pulumi.${STACK}.yaml" mi="minio/Pulumi.${STACK}.yaml" host=""
+    if [[ -f "$gw" && "$(yq -r '.config."gateway:properties".routes.minio.enabled // false' "$gw")" == "true" ]]; then
+        host=$(yq -r '[.config."gateway:properties".routes.minio.hosts[]] | ((map(select(startswith("storage."))) + .)[0]) // ""' "$gw")
+    elif [[ -f "$mi" && "$(yq -r '.config."minio:properties".apiIngress.enabled // false' "$mi")" == "true" ]]; then
+        host=$(yq -r '.config."minio:properties".apiIngress.hostname // ""' "$mi")
+    fi
+    [[ -n "$host" && "$host" != *"<"* ]] || fs_die "no public MinIO host for stack '$STACK' — pass --url-host."
+    printf '%s' "$host"
+}
+
+# fs_lock_take takes the publication Lease or fails with its holder.
+# Sets FS_HOLDER. Release it with fs_lock_release in an EXIT trap.
+fs_lock_take() {
+    FS_HOLDER="$(id -un)@$(hostname -s 2>/dev/null || echo host):$$"
+    FS_HOLDER="${FS_HOLDER//[^A-Za-z0-9@:._-]/_}"
+    if ! sed -e "s|__NAMESPACE__|${NS}|" -e "s|__HOLDER__|${FS_HOLDER}|" \
+        filestash/manifests/publish-lease.yaml | kubectl create -f - >/dev/null 2>&1; then
+        local holder
+        holder=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+        fs_die "another publication holds lease/filestash-publish (holder '${holder}'). After a crash: just filestash release-lock --holder '${holder}'"
+    fi
+}
+
+# fs_lock_release deletes the Lease only if this process holds it.
+fs_lock_release() {
+    local holder
+    holder=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+    if [[ -n "${FS_HOLDER:-}" && "$holder" == "$FS_HOLDER" ]]; then
+        kubectl -n "$NS" delete lease filestash-publish >/dev/null
+    fi
+}

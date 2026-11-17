@@ -479,3 +479,132 @@ teardown delete_pvc="" stack="" namespace="":
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     go run ./cmd/cluster-ops stack destroy --folder filestash --stack "$STACK"
     echo "filestash removed from '$NS'. Buckets uploads and downloads are unchanged."
+
+# Copy approved files from uploads/<source>/ to downloads/<dataset>/ as
+# filestash-publisher. Refuses to replace any existing object, sets the
+# Content-Type from the file extension, and prints each direct URL.
+# One publication at a time: lease/filestash-publish is the lock.
+# Usage: just filestash publish --source <collaborator>/<path> --dataset <name> [--url-host <h>]
+[arg("source", long="source", help="Prefix in uploads, for example alice/2026-batch (required)")]
+[arg("dataset", long="dataset", help="Dataset folder in downloads: a-z 0-9 . _ - (required)")]
+[arg("url_host", long="url-host", help="Public MinIO host for the printed URLs (default: from the gateway or minio stack)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+publish source="" dataset="" url_host="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    SOURCE={{ quote(source) }}
+    DATASET={{ quote(dataset) }}
+    [[ "$DATASET" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || fs_die "invalid --dataset '$DATASET' (a-z 0-9 . _ -, first a letter or digit)."
+    SOURCE="${SOURCE#/}"
+    SOURCE="${SOURCE%/}"
+    [[ -n "$SOURCE" ]] || fs_die "no --source (for example alice/2026-batch)."
+    case "/$SOURCE/" in
+        */../*|*/./*|*//*) fs_die "invalid --source '$SOURCE': no '.', '..', or empty path segments." ;;
+    esac
+    HOST={{ quote(url_host) }}
+    [[ -n "$HOST" ]] || HOST=$(fs_downloads_host)
+    [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || fs_die "invalid --url-host '$HOST'."
+    fs_lock_take
+    trap fs_lock_release EXIT
+    export FS_SOURCE="$SOURCE/" FS_DATASET="$DATASET" FS_HOST="$HOST"
+    fs_minio_as publisher '
+        content_type() {
+            local ext="${1##*.}"
+            ext=$(printf "%s" "$ext" | tr "[:upper:]" "[:lower:]")
+            case "$ext" in
+                csv) echo text/csv ;;
+                tsv) echo text/tab-separated-values ;;
+                txt|fa|fasta|gff|gff3) echo text/plain ;;
+                json) echo application/json ;;
+                gz) echo application/gzip ;;
+                zip) echo application/zip ;;
+                pdf) echo application/pdf ;;
+                png) echo image/png ;;
+                jpg|jpeg) echo image/jpeg ;;
+                mp4) echo video/mp4 ;;
+                *) echo application/octet-stream ;;
+            esac
+        }
+        encode_path() {
+            local IFS=/ seg out=""
+            for seg in $1; do out+="/$(jq -rn --arg s "$seg" "\$s|@uri")"; done
+            printf "%s" "${out#/}"
+        }
+        keys=()
+        while IFS= read -r key; do
+            [[ -n "$key" ]] && keys+=("$key")
+        done < <(mc ls --recursive --json "minio/uploads/$FS_SOURCE" | jq -r "select(.type == \"file\") | .key")
+        [[ ${#keys[@]} -gt 0 ]] || { echo "Error: no files under uploads/$FS_SOURCE" >&2; exit 1; }
+        existing=()
+        for key in "${keys[@]}"; do
+            if mc stat "minio/downloads/$FS_DATASET/$key" >/dev/null 2>&1; then
+                existing+=("downloads/$FS_DATASET/$key")
+            fi
+        done
+        if [[ ${#existing[@]} -gt 0 ]]; then
+            echo "Error: these objects exist already; publish never replaces a file:" >&2
+            printf "  %s\n" "${existing[@]}" >&2
+            exit 1
+        fi
+        for key in "${keys[@]}"; do
+            mc cp --attr "Content-Type=$(content_type "$key")" \
+                "minio/uploads/$FS_SOURCE$key" "minio/downloads/$FS_DATASET/$key" >/dev/null
+            echo "https://$FS_HOST/downloads/$(encode_path "$FS_DATASET/$key")"
+        done
+    '
+    echo "Published uploads/$SOURCE/ to downloads/$DATASET/."
+
+# Delete one published file. Its direct URL then returns 404.
+# Usage: just filestash unpublish-file --key <dataset>/<path> --confirm yes
+[arg("key", long="key", help="Object key in downloads, for example strains-2026/table.csv (required)")]
+[arg("confirm", long="confirm", help="Must be yes")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+unpublish-file key="" confirm="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    KEY={{ quote(key) }}
+    KEY="${KEY#/}"
+    [[ -n "$KEY" && "$KEY" == */* ]] || fs_die "pass --key <dataset>/<path>."
+    case "/$KEY/" in
+        */../*|*/./*|*//*) fs_die "invalid --key '$KEY'." ;;
+    esac
+    [[ {{ quote(confirm) }} == "yes" ]] || fs_die "deleting downloads/$KEY breaks its public URL. Pass --confirm yes."
+    fs_lock_take
+    trap fs_lock_release EXIT
+    export FS_KEY="$KEY"
+    fs_minio_as publisher 'mc rm "minio/downloads/$FS_KEY"'
+    echo "Deleted downloads/$KEY. Its direct URL now returns 404."
+
+# Remove lease/filestash-publish after a crashed publish. Deletes it only if
+# its holder equals --holder (the value that publish printed).
+# Usage: just filestash release-lock --holder <id>
+[arg("holder", long="holder", help="Holder identity printed by the failed publish (required)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+release-lock holder="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    WANT={{ quote(holder) }}
+    [[ -n "$WANT" ]] || fs_die "pass --holder <id>."
+    got=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+    [[ -n "$got" ]] || fs_die "lease/filestash-publish does not exist in '$NS'."
+    [[ "$got" == "$WANT" ]] || fs_die "lease holder is '$got', not '$WANT'. Nothing deleted."
+    kubectl -n "$NS" delete lease filestash-publish
+    echo "Released lease/filestash-publish (holder '$got')."
