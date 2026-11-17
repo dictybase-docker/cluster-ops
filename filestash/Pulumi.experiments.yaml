@@ -28,3 +28,8 @@ config:
       label:
         name: kcert.dev/ingress
         value: managed
+    plugins:
+      image:
+        name: dictybase/filestash-plugins
+        tag: <plugins-tag>
+        digest: <plugins-digest>

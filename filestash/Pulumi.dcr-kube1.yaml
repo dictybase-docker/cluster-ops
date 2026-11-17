@@ -21,3 +21,8 @@ config:
       label: dictycr-minio
     ingress:
       enabled: false
+    plugins:
+      image:
+        name: dictybase/filestash-plugins
+        tag: <plugins-tag>
+        digest: <plugins-digest>

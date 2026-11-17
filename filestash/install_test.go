@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -228,4 +229,45 @@ func TestNoIngressWhenDisabled(t *testing.T) {
 	defer m.mu.Unlock()
 	require.NotContains(t, m.resources, "filestash-ingress")
 	require.NotContains(t, m.resources, "filestash-admin-block")
+}
+
+func initNames(t *testing.T, spec map[string]any) []string {
+	t.Helper()
+	inits, ok := spec["initContainers"].([]any)
+	require.True(t, ok)
+	names := make([]string, 0, len(inits))
+	for _, c := range inits {
+		cm, isMap := c.(map[string]any)
+		require.True(t, isMap)
+		name, isStr := cm["name"].(string)
+		require.True(t, isStr)
+		names = append(names, name)
+	}
+	return names
+}
+
+func TestPluginInitContainerOrder(t *testing.T) {
+	t.Parallel()
+	spec := podSpec(t, install(t, validConfig()))
+	require.Equal(t, []string{"plugins", "seed"}, initNames(t, spec))
+	plugins := initContainer(t, spec, "plugins")
+	require.Equal(t, "dictybase/filestash-plugins:2026.11.17@"+testDigest, plugins["image"])
+}
+
+func TestPluginInitReplacesZips(t *testing.T) {
+	t.Parallel()
+	plugins := initContainer(t, podSpec(t, install(t, validConfig())), "plugins")
+	cmd := fmt.Sprint(plugins["command"])
+	del := strings.Index(cmd, "rm -f /app/data/state/plugins/*.zip")
+	cp := strings.Index(cmd, "cp /plugins/*.zip /app/data/state/plugins/")
+	require.GreaterOrEqual(t, del, 0)
+	require.Greater(t, cp, del, "delete must come before copy")
+}
+
+func TestSeedDisablesConsole(t *testing.T) {
+	t.Parallel()
+	seed := seedJSON(t, install(t, validConfig()))
+	require.Equal(t, false, dig(t, seed, "features", "server", "console_enable"))
+	require.EqualValues(t, 5, dig(t, seed, "features", "search", "explore_timeout"))
+	require.Equal(t, false, dig(t, seed, "log", "telemetry"))
 }

@@ -45,6 +45,14 @@ type FilestashConfig struct {
 	CacheSizeLimit string        `json:"cacheSizeLimit"`
 	S3             S3Config      `json:"s3"`
 	Ingress        IngressConfig `json:"ingress"`
+	Plugins        PluginsConfig `json:"plugins"`
+}
+
+// PluginsConfig points at the plugin bundle image built by
+// `just filestash build-plugins`. An init container copies its ZIP files
+// into the plugins folder at each start.
+type PluginsConfig struct {
+	Image ImageConfig `json:"image"`
 }
 
 type ImageConfig struct {
@@ -156,12 +164,12 @@ func (c *FilestashConfig) ApplyDefaults() {
 	c.Ingress.ClassName = strOr(defaultIngressClass, c.Ingress.ClassName)
 }
 
-// Validate rejects an invalid config, then a config with `<...>` placeholders.
+// Validate rejects `<...>` placeholders first, then invalid values.
 func (c *FilestashConfig) Validate() error {
 	return F.Pipe3(
 		E.Of[error](c),
-		E.Chain(F.Bind12of3(rejectFields)("is invalid in", invalidChecks)),
 		E.Chain(F.Bind12of3(rejectFields)("contains placeholder in", placeholderChecks)),
+		E.Chain(F.Bind12of3(rejectFields)("is invalid in", invalidChecks)),
 		E.ToError[*FilestashConfig],
 	)
 }
@@ -177,6 +185,9 @@ func invalidChecks(c *FilestashConfig) []fieldCheck {
 			PR.MakePair("storage.size", isBadStateSize(c.Storage.Size)),
 			PR.MakePair("cacheSizeLimit", isBadQuantity(c.CacheSizeLimit)),
 			PR.MakePair("s3.endpoint", S.IsEmpty(c.S3.Endpoint)),
+			PR.MakePair("plugins.image.name", S.IsEmpty(c.Plugins.Image.Name)),
+			PR.MakePair("plugins.image.tag", S.IsEmpty(c.Plugins.Image.Tag)),
+			PR.MakePair("plugins.image.digest", isInvalidDigest(c.Plugins.Image.Digest)),
 		},
 		ingressInvalidChecks(c.Ingress),
 	)
@@ -194,6 +205,8 @@ func placeholderChecks(c *FilestashConfig) []fieldCheck {
 		PR.MakePair("namespace", isPlaceholder(c.Namespace)),
 		PR.MakePair("applicationURL", isPlaceholder(c.ApplicationURL)),
 		PR.MakePair("s3.endpoint", isPlaceholder(c.S3.Endpoint)),
+		PR.MakePair("plugins.image.tag", isPlaceholder(c.Plugins.Image.Tag)),
+		PR.MakePair("plugins.image.digest", isPlaceholder(c.Plugins.Image.Digest)),
 		PR.MakePair("ingress.hosts", c.Ingress.Enabled && anyPlaceholder(c.Ingress.Hosts)),
 		PR.MakePair("ingress.tlsSecret", c.Ingress.Enabled && isPlaceholder(c.Ingress.TLSSecret)),
 	}

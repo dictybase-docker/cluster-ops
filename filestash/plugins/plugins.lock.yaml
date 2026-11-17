@@ -1,0 +1,56 @@
+# Runtime plugins in the bundle image `dictybase/filestash-plugins`.
+# `just filestash build-plugins` downloads each url, checks sha256, and
+# refuses to build while any entry has an empty license or reviewer.
+#
+# Each ZIP runs JavaScript in the browser of every public visitor. The
+# reviewer reads manifest.json and the module files before the first build
+# and after each checksum change.
+#
+# modules: module types from manifest.json (count). `patch` changes the
+# frontend JavaScript; it needs a reviewer note.
+plugins:
+  - name: theme_apple
+    url: https://downloads.filestash.app/upload/theme_apple.zip
+    sha256: 1d8d496ba18b1245efeb2b7d1c5819a313a601223286afe686e0c7debee08e86
+    size: 6376
+    modules: {css: 1, patch: 1}
+    license: ""
+    reviewer: ""
+    notes: "patch module (apple.patch, 13 KB) changes frontend JavaScript; review the diff."
+  - name: application_adobe
+    url: https://demo.filestash.app/assets/plugin/application_adobe.zip
+    sha256: d553911836fd9c8ca84b2a43900820283974c089af4e2fef4aa9d62f44a814a4
+    size: 43284556
+    modules: {xdg-open: 7}
+    license: ""
+    reviewer: ""
+    notes: ""
+  - name: application_biomed
+    url: https://demo.filestash.app/assets/plugin/application_biomed.zip
+    sha256: a0dda88b1f42bb905442e7ef17b4251633f9ffbc29279b33cc02296a221e85bc
+    size: 50298424
+    modules: {xdg-open: 11}
+    license: ""
+    reviewer: ""
+    notes: "bundles jsmol (LGPL) and jsme; third-party license files are inside the ZIP."
+  - name: application_photography
+    url: https://demo.filestash.app/assets/plugin/application_photography.zip
+    sha256: 007cd51157978b70f0ea816cfc9be36f94f181f4f37100a306fe35691c14c32d
+    size: 4929697
+    modules: {xdg-open: 26}
+    license: ""
+    reviewer: ""
+    notes: ""
+
+# application_office has no prebuilt ZIP. The Dockerfile builds it from the
+# Filestash source at this commit. Its LibreOffice WASM files are pinned in
+# office-deps.lock.yaml.
+office:
+  name: application_office
+  source: https://github.com/mickael-kerjean/filestash
+  ref: 7509e60ed29d8f19add5220e589fc6f1a388a3c0
+  path: server/plugin/plg_application_office
+  modules: {middleware: 1, xdg-open: many}
+  license: "AGPL-3.0 (Filestash); MPL-2.0 (LibreOffice/ZetaOffice files)"
+  reviewer: ""
+  notes: "middleware module is WASM compiled from middleware.c in the same folder."

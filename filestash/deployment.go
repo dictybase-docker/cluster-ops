@@ -65,6 +65,14 @@ func (f *Filestash) podSpec() *corev1.PodSpecArgs {
 func (f *Filestash) initContainers() corev1.ContainerArray {
 	return corev1.ContainerArray{
 		&corev1.ContainerArgs{
+			Name:    pulumi.String("plugins"),
+			Image:   pulumi.String(f.Config.Plugins.Image.Ref()),
+			Command: pulumi.StringArray{pulumi.String("sh"), pulumi.String("-c"), pulumi.String(pluginCopyScript())},
+			VolumeMounts: corev1.VolumeMountArray{
+				f.mount(stateVolume, statePath),
+			},
+		},
+		&corev1.ContainerArgs{
 			Name:    pulumi.String("seed"),
 			Image:   pulumi.String(busyboxImage),
 			Command: pulumi.StringArray{pulumi.String("sh"), pulumi.String("-c"), pulumi.String(seedCopyScript())},
@@ -74,6 +82,15 @@ func (f *Filestash) initContainers() corev1.ContainerArray {
 			},
 		},
 	}
+}
+
+// pluginCopyScript replaces every ZIP in the plugins folder with the bundle.
+// A ZIP that staff copy by hand does not survive a restart.
+func pluginCopyScript() string {
+	return fmt.Sprintf(
+		"mkdir -p %[1]s/plugins && rm -f %[1]s/plugins/*.zip && cp /plugins/*.zip %[1]s/plugins/",
+		statePath,
+	)
 }
 
 func (f *Filestash) mainContainer() *corev1.ContainerArgs {

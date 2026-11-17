@@ -22,6 +22,9 @@ func validConfig() *FilestashConfig {
 		Image:          ImageConfig{Tag: "latest", Digest: testDigest},
 		Storage:        StorageConfig{Size: "2Gi"},
 		S3:             S3Config{Endpoint: "http://minio.dev.svc.cluster.local:9000"},
+		Plugins: PluginsConfig{Image: ImageConfig{
+			Name: "dictybase/filestash-plugins", Tag: "2026.11.17", Digest: testDigest,
+		}},
 	}
 	cfg.ApplyDefaults()
 	return cfg
@@ -67,6 +70,9 @@ func TestValidateRejects(t *testing.T) {
 		{"two replicas", func(c *FilestashConfig) { c.Replicas = 2 }, "replicas"},
 		{"placeholder url", func(c *FilestashConfig) { c.ApplicationURL = "https://<filestash-host>" }, "applicationURL"},
 		{"http url", func(c *FilestashConfig) { c.ApplicationURL = "http://" + testHost }, "applicationURL"},
+		{"empty plugins digest", func(c *FilestashConfig) { c.Plugins.Image.Digest = "" }, "plugins.image.digest"},
+		{"empty plugins name", func(c *FilestashConfig) { c.Plugins.Image.Name = "" }, "plugins.image.name"},
+		{"placeholder plugins tag", func(c *FilestashConfig) { c.Plugins.Image.Tag = "<plugins-tag>" }, "plugins.image.tag"},
 		{"empty s3 endpoint", func(c *FilestashConfig) { c.S3.Endpoint = "" }, "s3.endpoint"},
 		{"ingress without host", func(c *FilestashConfig) {
 			c.Ingress.Enabled = true
