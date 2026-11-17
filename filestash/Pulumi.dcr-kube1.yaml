@@ -1,0 +1,23 @@
+# filestash stack config for dcr-kube1 (production).
+# Exposure: Gateway route `filestash` in gateway/Pulumi.dcr-kube1.yaml.
+# Replace <filestash-host> before deploy; validation rejects placeholders.
+config:
+  filestash:properties:
+    name: filestash
+    namespace: prod
+    applicationURL: https://<filestash-host>
+    image:
+      name: machines/filestash
+      tag: latest
+      digest: sha256:89e70f0fccc4dcce3f47e5d490ee961f912a5ffd4e30b98216e3e37e469035e2
+    secretName: filestash
+    storage:
+      size: 5Gi
+      storageClass: dictycr-balanced
+    cacheSizeLimit: 2Gi
+    s3:
+      endpoint: http://minio.prod.svc.cluster.local:9000
+      region: us-east-1
+      label: dictycr-minio
+    ingress:
+      enabled: false

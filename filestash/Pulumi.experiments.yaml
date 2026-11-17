@@ -1,0 +1,30 @@
+# filestash stack config for experiments (dcr-experiments, namespace dev).
+# Exposure: nginx Ingress from this project; the cluster has no Gateway stack.
+# Replace <filestash-host> before deploy; validation rejects placeholders.
+config:
+  filestash:properties:
+    name: filestash
+    namespace: dev
+    applicationURL: https://<filestash-host>
+    image:
+      name: machines/filestash
+      tag: latest
+      digest: sha256:89e70f0fccc4dcce3f47e5d490ee961f912a5ffd4e30b98216e3e37e469035e2
+    secretName: filestash
+    storage:
+      size: 2Gi
+      storageClass: dictycr-balanced
+    cacheSizeLimit: 2Gi
+    s3:
+      endpoint: http://minio.dev.svc.cluster.local:9000
+      region: us-east-1
+      label: dictycr-minio
+    ingress:
+      enabled: true
+      className: nginx
+      hosts:
+        - <filestash-host>
+      tlsSecret: filestash-tls-secret
+      label:
+        name: kcert.dev/ingress
+        value: managed

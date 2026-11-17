@@ -1,0 +1,7 @@
+name: filestash
+runtime: go
+description: Filestash web file manager in front of the cluster MinIO
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
