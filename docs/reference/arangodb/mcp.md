@@ -4,6 +4,8 @@ Back to: [ArangoDB Deploy Guide](../../arangodb-deploy.md)
 
 This document explains how Pi queries the cluster ArangoDB through the `arangodb/mcp-arangodb` server as a read-only user.
 
+![ArangoDB MCP Access Workflow](mcp-workflow.png)
+
 ## Table of Contents
 
 - [How It Works](#how-it-works)
@@ -16,7 +18,7 @@ This document explains how Pi queries the cluster ArangoDB through the `arangodb
 
 ## How It Works
 
-The MCP server runs on your workstation in Docker, outside the nono sandbox. Pi connects to it through local ports.
+The MCP server runs on your workstation in Docker. Pi connects to it through local ports.
 
 | Port | Listener | Used by |
 |---|---|---|
@@ -24,8 +26,6 @@ The MCP server runs on your workstation in Docker, outside the nono sandbox. Pi 
 | `8530` | MCP server (HTTP mode) | Pi |
 
 Each Pi connection gets a JWT for user `mcp-reader` from `/_open/auth`. The MCP server runs every query with that JWT, so every query has read-only access. A JWT expires after about one hour. Reconnect with `/mcp` to get a new JWT.
-
-The nono profile must open ports `8530` and `18529`.
 
 ---
 
@@ -63,7 +63,7 @@ Creates user `mcp-reader` with grant `ro` on every application database. Stack `
 | `--database` / `-d` | No | First configured database | Tools accept other databases by name |
 | `--forward-port` / `-p` | No | `$ARANGODB_MCP_FORWARD_PORT`, else `18529` | Port `8529` is free for a local ArangoDB container |
 
-`mcp-down` removes the container, stops the forward, and deletes the state directory. `mcp-status` shows the forward, the container, and the `/health` result. Run all three recipes outside nono.
+`mcp-down` removes the container, stops the forward, and deletes the state directory. `mcp-status` shows the forward, the container, and the `/health` result.
 
 ---
 

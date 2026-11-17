@@ -111,7 +111,7 @@ just arangodb import-database --namespace <ns> --bucket <source-bucket> --databa
 ```
 
 ```bash
-# 10. Optional: MCP access for Pi (run outside nono)
+# 10. Optional: MCP access for Pi
 just arangodb create-mcp-reader
 just arangodb mcp-configure-pi
 just arangodb mcp-up      # stop with: just arangodb mcp-down
@@ -328,7 +328,7 @@ just arangodb create-databases --app-user '<user>' --app-password '<password>'
 
 ## 10. Optional: MCP Access for Pi
 
-**Optional — skip unless you query ArangoDB from Pi.** Run the recipes outside nono.
+**Optional — skip unless you query ArangoDB from Pi.**
 → [MCP access details](reference/arangodb/mcp.md)
 
 ```bash
