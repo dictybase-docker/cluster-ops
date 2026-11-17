@@ -1,0 +1,36 @@
+# Template for a filestash stack config.
+# Rendered by `just gcp-pulumi scaffold-filestash-stack`. Exposure mode:
+# ingress.enabled is true only on a cluster with no gateway/Pulumi.<stack>.yaml.
+# Replace every <...> value before deploy; validation rejects placeholders.
+config:
+  filestash:properties:
+    name: filestash
+    namespace: __NAMESPACE__
+    applicationURL: https://__HOST__
+    image:
+      name: machines/filestash
+      tag: latest
+      digest: sha256:89e70f0fccc4dcce3f47e5d490ee961f912a5ffd4e30b98216e3e37e469035e2
+    secretName: filestash
+    storage:
+      size: __STATE_SIZE__
+      storageClass: dictycr-balanced
+    cacheSizeLimit: 2Gi
+    s3:
+      endpoint: http://minio.__NAMESPACE__.svc.cluster.local:9000
+      region: us-east-1
+      label: dictycr-minio
+    ingress:
+      enabled: __INGRESS_ENABLED__
+      className: nginx
+      hosts:
+        - __HOST__
+      tlsSecret: filestash-tls-secret
+      label:
+        name: kcert.dev/ingress
+        value: managed
+    plugins:
+      image:
+        name: dictybase/filestash-plugins
+        tag: <plugins-tag>
+        digest: <plugins-digest>

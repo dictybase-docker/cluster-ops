@@ -1123,6 +1123,78 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" linkout_base_url="" port="80
     echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} port=${port_val}"
     echo "Next: configure stack options, push ${cfg} to cluster-ops develop, or pin properties.image.tag"
 
+# Scaffold a filestash stack config from the cluster registry + template.
+# Writes filestash/Pulumi.<stack>.yaml when it has no config block yet, then
+# initializes the stack with the registry KMS secrets provider. Selects the
+# nginx Ingress mode only when gateway/Pulumi.<stack>.yaml does not exist.
+# Usage: just gcp-pulumi scaffold-filestash-stack --state-size <q> [--host <h>] [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
+[arg("state_size", long="state-size", help="State PVC size, for example 5Gi (required, no default)")]
+[arg("host", long="host", help="Public Filestash host (default: the <filestash-host> placeholder)")]
+[group('pulumi-management')]
+[no-cd]
+scaffold-filestash-stack stack="" state_size="" host="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    stack_name={{ quote(stack) }}
+    [ -z "${stack_name}" ] && stack_name="${PULUMI_STACK:-}"
+    if [ -z "${stack_name}" ]; then
+        echo "ERROR: no stack name — pass --stack or set PULUMI_STACK (via cluster env)." >&2
+        exit 1
+    fi
+    size={{ quote(state_size) }}
+    if [[ ! "${size}" =~ ^[0-9]+(Mi|Gi|Ti)$ ]]; then
+        echo "ERROR: pass --state-size with a quantity such as 5Gi (got '${size}')." >&2
+        exit 1
+    fi
+    host={{ quote(host) }}
+    [ -z "${host}" ] && host="<filestash-host>"
+    host_re='^([A-Za-z0-9.-]+|<filestash-host>)$'
+    if [[ ! "${host}" =~ $host_re ]]; then
+        echo "ERROR: invalid --host '${host}'." >&2
+        exit 1
+    fi
+    entry=""
+    for f in config/clusters/*.yaml; do
+        [ -e "${f}" ] || continue
+        if [ "$(yq -r '.stack' "${f}")" = "${stack_name}" ]; then
+            entry="${f}"
+            break
+        fi
+    done
+    if [ -z "${entry}" ]; then
+        echo "ERROR: no registry entry with stack '${stack_name}' (checked config/clusters/*.yaml)." >&2
+        exit 1
+    fi
+    namespace=$(yq -r '.namespace' "${entry}")
+    kms=$(yq -r '.kms_secrets_provider' "${entry}")
+    cfg="filestash/Pulumi.${stack_name}.yaml"
+    if [ -e "${cfg}" ] && grep -q '^config:' "${cfg}" 2>/dev/null; then
+        echo "Stack config ${cfg} already exists — keeping existing config."
+        exit 0
+    fi
+    ingress=true
+    [ -f "gateway/Pulumi.${stack_name}.yaml" ] && ingress=false
+    sed \
+        -e "s|__NAMESPACE__|${namespace}|g" \
+        -e "s|__HOST__|${host}|g" \
+        -e "s|__STATE_SIZE__|${size}|g" \
+        -e "s|__INGRESS_ENABLED__|${ingress}|g" \
+        config/templates/filestash-stack.yaml.tmpl >> "${cfg}"
+    got_ns=$(yq -r '.config."filestash:properties".namespace' "${cfg}")
+    if [ "${got_ns}" != "${namespace}" ]; then
+        echo "ERROR: rendered config failed validation (namespace=${got_ns})." >&2
+        exit 1
+    fi
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    if ! pulumi -C filestash stack init "${stack_name}" --secrets-provider "${kms}" 2>/dev/null; then
+        pulumi -C filestash stack select "${stack_name}" 2>/dev/null || true
+    fi
+    echo "Scaffolded ${cfg}"
+    echo "  namespace=${namespace} storage.size=${size} ingress.enabled=${ingress} host=${host}"
+    echo "Next: just filestash create-secret"
+
 # Scaffold a frontend_application stack config from the cluster registry + template.
 # Initializes the stack with the registry KMS secrets provider when absent, and
 # appends the baseline config block (four apps: frontpage, publication,
