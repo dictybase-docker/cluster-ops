@@ -179,10 +179,12 @@ Makes one state snapshot now and prints its id. Filestash stays up.
 
 ### Behavior
 
-1. Stops while a state backup Job or pod is unfinished.
-2. Creates a Job from CronJob `filestash-state-backup`.
-3. Waits up to 30 minutes. A failed Job prints its logs.
-4. Prints the `restic` snapshot id and the `restore-state` command for it.
+1. Takes `lease/filestash-maintenance`, the same lock as `restore-state --in-place`. While another manual backup or restore holds it, the recipe stops.
+2. Suspends the CronJob. At the end, the old suspend value comes back.
+3. Stops while a state backup Job or pod is unfinished.
+4. Creates a Job from CronJob `filestash-state-backup`.
+5. Waits up to 30 minutes. A failed Job prints its logs.
+6. Prints the `restic` snapshot id and the `restore-state` command for it.
 
 Record the id before an upgrade.
 

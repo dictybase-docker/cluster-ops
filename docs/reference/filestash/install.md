@@ -119,10 +119,11 @@ Stores `secrets.configSecret` and `secrets.adminPasswordHash` as KMS-encrypted v
 
 ### Behavior
 
-1. Keeps `secrets.configSecret` when the stack has it. When it is missing but `pvc/filestash-state` exists, the recipe stops. Restore the stack file from Git in that case. Otherwise the recipe stores a random 32-character value.
-2. Reads the admin password from a hidden prompt. It needs at least 12 characters.
-3. Makes a bcrypt hash with `htpasswd -niBC 10`. Filestash rejects a plaintext `ADMIN_PASSWORD`.
-4. Stores the hash. Each value goes to Pulumi on standard input, never in the process arguments.
+1. Selects the stack, or creates it with the registry KMS secrets provider. No encrypted value goes into a stack without that provider.
+2. Keeps `secrets.configSecret` when the stack has it. When it is missing but `pvc/filestash-state` exists, the recipe stops. Restore the stack file from Git in that case. Otherwise the recipe stores a random 32-character value.
+3. Reads the admin password from a hidden prompt. It needs at least 12 characters.
+4. Makes a bcrypt hash with `htpasswd -niBC 10`. Filestash rejects a plaintext `ADMIN_PASSWORD`.
+5. Stores the hash. Each value goes to Pulumi on standard input, never in the process arguments.
 
 **Do not change `CONFIG_SECRET`.** It encrypts the secret fields in `config.json`. A new value breaks them. Commit the stack file after the run.
 

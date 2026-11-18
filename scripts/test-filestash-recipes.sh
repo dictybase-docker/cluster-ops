@@ -430,6 +430,10 @@ rg -q '^go-stdin-bytes properties.secrets.configSecret 32$' "$log_file"
 assert_no_call 'a-long-admin-password'
 assert_no_call "$(cat "$stub_dir/cfg-filestash-secrets.configSecret")"
 assert_no_call 'create secret'
+ensure=$(rg -n -m1 'stack ensure --folder filestash --stack '"$stack"' --create' "$log_file" | cut -d: -f1)
+first_set=$(rg -n -m1 'stack config set' "$log_file" | cut -d: -f1)
+[[ -n "$ensure" && "$ensure" -lt "$first_set" ]] || { echo "create-secret must init the stack (KMS provider) before the first write" >&2; exit 1; }
+echo '  test_create_secret_inits_stack_before_write: PASS'
 echo '  test_create_secret_stores_encrypted_stack_values: PASS'
 first=$(cat "$stub_dir/cfg-filestash-secrets.configSecret")
 : > "$log_file"
@@ -465,6 +469,10 @@ for role in intake public operator publisher; do
     assert_no_call "$(cat "$stub_dir/cfg-filestash-users.$role.secretKey")"
 done
 assert_no_call 'root-pass-SECRET'
+ensure=$(rg -n -m1 'stack ensure --folder filestash --stack '"$stack"' --create' "$log_file" | cut -d: -f1)
+first_set=$(rg -n -m1 'stack config set' "$log_file" | cut -d: -f1)
+[[ -n "$ensure" && "$ensure" -lt "$first_set" ]] || { echo "create-users must init the stack before the first write" >&2; exit 1; }
+echo '  test_create_users_inits_stack_before_write: PASS'
 echo '  test_create_users_never_passes_keys_in_argv: PASS'
 before=$(cat "$stub_dir/cfg-filestash-users.intake.secretKey")
 : > "$log_file"
@@ -666,6 +674,20 @@ assert_no_call 'velero'
 expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash backup-now
 expect_failure 'state backup job' env "PULUMI_STACK=$stack" "STUB_BACKUP_FAIL=1" "$just_bin" filestash backup-now
 echo '  test_backup_now_is_online_and_prints_snapshot: PASS'
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now >/dev/null
+lease=$(line_of 'kubectl-created Lease filestash-maintenance' || true)
+[[ -z "$lease" ]] && lease=$(rg -n -m1 'kubectl create -f -' "$log_file" | cut -d: -f1)
+suspend=$(line_of 'patch cronjob filestash-state-backup .*"suspend":true')
+job=$(line_of 'create job --from=cronjob/filestash-state-backup')
+(( lease < suspend && suspend < job )) || { echo "backup-now: lease and suspend must precede the job" >&2; exit 1; }
+rg -q 'patch cronjob filestash-state-backup .*"suspend":false' "$log_file"
+rg -q 'delete lease filestash-maintenance' "$log_file"
+: > "$log_file"
+expect_failure 'another run holds lease/filestash-maintenance' env "PULUMI_STACK=$stack" "STUB_LEASE_HELD=1" "STUB_LEASE_HOLDER=restore@host:1" "$just_bin" filestash backup-now
+assert_no_call 'create job'
+assert_no_call 'patch cronjob'
+echo '  test_backup_now_and_restore_share_the_maintenance_lease: PASS'
 
 # deploy-backup and configure-backup
 : > "$log_file"

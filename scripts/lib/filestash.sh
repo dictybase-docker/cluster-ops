@@ -195,6 +195,14 @@ fs_pulumi_creds() {
     printf '%s' "${PULUMI_GCP_CREDENTIALS:-${GOOGLE_APPLICATION_CREDENTIALS:-}}"
 }
 
+# fs_stack_init <folder> selects the stack, or creates it with the registry
+# KMS secrets provider. Run it before the first encrypted write: a stack that
+# does not exist yet has no secrets provider.
+fs_stack_init() {
+    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
+        go run ./cmd/cluster-ops stack ensure --folder "$1" --stack "$STACK" --create
+}
+
 # fs_cfg_has <folder> <dotted.path> succeeds when the stack file of <folder>
 # sets <folder>:properties.<path> (plain or encrypted).
 fs_cfg_has() {

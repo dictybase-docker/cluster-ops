@@ -182,6 +182,7 @@ create-secret stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     command -v htpasswd >/dev/null 2>&1 || fs_die "htpasswd not found (Apache utils) — it makes the bcrypt hash."
+    fs_stack_init filestash
     if fs_cfg_has filestash secrets.configSecret; then
         echo "CONFIG_SECRET exists in $CFG: keeping it."
     elif kubectl -n "$NS" get pvc filestash-state >/dev/null 2>&1; then
@@ -238,6 +239,7 @@ create-users stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     roles=(intake public operator publisher)
+    fs_stack_init filestash
     existing=$(fs_minio_root 'mc admin user list minio --json | jq -r ".accessKey // empty"') \
         || fs_die "could not list the MinIO users."
     for role in "${roles[@]}"; do
@@ -669,8 +671,7 @@ configure-backup project="" key_file="" manager_key="" stack="" namespace="":
     just filestash _setup-backup-sa --bucket "$BUCKET" --project "$PROJECT" --key-file "$KEY_FILE" --manager-key "$MANAGER_KEY"
     [[ -f "$KEY_FILE" ]] || fs_die "service account key '$KEY_FILE' does not exist."
     KEY_FILE="$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")"
-    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
-        go run ./cmd/cluster-ops stack ensure --folder filestash-backup --stack "$STACK" --create
+    fs_stack_init filestash-backup
     if fs_cfg_has filestash-backup secret.resticPass; then
         echo "restic password exists in $BCFG: keeping it (a new one locks out every snapshot)."
     else
@@ -759,6 +760,8 @@ deploy-backup stack="" namespace="":
 # Run one state backup now: an online copy of the SQLite files and
 # config.json, then a restic snapshot to the GCS bucket of the
 # filestash-backup stack. Filestash keeps running. Prints the snapshot id.
+# Holds lease/filestash-maintenance and suspends the CronJob for the run, so
+# no other manual backup, restore, or scheduled run overlaps it.
 # Usage: just filestash backup-now [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -771,6 +774,10 @@ backup-now stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     fs_backup_resolve
+    # One manual backup or restore at a time: the same Lease as restore-state.
+    fs_lock_take filestash-maintenance
+    trap 'fs_resume_backups; fs_lock_release' EXIT
+    fs_suspend_backups
     fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
     job="filestash-state-backup-now-$(date -u +%Y%m%d%H%M%S)"
     kubectl -n "$NS" create job --from=cronjob/filestash-state-backup "$job"

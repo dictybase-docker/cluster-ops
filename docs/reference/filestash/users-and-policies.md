@@ -85,12 +85,13 @@ Stores a key pair for each of the four roles as encrypted stack values, then cre
 
 ### Behavior
 
-1. Lists the MinIO users with the root key from Secret `minio-root`.
-2. For each role, keeps the stored keys when the stack has them.
-3. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe stops. New keys stop every link. Restore the stack file from Git in that case.
-4. Otherwise it stores the access key `filestash-<role>` and a random 40-character secret key, encrypted.
-5. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
-6. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the user does not have the policy.
+1. Selects the stack, or creates it with the registry KMS secrets provider.
+2. Lists the MinIO users with the root key from Secret `minio-root`.
+3. For each role, keeps the stored keys when the stack has them.
+4. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe stops. New keys stop every link. Restore the stack file from Git in that case.
+5. Otherwise it stores the access key `filestash-<role>` and a random 40-character secret key, encrypted.
+6. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
+7. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the user does not have the policy.
 
 `deploy` then makes Secret `filestash-users`. Commit the stack file after the run.
 
