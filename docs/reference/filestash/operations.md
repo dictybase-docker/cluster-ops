@@ -2,6 +2,11 @@
 
 Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
+Every recipe on this page except `probe-public` takes `--stack` (default
+`$PULUMI_STACK`) and `--namespace` (default `properties.namespace` of
+`filestash/Pulumi.<stack>.yaml`). A `--namespace` that differs from the stack
+file stops the recipe before any change.
+
 ## Table of Contents
 
 - [just filestash upgrade](#just-filestash-upgrade)
@@ -15,47 +20,182 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 ## just filestash upgrade
 
-Runs `backup-now` and prints the snapshot id, writes the current image to `previousImage`, pins `--tag` and `--digest`, runs `deploy` and `verify`. Run the isolation tests and `probe-admin` after each upgrade.
+### What It Does
 
-| Flag | Required |
-|---|---|
-| `--tag` | Yes |
-| `--digest` | Yes (`sha256:<64 hex>`) |
+Makes a state snapshot, then pins a new Filestash image and deploys it. The old image stays in the stack file for `rollback`.
+
+### Behavior
+
+1. Checks `--tag` and `--digest`. It stops when the stack already pins that digest.
+2. Runs `backup-now` and prints the snapshot id. Record the id.
+3. Writes the current image to `previousImage.name`, `previousImage.tag`, and `previousImage.digest`.
+4. Writes `--tag` and `--digest` to `image.tag` and `image.digest`.
+5. Runs `deploy`, then `verify`.
+
+After the recipe, commit the stack file. Then run the
+[isolation tests](first-run.md#isolation-tests) and
+[`probe-admin`](admin-access.md#just-filestash-probe-admin) again.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--tag` | Yes | none | Letters, digits, `.`, `_`, `-`. |
+| `--digest` | Yes | none | `sha256:<64 hex>`. The vendor publishes only `latest`, so the digest is the pin. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash rollback
 
-Pins `previousImage` and runs `deploy`. Fails when no upgrade wrote `previousImage`. If the new release changed the state format, restore the snapshot that `upgrade` made: `just filestash restore-state --in-place yes --snapshot <id>`. `upgrade` prints the id.
+### What It Does
+
+Pins `previousImage` again and deploys it.
+
+### Behavior
+
+1. Reads `previousImage.tag` and `previousImage.digest`. When no `upgrade` wrote them, the recipe stops.
+2. Writes them to `image.tag` and `image.digest`.
+3. Runs `deploy`.
+
+If the new release changed the state format, also restore the snapshot that
+`upgrade` made:
+`just filestash restore-state --in-place yes --snapshot <id>`. Commit the
+stack file after the run.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash purge-uploads
 
-As `filestash-operator`, lists the objects in `uploads` older than `--older-than` days. With `--confirm yes`, deletes them. There is no default age: the retention period is a project decision.
+### What It Does
+
+Lists or deletes the objects in `uploads` that are older than `--older-than` days. It runs as `filestash-operator`.
+
+### Behavior
+
+1. Checks that `--older-than` is a positive number of days.
+2. Without `--confirm yes`, lists the objects (`mc find --older-than`). This is a dry run.
+3. With `--confirm yes`, deletes the same objects (`mc rm --recursive --force --older-than`).
+
+There is no default age. The retention period is a project decision.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--older-than` | Yes | none | Days. |
+| `--confirm` | No | none | `yes` deletes. Any other value lists only. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash audit-shares
 
-Copies the live `share.sql` from the Filestash pod, checks it with `PRAGMA quick_check`, and lists each link with its path, flags, users, and expiry. Fails on an upload link with no expiry, a link with write permission, or a path outside `/uploads/` and `/downloads/`. Needs a local `sqlite3`.
+### What It Does
+
+Lists each share link and fails on a rule break. The recipe makes no change.
+
+### Behavior
+
+1. Checks for a local `sqlite3`.
+2. Copies the live `share.sql` from the Filestash pod to a temporary file.
+3. Checks the copy with `PRAGMA quick_check`. A copy made during a write can be damaged. In that case, run the recipe again.
+4. Prints each link with its id, path, read, upload, and write flags, users, and expiry.
+5. Fails on an upload link with no expiry, a link with write permission, or a path outside `/uploads/` and `/downloads/`.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash probe-public
 
-Checks direct URLs from outside the cluster. `--host` is the MinIO host, and `--key` is a published file.
+### What It Does
+
+Checks the direct file URLs on the public MinIO host from outside the cluster. It does not use the Filestash route. It needs one file that `publish` made.
+
+### Behavior
+
+1. Sends each request in the table without credentials.
+2. Compares each HTTP status with the expected status. Each mismatch prints `FAIL`, and the recipe exits non-zero at the end.
 
 | Request | Expected |
 |---|---|
 | `GET downloads/<key>` | 200 |
-| `GET` with `Range: bytes=0-9` | 206 |
-| `GET downloads/`, `GET uploads/` | 403 |
-| `GET uploads/<key>` | 403 |
-| `PUT` and `DELETE` of a throwaway key in `downloads` | 403 |
+| `GET downloads/<key>` with `Range: bytes=0-9` | 206 |
+| `GET downloads/`, `GET uploads/` (list) | 403 |
+| `GET uploads/probe-<pid>` | 403 |
+| `PUT downloads/probe-<pid>` | 403 |
+| `DELETE downloads/probe-<pid>-absent` | 403 |
 
-The probe never sends a write or a delete to the published `--key`.
+The write and delete requests use a throwaway key. The probe never sends a
+write or a delete to the published `--key`.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--host` | Yes | none | The public MinIO host: `storage.dictycr.org` on `dcr-kube1`, `storage.dictybase.dev` on `experiments`. |
+| `--key` | Yes | none | A published key in `downloads`, `<dataset>/<file>`. |
+
+The recipe takes no `--stack` or `--namespace`. It uses the public URL only.
 
 ## just filestash resize-state
 
-Grows `pvc/filestash-state` to `--size`. Fails before any change when the size is not larger or the storage class does not allow expansion. Writes `storage.size` and runs `deploy`. Commit the stack file after the run.
+### What It Does
+
+Grows `pvc/filestash-state` and writes the new size to the stack file.
+
+### Behavior
+
+1. Checks `--size`. It stops when the size is not larger than the current size, because a PVC cannot shrink.
+2. Checks that the storage class of the PVC allows volume expansion.
+3. Writes `storage.size` to the stack file.
+4. Runs `deploy`.
+
+Commit the stack file after the run.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--size` | Yes | none | A quantity such as `10Gi`. Use `Mi`, `Gi`, or `Ti`. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash teardown
 
-**Destructive.** Requires `--delete-pvc yes`. Destroys the `filestash` stack, which deletes the state PVC and Secrets `filestash` and `filestash-users`. The buckets, their objects, and the restic snapshots stay. The stack file keeps the encrypted values, so a later `deploy` and `restore-state --in-place yes` bring the service back.
+### What It Does
+
+**Destructive.** Destroys the `filestash` stack. This deletes the state PVC (`config.json` and every share link) and Secrets `filestash` and `filestash-users`.
+
+### Behavior
+
+1. Stops unless `--delete-pvc yes` is given.
+2. Prints the state files in `/app/data/state/db` that the destroy deletes.
+3. Runs `pulumi destroy` on the `filestash` stack.
+
+These stay: the buckets and their objects, the `restic` snapshots, and the
+`filestash-backup` stack. With no Filestash pod, each backup Job fails. The
+stack file keeps the encrypted values. A later `deploy` and
+`restore-state --in-place yes` bring the service back.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--delete-pvc` | Yes | none | Must be `yes`. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## Monitoring
 
-The cluster has no alert system. Run `just filestash verify` by hand. The owner and the frequency of that check are deployment inputs. Watch these signals: pod readiness, PVC use, the age of the newest snapshot, HTTP 5xx at the Gateway, and the `AUDIT` lines in the Filestash log.
+The cluster has no alert system. Run `just filestash verify` by hand. The
+owner and the frequency of that check are deployment inputs.
+
+Watch these signals:
+
+- Pod readiness.
+- PVC use.
+- The age of the newest snapshot.
+- HTTP 5xx at the Gateway.
+- The `AUDIT` lines in the Filestash log.

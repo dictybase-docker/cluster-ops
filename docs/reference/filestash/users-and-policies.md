@@ -10,6 +10,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 - [Bucket Policy](#bucket-policy)
 - [just filestash create-buckets](#just-filestash-create-buckets)
 - [just filestash create-users](#just-filestash-create-users)
+- [just filestash login-keys](#just-filestash-login-keys)
 - [Key Rotation](#key-rotation)
 
 ## Buckets
@@ -42,7 +43,7 @@ A share link stores the session of the staff member who made it, with that MinIO
 |---|---|
 | `filestash/Pulumi.<stack>.yaml` | `users.<role>.accessKey` (plain) and `users.<role>.secretKey` (KMS-encrypted). The only copy: commit the file. |
 | Secret `filestash-users` | Made by `deploy` from the stack values. |
-| Operator password store | The intake, public, and operator keys for staff login. Read them with `pulumi -C filestash config get --path filestash:properties.users.<role>.secretKey`. |
+| Operator password store | The intake, public, and operator keys for staff login. Print them with [`just filestash login-keys`](#just-filestash-login-keys). |
 | `share.sql` on the state PVC | An encrypted copy of the session key in each link. The restic snapshots hold it too. |
 
 ## Bucket Policy
@@ -51,25 +52,72 @@ A share link stores the session of the staff member who made it, with that MinIO
 
 ## just filestash create-buckets
 
-Runs `mc mb --ignore-existing` for both buckets and `mc anonymous set none` on `uploads`, with the root key from Secret `minio-root`. A second run changes nothing.
+### What It Does
+
+Creates the buckets `uploads` and `downloads` and makes `uploads` private. A second run changes nothing.
+
+### Behavior
+
+1. Reads the root key from Secret `minio-root` and opens a port-forward to Service `minio`.
+2. Runs `mc mb --ignore-existing` for `uploads` and `downloads`.
+3. Runs `mc anonymous set none` on `uploads`.
+
+The public read policy on `downloads` is a separate step: `just filestash publish-bucket`.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 
 ## just filestash create-users
+
+### What It Does
+
+Stores a key pair for each of the four roles as encrypted stack values, then creates the MinIO users and their policies.
 
 ### Behavior
 
 1. Lists the MinIO users with the root key from Secret `minio-root`.
-2. For each role: keeps stored keys. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe refuses: new keys stop every link, so restore the stack file from Git. Otherwise it stores `filestash-<role>` and a random 40-character secret key, encrypted.
-3. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
-4. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
+2. For each role, keeps the stored keys when the stack has them.
+3. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe stops. New keys stop every link. Restore the stack file from Git in that case.
+4. Otherwise it stores the access key `filestash-<role>` and a random 40-character secret key, encrypted.
+5. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
+6. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
 
 `deploy` then makes Secret `filestash-users`. Commit the stack file after the run.
 
 ### Flags
 
-| Flag | Required | Default |
-|---|---|---|
-| `--stack` | No | `$PULUMI_STACK` |
-| `--namespace` | No | `properties.namespace` |
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
+
+## just filestash login-keys
+
+### What It Does
+
+Prints the access key and the secret key of one staff login role. Staff paste them into the Filestash login form.
+
+### Behavior
+
+1. Accepts only the roles `intake`, `public`, and `operator`. The `publisher` keys are for the `publish` and `unpublish-file` recipes, and this recipe refuses them.
+2. Reads the access key from the stack file and decrypts the secret key with the KMS provider.
+3. Prints both keys to the terminal. The recipe changes nothing.
+
+When the stack has no keys for the role, the recipe prints `run: just filestash create-users`.
+
+**The output is a live credential.** Copy it into the operator password store, then clear the terminal. Do not paste it into a ticket or a chat.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--role` | Yes | none | `intake`, `public`, or `operator`. |
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 
 ## Key Rotation
 

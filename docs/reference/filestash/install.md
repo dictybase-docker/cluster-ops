@@ -58,15 +58,29 @@ Validation reports `<...>` placeholders first, then invalid values. The error na
 
 ## Stack Values to Set
 
-These values have no default. Set them with
-`just gcp-pulumi set-config --folder filestash --key properties.<key> --value <value>`.
+The committed stack files hold `<...>` placeholders and `backup.maxAgeHours: 0`.
+Validation reports the placeholders first, for example
+`filestash:properties contains placeholder in applicationURL, plugins.image.tag, plugins.image.digest`.
+Then it reports invalid values, for example
+`filestash:properties is invalid in backup.maxAgeHours`.
 
-| Key | Value | Notes |
-|---|---|---|
-| `applicationURL` | `https://<filestash-host>` | Filestash builds share URLs from it. |
-| `ingress.hosts.0` | `<filestash-host>` | `experiments` only, at the route step, with `ingress.enabled=true`. |
-| `backup.maxAgeHours` | Hours, for example `6` | Recovery point target. Larger than the 4-hour schedule. |
-| `plugins.image.tag` / `plugins.image.digest` | From `build-plugins` | |
+Set each value with
+`just gcp-pulumi set-config --folder <folder> --key properties.<key> --value <value>`.
+Commit the stack file after each change.
+
+| Folder and key | Committed value | Set it to | When |
+|---|---|---|---|
+| `filestash` `applicationURL` | `https://<filestash-host>` | `https://` and the public Filestash host. Filestash builds share URLs from it. | Before the first `deploy` |
+| `filestash` `backup.maxAgeHours` | `0` | Hours, larger than the 4-hour schedule, for example `6` | Before the first `deploy` |
+| `filestash` `plugins.image.tag` | `<plugins-tag>` | The tag that `build-plugins` prints | Before the first `deploy` |
+| `filestash` `plugins.image.digest` | `<plugins-digest>` | The `sha256:` digest that `build-plugins` prints | Before the first `deploy` |
+| `filestash` `ingress.hosts.0` | `<filestash-host>` (`experiments` only) | The public Filestash host | Route step, together with `ingress.enabled=true` |
+| `gateway` `routes.filestash.hosts.0` | `<filestash-host>` (`dcr-kube1` only) | The public Filestash host | Route step, together with `routes.filestash.enabled=true` |
+
+Validation ignores the two route hosts while their route is off. With the
+route on, a placeholder host stops the deploy. On a new cluster,
+`scaffold-filestash-stack --host` writes the host into `applicationURL` and
+`ingress.hosts`.
 
 `create-secret` and `create-users` set the encrypted values. Never edit them by hand.
 
@@ -84,7 +98,7 @@ Writes `filestash/Pulumi.<stack>.yaml` and `filestash-backup/Pulumi.<stack>.yaml
 
 1. Resolves the stack, and fails without `--state-size`.
 2. Reads `namespace`, `kms_secrets_provider`, and `gcp_project` from the registry entry with the same `stack`.
-3. Keeps each existing file that has a `config:` block.
+3. Keeps a stack file when it has a `config:` block already.
 4. Writes `ingress.enabled: false` on every cluster. It prints the public route mode: a Gateway route when `gateway/Pulumi.<stack>.yaml` exists, else the nginx Ingress, which the route step turns on.
 5. Writes the backup bucket `restic-filestash-backup-<gcp_project>`.
 6. Runs `pulumi stack init` with the KMS provider for each new file.
@@ -95,7 +109,7 @@ Writes `filestash/Pulumi.<stack>.yaml` and `filestash-backup/Pulumi.<stack>.yaml
 |---|---|---|---|
 | `--state-size` | Yes | none | `Mi`, `Gi`, or `Ti`. |
 | `--host` | No | `<filestash-host>` | Sets `applicationURL` and `ingress.hosts`. |
-| `--stack` | No | `$PULUMI_STACK` | |
+| `--stack` | No | `$PULUMI_STACK` | Must equal the `stack` of an entry in `config/clusters/`. |
 
 ## just filestash create-secret
 
@@ -105,7 +119,7 @@ Stores `secrets.configSecret` and `secrets.adminPasswordHash` as KMS-encrypted v
 
 ### Behavior
 
-1. Keeps an existing `secrets.configSecret`. When it is missing but `pvc/filestash-state` exists, the recipe refuses: restore the stack file from Git. Otherwise it stores a random 32-character value.
+1. Keeps `secrets.configSecret` when the stack has it. When it is missing but `pvc/filestash-state` exists, the recipe stops. Restore the stack file from Git in that case. Otherwise the recipe stores a random 32-character value.
 2. Reads the admin password from a hidden prompt. It needs at least 12 characters.
 3. Makes a bcrypt hash with `htpasswd -niBC 10`. Filestash rejects a plaintext `ADMIN_PASSWORD`.
 4. Stores the hash. Each value goes to Pulumi on standard input, never in the process arguments.
@@ -114,28 +128,48 @@ Stores `secrets.configSecret` and `secrets.adminPasswordHash` as KMS-encrypted v
 
 ### Flags
 
-| Flag | Required | Default |
-|---|---|---|
-| `--stack` | No | `$PULUMI_STACK` |
-| `--namespace` | No | `properties.namespace` |
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 
 ## just filestash check
 
-Read-only preflight: the namespace, the encrypted stack values for both Secrets, Secret `minio-root`, and Service `minio`. `deploy` runs it first.
+### What It Does
+
+Read-only preflight. `deploy` runs it first.
+
+### Behavior
+
+1. Checks that the namespace exists.
+2. Checks that the stack file has `secrets.adminPasswordHash` and `secrets.configSecret`. If not, it prints `run: just filestash create-secret`.
+3. Checks that the stack file has the secret key of each of the four roles. If not, it prints `run: just filestash create-users`.
+4. Checks that Secret `minio-root` and Service `minio` exist in the namespace.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 
 ## just filestash deploy
+
+### What It Does
+
+Deploys the `filestash` stack and waits for the rollout.
 
 ### Behavior
 
 1. Runs `check`.
 2. Selects the stack, or initializes it from the committed file.
-3. Runs `pulumi up` on `filestash/`. Validation stops a stack file with placeholders.
+3. Runs `pulumi up` on `filestash/`. Validation stops a stack file with placeholders or invalid values.
 4. Waits for `deployment/filestash`.
 
 ### Flags
 
-| Flag | Required | Default |
-|---|---|---|
-| `--timeout` | No | `300s` |
-| `--stack` | No | `$PULUMI_STACK` |
-| `--namespace` | No | `properties.namespace` |
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--timeout` | No | `300s` | Rollout wait. |
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |

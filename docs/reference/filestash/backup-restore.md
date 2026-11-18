@@ -3,22 +3,30 @@
 Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 The `filestash-backup` Pulumi project backs up the Filestash state with
-`restic` to its own GCS bucket, the same pattern as the ArangoDB, Redis, and
-MinIO backups. Velero does not back up the state.
+`restic` to its own GCS bucket. The ArangoDB, Redis, and MinIO backups use
+the same pattern.
+
+**Velero does not back up the state.** These are the reasons:
+
+- A disk snapshot of a live SQLite file is not consistent. The backup Job uses `sqlite3 .backup`, which is.
+- With Velero, the recovery point depends on a schedule for the full cluster. The `filestash-backup` stack has its own schedule and `backup.maxAgeHours` target.
+- The cluster excludes every datastore PVC from Velero. The state PVC follows the same rule.
+
 → [ADR 0001](../../adr/0001-filestash-state-backup-with-restic.md)
 
 ## Table of Contents
 
-- [What Is Backed Up](#what-is-backed-up)
+- [What the Backup Saves](#what-the-backup-saves)
 - [Backup Resources](#backup-resources)
 - [State Backup CronJob](#state-backup-cronjob)
 - [just filestash configure-backup](#just-filestash-configure-backup)
 - [just filestash deploy-backup](#just-filestash-deploy-backup)
 - [just filestash backup-now](#just-filestash-backup-now)
+- [just filestash list-snapshots](#just-filestash-list-snapshots)
 - [just filestash restore-state](#just-filestash-restore-state)
 - [just filestash restore-cleanup](#just-filestash-restore-cleanup)
 
-## What Is Backed Up
+## What the Backup Saves
 
 | Data | Backup |
 |---|---|
@@ -63,12 +71,19 @@ as the other datastores.
 
 ## State Backup CronJob
 
-`filestash-state-backup` runs on `schedule`. Filestash keeps running.
+`filestash-state-backup` runs on `schedule`. Filestash stays up during the copy.
 
 **Consistency limit.** `sqlite3 .backup` makes each SQLite file consistent by itself. The files and `config.json` are not copied at one point in time. A share that staff make during the copy can be in `share.sql` but not match a settings change made at the same time. Make settings changes outside the backup window (minute 30 of every fourth hour), or run `backup-now` after the change.
 
 1. The pod runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
-2. Init container `copy` writes `/backup/state` in an `emptyDir`: `sqlite3 .backup` of each `db/*.sql`, `PRAGMA integrity_check`, the row count of each table (`counts.txt`), `config.json`, `SHA256SUMS` (it covers `counts.txt`), and `manifest.json` with the SHA-256 of `CONFIG_SECRET`. The copy fails closed: `share.sql` must exist, and `config.json` must be valid JSON with a nonempty `general.secret_key`. A failed step fails the Job before any upload.
+2. Init container `copy` writes `/backup/state` in an `emptyDir`. It writes these files:
+   - A `sqlite3 .backup` copy of each `db/*.sql`, after a `PRAGMA integrity_check`.
+   - `counts.txt`, with the row count of each table.
+   - `config.json`.
+   - `SHA256SUMS`, which also covers `counts.txt`.
+   - `manifest.json`, with the SHA-256 of `CONFIG_SECRET`.
+
+   The copy fails closed. `share.sql` must exist. `config.json` must be valid JSON with a nonempty `general.secret_key`. A failed step fails the Job before any upload.
 3. Container `restic` initializes the repository only when `restic` reports that it does not exist (exit code 10). A wrong password, a lock, or a network error stops the Job. Then it runs `restic backup /backup/state --tag filestash-backup --host filestash`, and applies the retention policy with `forget --prune`.
 4. `concurrencyPolicy: Forbid`, and the Job fails after 30 minutes (`activeDeadlineSeconds`). When no Filestash pod runs, the backup pod has no node and the Job fails. `verify` then reports the snapshot age.
 
@@ -82,18 +97,19 @@ Prepares the encrypted values of the `filestash-backup` stack.
 
 1. Binds every `gcloud` call and the key mint to the `sa-manager` key file (`--manager-key`, default `credentials/<project>/sa-manager.json`). It refuses a key that is not `sa-manager@<project>`. The ambient `gcloud` account is never used.
 2. Checks that `filestash-backup/Pulumi.<stack>.yaml` exists, that its namespace equals the `filestash` namespace, and that its bucket equals `restic-filestash-backup-<project>`.
-3. Creates service account `filestash-backup-sa` only when `gcloud` reports `NOT_FOUND`; any other error stops the recipe. Then it grants `roles/storage.objectAdmin` limited to the bucket by an IAM condition, and creates the key file unless it exists.
-4. Keeps an existing `secret.resticPass`. Otherwise it stores a random 40-character password.
-5. Stores `secret.gcsProject` and `secret.serviceAccountFile` (the absolute key path).
+3. Creates service account `filestash-backup-sa` only when `gcloud` reports `NOT_FOUND`. Any other error stops the recipe.
+4. Grants `roles/storage.objectAdmin`, limited to the bucket by an IAM condition. Then it creates the key file, unless the file is on disk already.
+5. Keeps `secret.resticPass` when the stack has it. Otherwise it stores a random 40-character password.
+6. Stores `secret.gcsProject` and `secret.serviceAccountFile` (the absolute key path).
 
 ### Flags
 
-| Flag | Required | Default |
-|---|---|---|
-| `--project` | No | `$PROJECT_ID` |
-| `--key-file` | No | `credentials/<project>/filestash-backup-sa.json` |
-| `--manager-key` | No | `credentials/<project>/sa-manager.json` |
-| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` |
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--project` | No | `$PROJECT_ID` | Must match the `bucket` in the stack file. |
+| `--key-file` | No | `credentials/<project>/filestash-backup-sa.json` | Git does not hold this file. |
+| `--manager-key` | No | `credentials/<project>/sa-manager.json` | Must be the key of `sa-manager@<project>`. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ### Recover the Service Account Key
 
@@ -103,21 +119,83 @@ does not hold it. When the file is lost, run `configure-backup` again: it makes
 a new key, and the snapshots stay readable, because the `restic` password does
 not change. Then run `deploy-backup` and delete the old key.
 
-**Service account keys accumulate.** Audit them with `gcloud iam service-accounts keys list --iam-account filestash-backup-sa@<project>.iam.gserviceaccount.com`.
+**Service account keys accumulate.** List them with `just filestash backup-keys`, which runs as `sa-manager`.
 
 ## just filestash deploy-backup
 
-Checks that the three `secret.*` values exist and that `pvc/filestash-state` exists, then runs `pulumi up` on `filestash-backup/`. Deploy `filestash` first.
+### What It Does
+
+Deploys the `filestash-backup` stack: the GCS bucket, Secret `filestash-backup-auth`, and CronJob `filestash-state-backup`.
+
+### Behavior
+
+1. Checks that the stack file has `secret.resticPass`, `secret.gcsProject`, and `secret.serviceAccountFile`. If not, it prints `run: just filestash configure-backup`.
+2. Checks that `pvc/filestash-state` exists, because the CronJob mounts it. If not, it prints `run: just filestash deploy`.
+3. Selects or initializes the stack, then runs `pulumi up` on `filestash-backup/`.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | The `filestash-backup` namespace must equal the `filestash` namespace. |
 
 ## just filestash backup-now
 
-Refuses while a backup Job or pod is unfinished. Runs a Job from the CronJob, waits, and prints the `restic` snapshot id. Filestash keeps running. Record the id before an upgrade.
+### What It Does
+
+Makes one state snapshot now and prints its id. Filestash stays up.
+
+### Behavior
+
+1. Stops while a state backup Job or pod is unfinished.
+2. Creates a Job from CronJob `filestash-state-backup`.
+3. Waits up to 30 minutes. A failed Job prints its logs.
+4. Prints the `restic` snapshot id and the `restore-state` command for it.
+
+Record the id before an upgrade.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
+
+## just filestash list-snapshots
+
+### What It Does
+
+Lists the `restic` snapshots of the Filestash state, the newest last. Use it to select a `--snapshot` id for `restore-state`. The recipe makes no change.
+
+### Behavior
+
+1. Checks for a local `restic` CLI. If it is missing, install it first.
+2. Reads the `restic` password, the GCS project, and the key file path from the encrypted `filestash-backup` stack values.
+3. Gives them to `restic` in the environment only.
+4. Runs `restic snapshots --tag filestash-backup --host filestash` on `gs:restic-filestash-backup-<project-id>:/`.
+
+The key file `credentials/<project>/filestash-backup-sa.json` must be on the
+operator host, at the path in `secret.serviceAccountFile`.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | |
 
 ## just filestash restore-state
 
+### What It Does
+
+Restores the Filestash state from a `restic` snapshot. It has two modes:
+
+- **Test restore** (`--target-namespace`): restores into a new namespace and leaves the live service alone.
+- **Disaster recovery** (`--in-place yes`): replaces the live state. Destructive.
+
+Get snapshot ids with [`just filestash list-snapshots`](#just-filestash-list-snapshots). The default snapshot is `latest`.
+
 ### Test Restore
 
-`--target-namespace <new-namespace> [--snapshot <id>]`. The default snapshot is `latest`. Preflight, before any change:
+Preflight, before any change:
 
 1. The snapshot is `latest` or a hexadecimal id.
 2. The target is not the live namespace and does not exist.
@@ -143,12 +221,30 @@ Then:
 
 For a lost PVC, run `just filestash deploy` first. It creates an empty PVC. Then run `--in-place yes`.
 
-| Flag | Required | Notes |
-|---|---|---|
-| `--snapshot` | No | `restic` snapshot id. Default: `latest`. |
-| `--target-namespace` | Test restore | Must not exist. |
-| `--in-place` | Disaster recovery | `yes` |
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--snapshot` | No | `latest` | A `restic` snapshot id (8 to 64 hexadecimal characters). |
+| `--target-namespace` | Test restore | none | Must not exist, and must not be the live namespace. |
+| `--in-place` | Disaster recovery | none | `yes`. Takes no `--target-namespace`. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | `--namespace` is the live namespace. |
 
 ## just filestash restore-cleanup
 
-Deletes a restore test namespace. Refuses a namespace without the label `filestash-restore-test=true`.
+### What It Does
+
+Deletes a restore test namespace.
+
+### Behavior
+
+1. Stops when `--target-namespace` is empty or is the live namespace.
+2. Stops when the namespace has no label `filestash-restore-test=true`. Only `restore-state` sets that label.
+3. Deletes the namespace.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--target-namespace` | Yes | none | The namespace of the test restore. |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` | `--namespace` is the live namespace. |

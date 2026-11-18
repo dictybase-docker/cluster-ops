@@ -410,7 +410,12 @@ verify stack="" namespace="":
     if [[ ! "$max" =~ ^[1-9][0-9]*$ ]]; then
         bad "backup.maxAgeHours is unset in $CFG (recovery point target)"
     else
-        last=$(kubectl -n "$NS" get cronjob filestash-state-backup -o jsonpath='{.status.lastSuccessfulTime}' 2>/dev/null || true)
+        # The CronJob status counts only its own runs. A backup-now Job has the
+        # same component label, so take the newest success of both.
+        cron=$(kubectl -n "$NS" get cronjob filestash-state-backup -o jsonpath='{.status.lastSuccessfulTime}' 2>/dev/null || true)
+        jobs=$(kubectl -n "$NS" get jobs -l app.kubernetes.io/component=state-backup -o json 2>/dev/null \
+            | jq -r '[.items[] | select((.status.succeeded // 0) > 0) | .status.completionTime // empty] | max // empty' || true)
+        last=$(printf '%s\n%s\n' "$cron" "$jobs" | sort | tail -n 1)
         age=none
         [[ -n "$last" ]] && age=$(jq -rn --arg t "$last" '(now - ($t | fromdateiso8601)) / 3600 | floor')
         if [[ "$age" =~ ^[0-9]+$ && "$age" -lt "$max" ]]; then
@@ -1130,3 +1135,28 @@ list-snapshots stack="" namespace="":
     key=$(fs_cfg_get filestash-backup secret.serviceAccountFile)
     export RESTIC_REPOSITORY RESTIC_PASSWORD GOOGLE_PROJECT_ID
     GOOGLE_APPLICATION_CREDENTIALS="$key" restic snapshots --tag filestash-backup --host filestash
+
+# List the keys of service account filestash-backup-sa, as sa-manager. Keys
+# accumulate when configure-backup makes a new key; delete the unused ones.
+# Usage: just filestash backup-keys [--project <id>] [--manager-key <path>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID)")]
+[arg("manager_key", long="manager-key", help="sa-manager JSON key (default credentials/<project>/sa-manager.json)")]
+[group('filestash')]
+[no-cd]
+backup-keys project="" manager_key="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    PROJECT={{ quote(project) }}
+    [[ -n "$PROJECT" ]] || PROJECT="${PROJECT_ID:-}"
+    [[ -n "$PROJECT" ]] || { echo "Error: no GCP project id — pass --project." >&2; exit 1; }
+    MANAGER_KEY={{ quote(manager_key) }}
+    [[ -n "$MANAGER_KEY" ]] || MANAGER_KEY="credentials/${PROJECT}/sa-manager.json"
+    [[ -f "$MANAGER_KEY" ]] || { echo "Error: sa-manager key '$MANAGER_KEY' not found." >&2; exit 1; }
+    WHO=$(jq -r '.client_email // empty' "$MANAGER_KEY")
+    if [[ "$WHO" != "sa-manager@${PROJECT}.iam.gserviceaccount.com" ]]; then
+        echo "Error: '$MANAGER_KEY' is '${WHO:-not a service account key}', not sa-manager@${PROJECT}." >&2
+        exit 1
+    fi
+    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$MANAGER_KEY" gcloud iam service-accounts keys list \
+        --iam-account "filestash-backup-sa@${PROJECT}.iam.gserviceaccount.com" --project "$PROJECT" --managed-by user

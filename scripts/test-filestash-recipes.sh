@@ -641,6 +641,10 @@ assert_no_call() { if rg -q -- "$1" "$log_file"; then printf 'unexpected call ma
 line_of() { rg -n -m1 -- "$1" "$log_file" | cut -d: -f1; }
 expect_failure "newest successful state backup age '7h'" "${vok[@]}" "STUB_BACKUP_AGE_H=7" "$just_bin" filestash verify
 expect_failure "newest successful state backup age 'noneh'" env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify
+manual='{"items":[{"status":{"succeeded":1,"completionTime":"'"$(jq -rn 'now - 1800 | todate')"'"}},{"status":{"failed":1}}]}'
+out=$(run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_JOBS_JSON=$manual" "$just_bin" filestash verify)
+printf '%s' "$out" | rg -q 'newest restic snapshot 0h old'
+echo '  test_verify_counts_backup_now_jobs: PASS'
 echo '  test_verify_fails_on_stale_backup: PASS'
 expect_failure 'no velero.io/exclude-from-backup=true label' "${vok[@]}" "STUB_PVC_EXCLUDE=" "$just_bin" filestash verify
 echo '  test_verify_requires_velero_exclusion: PASS'
@@ -858,5 +862,12 @@ printf '%s' "$out" | rg -q '4f2a9c1b'
 rg -qF 'restic snapshots --tag filestash-backup --host filestash [repo gs:restic-filestash-backup-test:/ pw-set yes creds /keys/fs-backup.json]' "$log_file"
 assert_no_call "$(cat "$stub_dir/cfg-filestash-backup-secret.resticPass")"
 echo '  test_list_snapshots: PASS'
+
+echo "=== 16. backup key audit ==="
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-keys --project test --manager-key "$tmp_dir/mgr.json" >/dev/null
+rg -q "^gcloud iam service-accounts keys list --iam-account filestash-backup-sa@test.iam.gserviceaccount.com --project test --managed-by user \\[as $tmp_dir/mgr.json\\]$" "$log_file"
+expect_failure 'not sa-manager@test' env "PULUMI_STACK=$stack" "$just_bin" filestash backup-keys --project test --manager-key "$tmp_dir/creator.json"
+echo '  test_backup_keys: PASS'
 
 echo "All filestash recipe contract tests passed."
