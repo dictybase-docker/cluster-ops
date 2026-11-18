@@ -39,6 +39,10 @@ func NewFilestash(cfg *FilestashConfig) *Filestash {
 }
 
 func (f *Filestash) Install(ctx *pulumi.Context) error {
+	secrets, err := f.CreateSecrets(ctx)
+	if err != nil {
+		return err
+	}
 	seed, err := f.CreateSeedConfigMap(ctx)
 	if err != nil {
 		return err
@@ -47,14 +51,11 @@ func (f *Filestash) Install(ctx *pulumi.Context) error {
 	if err != nil {
 		return err
 	}
-	deployment, err := f.CreateDeployment(ctx, seed, pvc)
+	deployment, err := f.CreateDeployment(ctx, append(secrets, seed, pvc)...)
 	if err != nil {
 		return err
 	}
 	if err := f.CreateService(ctx, deployment); err != nil {
-		return err
-	}
-	if err := f.CreateStateBackup(ctx, deployment, pvc); err != nil {
 		return err
 	}
 	return f.CreateIngress(ctx)

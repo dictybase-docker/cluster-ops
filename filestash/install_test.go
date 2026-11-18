@@ -15,6 +15,7 @@ import (
 type resourceMocks struct {
 	mu        sync.Mutex
 	resources map[string]pulumi.MockResourceArgs
+	secrets   map[string]bool
 }
 
 func (m *resourceMocks) Call(pulumi.MockCallArgs) (resource.PropertyMap, error) {
@@ -25,12 +26,16 @@ func (m *resourceMocks) NewResource(args pulumi.MockResourceArgs) (string, resou
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.resources[args.Name] = args
+	m.secrets[args.Name] = args.Inputs.ContainsSecrets()
 	return args.Name, args.Inputs, nil
 }
 
 func install(t *testing.T, cfg *FilestashConfig) *resourceMocks {
 	t.Helper()
-	mocks := &resourceMocks{resources: make(map[string]pulumi.MockResourceArgs)}
+	mocks := &resourceMocks{
+		resources: make(map[string]pulumi.MockResourceArgs),
+		secrets:   make(map[string]bool),
+	}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		return NewFilestash(cfg).Install(ctx)
 	}, pulumi.WithMocks("filestash", "test", mocks))
@@ -272,81 +277,39 @@ func TestSeedDisablesConsole(t *testing.T) {
 	require.Equal(t, false, dig(t, seed, "log", "telemetry"))
 }
 
-func cronJobPod(t *testing.T, m *resourceMocks) map[string]any {
-	t.Helper()
-	cj := mapped(t, m, "filestash-state-backup")
-	require.Equal(t, "Forbid", dig(t, cj, "spec", "concurrencyPolicy"))
-	require.Equal(t, "30 */4 * * *", dig(t, cj, "spec", "schedule"))
-	pod, ok := dig(t, cj, "spec", "jobTemplate", "spec", "template", "spec").(map[string]any)
-	require.True(t, ok)
-	return pod
-}
-
-func TestStateBackupCronJob(t *testing.T) {
+func TestSecretsFromStackConfig(t *testing.T) {
 	t.Parallel()
 	m := install(t, validConfig())
-	pod := cronJobPod(t, m)
-	require.Equal(t, "filestash-state-backup", pod["serviceAccountName"])
-	require.Equal(t, "Never", pod["restartPolicy"])
-	require.Contains(t, fmt.Sprint(pod["volumes"]), "claimName:filestash-state")
-	aff := dig(t, pod, "affinity", "podAffinity", "requiredDuringSchedulingIgnoredDuringExecution", 0)
-	require.Equal(t, "kubernetes.io/hostname", dig(t, aff, "topologyKey"))
-	require.Equal(t, "filestash", dig(t, aff, "labelSelector", "matchLabels", "app.kubernetes.io/name"))
-	require.Equal(t, []string{"scale-down", "copy"}, initNames(t, pod))
-	require.Contains(t, fmt.Sprint(initContainer(t, pod, "copy")["image"]), "@sha256:")
-	main := dig(t, pod, "containers", 0)
-	require.Equal(t, "scale-up", dig(t, main, "name"))
-
-	cj := mapped(t, m, "filestash-state-backup")
-	labels := fmt.Sprint(dig(t, cj, "spec", "jobTemplate", "spec", "template", "metadata", "labels"))
-	require.NotContains(t, labels, "app.kubernetes.io/name:filestash",
-		"the backup pod must not match the Filestash selector")
-
-	require.Equal(t, "state-backup",
-		dig(t, cj, "spec", "jobTemplate", "metadata", "labels", "app.kubernetes.io/component"),
-		"Jobs carry the component label, so recipes can find active Jobs")
-	role := fmt.Sprint(mapped(t, m, "filestash-state-backup-role"))
-	require.Contains(t, role, "deployments/scale")
-	require.Contains(t, fmt.Sprint(mapped(t, m, "filestash-state-backup-binding")), "filestash-state-backup")
+	sec := mapped(t, m, "filestash-secret")
+	require.Equal(t, "filestash", dig(t, sec, "metadata", "name"))
+	require.Equal(t, "filestash", dig(t, sec, "metadata", "labels", "app.kubernetes.io/name"))
+	data := fmt.Sprint(dig(t, sec, "stringData"))
+	require.Contains(t, data, "ADMIN_PASSWORD")
+	require.Contains(t, data, "CONFIG_SECRET")
+	users := fmt.Sprint(dig(t, mapped(t, m, "filestash-users"), "stringData"))
+	for _, role := range userRoles {
+		require.Contains(t, users, role+"AccessKey")
+		require.Contains(t, users, role+"SecretKey")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	require.True(t, m.secrets["filestash-secret"], "Secret filestash must be a Pulumi secret output")
+	require.True(t, m.secrets["filestash-users"], "Secret filestash-users must be a Pulumi secret output")
 }
 
-func TestStateBackupScalesDownFirst(t *testing.T) {
+func TestVeleroExcludesState(t *testing.T) {
 	t.Parallel()
-	pod := cronJobPod(t, install(t, validConfig()))
-	down := fmt.Sprint(initContainer(t, pod, "scale-down")["command"])
-	require.Contains(t, down, "scale deployment/filestash --replicas=0")
-	require.Contains(t, down, "exit 0", "an init step never fails, so scale-up always runs")
-	up := fmt.Sprint(dig(t, pod, "containers", 0, "command"))
-	scale := strings.Index(up, "scale deployment/filestash --replicas=1")
-	check := strings.Index(up, "copy.status")
-	require.GreaterOrEqual(t, scale, 0)
-	require.Greater(t, check, scale, "scale up before the status check")
+	m := install(t, validConfig())
+	pvc := mapped(t, m, "filestash-state")
+	require.Equal(t, "true", dig(t, pvc, "metadata", "labels", "velero.io/exclude-from-backup"))
+	ann := dig(t, mapped(t, m, "filestash"), "spec", "template", "metadata", "annotations")
+	require.Equal(t, "state,cache", dig(t, ann, "backup.velero.io/backup-volumes-excludes"))
 }
 
-func TestStateBackupCommandOrder(t *testing.T) {
+func TestNoStateBackupInThisStack(t *testing.T) {
 	t.Parallel()
-	pod := cronJobPod(t, install(t, validConfig()))
-	cmd := fmt.Sprint(initContainer(t, pod, "copy")["command"])
-	order := []string{
-		"B=$S/backups",
-		"scale.status",
-		"-name '.partial-*' -exec rm -rf {} +",
-		"P=\"$B/.partial-$TS\"",
-		".backup",
-		"PRAGMA integrity_check",
-		"config/config.json",
-		"SHA256SUMS",
-		"manifest.json",
-		"mv \"$P\" \"$B/$TS\"",
-		"tail -n +$((KEEP + 1))",
-		"rm -rf \"$B\"/.partial-*",
-	}
-	last := -1
-	for _, step := range order {
-		idx := strings.Index(cmd, step)
-		require.Greater(t, idx, last, "step %q out of order", step)
-		last = idx
-	}
-	require.Contains(t, cmd, "[ -f \"$d/manifest.json\" ]", "prune only completed copies")
-	require.Contains(t, cmd, "KEEP=7")
+	m := install(t, validConfig())
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	require.NotContains(t, m.resources, "filestash-state-backup", "the filestash-backup stack owns the backup")
 }

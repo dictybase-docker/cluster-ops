@@ -141,8 +141,8 @@ lock-office-deps office_lock="":
     done
     echo "Updated $OFFICE_LOCK. Review the diff, then: just filestash build-plugins --tag <t>"
 
-# Read-only preflight: the namespace, Secret filestash with ADMIN_PASSWORD and
-# CONFIG_SECRET, Secret minio-root, and Service minio.
+# Read-only preflight: the namespace, the encrypted stack values for Secrets
+# filestash and filestash-users, Secret minio-root, and Service minio.
 # Usage: just filestash check [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -155,18 +155,21 @@ check stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     kubectl get namespace "$NS" >/dev/null 2>&1 || fs_die "namespace '$NS' not found."
-    for key in ADMIN_PASSWORD CONFIG_SECRET; do
-        [[ -n "$(fs_secret_value filestash "$key")" ]] || fs_die "Secret filestash has no $key in '$NS' — run: just filestash create-secret"
+    for key in secrets.adminPasswordHash secrets.configSecret; do
+        fs_cfg_has filestash "$key" || fs_die "$CFG has no properties.$key — run: just filestash create-secret"
+    done
+    for role in intake public operator publisher; do
+        fs_cfg_has filestash "users.$role.secretKey" || fs_die "$CFG has no keys for $role — run: just filestash create-users"
     done
     fs_secret_exists minio-root || fs_die "Secret minio-root not found in '$NS'."
     kubectl -n "$NS" get service minio >/dev/null 2>&1 || fs_die "service/minio not found in '$NS'."
     echo "filestash prerequisites ready for stack '$STACK' in namespace '$NS'."
     echo "Next: just filestash deploy"
 
-# Create Secret filestash: the bcrypt hash of the admin password (hidden
-# prompt) and a random CONFIG_SECRET. If the Secret exists, keep its
-# CONFIG_SECRET and replace only ADMIN_PASSWORD: a new CONFIG_SECRET breaks
-# every encrypted value in config.json.
+# Store the admin password hash and CONFIG_SECRET as KMS-encrypted values in
+# filestash/Pulumi.<stack>.yaml. `deploy` makes Secret filestash from them.
+# A second run replaces only the admin password hash: a new CONFIG_SECRET
+# breaks every encrypted value in config.json.
 # Usage: just filestash create-secret [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -179,32 +182,22 @@ create-secret stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     command -v htpasswd >/dev/null 2>&1 || fs_die "htpasswd not found (Apache utils) — it makes the bcrypt hash."
-    kubectl get namespace "$NS" >/dev/null 2>&1 || fs_die "namespace '$NS' not found."
+    if fs_cfg_has filestash secrets.configSecret; then
+        echo "CONFIG_SECRET exists in $CFG: keeping it."
+    elif kubectl -n "$NS" get pvc filestash-state >/dev/null 2>&1; then
+        fs_die "$CFG has no secrets.configSecret but pvc/filestash-state exists. A new CONFIG_SECRET breaks the encrypted config.json. Restore $CFG from Git."
+    else
+        fs_random 32 | fs_cfg_secret filestash secrets.configSecret
+        echo "CONFIG_SECRET created in $CFG (encrypted)."
+    fi
     read -rsp "Filestash admin password (input hidden): " pw
     echo
     [[ ${#pw} -ge 12 ]] || fs_die "the admin password needs at least 12 characters."
     hash=$(printf '%s' "$pw" | htpasswd -niBC 10 "" | tr -d ':\n')
     unset pw
     [[ "$hash" == \$2* ]] || fs_die "htpasswd did not return a bcrypt hash."
-    config_secret=$(fs_secret_value filestash CONFIG_SECRET)
-    action=created
-    if [[ -n "$config_secret" ]]; then
-        echo "Secret filestash exists: keeping CONFIG_SECRET, replacing ADMIN_PASSWORD."
-        action=updated
-    elif kubectl -n "$NS" get pvc filestash-state >/dev/null 2>&1; then
-        fs_die "Secret filestash is missing but pvc/filestash-state exists. A new CONFIG_SECRET breaks the encrypted config.json. Restore Secret filestash from Velero first."
-    else
-        config_secret=$(fs_random 32)
-    fi
-    envfile="$(mktemp "${TMPDIR:-/tmp}/filestash-secret.XXXXXX")"
-    trap 'rm -f "$envfile"' EXIT
-    chmod 600 "$envfile"
-    printf 'ADMIN_PASSWORD=%s\nCONFIG_SECRET=%s\n' "$hash" "$config_secret" > "$envfile"
-    kubectl -n "$NS" create secret generic filestash --from-env-file="$envfile" \
-        --dry-run=client -o yaml \
-        | kubectl label --local -f - app.kubernetes.io/name=filestash -o yaml \
-        | kubectl apply -f -
-    echo "Secret filestash $action in '$NS'."
+    printf '%s' "$hash" | fs_cfg_secret filestash secrets.adminPasswordHash
+    echo "Admin password hash stored in $CFG (encrypted). Commit $CFG."
     echo "Next: just filestash create-buckets"
 
 # Create the uploads and downloads buckets. uploads stays private. The public
@@ -228,9 +221,11 @@ create-buckets stack="" namespace="":
     echo "Buckets uploads (private) and downloads ready in '$NS'."
     echo "Next: just filestash create-users"
 
-# Create the four MinIO users and their policies (filestash/policies/*.json).
-# Keys live in Secret filestash-users. A second run reuses the stored keys:
-# a new key stops every share that staff made with the old one.
+# Store a key pair for each of the four MinIO users as KMS-encrypted values
+# in filestash/Pulumi.<stack>.yaml, then create the users and their policies
+# (filestash/policies/*.json) in MinIO. `deploy` makes Secret filestash-users.
+# A second run reuses the stored keys: a new key stops every share link that
+# staff made with the old one.
 # Usage: just filestash create-users [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -243,30 +238,25 @@ create-users stack="" namespace="":
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     roles=(intake public operator publisher)
-    if fs_secret_exists filestash-users; then
-        echo "Secret filestash-users exists: reusing the stored keys."
-    else
-        status=0
-        fs_minio_root 'mc admin user info minio filestash-intake >/dev/null 2>&1 && exit 3; exit 0' || status=$?
-        if [[ "$status" -eq 3 ]]; then
-            fs_die "Secret filestash-users is missing but MinIO user filestash-intake exists. New keys stop every share link. Restore Secret filestash-users from Velero first."
-        fi
-        [[ "$status" -eq 0 ]] || fs_die "could not check the MinIO users."
-        envfile="$(mktemp "${TMPDIR:-/tmp}/filestash-users.XXXXXX")"
-        trap 'rm -f "$envfile"' EXIT
-        chmod 600 "$envfile"
-        for role in "${roles[@]}"; do
-            printf '%sAccessKey=filestash-%s\n%sSecretKey=%s\n' "$role" "$role" "$role" "$(fs_random 40)" >> "$envfile"
-        done
-        kubectl -n "$NS" create secret generic filestash-users --from-env-file="$envfile"
-        kubectl -n "$NS" label secret filestash-users app.kubernetes.io/name=filestash
-        echo "Secret filestash-users created in '$NS'."
-    fi
+    existing=$(fs_minio_root 'mc admin user list minio --json | jq -r ".accessKey // empty"') \
+        || fs_die "could not list the MinIO users."
     for role in "${roles[@]}"; do
-        ak=$(fs_secret_value filestash-users "${role}AccessKey")
-        sk=$(fs_secret_value filestash-users "${role}SecretKey")
-        [[ -n "$ak" && -n "$sk" ]] || fs_die "Secret filestash-users has no $role keys."
-        export "FS_AK_${role}=$ak" "FS_SK_${role}=$sk"
+        if fs_cfg_has filestash "users.$role.secretKey"; then
+            echo "  $role: reusing the stored keys"
+            continue
+        fi
+        if grep -qx "filestash-$role" <<<"$existing"; then
+            fs_die "$CFG has no keys for $role but MinIO user filestash-$role exists. New keys stop every share link. Restore $CFG from Git."
+        fi
+        fs_cfg_plain filestash "users.$role.accessKey" "filestash-$role"
+        fs_random 40 | fs_cfg_secret filestash "users.$role.secretKey"
+        echo "  $role: keys created in $CFG (encrypted)"
+    done
+    for role in "${roles[@]}"; do
+        ak=$(yq -r ".config.\"filestash:properties\".users.$role.accessKey // \"\"" "$CFG")
+        sk=$(fs_cfg_get filestash "users.$role.secretKey")
+        [[ -n "$ak" && -n "$sk" ]] || fs_die "could not read the $role keys from $CFG."
+        export "FS_AK_$role=$ak" "FS_SK_$role=$sk"
     done
     fs_minio_root '
         for role in intake public operator publisher; do
@@ -281,7 +271,7 @@ create-users stack="" namespace="":
             fi
         done
     '
-    echo "MinIO users filestash-{intake,public,operator,publisher} ready in '$NS'."
+    echo "MinIO users filestash-intake, -public, -operator, and -publisher ready in '$NS'. Commit $CFG."
     echo "Next: just filestash deploy"
 
 # Set the anonymous read policy on downloads: s3:GetObject on downloads/*
@@ -362,13 +352,12 @@ admin stack="" namespace="" port="8334":
     wait "$pf"
 
 # Read-only health checks. Exits non-zero when any check group fails.
-# Usage: just filestash verify [--velero-namespace <ns>] [--stack <name>] [--namespace <ns>]
-[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
+# Usage: just filestash verify [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-verify velero_namespace="" stack="" namespace="":
+verify stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -418,46 +407,23 @@ verify velero_namespace="" stack="" namespace="":
     fi
 
     max=$(fs_prop backup.maxAgeHours)
-    if ! ( fs_velero_ns {{ quote(velero_namespace) }} ) 2>/dev/null; then
-        bad "no Velero namespace — pass --velero-namespace (no install-velero/Pulumi.$STACK.yaml)"
-    else
-        fs_velero_ns {{ quote(velero_namespace) }}
-    fi
     if [[ ! "$max" =~ ^[1-9][0-9]*$ ]]; then
         bad "backup.maxAgeHours is unset in $CFG (recovery point target)"
     else
-        # shellcheck disable=SC2016
-        age=$(kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c '
-            n=$(ls -1 /app/data/state/backups 2>/dev/null | grep -E "^[0-9]{8}T[0-9]{6}Z$" | sort | tail -n 1)
-            [ -n "$n" ] && [ -f "/app/data/state/backups/$n/manifest.json" ] || exit 2
-            t=$(date -u -d "$(echo "$n" | sed -E "s/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3 \4:\5:\6/")" +%s)
-            echo $(( ($(date -u +%s) - t) / 3600 ))' 2>/dev/null || true)
+        last=$(kubectl -n "$NS" get cronjob filestash-state-backup -o jsonpath='{.status.lastSuccessfulTime}' 2>/dev/null || true)
+        age=none
+        [[ -n "$last" ]] && age=$(jq -rn --arg t "$last" '(now - ($t | fromdateiso8601)) / 3600 | floor')
         if [[ "$age" =~ ^[0-9]+$ && "$age" -lt "$max" ]]; then
-            ok "newest state copy ${age}h old (limit ${max}h)"
+            ok "newest restic snapshot ${age}h old (limit ${max}h)"
         else
-            bad "newest state copy age '${age}h' (limit ${max}h) — run: just filestash backup-now"
-        fi
-        vage=$(velero -n "$FS_VELERO_NS" backup get -o json 2>/dev/null | jq -r --arg ns "$NS" '
-            [(.items // [.])[] | select(.status.phase == "Completed")
-              | select((.spec.includedNamespaces // ["*"]) | (index("*") or index($ns)))
-              | select(((.spec.excludedNamespaces // []) | index($ns)) | not)
-              | .status.completionTimestamp | sub("\\.[0-9]+"; "") | fromdateiso8601]
-            | max | if . == null then "none" else ((now - .) / 3600 | floor) end' || echo none)
-        if [[ "$vage" =~ ^[0-9]+$ && "$vage" -lt "$max" ]]; then
-            ok "newest velero backup of '$NS' ${vage}h old"
-        else
-            bad "newest velero backup of '$NS' age '${vage}h' (limit ${max}h)"
+            bad "newest successful state backup age '${age}h' (limit ${max}h) — run: just filestash backup-now"
         fi
     fi
+    fs_secret_exists filestash-backup-auth && ok "Secret filestash-backup-auth exists" \
+        || bad "Secret filestash-backup-auth missing — run: just filestash deploy-backup"
     excl=$(kubectl -n "$NS" get pvc filestash-state -o jsonpath='{.metadata.labels.velero\.io/exclude-from-backup}' 2>/dev/null || true)
-    vols=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=filestash -o jsonpath='{.items[*].metadata.annotations.backup\.velero\.io/backup-volumes-excludes}' 2>/dev/null || true)
-    sched=$(kubectl -n "$FS_VELERO_NS" get schedules.velero.io -o json 2>/dev/null \
-        | jq -r --arg ns "$NS" '[.items[].spec.template.excludedNamespaces // [] | index($ns)] | any' || echo unknown)
-    if [[ "$excl" != "true" && ",${vols}," != *",state,"* && "$sched" == "false" ]]; then
-        ok "velero includes pvc/filestash-state"
-    else
-        bad "velero excludes the state (pvc label '$excl', pod volume excludes '$vols', schedule excludes namespace '$sched')"
-    fi
+    [[ "$excl" == "true" ]] && ok "Velero skips pvc/filestash-state" \
+        || bad "pvc/filestash-state has no velero.io/exclude-from-backup=true label — run: just filestash deploy"
 
     if [[ "$failures" -gt 0 ]]; then
         echo "filestash verify: $failures check group(s) failed." >&2
@@ -665,86 +631,189 @@ release-lock holder="" lease="" stack="" namespace="":
     kubectl -n "$NS" delete lease "$LEASE"
     echo "Released lease/$LEASE (holder '$got')."
 
-# Make a state copy now, then a Velero backup of the Filestash resources
-# (PVC, Secrets, ConfigMap, Deployment). Filestash stops for the copy.
-# Holds lease/filestash-maintenance and suspends the CronJob for the run.
-# Usage: just filestash backup-now [--velero-namespace <ns>] [--stack <name>]
-[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
+# Configure the filestash-backup stack: the backup writer service account and
+# its key, a random restic password (kept on a second run), and the GCS
+# project, all as KMS-encrypted values in filestash-backup/Pulumi.<stack>.yaml.
+# Run it as sa-manager: kops-cluster-creator cannot mint service account keys.
+# Usage: just filestash configure-backup [--project <id>] [--key-file <path>] [--stack <name>]
+[arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID)")]
+[arg("key_file", long="key-file", short="f", help="Service account key path (default credentials/<project>/filestash-backup-sa.json)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-backup-now velero_namespace="" stack="" namespace="":
+configure-backup project="" key_file="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
-    fs_velero_ns {{ quote(velero_namespace) }}
-    fs_lock_take filestash-maintenance
-    trap 'fs_resume_backups; fs_lock_release' EXIT
-    fs_suspend_backups
-    fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
-    ts=$(date -u +%Y%m%d%H%M%S)
-    job="filestash-state-backup-now-$ts"
-    kubectl -n "$NS" create job --from=cronjob/filestash-state-backup "$job"
-    if ! kubectl -n "$NS" wait --for=condition=complete "job/$job" --timeout=600s; then
-        kubectl -n "$NS" logs "job/$job" --all-containers || true
-        fs_die "state copy job $job failed."
+    fs_backup_resolve
+    PROJECT={{ quote(project) }}
+    [[ -n "$PROJECT" ]] || PROJECT="${PROJECT_ID:-}"
+    [[ -n "$PROJECT" ]] || fs_die "no GCP project id — enter 'just cluster-env' (it exports PROJECT_ID) or pass --project."
+    BUCKET=$(fs_bprop bucket)
+    [[ "$BUCKET" == "restic-filestash-backup-$PROJECT" ]] \
+        || fs_die "bucket '$BUCKET' in $BCFG does not match project '$PROJECT'."
+    KEY_FILE={{ quote(key_file) }}
+    [[ -n "$KEY_FILE" ]] || KEY_FILE="credentials/${PROJECT}/filestash-backup-sa.json"
+    just filestash _setup-backup-sa --bucket "$BUCKET" --project "$PROJECT" --key-file "$KEY_FILE"
+    [[ -f "$KEY_FILE" ]] || fs_die "service account key '$KEY_FILE' does not exist."
+    KEY_FILE="$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")"
+    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
+        go run ./cmd/cluster-ops stack ensure --folder filestash-backup --stack "$STACK" --create
+    if fs_cfg_has filestash-backup secret.resticPass; then
+        echo "restic password exists in $BCFG: keeping it (a new one locks out every snapshot)."
+    else
+        fs_random 40 | fs_cfg_secret filestash-backup secret.resticPass
     fi
-    copy=$(kubectl -n "$NS" logs "job/$job" -c copy 2>/dev/null | sed -n 's|^completed copy .*/||p' | tail -n 1)
-    echo "State copy ${copy:-unknown} completed (restore it with: just filestash restore-state --in-place yes --copy ${copy:-<timestamp>})."
-    backup="filestash-$ts"
-    velero -n "$FS_VELERO_NS" backup create "$backup" --include-namespaces "$NS" \
-        --selector app.kubernetes.io/name=filestash --wait
-    phase=$(velero -n "$FS_VELERO_NS" backup get "$backup" -o json | jq -r '.status.phase')
-    [[ "$phase" == "Completed" ]] || fs_die "velero backup $backup phase '$phase'."
-    echo "State copy and velero backup $backup completed."
-    echo "Next: just filestash restore-state --backup $backup --target-namespace filestash-restore-test"
+    printf '%s' "$PROJECT" | fs_cfg_secret filestash-backup secret.gcsProject
+    printf '%s' "$KEY_FILE" | fs_cfg_secret filestash-backup secret.serviceAccountFile
+    echo "filestash-backup configured. Commit $BCFG."
+    echo "Next: just filestash deploy-backup"
 
-# Restore test: restore a Velero backup into an isolated namespace with no
-# egress, replace the state with the newest completed copy, and start one
-# Filestash pod with no Service and no route. With --in-place yes: disaster
-# recovery on the live PVC from its own newest completed copy (destructive).
-# Usage: just filestash restore-state --backup <name> --target-namespace <ns>
-#        just filestash restore-state --in-place yes [--copy <timestamp>]
-[arg("backup", long="backup", help="Velero backup name (test restore)")]
-[arg("target_namespace", long="target-namespace", help="New namespace for the test restore; must not exist")]
-[arg("in_place", long="in-place", help="yes: replace the live state from a completed copy")]
-[arg("copy", long="copy", help="Completed copy timestamp for --in-place, for example 20261117T040000Z (default: newest)")]
-[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
+[private]
+[arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
+[arg("project", long="project", short="p", help="GCP project id")]
+[arg("key_file", long="key-file", short="f", help="Where to write the JSON key")]
+[arg("sa_name", long="sa-name", short="a", help="Service account short name")]
+[no-cd]
+_setup-backup-sa bucket project key_file sa_name="filestash-backup-sa":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BUCKET={{ quote(bucket) }}
+    PROJECT={{ quote(project) }}
+    KEY_FILE={{ quote(key_file) }}
+    SA_NAME={{ quote(sa_name) }}
+    SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
+    # Preflight: minting a key needs iam.serviceAccountKeyAdmin, which only
+    # sa-manager holds. Fail before any change if either identity is
+    # kops-cluster-creator.
+    GCLOUD_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+    ADC_ACCOUNT=""
+    if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" && -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]]; then
+        ADC_ACCOUNT="$(jq -r '.client_email // empty' "$GOOGLE_APPLICATION_CREDENTIALS" 2>/dev/null || true)"
+    fi
+    for ACCOUNT in "$GCLOUD_ACCOUNT" "$ADC_ACCOUNT"; do
+        if [[ "$ACCOUNT" == kops-cluster-creator@* ]]; then
+            echo "Error: identity ${ACCOUNT} cannot create service account keys." >&2
+            echo "Rotate to sa-manager first: just gcp-cluster rotate-to-manager, then re-enter cluster-env." >&2
+            exit 1
+        fi
+    done
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
+        echo "Service account $SA_EMAIL exists — continuing."
+    else
+        gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT" \
+            --display-name "Filestash state backup GCS writer"
+    fi
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+        --member "serviceAccount:${SA_EMAIL}" \
+        --role roles/storage.objectAdmin \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/${BUCKET}\"),title=filestash-backup-bucket-writer,description=Object admin limited to the Filestash restic backup bucket" \
+        >/dev/null
+    if [[ -f "$KEY_FILE" ]]; then
+        echo "Key file $KEY_FILE exists — reusing it."
+    else
+        go run ./cmd/cluster-ops sa create-key --name "$SA_NAME" --project "$PROJECT" --output-file "$KEY_FILE"
+        echo "Warning: service account keys accumulate. Audit them with 'gcloud iam service-accounts keys list'."
+    fi
+
+# Deploy the filestash-backup stack: the GCS bucket, Secret
+# filestash-backup-auth, and the state backup CronJob. Deploy filestash first:
+# the CronJob mounts its PVC.
+# Usage: just filestash deploy-backup [--stack <name>] [--namespace <ns>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-restore-state backup="" target_namespace="" in_place="" copy="" velero_namespace="" stack="" namespace="":
+deploy-backup stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
-    BACKUP={{ quote(backup) }}
+    fs_backup_resolve
+    for key in secret.resticPass secret.gcsProject secret.serviceAccountFile; do
+        fs_cfg_has filestash-backup "$key" || fs_die "$BCFG has no properties.$key — run: just filestash configure-backup"
+    done
+    kubectl -n "$NS" get pvc filestash-state >/dev/null 2>&1 || fs_die "pvc/filestash-state not found in '$NS' — run: just filestash deploy"
+    export GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)"
+    go run ./cmd/cluster-ops stack ensure --folder filestash-backup --stack "$STACK" --create
+    go run ./cmd/cluster-ops stack up --folder filestash-backup --stack "$STACK"
+    echo "filestash-backup deployed in '$NS'."
+    echo "Next: just filestash backup-now"
+
+# Run one state backup now: an online copy of the SQLite files and
+# config.json, then a restic snapshot to the GCS bucket of the
+# filestash-backup stack. Filestash keeps running. Prints the snapshot id.
+# Usage: just filestash backup-now [--stack <name>] [--namespace <ns>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+backup-now stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    fs_backup_resolve
+    fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
+    job="filestash-state-backup-now-$(date -u +%Y%m%d%H%M%S)"
+    kubectl -n "$NS" create job --from=cronjob/filestash-state-backup "$job"
+    if ! kubectl -n "$NS" wait --for=condition=complete "job/$job" --timeout=1800s; then
+        kubectl -n "$NS" logs "job/$job" --all-containers || true
+        fs_die "state backup job $job failed."
+    fi
+    snap=$(kubectl -n "$NS" logs "job/$job" -c restic | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p' | tail -n 1)
+    [[ -n "$snap" ]] || fs_die "job $job finished, but its log has no restic snapshot id."
+    echo "Snapshot $snap saved."
+    echo "Restore it with: just filestash restore-state --in-place yes --snapshot $snap"
+
+# Restore the Filestash state from a restic snapshot.
+# Test restore (--target-namespace): a new namespace gets copies of the
+# Secrets and the seed ConfigMap, a new PVC, the snapshot, and one Filestash
+# pod with no Service, no route, and no egress.
+# Disaster recovery (--in-place yes): a check Job proves the snapshot first;
+# then Filestash stops, the restore Job replaces the live state, and
+# Filestash starts again only after the Job succeeds. Destructive.
+# Usage: just filestash restore-state --target-namespace <ns> [--snapshot <id>]
+#        just filestash restore-state --in-place yes [--snapshot <id>]
+[arg("snapshot", long="snapshot", help="restic snapshot id (default: latest)")]
+[arg("target_namespace", long="target-namespace", help="New namespace for the test restore; must not exist")]
+[arg("in_place", long="in-place", help="yes: replace the live state (destructive)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+restore-state snapshot="" target_namespace="" in_place="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    SNAP={{ quote(snapshot) }}
+    [[ -n "$SNAP" ]] || SNAP=latest
+    [[ "$SNAP" == latest || "$SNAP" =~ ^[0-9a-f]{8,64}$ ]] || fs_die "invalid --snapshot '$SNAP' (a restic snapshot id, or latest)."
     TARGET={{ quote(target_namespace) }}
-    COPY={{ quote(copy) }}
+    fs_backup_resolve
+    fs_secret_exists filestash-backup-auth || fs_die "Secret filestash-backup-auth not found in '$NS' — run: just filestash deploy-backup"
+
     if [[ {{ quote(in_place) }} == "yes" ]]; then
-        # Preflight: nothing below changes the state until the check Job passes.
-        [[ -z "$BACKUP" && -z "$TARGET" ]] || fs_die "--in-place yes takes no --backup or --target-namespace."
-        [[ -z "$COPY" || "$COPY" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || fs_die "invalid --copy '$COPY' (for example 20261117T040000Z)."
+        [[ -z "$TARGET" ]] || fs_die "--in-place yes takes no --target-namespace."
         kubectl -n "$NS" get deployment filestash >/dev/null || fs_die "deployment/filestash not found in '$NS'."
-        [[ -n "$(fs_secret_value filestash CONFIG_SECRET)" ]] \
-            || fs_die "Secret filestash has no CONFIG_SECRET in '$NS'. Restore it from Velero first: the copies need the same value."
         fs_lock_take filestash-maintenance
         trap 'fs_resume_backups; fs_lock_release' EXIT
         fs_suspend_backups
         fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
-        fs_state_job "$NS" check "$COPY" \
-            || fs_die "the completed copy '${COPY:-newest}' fails its checks. Nothing changed."
-        echo "Replacing the live state in '$NS' from completed copy '${COPY:-newest}'."
+        fs_state_job "$NS" check "$SNAP" || fs_die "snapshot '$SNAP' fails its checks. Nothing changed."
+        echo "Replacing the live state in '$NS' from snapshot '$SNAP'."
         kubectl -n "$NS" scale deployment/filestash --replicas=0
         fs_wait_no_pods "$NS"
-        if ! fs_state_job "$NS" restore "$COPY"; then
+        if ! fs_state_job "$NS" restore "$SNAP"; then
             echo "Error: the restore job failed. Filestash stays at 0 replicas." >&2
-            echo "Read the job logs, fix the cause, and run restore-state again with another --copy." >&2
+            echo "Read the job logs, fix the cause, and run restore-state again with another --snapshot." >&2
             exit 1
         fi
         kubectl -n "$NS" scale deployment/filestash --replicas=1
@@ -753,36 +822,38 @@ restore-state backup="" target_namespace="" in_place="" copy="" velero_namespace
     fi
 
     # Preflight: everything below runs before the first change.
-    [[ -n "$BACKUP" ]] || fs_die "pass --backup <velero-backup> (or --in-place yes)."
-    [[ -n "$TARGET" ]] || fs_die "pass --target-namespace <new-namespace>."
+    [[ -n "$TARGET" ]] || fs_die "pass --target-namespace <new-namespace> (or --in-place yes)."
     [[ "$TARGET" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || fs_die "invalid --target-namespace '$TARGET'."
     [[ "$TARGET" != "$NS" ]] || fs_die "--target-namespace is the live namespace '$NS'. Use --in-place yes for disaster recovery."
     if kubectl get namespace "$TARGET" >/dev/null 2>&1; then
         fs_die "namespace '$TARGET' exists. The test restore needs a new namespace."
     fi
-    fs_velero_ns {{ quote(velero_namespace) }}
-    phase=$(velero -n "$FS_VELERO_NS" backup get "$BACKUP" -o json | jq -r '.status.phase')
-    [[ "$phase" == "Completed" ]] || fs_die "velero backup $BACKUP phase '$phase' (want Completed)."
-    details=$(velero -n "$FS_VELERO_NS" backup describe "$BACKUP" --details)
-    [[ "$details" == *"$NS/filestash-state"* ]] || fs_die "backup $BACKUP has no pvc $NS/filestash-state."
-    grep -Eq "^[[:space:]]+- $NS/filestash$" <<<"$details" || fs_die "backup $BACKUP has no Secret $NS/filestash (CONFIG_SECRET)."
+    for obj in secret/filestash secret/filestash-backup-auth configmap/filestash-seed deployment/filestash pvc/filestash-state; do
+        kubectl -n "$NS" get "$obj" >/dev/null 2>&1 || fs_die "$obj not found in '$NS'."
+    done
     live=$(kubectl -n "$NS" get deployment filestash -o json)
+    size=$(kubectl -n "$NS" get pvc filestash-state -o jsonpath='{.spec.resources.requests.storage}')
+    class=$(kubectl -n "$NS" get pvc filestash-state -o jsonpath='{.spec.storageClassName}')
 
     kubectl create namespace "$TARGET"
     kubectl label namespace "$TARGET" filestash-restore-test=true
-    fs_render filestash/manifests/restore-deny-egress.yaml "$TARGET" | kubectl apply -f -
-    velero -n "$FS_VELERO_NS" restore create "filestash-restore-$(date -u +%Y%m%d%H%M%S)" \
-        --from-backup "$BACKUP" --namespace-mappings "$NS:$TARGET" \
-        --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps \
-        --selector app.kubernetes.io/name=filestash --wait
-    fs_state_job "$TARGET" restore || fs_die "restore job failed in '$TARGET'."
+    sed -e "s|__NAMESPACE__|$TARGET|g" filestash/manifests/restore-deny-egress.yaml | kubectl apply -f -
+    fs_copy_object secret filestash "$TARGET"
+    fs_copy_object secret filestash-backup-auth "$TARGET"
+    fs_copy_object configmap filestash-seed "$TARGET"
+    jq -n --arg ns "$TARGET" --arg size "$size" --arg class "$class" '{ apiVersion: "v1", kind: "PersistentVolumeClaim",
+        metadata: { name: "filestash-state", namespace: $ns },
+        spec: { accessModes: ["ReadWriteOnce"], storageClassName: $class,
+            resources: { requests: { storage: $size } } } }' \
+        | kubectl apply -f -
+    fs_state_job "$TARGET" restore "$SNAP" || fs_die "restore job failed in '$TARGET'."
     jq --arg t "$TARGET" 'del(.status, .metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
         .metadata.managedFields, .metadata.annotations, .metadata.generation) | .metadata.namespace = $t' \
         <<<"$live" | kubectl apply -f -
     kubectl -n "$TARGET" rollout status deployment/filestash --timeout=300s
     kubectl -n "$TARGET" exec deployment/filestash -c filestash -- curl -fsS http://localhost:8334/healthz >/dev/null \
         || fs_die "restored Filestash in '$TARGET' fails /healthz."
-    echo "Restore test passed in '$TARGET'."
+    echo "Restore test passed in '$TARGET' (snapshot '$SNAP')."
     echo "Next: just filestash restore-cleanup --target-namespace $TARGET"
 
 # Delete a restore test namespace. Refuses a namespace without the
@@ -806,18 +877,18 @@ restore-cleanup target_namespace="" stack="" namespace="":
     kubectl delete namespace "$TARGET"
     echo "Deleted restore test namespace '$TARGET'."
 
-# Upgrade the Filestash image: state copy and Velero backup first, then save
+# Upgrade the Filestash image: a state backup first (note the snapshot id it
+# prints), then save
 # the current image as previousImage, pin the new tag and digest, deploy, and
 # run verify.
 # Usage: just filestash upgrade --tag <t> --digest sha256:<d> [--stack <name>]
 [arg("tag", long="tag", short="t", help="New image tag (required)")]
 [arg("digest", long="digest", short="d", help="New image digest sha256:<64 hex> (required)")]
-[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-upgrade tag="" digest="" velero_namespace="" stack="" namespace="":
+upgrade tag="" digest="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -829,8 +900,7 @@ upgrade tag="" digest="" velero_namespace="" stack="" namespace="":
     [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fs_die "pass --digest sha256:<64 hex>."
     cur_name=$(fs_prop image.name); cur_tag=$(fs_prop image.tag); cur_digest=$(fs_prop image.digest)
     [[ "$cur_digest" != "$DIGEST" ]] || fs_die "the stack already pins $DIGEST."
-    fs_velero_ns {{ quote(velero_namespace) }}
-    just filestash backup-now --stack "$STACK" --velero-namespace "$FS_VELERO_NS"
+    just filestash backup-now --stack "$STACK"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     set_cfg() { go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key "$1" --value "$2"; }
     set_cfg properties.previousImage.name "${cur_name:-machines/filestash}"
@@ -839,12 +909,12 @@ upgrade tag="" digest="" velero_namespace="" stack="" namespace="":
     set_cfg properties.image.tag "$TAG"
     set_cfg properties.image.digest "$DIGEST"
     just filestash deploy --stack "$STACK"
-    just filestash verify --stack "$STACK" --velero-namespace "$FS_VELERO_NS"
+    just filestash verify --stack "$STACK"
     echo "Upgraded to $TAG@$DIGEST. Commit $CFG."
     echo "Next: just filestash probe-admin --host <filestash-host>"
 
 # Pin previousImage again and deploy. If the new release changed the state
-# format, restore the copy that upgrade made: restore-state --in-place yes --copy <ts>
+# format, restore the snapshot that upgrade made: restore-state --in-place yes --snapshot <id>
 # Usage: just filestash rollback [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -864,7 +934,7 @@ rollback stack="" namespace="":
     go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key properties.image.digest --value "$prev_digest"
     just filestash deploy --stack "$STACK"
     echo "Rolled back to $prev_tag@$prev_digest. Commit $CFG."
-    echo "If the state format changed: just filestash restore-state --in-place yes --copy <timestamp printed by upgrade>"
+    echo "If the state format changed: just filestash restore-state --in-place yes --snapshot <id printed by upgrade>"
 
 # Delete uploads older than --older-than days, as filestash-operator. A dry
 # run (list only) unless --confirm yes. There is no default age: the
@@ -893,7 +963,7 @@ purge-uploads older_than="" confirm="" stack="" namespace="":
         echo "Dry run: the list above is what --confirm yes deletes."
     fi
 
-# List every share link from the newest completed state copy and fail on a
+# List every share link from a copy of the live share.sql and fail on a
 # rule break: an upload link with no expiry, a writable link, or a link path
 # outside /uploads/ and /downloads/. Needs a local sqlite3.
 # Usage: just filestash audit-shares [--stack <name>]
@@ -910,11 +980,10 @@ audit-shares stack="" namespace="":
     command -v sqlite3 >/dev/null 2>&1 || fs_die "sqlite3 not found."
     db="$(mktemp "${TMPDIR:-/tmp}/filestash-share.XXXXXX")"
     trap 'rm -f "$db"' EXIT
-    # shellcheck disable=SC2016
-    kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c '
-        n=$(ls -1 /app/data/state/backups 2>/dev/null | grep -E "^[0-9]{8}T[0-9]{6}Z$" | sort | tail -n 1)
-        [ -n "$n" ] || { echo "no completed state copy" >&2; exit 1; }
-        cat "/app/data/state/backups/$n/db/share.sql"' > "$db" || fs_die "no completed state copy — run: just filestash backup-now"
+    kubectl -n "$NS" exec deployment/filestash -c filestash -- cat /app/data/state/db/share.sql > "$db" \
+        || fs_die "could not read share.sql from the Filestash pod."
+    # A copy taken during a write can be torn. Check it before the audit.
+    [[ "$(sqlite3 "$db" "PRAGMA quick_check")" == ok ]] || fs_die "the share.sql copy fails PRAGMA quick_check. Run audit-shares again."
     rows=$(sqlite3 -separator $'\t' "$db" "SELECT id, related_path, params FROM Share ORDER BY related_path")
     problems=0
     printf '%-24s %-40s %-8s %-8s %-8s %s\n' ID PATH READ UPLOAD WRITE "USERS / EXPIRE"

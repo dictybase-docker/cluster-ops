@@ -1,80 +1,116 @@
-# Replaces the live SQLite files and config.json on pvc/filestash-state with
-# a completed copy in backups/: COPY, or the newest when COPY is empty. Checks SHA256SUMS before the
-# replacement and the table row counts after it. The recipe fills
-# __NAMESPACE__ and __SQLITE_IMAGE__ and runs it only while Filestash is down.
+# State check or restore from a restic snapshot of the filestash-backup
+# stack. Init container `fetch` restores snapshot __SNAPSHOT__ (an id, or
+# `latest`) into an emptyDir. Container `apply` checks manifest.json,
+# SHA256SUMS, PRAGMA integrity_check of each SQLite file, and secret_key in
+# config.json. MODE=check stops there and mounts no state PVC. MODE=restore
+# then replaces the SQLite files and config.json on pvc/filestash-state and
+# compares the table row counts. The recipe fills __NAMESPACE__, __MODE__,
+# __SNAPSHOT__, __REPOSITORY__, __RESTIC_IMAGE__, and __SQLITE_IMAGE__, and
+# runs MODE=restore only while Filestash is down.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: filestash-state-__MODE__
   namespace: __NAMESPACE__
   labels:
-    app.kubernetes.io/component: state-restore
+    app.kubernetes.io/component: state-__MODE__
 spec:
   backoffLimit: 0
+  activeDeadlineSeconds: 1800
   template:
     metadata:
       labels:
-        app.kubernetes.io/component: state-restore
+        app.kubernetes.io/component: state-__MODE__
     spec:
       restartPolicy: Never
-      affinity:
-        podAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: filestash
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+      initContainers:
+        - name: fetch
+          image: __RESTIC_IMAGE__
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              if [ "$SNAPSHOT" = latest ]; then
+                restic restore latest --tag filestash-backup --host filestash --target /restore
+              else
+                restic restore "$SNAPSHOT" --target /restore
+              fi
+          env:
+            - name: SNAPSHOT
+              value: "__SNAPSHOT__"
+            - name: RESTIC_REPOSITORY
+              value: "__REPOSITORY__"
+            - name: RESTIC_CACHE_DIR
+              value: /tmp/restic-cache
+            - name: RESTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: filestash-backup-auth
+                  key: resticPass
+            - name: GOOGLE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: filestash-backup-auth
+                  key: gcsProject
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secret/gcs-credentials
+          volumeMounts:
+            - name: restore
+              mountPath: /restore
+            - name: gcs-credentials
+              mountPath: /var/secret
+              readOnly: true
       containers:
-        - name: restore
+        - name: apply
           image: __SQLITE_IMAGE__
           command:
             - sh
             - -c
             - |
               set -eu
-              S=/app/data/state; B=$S/backups
-              if [ -n "$COPY" ]; then
-                latest="$B/$COPY"
-              else
-                latest=$(ls -1d "$B"/2*/ 2>/dev/null | sort | tail -n 1)
-                latest=${latest%/}
-              fi
-              [ -n "$latest" ] && [ -f "$latest/manifest.json" ] || { echo "no completed copy in $B"; exit 1; }
-              (cd "$latest" && sha256sum -c SHA256SUMS)
-              for f in "$latest"/db/*.sql; do
+              C=/restore/backup/state; S=/app/data/state
+              [ -f "$C/manifest.json" ] || { echo "snapshot has no manifest.json"; exit 1; }
+              (cd "$C" && sha256sum -c SHA256SUMS)
+              for f in "$C"/db/*.sql; do
                 [ -e "$f" ] || continue
                 r=$(sqlite3 "$f" "PRAGMA integrity_check")
                 [ "$r" = ok ] || { echo "integrity_check $f: $r"; exit 1; }
               done
-              grep -q '"secret_key"' "$latest/config/config.json" || { echo "config.json has no general.secret_key"; exit 1; }
-              if [ "$MODE" = check ]; then echo "copy $latest passed every check"; exit 0; fi
+              grep -q '"secret_key"' "$C/config/config.json" || { echo "config.json has no general.secret_key"; exit 1; }
+              if [ "$MODE" = check ]; then echo "snapshot passed every check: $(cat "$C/manifest.json")"; exit 0; fi
               mkdir -p "$S/db" "$S/config"
-              rm -f "$S"/db/*.sql "$S"/db/*.sql-wal "$S"/db/*.sql-shm
-              for f in "$latest"/db/*.sql; do [ -e "$f" ] && cp "$f" "$S/db/"; done
-              cp "$latest/config/config.json" "$S/config/config.json"
-              if [ -f "$latest/counts.txt" ]; then
-                while read -r n t c; do
-                  got=$(sqlite3 "$S/db/$n" "SELECT count(*) FROM \"$t\"")
-                  [ "$got" = "$c" ] || { echo "row count $n/$t: $got, want $c"; exit 1; }
-                done < "$latest/counts.txt"
-              fi
-              echo "restored state from $latest"
+              rm -f "$S"/db/*.sql "$S"/db/*.sql-wal "$S"/db/*.sql-shm "$S"/db/*.sql-journal
+              for f in "$C"/db/*.sql; do [ -e "$f" ] && cp "$f" "$S/db/"; done
+              cp "$C/config/config.json" "$S/config/config.json"
+              while read -r n t c; do
+                [ -n "$n" ] || continue
+                got=$(sqlite3 "$S/db/$n" "SELECT count(*) FROM \"$t\"")
+                [ "$got" = "$c" ] || { echo "row count $n/$t: $got, want $c"; exit 1; }
+              done < "$C/counts.txt"
+              echo "restored state from snapshot: $(cat "$C/manifest.json")"
           env:
-            - name: COPY
-              value: "__COPY__"
             - name: MODE
               value: "__MODE__"
           volumeMounts:
+            - name: restore
+              mountPath: /restore
             - name: state
               mountPath: /app/data/state
       volumes:
+        - name: restore
+          emptyDir: {}
+        - name: gcs-credentials
+          secret:
+            secretName: filestash-backup-auth
+            items:
+              - key: gcsCredentials
+                path: gcs-credentials
         - name: state
           persistentVolumeClaim:
             claimName: filestash-state

@@ -154,17 +154,6 @@ fs_lock_release() {
     fi
 }
 
-# fs_velero_ns <flag> sets FS_VELERO_NS from the flag, else from
-# properties.namespace in install-velero/Pulumi.<stack>.yaml, else fails.
-fs_velero_ns() {
-    FS_VELERO_NS="${1:-}"
-    local f="install-velero/Pulumi.${STACK}.yaml"
-    if [[ -z "$FS_VELERO_NS" && -f "$f" ]]; then
-        FS_VELERO_NS=$(yq -r '.config."install-velero:properties".namespace // ""' "$f")
-    fi
-    [[ -n "$FS_VELERO_NS" ]] || fs_die "no Velero namespace — pass --velero-namespace (no $f)."
-}
-
 # fs_suspend_backups suspends the state backup CronJob and records the old
 # value in FS_SUSPEND_WAS. fs_resume_backups writes the old value back.
 fs_suspend_backups() {
@@ -178,19 +167,6 @@ fs_resume_backups() {
     kubectl -n "$NS" patch cronjob filestash-state-backup -p "{\"spec\":{\"suspend\":${FS_SUSPEND_WAS}}}" >/dev/null
 }
 
-# fs_render <manifest> <namespace> prints the manifest with its placeholders filled.
-fs_render() {
-    sed -e "s|__NAMESPACE__|$2|g" -e "s|__SQLITE_IMAGE__|$(fs_sqlite_image)|g" "$1"
-}
-
-# fs_sqlite_image prints backup.sqliteImage, or the code default.
-fs_sqlite_image() {
-    local img
-    img=$(fs_prop backup.sqliteImage)
-    [[ -n "$img" ]] || img="keinos/sqlite3:3.54.1@sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17"
-    printf '%s' "$img"
-}
-
 # fs_backup_idle succeeds when no state backup Job is unfinished (a Job can
 # exist before its pod) and no state backup pod is pending or running.
 fs_backup_idle() {
@@ -202,22 +178,6 @@ fs_backup_idle() {
     [[ "$jobs" == "0" && -z "$pods" ]]
 }
 
-# fs_state_job <namespace> <mode> [<copy>] runs filestash-state-<mode>
-# (mode check: verify a completed copy, changes nothing; mode restore:
-# verify, then replace the state) and waits for it. An empty <copy> selects
-# the newest completed copy.
-fs_state_job() {
-    local ns="$1" mode="$2" copy="${3:-}"
-    kubectl -n "$ns" delete job "filestash-state-$mode" --ignore-not-found >/dev/null
-    fs_render filestash/manifests/restore-job.yaml "$ns" \
-        | sed -e "s|__COPY__|${copy}|g" -e "s|__MODE__|${mode}|g" | kubectl create -f -
-    if ! kubectl -n "$ns" wait --for=condition=complete "job/filestash-state-$mode" --timeout=600s; then
-        kubectl -n "$ns" logs "job/filestash-state-$mode" || true
-        return 1
-    fi
-    kubectl -n "$ns" logs "job/filestash-state-$mode"
-}
-
 # fs_wait_no_pods <namespace> waits until no Filestash pod runs.
 fs_wait_no_pods() {
     local i
@@ -226,4 +186,98 @@ fs_wait_no_pods() {
         sleep 2
     done
     fs_die "a Filestash pod still runs in '$1'."
+}
+
+# ---- Stack config (KMS-encrypted values) ----------------------------------
+
+# fs_pulumi_creds prints the credential file for the Pulumi KMS provider.
+fs_pulumi_creds() {
+    printf '%s' "${PULUMI_GCP_CREDENTIALS:-${GOOGLE_APPLICATION_CREDENTIALS:-}}"
+}
+
+# fs_cfg_has <folder> <dotted.path> succeeds when the stack file of <folder>
+# sets <folder>:properties.<path> (plain or encrypted).
+fs_cfg_has() {
+    yq -e ".config.\"$1:properties\".$2 // empty" "$1/Pulumi.${STACK}.yaml" >/dev/null 2>&1
+}
+
+# fs_cfg_secret <folder> <dotted.path> stores standard input as an encrypted
+# stack value. The value never appears in the process arguments.
+fs_cfg_secret() {
+    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
+        go run ./cmd/cluster-ops stack config set --folder "$1" --stack "$STACK" --key "properties.$2" --secret
+}
+
+# fs_cfg_plain <folder> <dotted.path> <value> stores a plain stack value.
+fs_cfg_plain() {
+    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
+        go run ./cmd/cluster-ops stack config set --folder "$1" --stack "$STACK" --key "properties.$2" --value "$3"
+}
+
+# fs_cfg_get <folder> <dotted.path> prints one decrypted stack value.
+fs_cfg_get() {
+    GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
+        pulumi -C "$1" config get --path "$1:properties.$2" --stack "$STACK"
+}
+
+# ---- Backup stack and restic ------------------------------------------------
+
+# fs_backup_resolve sets BCFG and checks that the filestash-backup stack file
+# exists and uses the same namespace as the filestash stack.
+fs_backup_resolve() {
+    BCFG="filestash-backup/Pulumi.${STACK}.yaml"
+    [[ -f "$BCFG" ]] || fs_die "stack config $BCFG missing."
+    local bns
+    bns=$(yq -r '.config."filestash-backup:properties".namespace // ""' "$BCFG")
+    [[ "$bns" == "$NS" ]] || fs_die "namespace '$bns' in $BCFG does not match '$NS' in $CFG."
+}
+
+# fs_bprop <dotted.path> prints one plain value of filestash-backup:properties.
+fs_bprop() {
+    yq -r ".config.\"filestash-backup:properties\".$1 // \"\"" "$BCFG"
+}
+
+FS_RESTIC_IMAGE_DEFAULT="restic/restic:0.17.0@sha256:da2bd7f56bc940bd14166d4802370d49b2232ee1d28898a3295fbf3d73606d80"
+FS_SQLITE_IMAGE_DEFAULT="keinos/sqlite3:3.54.1@sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17"
+
+# fs_render_state_job <namespace> <mode> <snapshot> prints the restore Job.
+# MODE=check drops the state PVC volume and mount: a check never touches the
+# live state and needs no node of the Filestash pod.
+fs_render_state_job() {
+    local restic sqlite
+    restic=$(fs_bprop resticImage); [[ -n "$restic" ]] || restic="$FS_RESTIC_IMAGE_DEFAULT"
+    sqlite=$(fs_bprop sqliteImage); [[ -n "$sqlite" ]] || sqlite="$FS_SQLITE_IMAGE_DEFAULT"
+    local out
+    out=$(sed -e "s|__NAMESPACE__|$1|g" -e "s|__MODE__|$2|g" -e "s|__SNAPSHOT__|$3|g" \
+        -e "s|__REPOSITORY__|gs:$(fs_bprop bucket):/|g" \
+        -e "s|__RESTIC_IMAGE__|${restic}|g" -e "s|__SQLITE_IMAGE__|${sqlite}|g" \
+        filestash/manifests/restore-job.yaml)
+    if [[ "$2" == check ]]; then
+        yq -y 'del(.spec.template.spec.volumes[] | select(.name == "state"))
+            | del(.spec.template.spec.containers[0].volumeMounts[] | select(.name == "state"))' <<<"$out"
+    else
+        printf '%s\n' "$out"
+    fi
+}
+
+# fs_state_job <namespace> <mode> <snapshot> runs the check or restore Job
+# and waits for it. It returns non-zero when the Job fails.
+fs_state_job() {
+    local ns="$1" mode="$2" snap="$3"
+    kubectl -n "$ns" delete job "filestash-state-$mode" --ignore-not-found >/dev/null
+    fs_render_state_job "$ns" "$mode" "$snap" | kubectl create -f -
+    if ! kubectl -n "$ns" wait --for=condition=complete "job/filestash-state-$mode" --timeout=1800s; then
+        kubectl -n "$ns" logs "job/filestash-state-$mode" --all-containers || true
+        return 1
+    fi
+    kubectl -n "$ns" logs "job/filestash-state-$mode" -c apply
+}
+
+# fs_copy_object <kind> <name> <target-namespace> copies one object from NS.
+fs_copy_object() {
+    kubectl -n "$NS" get "$1" "$2" -o json \
+        | jq --arg t "$3" 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
+            .metadata.managedFields, .metadata.ownerReferences, .metadata.annotations, .status)
+            | .metadata.namespace = $t' \
+        | kubectl apply -f -
 }

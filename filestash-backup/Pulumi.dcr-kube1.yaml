@@ -1,0 +1,12 @@
+# filestash-backup stack config for dcr-kube1. The secret.* values are KMS-encrypted;
+# set them with: just filestash configure-backup
+config:
+  gcp:project: dcr-kube1
+  filestash-backup:properties:
+    namespace: prod
+    bucket: restic-filestash-backup-dcr-kube1
+    schedule: "30 */4 * * *"
+    keepLast: 42
+    keepDaily: 30
+    secret:
+      name: filestash-backup-auth

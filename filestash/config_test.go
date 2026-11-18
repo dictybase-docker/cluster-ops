@@ -13,6 +13,7 @@ const (
 	testHost   = "files.dictybase.dev"
 	testTLS    = "filestash-tls-secret"
 	sizeField  = "storage.size"
+	testHash   = "$2y$10$abcdefghijklmnopqrstuuvwxyzabcdefghijklmnopqrstuvwxyz12"
 )
 
 func validConfig() *FilestashConfig {
@@ -23,6 +24,13 @@ func validConfig() *FilestashConfig {
 		Storage:        StorageConfig{Size: "2Gi"},
 		S3:             S3Config{Endpoint: "http://minio.dev.svc.cluster.local:9000"},
 		Backup:         BackupConfig{MaxAgeHours: 6},
+		Secrets:        SecretsConfig{AdminPasswordHash: testHash, ConfigSecret: "c0nfigsecretc0nfigsecretc0nfigse"},
+		Users: map[string]UserKeys{
+			"intake":    {AccessKey: "filestash-intake", SecretKey: "s1"},
+			"public":    {AccessKey: "filestash-public", SecretKey: "s2"},
+			"operator":  {AccessKey: "filestash-operator", SecretKey: "s3"},
+			"publisher": {AccessKey: "filestash-publisher", SecretKey: "s4"},
+		},
 		Plugins: PluginsConfig{Image: ImageConfig{
 			Name: "dictybase/filestash-plugins", Tag: "2026.11.17", Digest: testDigest,
 		}},
@@ -46,11 +54,7 @@ func TestApplyDefaults(t *testing.T) {
 	require.Equal(t, "dictycr-minio", cfg.S3.Label)
 	require.Equal(t, "nginx", cfg.Ingress.ClassName)
 	require.Empty(t, cfg.Storage.Size, "storage.size has no code default")
-	require.Equal(t, "30 */4 * * *", cfg.Backup.Schedule)
-	require.Equal(t, 7, cfg.Backup.Keep)
 	require.Zero(t, cfg.Backup.MaxAgeHours, "backup.maxAgeHours has no code default")
-	require.Contains(t, cfg.Backup.SqliteImage, "keinos/sqlite3:3.54.1@sha256:")
-	require.Contains(t, cfg.Backup.KubectlImage, "alpine/kubectl:1.35.4@sha256:")
 }
 
 func TestValidateAcceptsValidConfig(t *testing.T) {
@@ -79,7 +83,13 @@ func TestValidateRejects(t *testing.T) {
 		{"other name", func(c *FilestashConfig) { c.Name = "files" }, "name"},
 		{"other secret name", func(c *FilestashConfig) { c.SecretName = "other" }, "secretName"},
 		{"no backup max age", func(c *FilestashConfig) { c.Backup.MaxAgeHours = 0 }, "backup.maxAgeHours"},
-		{"bad backup keep", func(c *FilestashConfig) { c.Backup.Keep = -1 }, "backup.keep"},
+		{"no config secret", func(c *FilestashConfig) { c.Secrets.ConfigSecret = "" }, "secrets.configSecret"},
+		{
+			"plain admin password",
+			func(c *FilestashConfig) { c.Secrets.AdminPasswordHash = "hunter2" },
+			"secrets.adminPasswordHash",
+		},
+		{"missing publisher keys", func(c *FilestashConfig) { delete(c.Users, "publisher") }, "users.publisher"},
 		{"empty plugins digest", func(c *FilestashConfig) { c.Plugins.Image.Digest = "" }, "plugins.image.digest"},
 		{"empty plugins name", func(c *FilestashConfig) { c.Plugins.Image.Name = "" }, "plugins.image.name"},
 		{"placeholder plugins tag", func(c *FilestashConfig) { c.Plugins.Image.Tag = "<plugins-tag>" }, "plugins.image.tag"},

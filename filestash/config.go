@@ -30,12 +30,17 @@ const (
 	defaultS3Label      = "dictycr-minio"
 	defaultIngressClass = "nginx"
 	minStateSize        = "1Gi"
-	defaultBackupCron   = "30 */4 * * *"
-	defaultBackupKeep   = 7
-	defaultSqliteImage  = "keinos/sqlite3:3.54.1@sha256:" +
-		"b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17"
-	defaultKubectlImage = "alpine/kubectl:1.35.4@sha256:" +
-		"9ccd823647622b620dce092d0f1406b8b41d152ce08ac963e3d4683770b14dfd"
+)
+
+// userRoles are the four MinIO users. Secret filestash-users holds
+// <role>AccessKey and <role>SecretKey for each.
+var userRoles = []string{roleIntake, rolePublic, roleOperator, rolePublisher}
+
+const (
+	roleIntake    = "intake"
+	rolePublic    = "public"
+	roleOperator  = "operator"
+	rolePublisher = "publisher"
 )
 
 // FilestashConfig is the `filestash:properties` stack value. The recipes and
@@ -58,17 +63,30 @@ type FilestashConfig struct {
 	Ingress        IngressConfig `json:"ingress"`
 	Plugins        PluginsConfig `json:"plugins"`
 	Backup         BackupConfig  `json:"backup"`
+	// Secrets and Users are KMS-encrypted stack values. Pulumi makes Secret
+	// filestash and Secret filestash-users from them, so the stack config is
+	// the only copy that needs protection.
+	Secrets SecretsConfig       `json:"secrets"`
+	Users   map[string]UserKeys `json:"users"`
 }
 
-// BackupConfig drives the SQLite-consistent state copy CronJob.
-// MaxAgeHours is the recovery point target: `just filestash verify` fails
-// when the newest copy or Velero backup is older. It has no default.
+// BackupConfig holds the recovery point target in hours. The
+// filestash-backup stack makes the snapshots; `just filestash verify` fails
+// when the newest successful snapshot is older. It has no default.
 type BackupConfig struct {
-	Schedule     string `json:"schedule"`
-	Keep         int    `json:"keep"`
-	MaxAgeHours  int    `json:"maxAgeHours"`
-	SqliteImage  string `json:"sqliteImage"`
-	KubectlImage string `json:"kubectlImage"`
+	MaxAgeHours int `json:"maxAgeHours"`
+}
+
+// SecretsConfig holds the values of Secret filestash.
+type SecretsConfig struct {
+	AdminPasswordHash string `json:"adminPasswordHash"`
+	ConfigSecret      string `json:"configSecret"`
+}
+
+// UserKeys holds the MinIO key pair of one role.
+type UserKeys struct {
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
 }
 
 // PluginsConfig points at the plugin bundle image built by
@@ -123,6 +141,7 @@ var (
 	isPlaceholder   = P.Or(S.Includes("<"))(S.Includes(">"))
 	isInvalidDigest = P.Not(digestPattern.MatchString)
 	isNotHTTPS      = P.Not(S.HasPrefix("https://"))
+	isNotBcrypt     = P.Not(S.HasPrefix("$2"))
 	failedFields    = F.Flow2(
 		A.Filter(PR.Tail[string, bool]),
 		A.Map(PR.Head[string, bool]),
@@ -185,10 +204,6 @@ func (c *FilestashConfig) ApplyDefaults() {
 	c.S3.Region = strOr(defaultS3Region, c.S3.Region)
 	c.S3.Label = strOr(defaultS3Label, c.S3.Label)
 	c.Ingress.ClassName = strOr(defaultIngressClass, c.Ingress.ClassName)
-	c.Backup.Schedule = strOr(defaultBackupCron, c.Backup.Schedule)
-	c.Backup.Keep = intOr(defaultBackupKeep, c.Backup.Keep)
-	c.Backup.SqliteImage = strOr(defaultSqliteImage, c.Backup.SqliteImage)
-	c.Backup.KubectlImage = strOr(defaultKubectlImage, c.Backup.KubectlImage)
 }
 
 // Validate rejects `<...>` placeholders first, then invalid values.
@@ -215,13 +230,21 @@ func invalidChecks(c *FilestashConfig) []fieldCheck {
 			PR.MakePair("cacheSizeLimit", isBadQuantity(c.CacheSizeLimit)),
 			PR.MakePair("s3.endpoint", S.IsEmpty(c.S3.Endpoint)),
 			PR.MakePair("backup.maxAgeHours", c.Backup.MaxAgeHours < 1),
-			PR.MakePair("backup.keep", c.Backup.Keep < 1),
+			PR.MakePair("secrets.configSecret", S.IsEmpty(c.Secrets.ConfigSecret)),
+			PR.MakePair("secrets.adminPasswordHash", isNotBcrypt(c.Secrets.AdminPasswordHash)),
 			PR.MakePair("plugins.image.name", S.IsEmpty(c.Plugins.Image.Name)),
 			PR.MakePair("plugins.image.tag", S.IsEmpty(c.Plugins.Image.Tag)),
 			PR.MakePair("plugins.image.digest", isInvalidDigest(c.Plugins.Image.Digest)),
 		},
 		ingressInvalidChecks(c.Ingress),
+		F.Pipe1(userRoles, A.Map(F.Bind1st(userKeysCheck, c.Users))),
 	)
+}
+
+// userKeysCheck fails when the stack has no complete key pair for role.
+func userKeysCheck(users map[string]UserKeys, role string) fieldCheck {
+	keys := users[role]
+	return PR.MakePair("users."+role, S.IsEmpty(keys.AccessKey) || S.IsEmpty(keys.SecretKey))
 }
 
 func ingressInvalidChecks(ing IngressConfig) []fieldCheck {

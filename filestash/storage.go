@@ -17,7 +17,12 @@ func (f *Filestash) CreateStatePVC(ctx *pulumi.Context) (*corev1.PersistentVolum
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(name),
 			Namespace: pulumi.String(cfg.Namespace),
-			Labels:    f.labels(),
+			// The filestash-backup stack backs up this state with restic, so
+			// Velero skips it like the other datastores.
+			Labels: pulumi.StringMap{
+				nameLabel:                       pulumi.String(cfg.Name),
+				"velero.io/exclude-from-backup": pulumi.String("true"),
+			},
 		},
 		Spec: &corev1.PersistentVolumeClaimSpecArgs{
 			AccessModes:      pulumi.StringArray{pulumi.String("ReadWriteOnce")},

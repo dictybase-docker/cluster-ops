@@ -1,0 +1,7 @@
+name: filestash-backup
+runtime: go
+description: restic backup of the Filestash state (SQLite and config.json) to Google Cloud Storage
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go

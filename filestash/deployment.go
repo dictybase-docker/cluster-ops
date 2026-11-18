@@ -37,8 +37,13 @@ func (f *Filestash) CreateDeployment(
 			Strategy: &appsv1.DeploymentStrategyArgs{Type: pulumi.String("Recreate")},
 			Selector: &metav1.LabelSelectorArgs{MatchLabels: f.labels()},
 			Template: &corev1.PodTemplateSpecArgs{
-				Metadata: &metav1.ObjectMetaArgs{Labels: f.labels()},
-				Spec:     f.podSpec(),
+				Metadata: &metav1.ObjectMetaArgs{
+					Labels: f.labels(),
+					Annotations: pulumi.StringMap{
+						"backup.velero.io/backup-volumes-excludes": pulumi.String(stateVolume + "," + cacheVolume),
+					},
+				},
+				Spec: f.podSpec(),
 			},
 		},
 	}, pulumi.DependsOn(deps))
