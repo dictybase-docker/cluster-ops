@@ -178,7 +178,7 @@ func TestCronJobIsOnline(t *testing.T) {
 
 func TestScriptsParse(t *testing.T) {
 	t.Parallel()
-	for name, script := range map[string]string{"copy": copyScript, "restic": resticScript(validConfig(t))} {
+	for name, script := range map[string]string{"copy": copyScript, "restic": resticScript(validConfig(t))} { //nolint:lll // table
 		out, err := exec.Command("sh", "-n", "-c", script).CombinedOutput()
 		require.NoError(t, err, "%s: %s", name, out)
 	}
@@ -187,35 +187,127 @@ func TestScriptsParse(t *testing.T) {
 	require.Contains(t, r, "forget --tag filestash-backup --host filestash --keep-last 42 --keep-daily 30 --prune")
 }
 
-// TestCopyScript runs the copy script with a sqlite3 stub. A missing
-// config.json must fail the copy, so restic never uploads a partial state.
-func TestCopyScript(t *testing.T) {
-	t.Parallel()
+// copyEnv prepares a state folder and runs the copy script with the real
+// sqlite3 CLI. It returns the output folder and the script result.
+type copyCase struct {
+	share  bool
+	config string
+	secret string
+}
+
+func runCopy(t *testing.T, c copyCase) (string, []byte, error) {
+	t.Helper()
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("sqlite3 CLI not installed")
+	}
 	root := t.TempDir()
-	state, out, bin := filepath.Join(root, "state"), filepath.Join(root, "backup"), filepath.Join(root, "bin")
-	for _, d := range []string{filepath.Join(state, "db"), filepath.Join(state, "config"), out, bin} {
+	state, out := filepath.Join(root, "state"), filepath.Join(root, "backup")
+	for _, d := range []string{filepath.Join(state, "db"), filepath.Join(state, "config"), out} {
 		require.NoError(t, os.MkdirAll(d, 0o755))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(state, "db", "share.sql"), []byte("x"), 0o600))
-	stub := "#!/bin/sh\ncase \"$2\" in .backup*) cp \"$1\" \"$(echo \"$2\" | sed \"s/^.backup '//; s/'$//\")\";;" +
-		" PRAGMA*) echo ok;; SELECT\\ name*) echo Share;; SELECT\\ count*) echo 3;; esac\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "sqlite3"), []byte(stub), 0o700)) //nolint:gosec // test stub
-	script := strings.NewReplacer("/app/data/state", state, "/backup", out).Replace(copyScript)
-	run := func() ([]byte, error) {
-		cmd := exec.Command("sh", "-c", script)
-		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
-		return cmd.CombinedOutput()
+	if c.share {
+		db := filepath.Join(state, "db", "share.sql")
+		create := exec.Command("sqlite3", db, "CREATE TABLE Share(id TEXT); INSERT INTO Share VALUES('a'),('b');")
+		require.NoError(t, create.Run())
 	}
-	_, err := run()
-	require.Error(t, err, "no config.json must fail the copy")
+	if c.config != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(state, "config", "config.json"), []byte(c.config), 0o600))
+	}
+	script := strings.NewReplacer("/app/data/state", state, "/backup", out).Replace(copyScript)
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(), "CONFIG_SECRET="+c.secret)
+	got, err := cmd.CombinedOutput()
+	return filepath.Join(out, "state"), got, err
+}
 
-	require.NoError(t, os.WriteFile(filepath.Join(state, "config", "config.json"),
-		[]byte(`{"general":{"secret_key":"abc"}}`), 0o600))
-	require.NoError(t, os.RemoveAll(filepath.Join(out, "state")))
-	got, err := run()
-	require.NoError(t, err, "%s", got)
+const goodConfig = `{"general":{"secret_key":"abc"}}`
+
+func TestCopyScriptFailsClosed(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		c    copyCase
+		want string
+	}{
+		"no share.sql":       {copyCase{share: false, config: goodConfig, secret: "s"}, "share.sql"},
+		"no config.json":     {copyCase{share: true, secret: "s"}, "config.json"},
+		"corrupt config":     {copyCase{share: true, config: `{"general":`, secret: "s"}, "malformed JSON"},
+		"empty secret_key":   {copyCase{share: true, config: `{"general":{"secret_key":""}}`, secret: "s"}, "secret_key"},
+		"missing secret_key": {copyCase{share: true, config: `{"general":{}}`, secret: "s"}, "secret_key"},
+		"no CONFIG_SECRET":   {copyCase{share: true, config: goodConfig}, "CONFIG_SECRET is not set"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, out, err := runCopy(t, tc.c)
+			require.Error(t, err, "%s", out)
+			require.Contains(t, string(out), tc.want)
+		})
+	}
+}
+
+func TestCopyScriptWritesCheckedCopy(t *testing.T) {
+	t.Parallel()
+	dir, out, err := runCopy(t, copyCase{share: true, config: goodConfig, secret: "s3cret"})
+	require.NoError(t, err, "%s", out)
 	for _, f := range []string{"db/share.sql", "config/config.json", "SHA256SUMS", "manifest.json", "counts.txt"} {
-		require.FileExists(t, filepath.Join(out, "state", f))
+		require.FileExists(t, filepath.Join(dir, f))
+	}
+	sums, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
+	require.NoError(t, err)
+	require.Contains(t, string(sums), "counts.txt", "counts.txt must be under the checksums")
+	counts, err := os.ReadFile(filepath.Join(dir, "counts.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "share.sql Share 2\n", string(counts))
+	manifest, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	require.NoError(t, err)
+	// sha256("s3cret")
+	require.Contains(t, string(manifest),
+		`"configSecretSha256":"1ec1c26b50d5d3c58d9583181af8076655fe00756bf7285940ba3670f99fcba0"`)
+}
+
+func TestCronJobMountsConfigSecret(t *testing.T) {
+	t.Parallel()
+	pod := cronPod(t, install(t, validConfig(t)))
+	env := fmt.Sprint(dig(t, pod, "initContainers", 0, "env"))
+	require.Contains(t, env, "name:CONFIG_SECRET")
+	require.Contains(t, env, "key:CONFIG_SECRET")
+	require.Contains(t, env, "name:filestash")
+}
+
+// TestResticInitOnlyWhenAbsent runs the restic script with a restic stub.
+// Exit code 10 means "repository does not exist" (restic 0.17). Any other
+// failure must stop the Job without `restic init`.
+func TestResticInitOnlyWhenAbsent(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		catExit  int
+		wantErr  bool
+		wantInit bool
+	}{
+		"present":      {0, false, false},
+		"absent":       {10, false, true},
+		"bad password": {12, true, false},
+		"network":      {1, true, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			bin := t.TempDir()
+			log := filepath.Join(bin, "log")
+			stub := fmt.Sprintf("#!/bin/sh\necho \"$*\" >> %s\n[ \"$1\" = cat ] && exit %d\nexit 0\n", log, tc.catExit)
+			require.NoError(t, os.WriteFile(filepath.Join(bin, "restic"), []byte(stub), 0o700)) //nolint:gosec // test stub
+			script := resticScript(validConfig(t))
+			cmd := exec.Command("sh", "-c", script) //nolint:gosec // script under test
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr {
+				require.Error(t, err, "%s", out)
+			} else {
+				require.NoError(t, err, "%s", out)
+			}
+			calls, _ := os.ReadFile(log)
+			require.Equal(t, tc.wantInit, strings.Contains(string(calls), "init\n"), "%s", calls)
+			require.Equal(t, !tc.wantErr, strings.Contains(string(calls), "backup "), "%s", calls)
+		})
 	}
 }
 

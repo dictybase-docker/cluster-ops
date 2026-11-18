@@ -1,0 +1,13 @@
+# Template for a filestash-backup stack config.
+# Rendered by `just gcp-pulumi scaffold-filestash-stack`. The secret.* values
+# are KMS-encrypted; set them with: just filestash configure-backup
+config:
+  gcp:project: __PROJECT__
+  filestash-backup:properties:
+    namespace: __NAMESPACE__
+    bucket: restic-filestash-backup-__PROJECT__
+    schedule: "30 */4 * * *"
+    keepLast: 42
+    keepDaily: 30
+    secret:
+      name: filestash-backup-auth

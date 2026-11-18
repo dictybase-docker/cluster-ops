@@ -21,7 +21,8 @@ gw_file="gateway/Pulumi.fs-scaffold-gw-$$.yaml"
 cleanup() {
     rm -rf "$tmp_dir"
     rm -f "$cfg_file" "$bcfg_file" "$reg_ingress" "$reg_gateway" "$gw_file" \
-        "filestash/Pulumi.fs-scaffold-ing-$$.yaml" "filestash/Pulumi.fs-scaffold-gw-$$.yaml"
+        "filestash/Pulumi.fs-scaffold-ing-$$.yaml" "filestash/Pulumi.fs-scaffold-gw-$$.yaml" \
+        "filestash-backup/Pulumi.fs-scaffold-ing-$$.yaml" "filestash-backup/Pulumi.fs-scaffold-gw-$$.yaml"
 }
 trap cleanup EXIT
 mkdir -p "${tmp_dir}/bin" "${tmp_dir}/fixtures"
@@ -243,9 +244,14 @@ MOCK
 
 cat > "${tmp_dir}/bin/gcloud" <<'MOCK'
 #!/usr/bin/env bash
-printf 'gcloud %s\n' "$*" >> "${STUB_LOG}"
+printf 'gcloud %s [as %s]\n' "$*" "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-ambient}" >> "${STUB_LOG}"
 case "$*" in
-    "config get-value account") printf '%s' "${STUB_GCLOUD_ACCOUNT:-sa-manager@test.iam.gserviceaccount.com}" ;;
+    "iam service-accounts describe"*)
+        case "${STUB_SA_DESCRIBE:-ok}" in
+            ok) exit 0 ;;
+            missing) echo 'ERROR: (gcloud.iam.service-accounts.describe) NOT_FOUND: Unknown service account' >&2; exit 1 ;;
+            denied) echo 'ERROR: (gcloud.iam.service-accounts.describe) PERMISSION_DENIED' >&2; exit 1 ;;
+        esac ;;
 esac
 exit 0
 MOCK
@@ -542,20 +548,30 @@ for kind in ing gw; do
     cat > "config/clusters/fs-scaffold-${kind}-$$.yaml" <<YAML
 stack: fs-scaffold-${kind}-$$
 namespace: ${ns}
+gcp_project: proj-${kind}
 kms_secrets_provider: gcpkms://projects/test/locations/x/keyRings/y/cryptoKeys/z
 YAML
 done
 printf 'config: {}\n' > "$gw_file"
 run_recipe env "PULUMI_STACK=fs-scaffold-ing-$$" "$just_bin" gcp-pulumi scaffold-filestash-stack --state-size 2Gi >/dev/null
 f="filestash/Pulumi.fs-scaffold-ing-$$.yaml"
-[[ "$(yq -r '.config."filestash:properties".ingress.enabled' "$f")" == true ]]
+[[ "$(yq -r '.config."filestash:properties".ingress.enabled' "$f")" == false ]]
+[[ "$(yq -r '.config."filestash:properties".ingress.tlsSecret' "$f")" == filestash-tls-secret ]]
 [[ "$(yq -r '.config."filestash:properties".namespace' "$f")" == dev ]]
 [[ "$(yq -r '.config."filestash:properties".storage.size' "$f")" == 2Gi ]]
-run_recipe env "PULUMI_STACK=fs-scaffold-gw-$$" "$just_bin" gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host files.example.org >/dev/null
+b="filestash-backup/Pulumi.fs-scaffold-ing-$$.yaml"
+[[ "$(yq -r '.config."filestash-backup:properties".namespace' "$b")" == dev ]]
+[[ "$(yq -r '.config."filestash-backup:properties".bucket' "$b")" == restic-filestash-backup-proj-ing ]]
+[[ "$(yq -r '.config."gcp:project"' "$b")" == proj-ing ]]
+out=$(run_recipe env "PULUMI_STACK=fs-scaffold-gw-$$" "$just_bin" gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host files.example.org)
+printf '%s' "$out" | rg -q 'public route: Gateway route'
 f="filestash/Pulumi.fs-scaffold-gw-$$.yaml"
 [[ "$(yq -r '.config."filestash:properties".ingress.enabled' "$f")" == false ]]
 [[ "$(yq -r '.config."filestash:properties".namespace' "$f")" == prod ]]
 [[ "$(yq -r '.config."filestash:properties".applicationURL' "$f")" == https://files.example.org ]]
+b="filestash-backup/Pulumi.fs-scaffold-gw-$$.yaml"
+[[ "$(yq -r '.config."filestash-backup:properties".bucket' "$b")" == restic-filestash-backup-proj-gw ]]
+rg -q "pulumi -C filestash-backup stack init fs-scaffold-gw-$$" "$log_file"
 echo '  test_scaffold_selects_ingress_mode: PASS'
 
 echo "=== 12. publish, unpublish-file, release-lock ==="
@@ -652,22 +668,39 @@ echo '  test_backup_now_is_online_and_prints_snapshot: PASS'
 expect_failure 'has no properties.secret.resticPass' env "PULUMI_STACK=$stack" "$just_bin" filestash deploy-backup
 assert_no_call 'stack up'
 touch "$tmp_dir/sa.json"
+printf '{"client_email":"sa-manager@test.iam.gserviceaccount.com"}' > "$tmp_dir/mgr.json"
+printf '{"client_email":"kops-cluster-creator@test.iam.gserviceaccount.com"}' > "$tmp_dir/creator.json"
+cb=(filestash configure-backup --project test --key-file "$tmp_dir/sa.json" --manager-key "$tmp_dir/mgr.json")
 : > "$log_file"
-expect_failure "does not match project 'other'" env "PULUMI_STACK=$stack" "$just_bin" filestash configure-backup --project other --key-file "$tmp_dir/sa.json"
+expect_failure "does not match project 'other'" env "PULUMI_STACK=$stack" "$just_bin" filestash configure-backup --project other --key-file "$tmp_dir/sa.json" --manager-key "$tmp_dir/mgr.json"
 assert_no_call 'stack config set'
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash configure-backup --project test --key-file "$tmp_dir/sa.json" >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" "${cb[@]}" >/dev/null
 rg -q 'add-iam-policy-binding test .*title=filestash-backup-bucket-writer' "$log_file"
+[[ "$(rg -c '^gcloud ' "$log_file")" == "$(rg -c "^gcloud .* \[as $tmp_dir/mgr.json\]$" "$log_file")" ]]
+assert_no_call 'config get-value account'
+assert_no_call 'service-accounts create'
+echo '  test_setup_sa_binds_manager_identity: PASS'
 for key in resticPass gcsProject serviceAccountFile; do
     [[ "$(yq -r ".config.\"filestash-backup:properties\".secret.$key.secure" "$bcfg_file")" == "v1:enc" ]]
 done
 rg -q '^go-stdin-bytes properties.secret.resticPass 40$' "$log_file"
 pass1=$(cat "$stub_dir/cfg-filestash-backup-secret.resticPass")
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash configure-backup --project test --key-file "$tmp_dir/sa.json" >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" "${cb[@]}" >/dev/null
 assert_no_call 'key properties.secret.resticPass'
 [[ "$(cat "$stub_dir/cfg-filestash-backup-secret.resticPass")" == "$pass1" ]]
-expect_failure 'cannot create service account keys' env "PULUMI_STACK=$stack" "STUB_GCLOUD_ACCOUNT=kops-cluster-creator@test.iam.gserviceaccount.com" "$just_bin" filestash configure-backup --project test --key-file "$tmp_dir/sa.json"
+: > "$log_file"
+expect_failure 'not sa-manager@test' env "PULUMI_STACK=$stack" "$just_bin" filestash configure-backup --project test --key-file "$tmp_dir/sa.json" --manager-key "$tmp_dir/creator.json"
+assert_no_call '^gcloud '
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "STUB_SA_DESCRIBE=missing" "$just_bin" "${cb[@]}" >/dev/null
+rg -q 'service-accounts create filestash-backup-sa' "$log_file"
+: > "$log_file"
+expect_failure 'PERMISSION_DENIED' env "PULUMI_STACK=$stack" "STUB_SA_DESCRIBE=denied" "$just_bin" "${cb[@]}"
+assert_no_call 'service-accounts create'
+assert_no_call 'add-iam-policy-binding'
+echo '  test_setup_sa_classifies_describe_errors: PASS'
 echo '  test_configure_backup_keeps_restic_password: PASS'
 : > "$log_file"
 expect_failure 'pvc/filestash-state not found' env "PULUMI_STACK=$stack" "$just_bin" filestash deploy-backup

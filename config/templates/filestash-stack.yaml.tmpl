@@ -1,6 +1,7 @@
 # Template for a filestash stack config.
-# Rendered by `just gcp-pulumi scaffold-filestash-stack`. Exposure mode:
-# ingress.enabled is true only on a cluster with no gateway/Pulumi.<stack>.yaml.
+# Rendered by `just gcp-pulumi scaffold-filestash-stack`. The Ingress block is
+# for clusters with no gateway/Pulumi.<stack>.yaml. It stays off until the
+# route step: set ingress.hosts.0, then ingress.enabled=true.
 # Replace every <...> value before deploy; validation rejects placeholders.
 config:
   filestash:properties:
@@ -21,7 +22,7 @@ config:
       region: us-east-1
       label: dictycr-minio
     ingress:
-      enabled: __INGRESS_ENABLED__
+      enabled: false
       className: nginx
       hosts:
         - __HOST__

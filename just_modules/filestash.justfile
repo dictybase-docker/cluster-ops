@@ -634,15 +634,17 @@ release-lock holder="" lease="" stack="" namespace="":
 # Configure the filestash-backup stack: the backup writer service account and
 # its key, a random restic password (kept on a second run), and the GCS
 # project, all as KMS-encrypted values in filestash-backup/Pulumi.<stack>.yaml.
-# Run it as sa-manager: kops-cluster-creator cannot mint service account keys.
-# Usage: just filestash configure-backup [--project <id>] [--key-file <path>] [--stack <name>]
+# Every gcloud call runs as sa-manager from its key file: kops-cluster-creator
+# cannot create service account keys.
+# Usage: just filestash configure-backup [--project <id>] [--key-file <path>] [--manager-key <path>] [--stack <name>]
 [arg("project", long="project", short="p", help="GCP project id (defaults to PROJECT_ID)")]
+[arg("manager_key", long="manager-key", help="sa-manager JSON key (default credentials/<project>/sa-manager.json)")]
 [arg("key_file", long="key-file", short="f", help="Service account key path (default credentials/<project>/filestash-backup-sa.json)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-configure-backup project="" key_file="" stack="" namespace="":
+configure-backup project="" key_file="" manager_key="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -657,7 +659,9 @@ configure-backup project="" key_file="" stack="" namespace="":
         || fs_die "bucket '$BUCKET' in $BCFG does not match project '$PROJECT'."
     KEY_FILE={{ quote(key_file) }}
     [[ -n "$KEY_FILE" ]] || KEY_FILE="credentials/${PROJECT}/filestash-backup-sa.json"
-    just filestash _setup-backup-sa --bucket "$BUCKET" --project "$PROJECT" --key-file "$KEY_FILE"
+    MANAGER_KEY={{ quote(manager_key) }}
+    [[ -n "$MANAGER_KEY" ]] || MANAGER_KEY="credentials/${PROJECT}/sa-manager.json"
+    just filestash _setup-backup-sa --bucket "$BUCKET" --project "$PROJECT" --key-file "$KEY_FILE" --manager-key "$MANAGER_KEY"
     [[ -f "$KEY_FILE" ]] || fs_die "service account key '$KEY_FILE' does not exist."
     KEY_FILE="$(cd "$(dirname "$KEY_FILE")" && pwd)/$(basename "$KEY_FILE")"
     GOOGLE_APPLICATION_CREDENTIALS="$(fs_pulumi_creds)" \
@@ -676,36 +680,39 @@ configure-backup project="" key_file="" stack="" namespace="":
 [arg("bucket", long="bucket", short="b", help="Backup GCS bucket the key gets write access to")]
 [arg("project", long="project", short="p", help="GCP project id")]
 [arg("key_file", long="key-file", short="f", help="Where to write the JSON key")]
+[arg("manager_key", long="manager-key", help="sa-manager JSON key that runs every gcloud call")]
 [arg("sa_name", long="sa-name", short="a", help="Service account short name")]
 [no-cd]
-_setup-backup-sa bucket project key_file sa_name="filestash-backup-sa":
+_setup-backup-sa bucket project key_file manager_key sa_name="filestash-backup-sa":
     #!/usr/bin/env bash
     set -euo pipefail
     BUCKET={{ quote(bucket) }}
     PROJECT={{ quote(project) }}
     KEY_FILE={{ quote(key_file) }}
+    MANAGER_KEY={{ quote(manager_key) }}
     SA_NAME={{ quote(sa_name) }}
     SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
-    # Preflight: minting a key needs iam.serviceAccountKeyAdmin, which only
-    # sa-manager holds. Fail before any change if either identity is
-    # kops-cluster-creator.
-    GCLOUD_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
-    ADC_ACCOUNT=""
-    if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" && -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]]; then
-        ADC_ACCOUNT="$(jq -r '.client_email // empty' "$GOOGLE_APPLICATION_CREDENTIALS" 2>/dev/null || true)"
+    # Bind the identity explicitly: every gcloud call and the key mint use the
+    # sa-manager key, never the ambient gcloud account.
+    [[ -f "$MANAGER_KEY" ]] || { echo "Error: sa-manager key '$MANAGER_KEY' not found." >&2; exit 1; }
+    WHO=$(jq -r '.client_email // empty' "$MANAGER_KEY")
+    if [[ "$WHO" != "sa-manager@${PROJECT}.iam.gserviceaccount.com" ]]; then
+        echo "Error: '$MANAGER_KEY' is '${WHO:-not a service account key}', not sa-manager@${PROJECT}." >&2
+        exit 1
     fi
-    for ACCOUNT in "$GCLOUD_ACCOUNT" "$ADC_ACCOUNT"; do
-        if [[ "$ACCOUNT" == kops-cluster-creator@* ]]; then
-            echo "Error: identity ${ACCOUNT} cannot create service account keys." >&2
-            echo "Rotate to sa-manager first: just gcp-cluster rotate-to-manager, then re-enter cluster-env." >&2
-            exit 1
-        fi
-    done
-    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>&1; then
+    export CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$MANAGER_KEY"
+    export GOOGLE_APPLICATION_CREDENTIALS="$MANAGER_KEY"
+    err="$(mktemp "${TMPDIR:-/tmp}/filestash-sa.XXXXXX")"
+    trap 'rm -f "$err"' EXIT
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT" >/dev/null 2>"$err"; then
         echo "Service account $SA_EMAIL exists — continuing."
-    else
+    elif grep -Eq 'NOT_FOUND|does not exist' "$err"; then
         gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT" \
             --display-name "Filestash state backup GCS writer"
+    else
+        echo "Error: could not describe $SA_EMAIL:" >&2
+        cat "$err" >&2
+        exit 1
     fi
     gcloud projects add-iam-policy-binding "$PROJECT" \
         --member "serviceAccount:${SA_EMAIL}" \

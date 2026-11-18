@@ -1123,10 +1123,11 @@ scaffold-dcr-mcp-stack stack="" graphql_endpoint="" linkout_base_url="" port="80
     echo "  name=dcr-mcp image=dictybase/dcr-mcp:bootstrap namespace=${namespace} port=${port_val}"
     echo "Next: configure stack options, push ${cfg} to cluster-ops develop, or pin properties.image.tag"
 
-# Scaffold a filestash stack config from the cluster registry + template.
-# Writes filestash/Pulumi.<stack>.yaml when it has no config block yet, then
-# initializes the stack with the registry KMS secrets provider. Selects the
-# nginx Ingress mode only when gateway/Pulumi.<stack>.yaml does not exist.
+# Scaffold the filestash and filestash-backup stack configs from the cluster
+# registry and templates. Writes each Pulumi.<stack>.yaml that has no config
+# block yet, then initializes both stacks with the registry KMS secrets
+# provider. The filestash Ingress starts off on every cluster; on a cluster
+# with no gateway/Pulumi.<stack>.yaml, the route step turns it on.
 # Usage: just gcp-pulumi scaffold-filestash-stack --state-size <q> [--host <h>] [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK); must match a registry entry's stack key")]
 [arg("state_size", long="state-size", help="State PVC size, for example 5Gi (required, no default)")]
@@ -1169,31 +1170,42 @@ scaffold-filestash-stack stack="" state_size="" host="":
     fi
     namespace=$(yq -r '.namespace' "${entry}")
     kms=$(yq -r '.kms_secrets_provider' "${entry}")
-    cfg="filestash/Pulumi.${stack_name}.yaml"
-    if [ -e "${cfg}" ] && grep -q '^config:' "${cfg}" 2>/dev/null; then
-        echo "Stack config ${cfg} already exists — keeping existing config."
-        exit 0
-    fi
-    ingress=true
-    [ -f "gateway/Pulumi.${stack_name}.yaml" ] && ingress=false
-    sed \
-        -e "s|__NAMESPACE__|${namespace}|g" \
-        -e "s|__HOST__|${host}|g" \
-        -e "s|__STATE_SIZE__|${size}|g" \
-        -e "s|__INGRESS_ENABLED__|${ingress}|g" \
-        config/templates/filestash-stack.yaml.tmpl >> "${cfg}"
-    got_ns=$(yq -r '.config."filestash:properties".namespace' "${cfg}")
-    if [ "${got_ns}" != "${namespace}" ]; then
-        echo "ERROR: rendered config failed validation (namespace=${got_ns})." >&2
+    project=$(yq -r '.gcp_project // ""' "${entry}")
+    if [ -z "${namespace}" ] || [ -z "${kms}" ] || [ -z "${project}" ]; then
+        echo "ERROR: ${entry} needs namespace, kms_secrets_provider, and gcp_project." >&2
         exit 1
     fi
+    mode="Gateway route (gateway/Pulumi.${stack_name}.yaml)"
+    [ -f "gateway/Pulumi.${stack_name}.yaml" ] || mode="nginx Ingress, off until the route step"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
-    if ! pulumi -C filestash stack init "${stack_name}" --secrets-provider "${kms}" 2>/dev/null; then
-        pulumi -C filestash stack select "${stack_name}" 2>/dev/null || true
+    render() {
+        local folder="$1" tmpl="$2" cfg="$1/Pulumi.${stack_name}.yaml"
+        if [ -e "${cfg}" ] && grep -q '^config:' "${cfg}" 2>/dev/null; then
+            echo "Stack config ${cfg} already exists — keeping it."
+            return 0
+        fi
+        sed \
+            -e "s|__NAMESPACE__|${namespace}|g" \
+            -e "s|__HOST__|${host}|g" \
+            -e "s|__STATE_SIZE__|${size}|g" \
+            -e "s|__PROJECT__|${project}|g" \
+            "${tmpl}" >> "${cfg}"
+        if ! pulumi -C "${folder}" stack init "${stack_name}" --secrets-provider "${kms}" 2>/dev/null; then
+            pulumi -C "${folder}" stack select "${stack_name}" 2>/dev/null || true
+        fi
+        echo "Scaffolded ${cfg}"
+    }
+    render filestash config/templates/filestash-stack.yaml.tmpl
+    render filestash-backup config/templates/filestash-backup-stack.yaml.tmpl
+    got_ns=$(yq -r '.config."filestash:properties".namespace' "filestash/Pulumi.${stack_name}.yaml")
+    got_bns=$(yq -r '.config."filestash-backup:properties".namespace' "filestash-backup/Pulumi.${stack_name}.yaml")
+    if [ "${got_ns}" != "${namespace}" ] || [ "${got_bns}" != "${namespace}" ]; then
+        echo "ERROR: a stack config does not use namespace ${namespace} (filestash=${got_ns}, filestash-backup=${got_bns})." >&2
+        exit 1
     fi
-    echo "Scaffolded ${cfg}"
-    echo "  namespace=${namespace} storage.size=${size} ingress.enabled=${ingress} host=${host}"
-    echo "Next: just filestash create-secret"
+    echo "  namespace=${namespace} project=${project} storage.size=${size} host=${host}"
+    echo "  public route: ${mode}"
+    echo "Next: just filestash build-plugins --tag <yyyy.mm.dd>"
 
 # Scaffold a frontend_application stack config from the cluster registry + template.
 # Initializes the stack with the registry KMS secrets provider when absent, and

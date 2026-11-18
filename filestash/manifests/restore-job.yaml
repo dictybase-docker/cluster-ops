@@ -1,12 +1,14 @@
 # State check or restore from a restic snapshot of the filestash-backup
 # stack. Init container `fetch` restores snapshot __SNAPSHOT__ (an id, or
 # `latest`) into an emptyDir. Container `apply` checks manifest.json,
-# SHA256SUMS, PRAGMA integrity_check of each SQLite file, and secret_key in
-# config.json. MODE=check stops there and mounts no state PVC. MODE=restore
-# then replaces the SQLite files and config.json on pvc/filestash-state and
-# compares the table row counts. The recipe fills __NAMESPACE__, __MODE__,
-# __SNAPSHOT__, __REPOSITORY__, __RESTIC_IMAGE__, and __SQLITE_IMAGE__, and
-# runs MODE=restore only while Filestash is down.
+# SHA256SUMS (including counts.txt), share.sql, PRAGMA integrity_check of
+# each SQLite file, a nonempty general.secret_key in config.json, and the
+# SHA-256 of CONFIG_SECRET in Secret filestash against the manifest.
+# MODE=check stops there and mounts no state PVC. MODE=restore then replaces
+# the SQLite files and config.json on pvc/filestash-state and compares the
+# table row counts. The recipe fills __NAMESPACE__, __MODE__, __SNAPSHOT__,
+# __REPOSITORY__, __RESTIC_IMAGE__, and __SQLITE_IMAGE__, and runs
+# MODE=restore only while Filestash is down.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -77,12 +79,17 @@ spec:
               C=/restore/backup/state; S=/app/data/state
               [ -f "$C/manifest.json" ] || { echo "snapshot has no manifest.json"; exit 1; }
               (cd "$C" && sha256sum -c SHA256SUMS)
+              grep -q ' counts.txt$' "$C/SHA256SUMS" || { echo "SHA256SUMS does not cover counts.txt"; exit 1; }
+              [ -f "$C/db/share.sql" ] || { echo "snapshot has no share.sql"; exit 1; }
               for f in "$C"/db/*.sql; do
-                [ -e "$f" ] || continue
                 r=$(sqlite3 "$f" "PRAGMA integrity_check")
                 [ "$r" = ok ] || { echo "integrity_check $f: $r"; exit 1; }
               done
-              grep -q '"secret_key"' "$C/config/config.json" || { echo "config.json has no general.secret_key"; exit 1; }
+              k=$(sqlite3 :memory: "SELECT coalesce(json_extract(readfile('$C/config/config.json'), '$.general.secret_key'), '')")
+              [ -n "$k" ] || { echo "config.json has no general.secret_key"; exit 1; }
+              want=$(sqlite3 :memory: "SELECT coalesce(json_extract(readfile('$C/manifest.json'), '$.configSecretSha256'), '')")
+              got=$(printf '%s' "${CONFIG_SECRET:-}" | sha256sum | cut -c1-64)
+              [ -n "$want" ] && [ "$want" = "$got" ] || { echo "CONFIG_SECRET in Secret filestash does not match the snapshot (want ${want:-none})"; exit 1; }
               if [ "$MODE" = check ]; then echo "snapshot passed every check: $(cat "$C/manifest.json")"; exit 0; fi
               mkdir -p "$S/db" "$S/config"
               rm -f "$S"/db/*.sql "$S"/db/*.sql-wal "$S"/db/*.sql-shm "$S"/db/*.sql-journal
@@ -97,6 +104,11 @@ spec:
           env:
             - name: MODE
               value: "__MODE__"
+            - name: CONFIG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: filestash
+                  key: CONFIG_SECRET
           volumeMounts:
             - name: restore
               mountPath: /restore

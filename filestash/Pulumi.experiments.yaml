@@ -1,5 +1,7 @@
 # filestash stack config for experiments (dcr-experiments, namespace dev).
-# Exposure: nginx Ingress from this project; the cluster has no Gateway stack.
+# Exposure: nginx Ingress from this project (the cluster has no Gateway
+# stack). It stays off until the route step: set ingress.hosts.0, then
+# ingress.enabled=true.
 # Replace <filestash-host> before deploy; validation rejects placeholders.
 config:
   filestash:properties:
@@ -20,7 +22,7 @@ config:
       region: us-east-1
       label: dictycr-minio
     ingress:
-      enabled: true
+      enabled: false
       className: nginx
       hosts:
         - <filestash-host>

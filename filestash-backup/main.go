@@ -175,6 +175,9 @@ func (b *Backup) podSpec() *corev1.PodSpecArgs {
 				Name:    pulumi.String("copy"),
 				Image:   pulumi.String(cfg.SqliteImage),
 				Command: pulumi.StringArray{pulumi.String("sh"), pulumi.String("-c"), pulumi.String(copyScript)},
+				// The manifest records the SHA-256 of CONFIG_SECRET; the
+				// restore rejects a snapshot made with another key.
+				Env: corev1.EnvVarArray{secretEnv("CONFIG_SECRET", "filestash", "CONFIG_SECRET")},
 				VolumeMounts: corev1.VolumeMountArray{
 					mount("state", statePath, false),
 					mount("scratch", backupPath, false),

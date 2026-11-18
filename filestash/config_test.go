@@ -148,7 +148,7 @@ func TestStackFilesValidate(t *testing.T) {
 		ingress   bool
 	}{
 		{"Pulumi.dcr-kube1.yaml", "prod", false},
-		{"Pulumi.experiments.yaml", "dev", true},
+		{"Pulumi.experiments.yaml", "dev", false},
 	}
 	for _, tc := range cases {
 		cfg := readStack(t, tc.file)
@@ -159,6 +159,19 @@ func TestStackFilesValidate(t *testing.T) {
 		err := cfg.Validate()
 		if err != nil {
 			require.Contains(t, err.Error(), "placeholder", "%s: only placeholder errors are allowed", tc.file)
+			require.NotContains(t, err.Error(), "ingress", "%s: the first deploy runs with the route off", tc.file)
 		}
 	}
+}
+
+// TestExperimentsIngressReadyForRouteStep checks that the experiments stack
+// keeps the Ingress settings for the route step, with the Ingress off.
+func TestExperimentsIngressReadyForRouteStep(t *testing.T) {
+	t.Parallel()
+	cfg := readStack(t, "Pulumi.experiments.yaml")
+	require.False(t, cfg.Ingress.Enabled)
+	require.Equal(t, "nginx", cfg.Ingress.ClassName)
+	require.Equal(t, "filestash-tls-secret", cfg.Ingress.TLSSecret)
+	require.Equal(t, "kcert.dev/ingress", cfg.Ingress.Label.Name)
+	require.Len(t, cfg.Ingress.Hosts, 1)
 }
