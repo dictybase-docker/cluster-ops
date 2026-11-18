@@ -838,4 +838,25 @@ expect_failure 'did not get the block redirect' env "STUB_ADMIN_NOREDIRECT=https
 expect_failure 'encoded admin path not blocked' env "STUB_ADMIN_NOREDIRECT=https://files.test/%61dmin" "$just_bin" filestash probe-admin --host files.test
 echo '  test_probe_admin_detects_leak: PASS'
 
+echo "=== 15. login-keys and list-snapshots ==="
+out=$(run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash login-keys --role public)
+printf '%s' "$out" | rg -q '^Access key: filestash-public$'
+printf '%s' "$out" | rg -qF "Secret key: $(cat "$stub_dir/cfg-filestash-users.public.secretKey")"
+expect_failure "invalid --role 'publisher'" env "PULUMI_STACK=$stack" "$just_bin" filestash login-keys --role publisher
+expect_failure "invalid --role ''" env "PULUMI_STACK=$stack" "$just_bin" filestash login-keys
+echo '  test_login_keys: PASS'
+cat > "${tmp_dir}/bin/restic" <<'MOCK'
+#!/usr/bin/env bash
+printf 'restic %s [repo %s pw-set %s creds %s]\n' "$*" "$RESTIC_REPOSITORY" "${RESTIC_PASSWORD:+yes}" "$GOOGLE_APPLICATION_CREDENTIALS" >> "${STUB_LOG}"
+echo "4f2a9c1b  2026-11-17 04:30:00  filestash  filestash-backup  /backup/state"
+MOCK
+chmod +x "${tmp_dir}/bin/restic"
+printf '/keys/fs-backup.json' > "$stub_dir/cfg-filestash-backup-secret.serviceAccountFile"
+: > "$log_file"
+out=$(run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash list-snapshots)
+printf '%s' "$out" | rg -q '4f2a9c1b'
+rg -qF 'restic snapshots --tag filestash-backup --host filestash [repo gs:restic-filestash-backup-test:/ pw-set yes creds /keys/fs-backup.json]' "$log_file"
+assert_no_call "$(cat "$stub_dir/cfg-filestash-backup-secret.resticPass")"
+echo '  test_list_snapshots: PASS'
+
 echo "All filestash recipe contract tests passed."

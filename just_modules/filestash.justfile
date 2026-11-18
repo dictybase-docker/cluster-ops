@@ -1080,3 +1080,53 @@ probe-admin host="":
     done
     [[ "$failures" -eq 0 ]] || { echo "probe-admin: $failures request(s) reached admin content. Disable the route." >&2; exit 1; }
     echo "probe-admin: no admin path variant reached admin content on $HOST."
+
+# Print the MinIO keys of one staff login role from the encrypted stack
+# values. Staff paste them into the Filestash login form. The publisher keys
+# are for recipes only and this recipe refuses them.
+# Usage: just filestash login-keys --role intake|public|operator
+[arg("role", long="role", help="intake, public, or operator (required)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+login-keys role="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    ROLE={{ quote(role) }}
+    case "$ROLE" in
+        intake|public|operator) ;;
+        *) fs_die "invalid --role '$ROLE' (intake, public, or operator)." ;;
+    esac
+    ak=$(yq -r ".config.\"filestash:properties\".users.$ROLE.accessKey // \"\"" "$CFG")
+    sk=$(fs_cfg_get filestash "users.$ROLE.secretKey")
+    [[ -n "$ak" && -n "$sk" ]] || fs_die "$CFG has no keys for $ROLE — run: just filestash create-users"
+    echo "Access key: $ak"
+    echo "Secret key: $sk"
+    echo "Do not store these keys outside the operator password store."
+
+# List the restic snapshots of the Filestash state, newest last. Needs a local
+# restic CLI. The keys come from the encrypted filestash-backup stack values,
+# in the environment only.
+# Usage: just filestash list-snapshots [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+list-snapshots stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    fs_backup_resolve
+    command -v restic >/dev/null 2>&1 || fs_die "restic not found — install the restic CLI."
+    RESTIC_REPOSITORY="gs:$(fs_bprop bucket):/"
+    RESTIC_PASSWORD=$(fs_cfg_get filestash-backup secret.resticPass)
+    GOOGLE_PROJECT_ID=$(fs_cfg_get filestash-backup secret.gcsProject)
+    key=$(fs_cfg_get filestash-backup secret.serviceAccountFile)
+    export RESTIC_REPOSITORY RESTIC_PASSWORD GOOGLE_PROJECT_ID
+    GOOGLE_APPLICATION_CREDENTIALS="$key" restic snapshots --tag filestash-backup --host filestash
