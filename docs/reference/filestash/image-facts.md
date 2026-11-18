@@ -1,6 +1,6 @@
 # Filestash Image Facts
 
-Back to: [Filestash Design](../../plans/2026-11-17-filestash-design.md)
+Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 **Status**: Source facts. The operator skipped the local container test.
 Each fact comes from the Filestash source at revision `7509e60`

@@ -207,6 +207,7 @@ just minio verify
 
 **Other documentation:**
 - Gateway routing (`gateway/`): [`gateway-deploy.md`](gateway-deploy.md)
+- Filestash file manager for the `uploads` and `downloads` buckets: [`filestash-deploy.md`](filestash-deploy.md)
 - PostgreSQL on the same pool: [`postgres-deploy.md`](postgres-deploy.md)
 - ArangoDB on the same pool: [`arangodb-deploy.md`](arangodb-deploy.md)
 - Redis on the same pool: [`redis-deploy.md`](redis-deploy.md)
