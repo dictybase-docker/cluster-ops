@@ -13,8 +13,8 @@ Each fact comes from the Filestash source at revision `7509e60`
 | Image | Tag | Digest | Note |
 |---|---|---|---|
 | `machines/filestash` | `latest` | `sha256:89e70f0fccc4dcce3f47e5d490ee961f912a5ffd4e30b98216e3e37e469035e2` | Pushed 2026-11-16. The vendor publishes no version tags. The digest is the pin. |
-| `keinos/sqlite3` | `3.54.1` | `sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17` | State backup copy. |
-| `alpine/kubectl` | `1.35.4` | `sha256:9ccd823647622b620dce092d0f1406b8b41d152ce08ac963e3d4683770b14dfd` | State backup scale steps. Cluster `kubectl` is 1.35. |
+| `keinos/sqlite3` | `3.54.1` | `sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17` | Online state copy and restore checks. |
+| `restic/restic` | `0.17.0` | `sha256:da2bd7f56bc940bd14166d4802370d49b2232ee1d28898a3295fbf3d73606d80` | State backup and restore (`filestash-backup` stack). |
 | `busybox` | `1.37.0` | `sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec` | Seed init container and plugin bundle base. |
 
 ## Behavior

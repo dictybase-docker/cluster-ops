@@ -40,10 +40,10 @@ A share link stores the session of the staff member who made it, with that MinIO
 
 | Location | Content |
 |---|---|
-| Secret `filestash-users` | `<role>AccessKey` and `<role>SecretKey` for the four roles. |
-| Operator password store | The intake, public, and operator keys for staff login. |
-| `share.sql` on the state PVC | An encrypted copy of the session key in each link. Protect the PVC and its backups as secret data. |
-| Git | Only Secret names and key names. |
+| `filestash/Pulumi.<stack>.yaml` | `users.<role>.accessKey` (plain) and `users.<role>.secretKey` (KMS-encrypted). The only copy: commit the file. |
+| Secret `filestash-users` | Made by `deploy` from the stack values. |
+| Operator password store | The intake, public, and operator keys for staff login. Read them with `pulumi -C filestash config get --path filestash:properties.users.<role>.secretKey`. |
+| `share.sql` on the state PVC | An encrypted copy of the session key in each link. The restic snapshots hold it too. |
 
 ## Bucket Policy
 
@@ -57,11 +57,12 @@ Runs `mc mb --ignore-existing` for both buckets and `mc anonymous set none` on `
 
 ### Behavior
 
-1. Reuses the keys in Secret `filestash-users` when it exists. When the Secret is missing but MinIO user `filestash-intake` exists, it refuses: new keys stop every link, so restore the Secret from Velero first. Otherwise it makes four random 40-character secret keys and creates the Secret from a mode-600 file.
-2. Opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
-3. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
+1. Lists the MinIO users with the root key from Secret `minio-root`.
+2. For each role: keeps stored keys. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe refuses: new keys stop every link, so restore the stack file from Git. Otherwise it stores `filestash-<role>` and a random 40-character secret key, encrypted.
+3. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
+4. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
 
-A second run makes no new keys and attaches nothing again.
+`deploy` then makes Secret `filestash-users`. Commit the stack file after the run.
 
 ### Flags
 
@@ -72,4 +73,9 @@ A second run makes no new keys and attaches nothing again.
 
 ## Key Rotation
 
-A new secret key for a user stops every link that staff made with the old key. Rotate one user at a time. Then make the valid links again and send the new URLs. To rotate, delete Secret `filestash-users` only after you record the old keys, then run `create-users`.
+A new secret key for a user stops every link that staff made with the old key. Rotate one user at a time:
+
+1. Record the links that the old key made (`just filestash audit-shares`).
+2. Set a new value with `just gcp-pulumi set-secret --folder filestash --key properties.users.<role>.secretKey`.
+3. Run `just filestash create-users`, then `just filestash deploy`.
+4. Make the valid links again and send the new URLs.

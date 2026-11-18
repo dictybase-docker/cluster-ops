@@ -319,22 +319,16 @@ part of each published URL, so they must not change after the first release.
 
 **Backup and restore tests**
 
+> **Superseded (2026-11-17).** The Velero-based backup in the first version of
+> this design was replaced. Refer to
+> [ADR 0001](../adr/0001-filestash-state-backup-with-restic.md) and
+> [Backup and restore](../reference/filestash/backup-restore.md).
+
 - Confirm that the MinIO backup includes the `uploads` and `downloads`
   buckets. Restore one object from each bucket from a snapshot.
-- A disk snapshot of a live SQLite file is not a consistent backup.
-  Proposal: a CronJob stops Filestash for a short maintenance interval and runs the SQLite `.backup` command on each `.sql`
-  file and copies `config.json` into a temporary directory on the PVC. After
-  an integrity check, the CronJob renames the directory to its final dated
-  name. A restore uses only these completed copies, not the live files.
-- A schedule alone does not limit the age of a backup. `verify` fails if the
-  newest completed copy or the newest Velero backup is older than the
-  recovery point target.
-- Confirm that the Velero schedule includes the Filestash PVC. Repository
-  documents alone do not prove it.
-- Make a new state copy, then a new Velero backup. Restore that backup into
-  an isolated test namespace, with Secret `filestash`. Start Filestash from
-  the completed copy. Confirm that the shares and the configuration exist
-  and that each `.sql` file passes `PRAGMA integrity_check`.
+- Run `just filestash backup-now`, then
+  `just filestash restore-state --target-namespace filestash-restore-test`.
+  Confirm that the shares and the configuration exist.
 - Do the restore test again after each Filestash upgrade.
 
 ## 12. Operations
@@ -418,6 +412,8 @@ These are design choices, not user decisions. Change any of them.
 - Publication through a `just` recipe, not through drag and drop in Filestash.
 - A seed `config.json` from an init container, then admin console changes.
 - The DNS record after the in-cluster tests.
-- A recurring SQLite-consistent copy of the Filestash state, published
-  atomically, with an age check in `verify`.
+- An online SQLite-consistent `restic` snapshot every 4 hours in a dedicated
+  `filestash-backup` stack, with an age check in `verify` (ADR 0001).
+- The admin password hash, `CONFIG_SECRET`, and the MinIO keys as
+  KMS-encrypted stack values.
 - The admin console blocked from the internet as a release gate.

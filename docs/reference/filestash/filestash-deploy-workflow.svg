@@ -2,64 +2,71 @@
 <rect width="100%" height="100%" fill="#ffffff"/>
 <text x="704" y="55" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="bold" text-anchor="middle" fill="#1f2937">Filestash Deploy Workflow</text>
 <text x="704" y="85" font-family="Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle" fill="#4b5563">Run inside: just cluster-env --env &lt;env&gt; --cluster &lt;cluster&gt;. Start on experiments, then dcr-kube1.</text>
-<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"></marker></defs>
-<rect x="40" y="110" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="58" y="142" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">1. Scaffold the stack</text>
-<text x="58" y="168" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just gcp-pulumi scaffold-filestash-stack</text>
-<rect x="40" y="210" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="58" y="242" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">2. Create the admin secret</text>
-<text x="58" y="268" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash create-secret</text>
-<rect x="40" y="310" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="58" y="342" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">3. Create buckets and users</text>
-<text x="58" y="368" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash create-buckets / create-users</text>
-<rect x="40" y="410" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="58" y="442" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">4. Build the plugin bundle</text>
-<text x="58" y="468" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash build-plugins</text>
-<rect x="40" y="510" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="58" y="542" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">5. Deploy with the route off</text>
-<text x="58" y="568" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash deploy</text>
-<rect x="504" y="110" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="522" y="142" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">6. Admin console, SMTP, links</text>
-<text x="522" y="168" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash admin</text>
-<rect x="504" y="210" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="522" y="242" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">7. Make downloads public</text>
-<text x="522" y="268" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash publish-bucket</text>
-<rect x="504" y="310" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="522" y="342" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">8. Publish files</text>
-<text x="522" y="368" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash publish</text>
-<rect x="504" y="410" width="420" height="78" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
-<text x="522" y="442" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">9. Remove a published file (optional)</text>
-<text x="522" y="468" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash unpublish-file</text>
-<rect x="504" y="510" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="522" y="542" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">10. Turn on the public route</text>
-<text x="522" y="568" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just gateway deploy + probe-admin</text>
-<rect x="968" y="110" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="986" y="142" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">11. Back up and restore test</text>
-<text x="986" y="168" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash backup-now / restore-state</text>
-<rect x="968" y="210" width="420" height="78" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
-<text x="986" y="242" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">12. Upgrade and roll back (optional)</text>
-<text x="986" y="268" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash upgrade / rollback</text>
-<rect x="968" y="310" width="420" height="78" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
-<text x="986" y="342" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">13. Clean up uploads, audit links</text>
-<text x="986" y="368" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash purge-uploads / audit-shares</text>
-<rect x="968" y="410" width="420" height="78" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
-<text x="986" y="442" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">14. Teardown (destructive)</text>
-<text x="986" y="468" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash teardown --delete-pvc yes</text>
-<rect x="968" y="510" width="420" height="78" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
-<text x="986" y="542" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">15. Verify</text>
-<text x="986" y="568" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash verify</text>
-<line x1="250.0" y1="188" x2="250.0" y2="210" stroke="#6b7280" stroke-width="2"/>
-<line x1="250.0" y1="288" x2="250.0" y2="310" stroke="#6b7280" stroke-width="2"/>
-<line x1="250.0" y1="388" x2="250.0" y2="410" stroke="#6b7280" stroke-width="2"/>
-<line x1="250.0" y1="488" x2="250.0" y2="510" stroke="#6b7280" stroke-width="2"/>
-<path d="M460,549.0 L482,549.0 L482,98 L714.0,98 L714.0,110" fill="none" stroke="#6b7280" stroke-width="2"/>
-<line x1="714.0" y1="188" x2="714.0" y2="210" stroke="#6b7280" stroke-width="2"/>
-<line x1="714.0" y1="288" x2="714.0" y2="310" stroke="#6b7280" stroke-width="2"/>
-<line x1="714.0" y1="388" x2="714.0" y2="410" stroke="#6b7280" stroke-width="2"/>
-<line x1="714.0" y1="488" x2="714.0" y2="510" stroke="#6b7280" stroke-width="2"/>
-<path d="M924,549.0 L946,549.0 L946,98 L1178.0,98 L1178.0,110" fill="none" stroke="#6b7280" stroke-width="2"/>
-<line x1="1178.0" y1="188" x2="1178.0" y2="210" stroke="#6b7280" stroke-width="2"/>
-<line x1="1178.0" y1="288" x2="1178.0" y2="310" stroke="#6b7280" stroke-width="2"/>
-<line x1="1178.0" y1="388" x2="1178.0" y2="410" stroke="#6b7280" stroke-width="2"/>
-<line x1="1178.0" y1="488" x2="1178.0" y2="510" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="110" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="139" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">1. Scaffold the stacks</text>
+<text x="58" y="164" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just gcp-pulumi scaffold-filestash-stack</text>
+<line x1="250.0" y1="180" x2="250.0" y2="194" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="194" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="223" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">2. Build the plugin bundle</text>
+<text x="58" y="248" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash build-plugins</text>
+<line x1="250.0" y1="264" x2="250.0" y2="278" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="278" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="307" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">3. Set the stack values</text>
+<text x="58" y="332" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just gcp-pulumi set-config ...</text>
+<line x1="250.0" y1="348" x2="250.0" y2="362" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="362" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="391" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">4. Store admin password, CONFIG_SECRET</text>
+<text x="58" y="416" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash create-secret</text>
+<line x1="250.0" y1="432" x2="250.0" y2="446" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="446" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="475" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">5. Create buckets and users</text>
+<text x="58" y="500" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash create-buckets / create-users</text>
+<line x1="250.0" y1="516" x2="250.0" y2="530" stroke="#6b7280" stroke-width="2"/>
+<rect x="40" y="530" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="58" y="559" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">6. Deploy with the route off</text>
+<text x="58" y="584" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash deploy</text>
+<path d="M460,565.0 L482,565.0 L482,98 L714.0,98 L714.0,110" fill="none" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="110" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="139" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">7. Configure and deploy the backup</text>
+<text x="522" y="164" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">configure-backup / deploy-backup / backup-now</text>
+<line x1="714.0" y1="180" x2="714.0" y2="194" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="194" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="223" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">8. Admin console, SMTP, links</text>
+<text x="522" y="248" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash admin</text>
+<line x1="714.0" y1="264" x2="714.0" y2="278" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="278" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="307" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">9. Make downloads public</text>
+<text x="522" y="332" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash publish-bucket</text>
+<line x1="714.0" y1="348" x2="714.0" y2="362" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="362" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="391" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">10. Publish files</text>
+<text x="522" y="416" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash publish</text>
+<line x1="714.0" y1="432" x2="714.0" y2="446" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="446" width="420" height="70" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="475" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">11. Remove a published file (optional)</text>
+<text x="522" y="500" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash unpublish-file</text>
+<line x1="714.0" y1="516" x2="714.0" y2="530" stroke="#6b7280" stroke-width="2"/>
+<rect x="504" y="530" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="522" y="559" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">12. Turn on the public route</text>
+<text x="522" y="584" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">route per cluster + probe-admin</text>
+<path d="M924,565.0 L946,565.0 L946,98 L1178.0,98 L1178.0,110" fill="none" stroke="#6b7280" stroke-width="2"/>
+<rect x="968" y="110" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="986" y="139" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">13. Do a restore test</text>
+<text x="986" y="164" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash restore-state</text>
+<line x1="1178.0" y1="180" x2="1178.0" y2="194" stroke="#6b7280" stroke-width="2"/>
+<rect x="968" y="194" width="420" height="70" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
+<text x="986" y="223" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">14. Upgrade and roll back (optional)</text>
+<text x="986" y="248" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash upgrade / rollback</text>
+<line x1="1178.0" y1="264" x2="1178.0" y2="278" stroke="#6b7280" stroke-width="2"/>
+<rect x="968" y="278" width="420" height="70" rx="10" fill="#f3f4f6" stroke="#0369a1" stroke-width="2"/>
+<text x="986" y="307" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">15. Clean up uploads, audit links</text>
+<text x="986" y="332" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">purge-uploads / audit-shares</text>
+<line x1="1178.0" y1="348" x2="1178.0" y2="362" stroke="#6b7280" stroke-width="2"/>
+<rect x="968" y="362" width="420" height="70" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+<text x="986" y="391" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">16. Teardown (destructive)</text>
+<text x="986" y="416" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash teardown --delete-pvc yes</text>
+<line x1="1178.0" y1="432" x2="1178.0" y2="446" stroke="#6b7280" stroke-width="2"/>
+<rect x="968" y="446" width="420" height="70" rx="10" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+<text x="986" y="475" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="bold" fill="#111827">17. Verify</text>
+<text x="986" y="500" font-family="Menlo, Courier, monospace" font-size="14" fill="#374151">just filestash verify</text>
 </svg>

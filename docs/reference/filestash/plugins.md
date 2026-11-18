@@ -6,6 +6,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 - [Plugins](#plugins)
 - [Lock Files](#lock-files)
+- [License and Review Procedure](#license-and-review-procedure)
 - [just filestash build-plugins](#just-filestash-build-plugins)
 - [just filestash lock-office-deps](#just-filestash-lock-office-deps)
 - [How the Pod Loads Plugins](#how-the-pod-loads-plugins)
@@ -29,6 +30,20 @@ Each runtime ZIP runs JavaScript in the browser of every public visitor. A `patc
 | `filestash/plugins/office-deps.lock.yaml` | The LibreOffice WASM files for `office`, with `url` and `sha256`. |
 
 **The vendor ZIPs state no license.** Before the first build, a person records the license of each ZIP and reviews each `manifest.json` and `patch` file, then fills `license` and `reviewer`. If a license does not permit a public image, push the bundle to a private registry with `--image`.
+
+## License and Review Procedure
+
+Do these steps before the first build and after each `sha256` change.
+
+1. Download the ZIP from its `url` and check its `sha256`.
+2. Read `manifest.json`. Compare the module types with `modules` in the lock file.
+3. For a `patch` module, read the diff. It must change only styles, icons, or labels. It must not add a network request or send data to another host.
+4. For an `xdg-open` module, search the JavaScript for remote URLs (`http://`, `https://`, `fetch(`, `XMLHttpRequest`). A viewer must load its code from the ZIP only.
+5. Record the license. The vendor ZIP files state none, so ask the vendor (`support@filestash.app`) or record `unknown — private registry only`. Read the third-party license files inside the ZIP (for example `jsmol` in `application_biomed`).
+6. Set `license`, `reviewer` (your name and the date), and `notes` in the lock file, and commit it.
+7. If a license does not permit a public image, build with `--image <private-registry>/filestash-plugins`.
+
+For `office`, also review `office-deps.lock.yaml` after `lock-office-deps`. LibreOffice is MPL-2.0.
 
 ## just filestash build-plugins
 

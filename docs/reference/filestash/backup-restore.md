@@ -2,10 +2,18 @@
 
 Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
+The `filestash-backup` Pulumi project backs up the Filestash state with
+`restic` to its own GCS bucket, the same pattern as the ArangoDB, Redis, and
+MinIO backups. Velero does not back up the state.
+→ [ADR 0001](../../adr/0001-filestash-state-backup-with-restic.md)
+
 ## Table of Contents
 
 - [What Is Backed Up](#what-is-backed-up)
-- [State Copy CronJob](#state-copy-cronjob)
+- [Backup Resources](#backup-resources)
+- [State Backup CronJob](#state-backup-cronjob)
+- [just filestash configure-backup](#just-filestash-configure-backup)
+- [just filestash deploy-backup](#just-filestash-deploy-backup)
 - [just filestash backup-now](#just-filestash-backup-now)
 - [just filestash restore-state](#just-filestash-restore-state)
 - [just filestash restore-cleanup](#just-filestash-restore-cleanup)
@@ -15,63 +23,117 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 | Data | Backup |
 |---|---|
 | Files in `uploads` and `downloads` | The MinIO `restic` backup. Refer to the [MinIO backup details](../minio/backup.md). |
-| `config.json` and the SQLite files | Completed copies in `/app/data/state/backups/`, then the Velero backup of the PVC. |
-| Secret `filestash` | Velero. A restore needs the same `CONFIG_SECRET`. |
+| `config.json` and the SQLite files (`share.sql` and others) | `restic` snapshots in `gs://restic-filestash-backup-<project-id>`. |
+| Admin password hash, `CONFIG_SECRET`, MinIO user keys | KMS-encrypted values in `filestash/Pulumi.<stack>.yaml` in Git. `deploy` makes the Secrets from them. |
+| `restic` password, GCS project, service account key path | KMS-encrypted values in `filestash-backup/Pulumi.<stack>.yaml` in Git. |
 
-`config.json` holds `general.secret_key`. Every share link depends on it. A restore without the same `config.json` and `CONFIG_SECRET` breaks all links.
+`config.json` holds `general.secret_key`, and every share link depends on it.
+A restore needs the snapshot and the same `CONFIG_SECRET`. Both come back
+from the snapshot and the stack file.
 
-## State Copy CronJob
+**The `restic` password in the stack file is the only key to the snapshots.**
+`configure-backup` never replaces it.
 
-`filestash-state-backup` runs on `backup.schedule` (default every 4 hours). Filestash stops for the copy, because separate SQLite copies and a later `config.json` copy do not give one consistent state.
+## Backup Resources
 
-1. `scale-down` scales `deployment/filestash` to 0 and waits until no pod runs.
-2. `copy` deletes old partial folders, then writes `backups/.partial-<ts>/`: `sqlite3 .backup` of each `db/*.sql`, `PRAGMA integrity_check`, the row count of each table, `config.json`, `SHA256SUMS`, and `manifest.json`. Then it renames the folder to `backups/<ts>`.
-3. `copy` deletes completed copies after the newest `backup.keep`. A failed copy deletes its partial folder, so a full PVC does not fill up with them.
-4. `scale-up` always scales to 1 (five tries with a rising delay), then fails the Job if a step failed.
+The `filestash-backup` stack creates these resources.
 
-The Job runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
+| Kind | Name | Notes |
+|---|---|---|
+| GCS bucket | `restic-filestash-backup-<project-id>` | Versioned, 58-day soft delete, the same rules as the other restic buckets. |
+| Secret | `filestash-backup-auth` | Keys `resticPass`, `gcsProject`, `gcsCredentials`. Made from the encrypted stack values. |
+| CronJob | `filestash-state-backup` | Refer to [State Backup CronJob](#state-backup-cronjob). |
+
+Stack keys (prefix `filestash-backup:properties`):
+
+| Key | Required | Default | Notes |
+|---|---|---|---|
+| `namespace` | Yes | none | Must equal the `filestash` stack namespace. |
+| `bucket` | Yes | none | `restic-filestash-backup-<project-id>`. |
+| `schedule` | No | `30 */4 * * *` | Every 4 hours. |
+| `keepLast` / `keepDaily` | No | `42` / `30` | `restic forget` retention: the last 7 days of 4-hour snapshots, then one snapshot for each day for 30 days. |
+| `secret.resticPass`, `secret.gcsProject`, `secret.serviceAccountFile` | Yes | none | Encrypted. Set by `configure-backup`. |
+| `resticImage` / `sqliteImage` | No | pinned by digest | |
+
+The state PVC carries the label `velero.io/exclude-from-backup=true`, and the
+pod carries `backup.velero.io/backup-volumes-excludes: state,cache`, the same
+as the other datastores.
+
+## State Backup CronJob
+
+`filestash-state-backup` runs on `schedule`. Filestash keeps running.
+
+1. The pod runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
+2. Init container `copy` writes `/backup/state` in an `emptyDir`: `sqlite3 .backup` of each `db/*.sql` (consistent while Filestash runs), `PRAGMA integrity_check`, the row count of each table (`counts.txt`), `config.json`, `SHA256SUMS`, and `manifest.json`. A failed step fails the Job before any upload.
+3. Container `restic` initializes the repository on the first run, runs `restic backup /backup/state --tag filestash-backup --host filestash`, and applies the retention policy with `forget --prune`.
+4. `concurrencyPolicy: Forbid`, and the Job fails after 30 minutes (`activeDeadlineSeconds`). When no Filestash pod runs, the backup pod has no node and the Job fails. `verify` then reports the snapshot age.
+
+## just filestash configure-backup
+
+### What It Does
+
+Prepares the encrypted values of the `filestash-backup` stack. Run it as `sa-manager`: `kops-cluster-creator` cannot create service account keys, and the recipe stops before any change.
+
+### Behavior
+
+1. Checks that `filestash-backup/Pulumi.<stack>.yaml` exists, that its namespace equals the `filestash` namespace, and that its bucket equals `restic-filestash-backup-<project>`.
+2. Creates or reuses service account `filestash-backup-sa`, grants `roles/storage.objectAdmin` limited to the bucket by an IAM condition, and creates the key file unless it exists.
+3. Keeps an existing `secret.resticPass`. Otherwise it stores a random 40-character password.
+4. Stores `secret.gcsProject` and `secret.serviceAccountFile` (the absolute key path).
+
+### Flags
+
+| Flag | Required | Default |
+|---|---|---|
+| `--project` | No | `$PROJECT_ID` |
+| `--key-file` | No | `credentials/<project>/filestash-backup-sa.json` |
+| `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` |
+
+**Service account keys accumulate.** Audit them with `gcloud iam service-accounts keys list --iam-account filestash-backup-sa@<project>.iam.gserviceaccount.com`.
+
+## just filestash deploy-backup
+
+Checks that the three `secret.*` values exist and that `pvc/filestash-state` exists, then runs `pulumi up` on `filestash-backup/`. Deploy `filestash` first.
 
 ## just filestash backup-now
 
-Holds `lease/filestash-maintenance` and suspends the CronJob for the run (the old suspend value comes back at the end). Refuses while a backup Job or pod is unfinished. Runs a Job from the CronJob, waits, and prints the timestamp of the new copy. Then it runs `velero backup create filestash-<ts> --include-namespaces <ns> --selector app.kubernetes.io/name=filestash --wait`. Fails unless the backup phase is `Completed`.
+Refuses while a backup Job or pod is unfinished. Runs a Job from the CronJob, waits, and prints the `restic` snapshot id. Filestash keeps running. Record the id before an upgrade.
 
 ## just filestash restore-state
 
 ### Test Restore
 
-`--backup <name> --target-namespace <new-namespace>`. Preflight, before any change:
+`--target-namespace <new-namespace> [--snapshot <id>]`. The default snapshot is `latest`. Preflight, before any change:
 
-1. The target is not the live namespace and does not exist.
-2. The Velero backup is `Completed`.
-3. The backup holds `pvc/filestash-state` and Secret `filestash`.
+1. The snapshot is `latest` or a hexadecimal id.
+2. The target is not the live namespace and does not exist.
+3. Secret `filestash-backup-auth`, Secret `filestash`, ConfigMap `filestash-seed`, `deployment/filestash`, and `pvc/filestash-state` exist in the live namespace.
 
 Then:
 
-1. Creates the namespace with the label `filestash-restore-test=true` and the NetworkPolicy `deny-all-egress`. The restored keys cannot reach MinIO or SMTP.
-2. Restores only the Filestash PVC, Secrets, and ConfigMaps (`--selector app.kubernetes.io/name=filestash`) with `--namespace-mappings`. A scheduled namespace-wide backup does not bring other PVCs or Secrets.
-3. Runs Job `filestash-state-restore`: checks `SHA256SUMS`, replaces the SQLite files and `config.json` with the newest completed copy, and compares the row counts.
-4. Starts a copy of the live Deployment in the target, with no Service and no route, and checks `/healthz`.
+1. Creates the namespace with the label `filestash-restore-test=true`.
+2. Applies NetworkPolicy `filestash-deny-egress`: the restored Filestash pod gets no egress, so the restored keys cannot reach MinIO or SMTP. The restore Job keeps egress to GCS.
+3. Copies Secret `filestash`, Secret `filestash-backup-auth`, and ConfigMap `filestash-seed`, and creates a new `filestash-state` PVC with the live size and class.
+4. Runs Job `filestash-state-restore`: `restic restore` into an `emptyDir`, then `SHA256SUMS`, `PRAGMA integrity_check`, the `secret_key` check, the replacement of the state, and the row count check.
+5. Starts a copy of the live Deployment, with no Service and no route, and checks `/healthz`.
 
 ### Disaster Recovery
 
-`--in-place yes [--copy <timestamp>]` (destructive). Use it when the SQLite files are damaged, or to go back to the copy that `upgrade` made.
+`--in-place yes [--snapshot <id>]` (destructive). Use it when the state is damaged, or to go back to the snapshot that `upgrade` made.
 
-1. Preflight: `--copy` is a valid timestamp, and Secret `filestash` has `CONFIG_SECRET`.
-2. Takes `lease/filestash-maintenance` and suspends the CronJob. At the end, the old suspend value comes back.
-3. Refuses while a backup Job or pod is unfinished.
-4. Runs Job `filestash-state-check` (`MODE=check`): `manifest.json`, `SHA256SUMS`, `PRAGMA integrity_check` of each SQLite copy, and `secret_key` in `config.json`. It changes nothing. A failed check stops the recipe before any change.
-5. Scales the live Deployment to 0 and runs Job `filestash-state-restore` (`MODE=restore`) from the copy (default: newest).
-6. Scales to 1 only after the Job succeeds. After a failed Job, Filestash stays at 0 replicas.
+1. Takes `lease/filestash-maintenance` and suspends the CronJob. At the end, the old suspend value comes back.
+2. Refuses while a backup Job or pod is unfinished.
+3. Runs Job `filestash-state-check`: the same checks as the restore, with no state PVC mounted. A failed check stops the recipe before any change.
+4. Scales the live Deployment to 0 and runs Job `filestash-state-restore`.
+5. Scales to 1 only after the Job succeeds. After a failed Job, Filestash stays at 0 replicas.
 
-For a lost PVC, restore the Velero backup into the live namespace first.
+For a lost PVC, run `just filestash deploy` first. It creates an empty PVC. Then run `--in-place yes`.
 
 | Flag | Required | Notes |
 |---|---|---|
-| `--backup` | Test restore | Velero backup name. |
+| `--snapshot` | No | `restic` snapshot id. Default: `latest`. |
 | `--target-namespace` | Test restore | Must not exist. |
 | `--in-place` | Disaster recovery | `yes` |
-| `--copy` | No | Completed copy timestamp, for example `20261117T040000Z`. Default: newest. |
-| `--velero-namespace` | Test restore | Default: `properties.namespace` of `install-velero/Pulumi.<stack>.yaml`. Required when that file does not exist (for example `dcr-kube1`). |
 
 ## just filestash restore-cleanup
 

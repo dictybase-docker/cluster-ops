@@ -16,13 +16,13 @@ Read-only checks. Each failed group prints `FAIL`, and the recipe exits non-zero
 | PVC | `pvc/filestash-state` is `Bound`, and its use is 80% or less. |
 | HTTP (port-forward) | `/healthz` answers. `/about` lists each plugin in the lock file plus `plg_search_stateless` and `plg_image_c`. `/admin/tty/` returns 404. |
 | Bucket policies | The anonymous policy on `downloads` equals `filestash/policies/downloads-anonymous.json`. `uploads` is private. |
-| Backup age | `backup.maxAgeHours` is set. The newest completed state copy and the newest Velero backup of the namespace are younger than it. |
-| Velero scope | The PVC has no `velero.io/exclude-from-backup=true` label, the pod excludes no `state` volume, and no Velero Schedule excludes the namespace. |
+| Snapshot age | `backup.maxAgeHours` is set, and the last successful run of CronJob `filestash-state-backup` is younger than it. |
+| Backup Secret | Secret `filestash-backup-auth` exists. |
+| Velero exclusion | `pvc/filestash-state` has the label `velero.io/exclude-from-backup=true`. |
 
 ### Flags
 
 | Flag | Required | Default |
 |---|---|---|
-| `--velero-namespace` | When there is no `install-velero/Pulumi.<stack>.yaml` | `properties.namespace` of that file |
 | `--stack` | No | `$PULUMI_STACK` |
 | `--namespace` | No | `properties.namespace` |

@@ -12,14 +12,14 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 | Upload through a link fails with access denied | `filestash-intake` cannot finish the upload without `s3:GetObject`. | Do not widen the policy. Record the error and ask for a security review. |
 | A link stopped after a key change | The link holds the old MinIO key. | Make the link again. Refer to [Key Rotation](users-and-policies.md#key-rotation). |
 | `another run holds lease/<lease>` | A run is active, or a run crashed. | Wait, or run `just filestash release-lock --lease <lease> --holder <id>`. |
-| `no Velero namespace` | No `install-velero/Pulumi.<stack>.yaml` (for example `dcr-kube1`). | Pass `--velero-namespace <ns>`. |
-| `fails its checks. Nothing changed` | The selected copy is damaged. | Run `restore-state --in-place yes --copy <older timestamp>`. |
 | `these objects exist already` | A published key exists. | Use a new dataset name, or remove the file with `unpublish-file`. |
-| `newest state copy age` in `verify` | The CronJob failed or Filestash was down. | Read the Job logs, then run `just filestash backup-now`. |
-| Backup Job stays `Pending` | No Filestash pod runs, so the pod affinity has no node. | Start Filestash, then run `backup-now`. |
+| `newest successful state backup age` in `verify` | The CronJob failed, or Filestash was down. | Read the Job logs, then run `just filestash backup-now`. |
+| Backup Job fails after 30 minutes with no pod start | No Filestash pod runs, so the pod affinity has no node. | Start Filestash, then run `backup-now`. |
+| `has no secrets.configSecret but pvc/filestash-state exists` | The stack file lost its encrypted values. | Restore `filestash/Pulumi.<stack>.yaml` from Git. A new `CONFIG_SECRET` breaks `config.json`. |
+| `has no keys for <role> but MinIO user filestash-<role> exists` | The stack file lost the keys. | Restore the stack file from Git. New keys stop every link. |
+| `snapshot '<id>' fails its checks. Nothing changed` | The snapshot is damaged. | Run `restore-state --in-place yes --snapshot <older id>`. List the ids with `restic snapshots`. |
+| `restic` error `wrong password or no key found` | The `restic` password in the stack file changed. | Restore `filestash-backup/Pulumi.<stack>.yaml` from Git. |
 | `probe-admin: ... reached admin content` | A path variant passes the block. | Turn the route off and report the variant. |
-| `Secret filestash is missing but pvc/filestash-state exists` | The Secret was deleted. | Restore Secret `filestash` from Velero. A new `CONFIG_SECRET` breaks `config.json`. |
-| `Secret filestash-users is missing but MinIO user filestash-intake exists` | The Secret was deleted. | Restore Secret `filestash-users` from Velero. New keys stop every link. |
 | `a backup job is running` | A state copy runs. | Wait for it, then run the recipe again. |
-| `the restore job failed. Filestash stays at 0 replicas` | The copy is damaged or a check failed. | Read the Job logs, then run `restore-state --in-place yes --copy <older timestamp>`. |
+| `the restore job failed. Filestash stays at 0 replicas` | The snapshot is damaged or a check failed. | Read the Job logs, then run `restore-state --in-place yes --snapshot <older id>`. |
 | `state PVC use` above 80% | Logs, plugins, or copies fill the disk. | Run `just filestash resize-state --size <quantity>`. |
