@@ -758,3 +758,184 @@ restore-cleanup target_namespace="" stack="" namespace="":
     [[ "$label" == "true" ]] || fs_die "namespace '$TARGET' is not a restore test namespace."
     kubectl delete namespace "$TARGET"
     echo "Deleted restore test namespace '$TARGET'."
+
+# Upgrade the Filestash image: state copy and Velero backup first, then save
+# the current image as previousImage, pin the new tag and digest, deploy, and
+# run verify.
+# Usage: just filestash upgrade --tag <t> --digest sha256:<d> [--stack <name>]
+[arg("tag", long="tag", short="t", help="New image tag (required)")]
+[arg("digest", long="digest", short="d", help="New image digest sha256:<64 hex> (required)")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+upgrade tag="" digest="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    TAG={{ quote(tag) }}
+    DIGEST={{ quote(digest) }}
+    [[ "$TAG" =~ ^[A-Za-z0-9._-]+$ ]] || fs_die "pass --tag."
+    [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fs_die "pass --digest sha256:<64 hex>."
+    cur_name=$(fs_prop image.name); cur_tag=$(fs_prop image.tag); cur_digest=$(fs_prop image.digest)
+    [[ "$cur_digest" != "$DIGEST" ]] || fs_die "the stack already pins $DIGEST."
+    just filestash backup-now --stack "$STACK"
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    set_cfg() { go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key "$1" --value "$2"; }
+    set_cfg properties.previousImage.name "${cur_name:-machines/filestash}"
+    set_cfg properties.previousImage.tag "$cur_tag"
+    set_cfg properties.previousImage.digest "$cur_digest"
+    set_cfg properties.image.tag "$TAG"
+    set_cfg properties.image.digest "$DIGEST"
+    just filestash deploy --stack "$STACK"
+    just filestash verify --stack "$STACK"
+    echo "Upgraded to $TAG@$DIGEST. Commit $CFG."
+    echo "Next: just filestash probe-admin --host <filestash-host>"
+
+# Pin previousImage again and deploy. If the new release changed the state
+# format, restore the copy that upgrade made: just filestash restore-state --in-place yes
+# Usage: just filestash rollback [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+rollback stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    prev_tag=$(fs_prop previousImage.tag); prev_digest=$(fs_prop previousImage.digest)
+    [[ -n "$prev_tag" && "$prev_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || fs_die "no previousImage in $CFG — rollback works only after an upgrade."
+    export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
+    go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key properties.image.tag --value "$prev_tag"
+    go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key properties.image.digest --value "$prev_digest"
+    just filestash deploy --stack "$STACK"
+    echo "Rolled back to $prev_tag@$prev_digest. Commit $CFG."
+    echo "If the state format changed: just filestash restore-state --in-place yes"
+
+# Delete uploads older than --older-than days, as filestash-operator. A dry
+# run (list only) unless --confirm yes. There is no default age: the
+# retention period is a decision for the project.
+# Usage: just filestash purge-uploads --older-than <days> [--confirm yes]
+[arg("older_than", long="older-than", help="Age in days (required)")]
+[arg("confirm", long="confirm", help="yes: delete; any other value lists only")]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+purge-uploads older_than="" confirm="" stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    DAYS={{ quote(older_than) }}
+    [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || fs_die "pass --older-than <days> (a positive number)."
+    export FS_DAYS="$DAYS"
+    if [[ {{ quote(confirm) }} == "yes" ]]; then
+        fs_minio_as operator 'mc rm --recursive --force --older-than "${FS_DAYS}d" minio/uploads'
+        echo "Deleted uploads older than $DAYS days in '$NS'."
+    else
+        fs_minio_as operator 'mc find minio/uploads --older-than "${FS_DAYS}d"'
+        echo "Dry run: the list above is what --confirm yes deletes."
+    fi
+
+# List every share link from the newest completed state copy and fail on a
+# rule break: an upload link with no expiry, a writable link, or a link path
+# outside /uploads/ and /downloads/. Needs a local sqlite3.
+# Usage: just filestash audit-shares [--stack <name>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
+[group('filestash')]
+[no-cd]
+audit-shares stack="" namespace="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/filestash.sh
+    fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    command -v sqlite3 >/dev/null 2>&1 || fs_die "sqlite3 not found."
+    db="$(mktemp "${TMPDIR:-/tmp}/filestash-share.XXXXXX")"
+    trap 'rm -f "$db"' EXIT
+    # shellcheck disable=SC2016
+    kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c '
+        n=$(ls -1 /app/data/state/backups 2>/dev/null | grep -E "^[0-9]{8}T[0-9]{6}Z$" | sort | tail -n 1)
+        [ -n "$n" ] || { echo "no completed state copy" >&2; exit 1; }
+        cat "/app/data/state/backups/$n/db/share.sql"' > "$db" || fs_die "no completed state copy — run: just filestash backup-now"
+    rows=$(sqlite3 -separator $'\t' "$db" "SELECT id, related_path, params FROM Share ORDER BY related_path")
+    problems=0
+    printf '%-24s %-40s %-8s %-8s %-8s %s\n' ID PATH READ UPLOAD WRITE "USERS / EXPIRE"
+    while IFS=$'\t' read -r id path params; do
+        [[ -n "$id" ]] || continue
+        read -r r u w users expire < <(jq -r '[.can_read, .can_upload, .can_write, (.users // "-"), (.expire // "none")] | map(tostring) | join(" ")' <<<"$params")
+        printf '%-24s %-40s %-8s %-8s %-8s %s %s\n' "$id" "$path" "$r" "$u" "$w" "$users" "$expire"
+        [[ "$u" == "true" && "$expire" == "none" ]] && { echo "  RULE: upload link $id has no expiry"; problems=$((problems + 1)); }
+        [[ "$w" == "true" ]] && { echo "  RULE: link $id can write"; problems=$((problems + 1)); }
+        [[ "$path" == /uploads/* || "$path" == /downloads/* ]] || { echo "  RULE: link $id path $path is outside /uploads/ and /downloads/"; problems=$((problems + 1)); }
+    done <<<"$rows"
+    [[ "$problems" -eq 0 ]] || fs_die "$problems share rule break(s)."
+    echo "All share links follow the rules."
+
+# Check direct file URLs from outside the cluster: anonymous read works, with
+# Range; anonymous list, write, and delete fail; uploads is closed.
+# Usage: just filestash probe-public --host <minio-host> --key <dataset>/<file>
+[arg("host", long="host", help="Public MinIO host, for example storage.dictycr.org (required)")]
+[arg("key", long="key", help="A published key in downloads, for example strains-2026/table.csv (required)")]
+[group('filestash')]
+[no-cd]
+probe-public host="" key="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HOST={{ quote(host) }}
+    KEY={{ quote(key) }}
+    [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Error: pass --host." >&2; exit 1; }
+    [[ -n "$KEY" ]] || { echo "Error: pass --key <dataset>/<file>." >&2; exit 1; }
+    base="https://$HOST"
+    failures=0
+    expect() {
+        local want="$1" label="$2" got
+        shift 2
+        got=$(curl -s -o /dev/null -w '%{http_code}' "$@" || echo 000)
+        if [[ "$got" == "$want" ]]; then echo "  ok    $label ($got)"; else echo "  FAIL  $label: got $got, want $want"; failures=$((failures + 1)); fi
+    }
+    expect 200 "anonymous GET downloads/$KEY" "$base/downloads/$KEY"
+    expect 206 "anonymous Range GET" -H 'Range: bytes=0-9' "$base/downloads/$KEY"
+    expect 403 "anonymous list of downloads" "$base/downloads/"
+    expect 403 "anonymous list of uploads" "$base/uploads/"
+    expect 403 "anonymous GET in uploads" "$base/uploads/probe-$$"
+    expect 403 "anonymous PUT in downloads" -X PUT --data probe "$base/downloads/probe-$$"
+    expect 403 "anonymous DELETE in downloads" -X DELETE "$base/downloads/$KEY"
+    [[ "$failures" -eq 0 ]] || { echo "probe-public: $failures check(s) failed." >&2; exit 1; }
+    echo "probe-public: all checks passed for $HOST."
+
+# Check from outside the cluster that no admin path variant reaches the admin
+# console or the admin API. Uses --path-as-is so curl sends each variant
+# unchanged. A failure means: turn the route off again.
+# Usage: just filestash probe-admin --host <filestash-host>
+[arg("host", long="host", help="Public Filestash host (required)")]
+[group('filestash')]
+[no-cd]
+probe-admin host="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HOST={{ quote(host) }}
+    [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Error: pass --host." >&2; exit 1; }
+    body="$(mktemp "${TMPDIR:-/tmp}/probe-admin.XXXXXX")"
+    trap 'rm -f "$body"' EXIT
+    failures=0
+    for path in /admin /admin/ /Admin //admin /./admin /x/../admin /%61dmin /admin%2Fapi/config \
+                /admin/api/session /admin/api/config /admin/api/logs /admin/tty/; do
+        for method in GET POST PUT DELETE OPTIONS; do
+            code=$(curl -s --path-as-is -X "$method" -o "$body" -w '%{http_code}' "https://$HOST$path" || echo 000)
+            if grep -q 'backoffice' "$body" || { [[ "$code" == 2* ]] && grep -q '"status"' "$body"; }; then
+                echo "  FAIL  $method $path ($code) reached admin content"
+                failures=$((failures + 1))
+            fi
+        done
+    done
+    [[ "$failures" -eq 0 ]] || { echo "probe-admin: $failures request(s) reached admin content. Disable the route." >&2; exit 1; }
+    echo "probe-admin: no admin path variant reached admin content on $HOST."

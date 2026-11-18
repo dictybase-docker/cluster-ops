@@ -39,11 +39,14 @@ cat > "${tmp_dir}/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'curl %s\n' "$*" >> "${STUB_LOG}"
-out="" url=""
+out="" url="" wfmt="" method=GET range=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -o) out="$2"; shift 2 ;;
-        --retry|-m|--max-time) shift 2 ;;
+        -w) wfmt="$2"; shift 2 ;;
+        -X) method="$2"; shift 2 ;;
+        -H) [[ "$2" == Range:* ]] && range=1; shift 2 ;;
+        --data|--retry|-m|--max-time) shift 2 ;;
         -*) shift ;;
         *) url="$1"; shift ;;
     esac
@@ -53,6 +56,16 @@ case "$url" in
     http://localhost:19000/healthz) exit 0 ;;
     http://localhost:19000/about) printf '%s' "${STUB_ABOUT:-}"; exit 0 ;;
     http://localhost:19000/admin/tty/) printf '%s' "${STUB_TTY_CODE:-404}"; exit 0 ;;
+    https://storage.test/*)
+        code=200
+        if [[ "$method" != GET || "$url" == */downloads/ || "$url" == */uploads/* ]]; then code=403
+        elif [[ "$range" == 1 ]]; then code="${STUB_RANGE_CODE:-206}"; fi
+        printf '%s' "$code"; exit 0 ;;
+    https://files.test/*)
+        : > "${out:-/dev/null}"
+        if [[ "${STUB_ADMIN_LEAK:-}" == "$url" ]]; then printf '<script src="router_backoffice.js">' > "$out"; printf 200
+        else printf 302; fi
+        exit 0 ;;
 esac
 printf 'content-of-%s' "${url##*/}" > "$out"
 MOCK
@@ -104,6 +117,7 @@ case "$args" in
             *'"kind": "Deployment"'*) printf 'kubectl-applied Deployment %s\n' "$(jq -r .metadata.namespace <<<"$body")" >> "${STUB_LOG}" ;;
             *) printf '%s\n' "$body" > "${STUB_DIR}/filestash.env" ;;
         esac ;;
+    *"exec deployment/filestash -c filestash -- sh -c"*"share.sql"*) cat "${STUB_SHARE_DB}" ;;
     *"exec deployment/filestash -c filestash -- sh -c"*) printf '%s' "${STUB_BACKUP_AGE:-1}" ;;
     *"exec deployment/filestash -c filestash -- curl"*) exit 0 ;;
     *"get pvc filestash-state -o jsonpath={.metadata.labels"*) printf '%s' "${STUB_PVC_EXCLUDE:-}" ;;
@@ -329,6 +343,10 @@ cat > "$cfg_file" <<'YAML'
 config:
   filestash:properties:
     namespace: prod
+    image:
+      name: machines/filestash
+      tag: latest
+      digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
     storage:
       size: 5Gi
     backup:
@@ -567,5 +585,55 @@ expect_failure "is not a restore test namespace" env "PULUMI_STACK=$stack" "STUB
 run_recipe env "PULUMI_STACK=$stack" "STUB_NS_EXISTS=filestash-restore-done" "STUB_NS_LABEL=true" "$just_bin" filestash restore-cleanup --target-namespace filestash-restore-done >/dev/null
 rg -q '^kubectl delete namespace filestash-restore-done$' "$log_file"
 echo '  test_restore_cleanup_checks_label: PASS'
+
+echo "=== 14. operations ==="
+newd=sha256:2222222222222222222222222222222222222222222222222222222222222222
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash upgrade --tag latest --digest "$newd" >/dev/null
+backup=$(line_of 'create job --from=cronjob/filestash-state-backup')
+prev=$(line_of 'key properties.previousImage.digest --value sha256:1111')
+pin=$(line_of "key properties.image.digest --value $newd")
+up=$(line_of 'stack up --folder filestash')
+(( backup < prev && prev < pin && pin < up )) || { echo "upgrade order wrong: $backup $prev $pin $up" >&2; exit 1; }
+echo '  test_upgrade_runs_backup_first: PASS'
+expect_failure 'already pins' env "PULUMI_STACK=$stack" "$just_bin" filestash upgrade --tag latest --digest sha256:1111111111111111111111111111111111111111111111111111111111111111
+expect_failure 'pass --digest' env "PULUMI_STACK=$stack" "$just_bin" filestash upgrade --tag latest --digest latest
+
+: > "$log_file"
+expect_failure 'no previousImage' env "PULUMI_STACK=$stack" "$just_bin" filestash rollback
+assert_no_call 'stack up'
+echo '  test_rollback_requires_previous_image: PASS'
+
+expect_failure 'pass --older-than' env "PULUMI_STACK=$stack" "$just_bin" filestash purge-uploads
+echo '  test_purge_uploads_requires_age: PASS'
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash purge-uploads --older-than 90 >/dev/null
+rg -qF 'mc-args [find] [minio/uploads] [--older-than] [90d]' "$log_file"
+assert_no_call '^mc rm'
+rg -q 'jsonpath=\{.data.operatorAccessKey\}' "$log_file"
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash purge-uploads --older-than 90 --confirm yes >/dev/null
+rg -qF 'mc-args [rm] [--recursive] [--force] [--older-than] [90d] [minio/uploads]' "$log_file"
+echo '  test_purge_uploads_dry_run_default: PASS'
+
+share_db="$tmp_dir/share.sql"
+sqlite3 "$share_db" "CREATE TABLE Share(id, related_backend, related_path, params, auth);
+INSERT INTO Share VALUES('pub1','b','/downloads/','{\"can_read\":true,\"can_upload\":false,\"can_write\":false}','a');
+INSERT INTO Share VALUES('up1','b','/uploads/alice/','{\"can_read\":false,\"can_upload\":true,\"can_write\":false,\"users\":\"alice@example.org\",\"expire\":1999999999000}','a');"
+run_recipe env "PULUMI_STACK=$stack" "STUB_SHARE_DB=$share_db" "$just_bin" filestash audit-shares | rg -q 'All share links follow the rules'
+sqlite3 "$share_db" "INSERT INTO Share VALUES('up2','b','/uploads/bob/','{\"can_read\":false,\"can_upload\":true,\"can_write\":false,\"users\":\"bob@example.org\"}','a');"
+expect_failure 'share rule break' env "PULUMI_STACK=$stack" "STUB_SHARE_DB=$share_db" "$just_bin" filestash audit-shares
+echo '  test_audit_shares_flags_no_expiry: PASS'
+
+run_recipe "$just_bin" filestash probe-public --host storage.test --key ds1/table.csv | rg -q 'all checks passed'
+expect_failure 'anonymous Range GET: got 200' env "STUB_RANGE_CODE=200" "$just_bin" filestash probe-public --host storage.test --key ds1/table.csv
+echo '  test_probe_public: PASS'
+: > "$log_file"
+run_recipe "$just_bin" filestash probe-admin --host files.test | rg -q 'no admin path variant'
+[[ "$(rg -c '^curl .*https://files.test' "$log_file")" == "$(rg -c '^curl .*--path-as-is.*https://files.test' "$log_file")" ]]
+rg -qF 'https://files.test/%61dmin' "$log_file"
+echo '  test_probe_admin_uses_path_as_is: PASS'
+expect_failure 'reached admin content' env "STUB_ADMIN_LEAK=https://files.test/%61dmin" "$just_bin" filestash probe-admin --host files.test
+echo '  test_probe_admin_detects_leak: PASS'
 
 echo "All filestash recipe contract tests passed."

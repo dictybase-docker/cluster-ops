@@ -40,12 +40,15 @@ const (
 
 // FilestashConfig is the `filestash:properties` stack value.
 type FilestashConfig struct {
-	Name           string        `json:"name"`
-	Namespace      string        `json:"namespace"`
-	ApplicationURL string        `json:"applicationURL"`
-	Port           int           `json:"port"`
-	Replicas       int           `json:"replicas"`
-	Image          ImageConfig   `json:"image"`
+	Name           string      `json:"name"`
+	Namespace      string      `json:"namespace"`
+	ApplicationURL string      `json:"applicationURL"`
+	Port           int         `json:"port"`
+	Replicas       int         `json:"replicas"`
+	Image          ImageConfig `json:"image"`
+	// PreviousImage is written by `just filestash upgrade` and read by
+	// `just filestash rollback`. Pulumi does not use it.
+	PreviousImage  ImageConfig   `json:"previousImage"`
 	SecretName     string        `json:"secretName"`
 	Storage        StorageConfig `json:"storage"`
 	CacheSizeLimit string        `json:"cacheSizeLimit"`
