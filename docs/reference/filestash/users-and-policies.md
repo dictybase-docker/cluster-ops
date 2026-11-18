@@ -11,6 +11,8 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 - [just filestash create-buckets](#just-filestash-create-buckets)
 - [just filestash create-users](#just-filestash-create-users)
 - [just filestash login-keys](#just-filestash-login-keys)
+- [just filestash publish-bucket](#just-filestash-publish-bucket)
+- [just filestash unpublish-bucket](#just-filestash-unpublish-bucket)
 - [Key Rotation](#key-rotation)
 
 ## Buckets
@@ -48,7 +50,11 @@ A share link stores the session of the staff member who made it, with that MinIO
 
 ## Bucket Policy
 
-`just filestash publish-bucket` sets `filestash/policies/downloads-anonymous.json` on `downloads`: `s3:GetObject` on `arn:aws:s3:::downloads/*` for every principal. `just filestash unpublish-bucket` sets the bucket to private again. `verify` compares the live policy with the file.
+`filestash/policies/downloads-anonymous.json` is the anonymous policy of `downloads`. It allows `s3:GetObject` on `arn:aws:s3:::downloads/*` for every principal, and nothing else. Anonymous list stays denied.
+
+- [`just filestash publish-bucket`](#just-filestash-publish-bucket) sets the policy.
+- [`just filestash unpublish-bucket`](#just-filestash-unpublish-bucket) makes the bucket private again.
+- `verify` compares the live policy with the file.
 
 ## just filestash create-buckets
 
@@ -84,7 +90,7 @@ Stores a key pair for each of the four roles as encrypted stack values, then cre
 3. When the stack has no keys for a role but MinIO user `filestash-<role>` exists, the recipe stops. New keys stop every link. Restore the stack file from Git in that case.
 4. Otherwise it stores the access key `filestash-<role>` and a random 40-character secret key, encrypted.
 5. Reads the keys back from the stack and opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
-6. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
+6. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the user does not have the policy.
 
 `deploy` then makes Secret `filestash-users`. Commit the stack file after the run.
 
@@ -116,6 +122,50 @@ When the stack has no keys for the role, the recipe prints `run: just filestash 
 | Flag | Required | Default | Notes |
 |---|---|---|---|
 | `--role` | Yes | none | `intake`, `public`, or `operator`. |
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
+
+## just filestash publish-bucket
+
+### What It Does
+
+Sets the anonymous read policy on `downloads`. Each direct file URL on the MinIO host then works with no key. Refer to [Bucket Policy](#bucket-policy).
+
+### Behavior
+
+1. Reads the root key from Secret `minio-root` and opens a port-forward to Service `minio`.
+2. Runs `mc anonymous set-json` with `filestash/policies/downloads-anonymous.json` on `downloads`. This replaces the full anonymous policy of the bucket.
+3. Prints the next command, `just filestash publish`.
+
+A second run sets the same policy again. Run the recipe after each change to the policy file.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
+
+## just filestash unpublish-bucket
+
+### What It Does
+
+Removes every anonymous permission from `downloads`. Each direct file URL then returns 403. The objects stay in the bucket.
+
+### Behavior
+
+1. Reads the root key from Secret `minio-root` and opens a port-forward to Service `minio`.
+2. Runs `mc anonymous set none` on `downloads`.
+3. Prints that `downloads` is private.
+
+After this recipe, the `verify` bucket policy check fails, because the live policy differs from the policy file. Run `publish-bucket` to make the files public again.
+
+The Filestash public link reads with the `filestash-public` key, not with anonymous access. To stop that link, delete it. Refer to [Revocation](shares.md#revocation).
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
 | `--stack` | No | `$PULUMI_STACK` | |
 | `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 

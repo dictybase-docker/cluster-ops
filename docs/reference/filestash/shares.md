@@ -5,6 +5,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 ## Table of Contents
 
 - [Admin Console](#admin-console)
+- [just filestash admin](#just-filestash-admin)
 - [SMTP](#smtp)
 - [Upload Link for a Collaborator](#upload-link-for-a-collaborator)
 - [Public Link](#public-link)
@@ -12,7 +13,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 ## Admin Console
 
-`just filestash admin` opens a port-forward to Service `filestash` and prints `http://localhost:8334/admin`. Log in with the admin password from `create-secret`. The internet cannot reach `/admin`. Refer to [Admin access and route](admin-access.md).
+Open the admin console with [`just filestash admin`](#just-filestash-admin), then go to `http://localhost:8334/admin`. Log in with the admin password from `create-secret`. The internet cannot reach `/admin`. Refer to [Admin access and route](admin-access.md).
 
 The same port-forward serves the file manager at `http://localhost:8334/`.
 Staff log in to it with the MinIO keys of one role. Print the keys with
@@ -24,6 +25,30 @@ The role decides the upper limit of each link that staff make in that session.
 | Make an upload link | `filestash-intake` | `just filestash login-keys --role intake` |
 | Make the public link | `filestash-public` | `just filestash login-keys --role public` |
 | Review or delete uploads. Never make a link. | `filestash-operator` | `just filestash login-keys --role operator` |
+
+## just filestash admin
+
+### What It Does
+
+Opens a port-forward to Service `filestash` for the admin console and the file manager. The recipe makes no change.
+
+### Behavior
+
+1. Reads the namespace from the stack file. A `--namespace` that differs from the stack file stops the recipe.
+2. Stops when `--port` is not a number.
+3. Forwards local port `--port` to port 8334 of Service `filestash`.
+4. Prints `http://localhost:<port>/admin` (admin console) and `http://localhost:<port>/` (file manager).
+5. Keeps the port-forward open until you press Ctrl-C. The port-forward stops when the recipe exits.
+
+Use a different `--port` when port 8334 is not free on the operator host.
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--port` | No | `8334` | The local port. Digits only. |
+| `--stack` | No | `$PULUMI_STACK` | |
+| `--namespace` | No | `properties.namespace` | A value that differs from the stack file stops the recipe. |
 
 ## SMTP
 

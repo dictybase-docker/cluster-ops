@@ -20,6 +20,7 @@ the same pattern.
 - [Backup Resources](#backup-resources)
 - [State Backup CronJob](#state-backup-cronjob)
 - [just filestash configure-backup](#just-filestash-configure-backup)
+- [just filestash backup-keys](#just-filestash-backup-keys)
 - [just filestash deploy-backup](#just-filestash-deploy-backup)
 - [just filestash backup-now](#just-filestash-backup-now)
 - [just filestash list-snapshots](#just-filestash-list-snapshots)
@@ -73,7 +74,7 @@ as the other datastores.
 
 `filestash-state-backup` runs on `schedule`. Filestash stays up during the copy.
 
-**Consistency limit.** `sqlite3 .backup` makes each SQLite file consistent by itself. The files and `config.json` are not copied at one point in time. A share that staff make during the copy can be in `share.sql` but not match a settings change made at the same time. Make settings changes outside the backup window (minute 30 of every fourth hour), or run `backup-now` after the change.
+**Consistency limit.** `sqlite3 .backup` makes each SQLite file consistent by itself. The backup Job does not copy the SQLite files and `config.json` at one point in time. A share that staff make during the copy can be in `share.sql` but not match a settings change made at the same time. Make settings changes outside the backup window (minute 30 of every fourth hour), or run `backup-now` after the change.
 
 1. The pod runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
 2. Init container `copy` writes `/backup/state` in an `emptyDir`. It writes these files:
@@ -95,7 +96,7 @@ Prepares the encrypted values of the `filestash-backup` stack.
 
 ### Behavior
 
-1. Binds every `gcloud` call and the key mint to the `sa-manager` key file (`--manager-key`, default `credentials/<project>/sa-manager.json`). It refuses a key that is not `sa-manager@<project>`. The ambient `gcloud` account is never used.
+1. Binds every `gcloud` call and the key mint to the `sa-manager` key file (`--manager-key`, default `credentials/<project>/sa-manager.json`). It refuses a key that is not `sa-manager@<project>`. The recipe never uses the ambient `gcloud` account.
 2. Checks that `filestash-backup/Pulumi.<stack>.yaml` exists, that its namespace equals the `filestash` namespace, and that its bucket equals `restic-filestash-backup-<project>`.
 3. Creates service account `filestash-backup-sa` only when `gcloud` reports `NOT_FOUND`. Any other error stops the recipe.
 4. Grants `roles/storage.objectAdmin`, limited to the bucket by an IAM condition. Then it creates the key file, unless the file is on disk already.
@@ -115,11 +116,42 @@ Prepares the encrypted values of the `filestash-backup` stack.
 
 The stack stores only the path of the key file. The key file itself is in
 `credentials/<project>/filestash-backup-sa.json` on the operator host, and Git
-does not hold it. When the file is lost, run `configure-backup` again: it makes
-a new key, and the snapshots stay readable, because the `restic` password does
-not change. Then run `deploy-backup` and delete the old key.
+does not hold it. If you lose the file, run `configure-backup` again. It makes a
+new key. The snapshots stay readable, because the `restic` password does not
+change. Then run `deploy-backup`, so that Secret `filestash-backup-auth` gets
+the new key.
 
-**Service account keys accumulate.** List them with `just filestash backup-keys`, which runs as `sa-manager`.
+**Service account keys accumulate.** Find the unused keys with [`just filestash backup-keys`](#just-filestash-backup-keys).
+
+## just filestash backup-keys
+
+### What It Does
+
+Lists the user-managed keys of service account `filestash-backup-sa`, as `sa-manager`. The recipe makes no change.
+
+`configure-backup` makes a new key each time the key file is not on disk. The old keys stay valid in GCP until a person deletes them.
+
+### Behavior
+
+1. Takes the project from `--project`, else from `$PROJECT_ID`. With neither, it stops with `no GCP project id — pass --project`.
+2. Checks that the `--manager-key` file exists.
+3. Reads `client_email` from the key file. It stops when the value is not `sa-manager@<project>.iam.gserviceaccount.com`.
+4. Runs `gcloud iam service-accounts keys list --managed-by user` for `filestash-backup-sa@<project>.iam.gserviceaccount.com`.
+5. Gives `gcloud` the key file as its only credential. The recipe never uses the ambient `gcloud` account.
+
+The key in use has the id in the `private_key_id` field of
+`credentials/<project>/filestash-backup-sa.json`. The CronJob uses that key
+after the last `deploy-backup`. The CronJob does not use the other keys in the list.
+**No `just` recipe deletes a key yet.**
+
+### Flags
+
+| Flag | Required | Default | Notes |
+|---|---|---|---|
+| `--project` | No | `$PROJECT_ID` | The project of `filestash-backup-sa`. |
+| `--manager-key` | No | `credentials/<project>/sa-manager.json` | Must be the key of `sa-manager@<project>`. Any other key stops the recipe. |
+
+The recipe takes no `--stack` and no `--namespace`.
 
 ## just filestash deploy-backup
 

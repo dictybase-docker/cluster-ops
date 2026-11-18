@@ -63,7 +63,7 @@ read and delete rights of that key. To publish reviewed files, use
 
 | Report | Cause | Staff action |
 |---|---|---|
-| No email arrives | SMTP is not set, or the email is in a spam folder | Check SMTP in the admin console. Refer to [Links and SMTP](shares.md#smtp). |
+| No email arrives | Staff did not set SMTP, or the email is in a spam folder | Check SMTP in the admin console. Refer to [Links and SMTP](shares.md#smtp). |
 | `Couldn't send email` | SMTP failure | Same as above. |
 | The code does not work | The code expired after 10 minutes | Ask the collaborator to request a new code. |
 | Filestash refuses the email address | The address is not on the link | Add the address to the link, or make a new link. |

@@ -99,7 +99,7 @@ Lists each share link and fails on a rule break. The recipe makes no change.
 
 1. Checks for a local `sqlite3`.
 2. Copies the live `share.sql` from the Filestash pod to a temporary file.
-3. Checks the copy with `PRAGMA quick_check`. A copy made during a write can be damaged. In that case, run the recipe again.
+3. Checks the copy with `PRAGMA quick_check`. A write during the copy can damage the copy. In that case, run the recipe again.
 4. Prints each link with its id, path, read, upload, and write flags, users, and expiry.
 5. Fails on an upload link with no expiry, a link with write permission, or a path outside `/uploads/` and `/downloads/`.
 
@@ -171,7 +171,7 @@ Commit the stack file after the run.
 
 ### Behavior
 
-1. Stops unless `--delete-pvc yes` is given.
+1. Stops unless you pass `--delete-pvc yes`.
 2. Prints the state files in `/app/data/state/db` that the destroy deletes.
 3. Runs `pulumi destroy` on the `filestash` stack.
 

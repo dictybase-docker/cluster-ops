@@ -26,7 +26,7 @@ Copies every object under `uploads/<source>/` to `downloads/<dataset>/` as `file
 
 The URL host is a `storage.*` host of the Gateway `minio` route, else its first host, else the MinIO `apiIngress` hostname.
 
-**The no-replace rule applies to this recipe only.** A person with the MinIO root key can still replace an object. MinIO conditional writes are not used, because `mc cp` cannot send `If-None-Match`.
+**The no-replace rule applies to this recipe only.** A person with the MinIO root key can still replace an object. The recipe does not use MinIO conditional writes, because `mc cp` cannot send `If-None-Match`.
 
 ### Flags
 
@@ -46,7 +46,7 @@ Deletes one object from `downloads` as `filestash-publisher`. The direct URL the
 ### Behavior
 
 1. Checks `--key`. It must have the form `<dataset>/<path>`, with no `.`, `..`, or empty segment.
-2. Stops unless `--confirm yes` is given.
+2. Stops unless you pass `--confirm yes`.
 3. Takes Lease `filestash-publish`, the same lock as `publish`.
 4. Deletes the object, then deletes the Lease.
 

@@ -23,7 +23,7 @@ Read-only checks. Each failed group prints `FAIL`, and the recipe exits non-zero
 | PVC | `pvc/filestash-state` is `Bound`, and its use is 80% or less. |
 | HTTP (port-forward) | `/healthz` answers. `/about` lists each plugin in the lock file plus `plg_search_stateless` and `plg_image_c`. `/admin/tty/` returns 404. |
 | Bucket policies | The anonymous policy on `downloads` equals `filestash/policies/downloads-anonymous.json`. `uploads` is private. |
-| Snapshot age | `backup.maxAgeHours` is set, and the newest successful state backup is younger than it. The check takes the newer of the last CronJob run and the last `backup-now` Job. |
+| Snapshot age | The stack sets `backup.maxAgeHours`, and the newest successful state backup is younger than it. The check takes the newer of the last CronJob run and the last `backup-now` Job. |
 | Backup Secret | Secret `filestash-backup-auth` exists. |
 | Velero exclusion | `pvc/filestash-state` has the label `velero.io/exclude-from-backup=true`. The `restic` snapshots back up the state. Refer to [Backup and restore](backup-restore.md). |
 

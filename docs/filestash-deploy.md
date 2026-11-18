@@ -321,11 +321,12 @@ just filestash probe-public --host <minio-host> --key <dataset>/<file>
 
 ## 15. Upgrade and Roll Back
 
-**Optional.** Upgrade makes a snapshot first, prints its id, and saves the current image for rollback.
-→ [Operations](reference/filestash/operations.md#just-filestash-upgrade)
+**Optional.** Upgrade makes a snapshot first, prints its id, and saves the current image. Run `rollback` only when the new release fails.
+→ [Upgrade](reference/filestash/operations.md#just-filestash-upgrade) · [Rollback](reference/filestash/operations.md#just-filestash-rollback)
 
 ```bash
 just filestash upgrade --tag <tag> --digest sha256:<digest>
+just filestash rollback
 ```
 
 ---
@@ -355,7 +356,7 @@ just filestash teardown --delete-pvc yes
 
 ## 18. Verify
 
-Read-only checks: rollout, PVC use, plugins, browser shell off, bucket policies, snapshot age, the backup Secret, and the label that keeps Velero off the state PVC.
+Read-only checks: rollout, PVC use, plugins, browser shell off, and bucket policies. Also snapshot age, the backup Secret, and the Velero label on the state PVC.
 → [Verify details](reference/filestash/verify.md)
 
 ```bash
