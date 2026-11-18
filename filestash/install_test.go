@@ -327,6 +327,7 @@ func TestStateBackupCommandOrder(t *testing.T) {
 	order := []string{
 		"B=$S/backups",
 		"scale.status",
+		"-name '.partial-*' -exec rm -rf {} +",
 		"P=\"$B/.partial-$TS\"",
 		".backup",
 		"PRAGMA integrity_check",
@@ -334,8 +335,8 @@ func TestStateBackupCommandOrder(t *testing.T) {
 		"SHA256SUMS",
 		"manifest.json",
 		"mv \"$P\" \"$B/$TS\"",
-		"-name '.partial-*' -mmin +60",
 		"tail -n +$((KEEP + 1))",
+		"rm -rf \"$B\"/.partial-*",
 	}
 	last := -1
 	for _, step := range order {

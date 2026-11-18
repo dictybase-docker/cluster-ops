@@ -191,6 +191,8 @@ create-secret stack="" namespace="":
     if [[ -n "$config_secret" ]]; then
         echo "Secret filestash exists: keeping CONFIG_SECRET, replacing ADMIN_PASSWORD."
         action=updated
+    elif kubectl -n "$NS" get pvc filestash-state >/dev/null 2>&1; then
+        fs_die "Secret filestash is missing but pvc/filestash-state exists. A new CONFIG_SECRET breaks the encrypted config.json. Restore Secret filestash from Velero first."
     else
         config_secret=$(fs_random 32)
     fi
@@ -244,6 +246,12 @@ create-users stack="" namespace="":
     if fs_secret_exists filestash-users; then
         echo "Secret filestash-users exists: reusing the stored keys."
     else
+        status=0
+        fs_minio_root 'mc admin user info minio filestash-intake >/dev/null 2>&1 && exit 3; exit 0' || status=$?
+        if [[ "$status" -eq 3 ]]; then
+            fs_die "Secret filestash-users is missing but MinIO user filestash-intake exists. New keys stop every share link. Restore Secret filestash-users from Velero first."
+        fi
+        [[ "$status" -eq 0 ]] || fs_die "could not check the MinIO users."
         envfile="$(mktemp "${TMPDIR:-/tmp}/filestash-users.XXXXXX")"
         trap 'rm -f "$envfile"' EXIT
         chmod 600 "$envfile"
@@ -569,8 +577,9 @@ publish source="" dataset="" url_host="" stack="" namespace="":
             esac
         }
         encode_path() {
-            local IFS=/ seg out=""
-            for seg in $1; do out+="/$(jq -rn --arg s "$seg" "\$s|@uri")"; done
+            local seg out="" segs=()
+            IFS=/ read -ra segs <<<"$1"
+            for seg in "${segs[@]}"; do out+="/$(jq -rn --arg s "$seg" "\$s|@uri")"; done
             printf "%s" "${out#/}"
         }
         keys=()
@@ -659,6 +668,7 @@ backup-now stack="" namespace="":
     cd "{{ justfile_directory() }}"
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
     ts=$(date -u +%Y%m%d%H%M%S)
     job="filestash-state-backup-now-$ts"
     kubectl -n "$NS" create job --from=cronjob/filestash-state-backup "$job"
@@ -666,6 +676,8 @@ backup-now stack="" namespace="":
         kubectl -n "$NS" logs "job/$job" --all-containers || true
         fs_die "state copy job $job failed."
     fi
+    copy=$(kubectl -n "$NS" logs "job/$job" -c copy 2>/dev/null | sed -n 's|^completed copy .*/||p' | tail -n 1)
+    echo "State copy ${copy:-unknown} completed (restore it with: just filestash restore-state --in-place yes --copy ${copy:-<timestamp>})."
     backup="filestash-$ts"
     velero -n "$FS_VELERO_NS" backup create "$backup" --include-namespaces "$NS" \
         --selector app.kubernetes.io/name=filestash --wait
@@ -679,15 +691,16 @@ backup-now stack="" namespace="":
 # Filestash pod with no Service and no route. With --in-place yes: disaster
 # recovery on the live PVC from its own newest completed copy (destructive).
 # Usage: just filestash restore-state --backup <name> --target-namespace <ns>
-#        just filestash restore-state --in-place yes
+#        just filestash restore-state --in-place yes [--copy <timestamp>]
 [arg("backup", long="backup", help="Velero backup name (test restore)")]
 [arg("target_namespace", long="target-namespace", help="New namespace for the test restore; must not exist")]
-[arg("in_place", long="in-place", help="yes: replace the live state from its newest completed copy")]
+[arg("in_place", long="in-place", help="yes: replace the live state from a completed copy")]
+[arg("copy", long="copy", help="Completed copy timestamp for --in-place, for example 20261117T040000Z (default: newest)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-restore-state backup="" target_namespace="" in_place="" stack="" namespace="":
+restore-state backup="" target_namespace="" in_place="" copy="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -695,14 +708,36 @@ restore-state backup="" target_namespace="" in_place="" stack="" namespace="":
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     BACKUP={{ quote(backup) }}
     TARGET={{ quote(target_namespace) }}
+    COPY={{ quote(copy) }}
     if [[ {{ quote(in_place) }} == "yes" ]]; then
+        # Preflight: nothing below changes the cluster until the copy checks pass.
         [[ -z "$BACKUP" && -z "$TARGET" ]] || fs_die "--in-place yes takes no --backup or --target-namespace."
+        [[ -z "$COPY" || "$COPY" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || fs_die "invalid --copy '$COPY' (for example 20261117T040000Z)."
         kubectl -n "$NS" get deployment filestash >/dev/null || fs_die "deployment/filestash not found in '$NS'."
-        echo "Replacing the live state in '$NS' from its newest completed copy."
-        trap 'kubectl -n "$NS" scale deployment/filestash --replicas=1 >/dev/null' EXIT
+        fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
+        ready=$(kubectl -n "$NS" get deployment filestash -o jsonpath='{.status.readyReplicas}')
+        if [[ "${ready:-0}" -ge 1 ]]; then
+            export FS_COPY="$COPY"
+            # shellcheck disable=SC2016
+            picked=$(kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c "
+                B=/app/data/state/backups; c='$COPY'
+                [ -n \"\$c\" ] || c=\$(ls -1 \$B | grep -E '^[0-9]{8}T[0-9]{6}Z\$' | sort | tail -n 1)
+                [ -n \"\$c\" ] && [ -f \"\$B/\$c/manifest.json\" ] && cd \"\$B/\$c\" && sha256sum -c SHA256SUMS >/dev/null && echo \"\$c\"") \
+                || fs_die "the completed copy '${COPY:-newest}' is missing or fails its checksum check. Nothing changed."
+            COPY="$picked"
+        fi
+        echo "Replacing the live state in '$NS' from completed copy '${COPY:-newest}'."
+        kubectl -n "$NS" patch cronjob filestash-state-backup -p '{"spec":{"suspend":true}}'
+        trap 'kubectl -n "$NS" patch cronjob filestash-state-backup -p '"'"'{"spec":{"suspend":false}}'"'"' >/dev/null' EXIT
+        fs_backup_idle || fs_die "a backup job started; nothing changed. Run again."
         kubectl -n "$NS" scale deployment/filestash --replicas=0
         fs_wait_no_pods "$NS"
-        fs_run_restore_job "$NS"
+        if ! (fs_run_restore_job "$NS" "$COPY"); then
+            echo "Error: the restore job failed. Filestash stays at 0 replicas." >&2
+            echo "Read the job logs, fix the cause, and run restore-state again with another --copy." >&2
+            exit 1
+        fi
+        kubectl -n "$NS" scale deployment/filestash --replicas=1
         echo "Live state restored in '$NS'. Next: just filestash verify"
         exit 0
     fi
@@ -727,7 +762,8 @@ restore-state backup="" target_namespace="" in_place="" stack="" namespace="":
     fs_render filestash/manifests/restore-deny-egress.yaml "$TARGET" | kubectl apply -f -
     velero -n "$FS_VELERO_NS" restore create "filestash-restore-$(date -u +%Y%m%d%H%M%S)" \
         --from-backup "$BACKUP" --namespace-mappings "$NS:$TARGET" \
-        --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps --wait
+        --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps \
+        --selector app.kubernetes.io/name=filestash --wait
     fs_run_restore_job "$TARGET"
     jq --arg t "$TARGET" 'del(.status, .metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
         .metadata.managedFields, .metadata.annotations, .metadata.generation) | .metadata.namespace = $t' \
@@ -795,7 +831,7 @@ upgrade tag="" digest="" stack="" namespace="":
     echo "Next: just filestash probe-admin --host <filestash-host>"
 
 # Pin previousImage again and deploy. If the new release changed the state
-# format, restore the copy that upgrade made: just filestash restore-state --in-place yes
+# format, restore the copy that upgrade made: restore-state --in-place yes --copy <ts>
 # Usage: just filestash rollback [--stack <name>]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
@@ -815,7 +851,7 @@ rollback stack="" namespace="":
     go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key properties.image.digest --value "$prev_digest"
     just filestash deploy --stack "$STACK"
     echo "Rolled back to $prev_tag@$prev_digest. Commit $CFG."
-    echo "If the state format changed: just filestash restore-state --in-place yes"
+    echo "If the state format changed: just filestash restore-state --in-place yes --copy <timestamp printed by upgrade>"
 
 # Delete uploads older than --older-than days, as filestash-operator. A dry
 # run (list only) unless --confirm yes. There is no default age: the
@@ -913,7 +949,7 @@ probe-public host="" key="":
     echo "probe-public: all checks passed for $HOST."
 
 # Check from outside the cluster that no admin path variant reaches the admin
-# console or the admin API. Uses --path-as-is so curl sends each variant
+# console or the admin API, with any status code. Uses --path-as-is so curl sends each variant
 # unchanged. A failure means: turn the route off again.
 # Usage: just filestash probe-admin --host <filestash-host>
 [arg("host", long="host", help="Public Filestash host (required)")]
@@ -927,11 +963,13 @@ probe-admin host="":
     body="$(mktemp "${TMPDIR:-/tmp}/probe-admin.XXXXXX")"
     trap 'rm -f "$body"' EXIT
     failures=0
-    for path in /admin /admin/ /Admin //admin /./admin /x/../admin /%61dmin /admin%2Fapi/config \
-                /admin/api/session /admin/api/config /admin/api/logs /admin/tty/; do
+    for path in /admin /admin/ /Admin //admin /./admin /x/../admin /%61dmin /%61dmin/api/session \
+                /admin%2Fapi/config /admin%2Fapi/session /admin/api/session /admin/api/config \
+                /admin/api/logs /admin/tty/; do
         for method in GET POST PUT DELETE OPTIONS; do
             code=$(curl -s --path-as-is -X "$method" -o "$body" -w '%{http_code}' "https://$HOST$path" || echo 000)
-            if grep -q 'backoffice' "$body" || { [[ "$code" == 2* ]] && grep -q '"status"' "$body"; }; then
+            # Any admin page or admin API JSON body is a leak, whatever the status code.
+            if grep -q 'backoffice' "$body" || grep -q '"status"' "$body"; then
                 echo "  FAIL  $method $path ($code) reached admin content"
                 failures=$((failures + 1))
             fi

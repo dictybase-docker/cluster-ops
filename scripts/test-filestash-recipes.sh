@@ -64,6 +64,7 @@ case "$url" in
     https://files.test/*)
         : > "${out:-/dev/null}"
         if [[ "${STUB_ADMIN_LEAK:-}" == "$url" ]]; then printf '<script src="router_backoffice.js">' > "$out"; printf 200
+        elif [[ "${STUB_ADMIN_JSON_LEAK:-}" == "$url" ]]; then printf '{"status":"error","message":"Not Authorized"}' > "$out"; printf 401
         else printf 302; fi
         exit 0 ;;
 esac
@@ -117,6 +118,7 @@ case "$args" in
             *'"kind": "Deployment"'*) printf 'kubectl-applied Deployment %s\n' "$(jq -r .metadata.namespace <<<"$body")" >> "${STUB_LOG}" ;;
             *) printf '%s\n' "$body" > "${STUB_DIR}/filestash.env" ;;
         esac ;;
+    *"exec deployment/filestash -c filestash -- sh -c"*"SHA256SUMS"*) [[ "${STUB_COPY_BAD:-0}" == 1 ]] && exit 1; echo 20261117T000000Z ;;
     *"exec deployment/filestash -c filestash -- sh -c"*"share.sql"*) cat "${STUB_SHARE_DB}" ;;
     *"exec deployment/filestash -c filestash -- sh -c"*) printf '%s' "${STUB_BACKUP_AGE:-1}" ;;
     *"exec deployment/filestash -c filestash -- curl"*) exit 0 ;;
@@ -127,9 +129,11 @@ case "$args" in
         sched_default='{"items":[{"spec":{"template":{}}}]}'
         printf '%s' "${STUB_SCHED_JSON:-$sched_default}" ;;
     *"create job --from=cronjob/filestash-state-backup"*) exit 0 ;;
+    *"wait --for=condition=complete job/filestash-state-restore"*) [[ "${STUB_RESTORE_FAIL:-0}" == 1 ]] && exit 1; exit 0 ;;
     *"wait --for=condition=complete"*) exit 0 ;;
-    *" logs "*) echo "restored state from /app/data/state/backups/x" ;;
+    *" logs "*) echo "restored state from /app/data/state/backups/x"; echo "completed copy /app/data/state/backups/20261117T040000Z" ;;
     *"delete job filestash-state-restore"*) exit 0 ;;
+    *"get deployment filestash -o jsonpath={.status.readyReplicas}"*) printf '%s' "${STUB_READY:-1}" ;;
     *"get deployment filestash -o json"*) printf '{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"filestash","namespace":"prod","uid":"u1"},"status":{}}' ;;
     *"get deployment filestash"*) exit 0 ;;
     *"scale deployment/filestash"*) exit 0 ;;
@@ -141,6 +145,9 @@ case "$args" in
     *"get pvc filestash-state -o jsonpath={.status.phase}"*) printf 'Bound' ;;
     *"get pvc filestash-state -o jsonpath={.spec.resources.requests.storage}"*) printf '%s' "${STUB_PVC_SIZE:-5Gi}" ;;
     *"get pvc filestash-state -o jsonpath={.spec.storageClassName}"*) printf 'dictycr-balanced' ;;
+    *"get pvc filestash-state"*) [[ "${STUB_PVC_EXISTS:-0}" == 1 ]] ;;
+    *"patch cronjob filestash-state-backup"*) exit 0 ;;
+    *"get pods -l app.kubernetes.io/component=state-backup"*) printf '%s' "${STUB_BACKUP_ACTIVE:-}" ;;
     *"get storageclass dictycr-balanced"*) printf 'true' ;;
     *"exec deployment/filestash -c filestash -- df -P"*)
         printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/sdb 5000 500 4500 %s%% /app/data/state\n' "${STUB_DF_USE:-10}" ;;
@@ -187,7 +194,7 @@ case "$*" in
     "ls --recursive --json"*) printf '%s\n' "${STUB_MC_KEYS:-}" | jq -cR 'select(length > 0) | {type: "file", key: .}' ;;
     "stat "*) [[ -n "${STUB_MC_EXISTING:-}" && "${@: -1}" == *"${STUB_MC_EXISTING}" ]] || exit 1 ;;
     "admin user add"*) n=$(wc -l | tr -d ' '); printf 'mc-stdin-lines %s\n' "$n" >> "${STUB_LOG}" ;;
-    "admin user info"*) printf '{"policyName":"%s"}\n' "${STUB_ATTACHED:-}" ;;
+    "admin user info"*) [[ "${STUB_MC_NO_USERS:-}" == 1 ]] && exit 1; printf '{"policyName":"%s"}\n' "${STUB_ATTACHED:-}" ;;
     "anonymous get-json"*) cat "${STUB_ANON_FILE:-filestash/policies/downloads-anonymous.json}" ;;
     "anonymous get minio/uploads") echo 'Access permission for `minio/uploads` is `private`' ;;
 esac
@@ -375,11 +382,17 @@ echo '  test_create_secret_keeps_config_secret: PASS'
 printf 'short\n' > "$tmp_dir/pw"
 expect_failure 'at least 12 characters' env "PULUMI_STACK=$stack" bash -c "\"$just_bin\" filestash create-secret < \"$tmp_dir/pw\""
 echo '  test_create_secret_rejects_short_password: PASS'
+rm -f "$stub_dir/filestash.env"
+printf 'a-long-admin-password\n' > "$tmp_dir/pw"
+expect_failure 'pvc/filestash-state exists' env "PULUMI_STACK=$stack" "STUB_PVC_EXISTS=1" bash -c "\"$just_bin\" filestash create-secret < \"$tmp_dir/pw\""
+[[ ! -e "$stub_dir/filestash.env" ]]
+printf 'ADMIN_PASSWORD=$2y$10$fake\nCONFIG_SECRET=keepme\n' > "$stub_dir/filestash.env"
+echo '  test_create_secret_refuses_new_config_secret_with_state: PASS'
 
 echo "=== 7. create-users ==="
 rm -f "$stub_dir/filestash-users.env"
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash create-users >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "STUB_MC_NO_USERS=1" "$just_bin" filestash create-users >/dev/null
 [[ "$(rg -c '^mc admin user add minio$' "$log_file")" == 4 ]]
 [[ "$(rg -c '^mc-stdin-lines 2$' "$log_file")" == 4 ]]
 rg -q '^mc admin policy attach minio filestash-publisher --user filestash-publisher$' "$log_file"
@@ -397,6 +410,13 @@ assert_no_call 'create secret'
 assert_no_call 'policy attach'
 [[ "$(cat "$stub_dir/filestash-users.env")" == "$before" ]]
 echo '  test_create_users_is_idempotent: PASS'
+rm -f "$stub_dir/filestash-users.env"
+: > "$log_file"
+expect_failure 'MinIO user filestash-intake exists' env "PULUMI_STACK=$stack" "$just_bin" filestash create-users
+assert_no_call 'create secret'
+assert_no_call 'admin user add'
+cp /dev/null "$stub_dir/filestash-users.env"; printf '%s\n' "$before" > "$stub_dir/filestash-users.env"
+echo '  test_create_users_refuses_new_keys_for_existing_users: PASS'
 
 echo "=== 8. buckets and bucket policy ==="
 : > "$log_file"
@@ -467,7 +487,7 @@ f="filestash/Pulumi.fs-scaffold-gw-$$.yaml"
 echo '  test_scaffold_selects_ingress_mode: PASS'
 
 echo "=== 12. publish, unpublish-file, release-lock ==="
-keys=$'table.csv\nraw/x.unknown\nmy file #1 %ü.csv'
+keys=$'table.csv\nraw/x.unknown\nmy file #1 %ü.csv\na*b.csv'
 rm -f "$stub_dir/lease.yaml"
 : > "$log_file"
 out=$(run_recipe env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org)
@@ -479,6 +499,7 @@ rg -qF 'mc-args [cp] [--attr] [Content-Type=text/csv] [minio/uploads/alice/batch
 echo '  test_publish_quotes_special_keys: PASS'
 printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/my%20file%20%231%20%25%C3%BC.csv'
 printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/raw/x.unknown'
+printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/a%2Ab.csv'
 echo '  test_publish_encodes_urls: PASS'
 rg -q '^kubectl -n prod delete lease filestash-publish$' "$log_file"
 [[ ! -e "$stub_dir/lease.yaml" ]]
@@ -542,6 +563,9 @@ echo '  test_verify_requires_max_age: PASS'
 run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now >/dev/null
 rg -q '^kubectl -n prod create job --from=cronjob/filestash-state-backup filestash-state-backup-now-' "$log_file"
 rg -q '^velero -n operators backup create filestash-[0-9]+ --include-namespaces prod --selector app.kubernetes.io/name=filestash --wait$' "$log_file"
+expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash backup-now
+out=$(run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now)
+printf '%s' "$out" | rg -q 'State copy 20261117T040000Z'
 echo '  test_backup_now: PASS'
 
 : > "$log_file"
@@ -568,7 +592,7 @@ deploy=$(line_of 'kubectl-applied Deployment filestash-restore-new')
 (( describe < created )) || { echo "preflight after mutation" >&2; exit 1; }
 echo '  test_restore_state_preflight_precedes_mutation: PASS'
 (( netpol < restore && restore < job && job < deploy )) || { echo "restore order wrong: netpol=$netpol restore=$restore job=$job deploy=$deploy" >&2; exit 1; }
-rg -q 'restore create filestash-restore-[0-9]+ --from-backup b1 --namespace-mappings prod:filestash-restore-new --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps --wait' "$log_file"
+rg -q 'restore create filestash-restore-[0-9]+ --from-backup b1 --namespace-mappings prod:filestash-restore-new --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps --selector app.kubernetes.io/name=filestash --wait' "$log_file"
 echo '  test_restore_state_applies_deny_egress_first: PASS'
 
 : > "$log_file"
@@ -579,6 +603,25 @@ up=$(line_of 'scale deployment/filestash --replicas=1')
 (( down < job && job < up )) || { echo "in-place order wrong" >&2; exit 1; }
 assert_no_call '^velero '
 echo '  test_restore_state_in_place: PASS'
+suspend=$(line_of 'patch cronjob filestash-state-backup .*"suspend":true')
+pre=$(line_of 'SHA256SUMS')
+(( suspend < down && pre < down )) || { echo "in-place: suspend/preflight must precede scale-down" >&2; exit 1; }
+rg -q 'patch cronjob filestash-state-backup .*"suspend":false' "$log_file"
+echo '  test_restore_state_in_place_suspends_backups: PASS'
+: > "$log_file"
+expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash restore-state --in-place yes
+assert_no_call 'replicas=0'
+: > "$log_file"
+expect_failure 'fails its checksum check' env "PULUMI_STACK=$stack" "STUB_COPY_BAD=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
+assert_no_call 'replicas=0'
+expect_failure "invalid --copy" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --in-place yes --copy latest
+echo '  test_restore_state_in_place_preflight: PASS'
+: > "$log_file"
+expect_failure 'restore job failed' env "PULUMI_STACK=$stack" "STUB_RESTORE_FAIL=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
+assert_no_call 'replicas=1'
+rg -q '"suspend":false' "$log_file"
+rg -q 'value: "20261117T000000Z"' "$stub_dir/created.yaml"
+echo '  test_restore_state_in_place_keeps_down_on_failure: PASS'
 
 expect_failure "is not a restore test namespace" env "PULUMI_STACK=$stack" "STUB_NS_EXISTS=other" "$just_bin" filestash restore-cleanup --target-namespace other
 : > "$log_file"
@@ -634,6 +677,9 @@ run_recipe "$just_bin" filestash probe-admin --host files.test | rg -q 'no admin
 rg -qF 'https://files.test/%61dmin' "$log_file"
 echo '  test_probe_admin_uses_path_as_is: PASS'
 expect_failure 'reached admin content' env "STUB_ADMIN_LEAK=https://files.test/%61dmin" "$just_bin" filestash probe-admin --host files.test
+rg -qF 'https://files.test/%61dmin/api/session' "$log_file"
+rg -qF 'https://files.test/admin%2Fapi/session' "$log_file"
+expect_failure 'reached admin content' env "STUB_ADMIN_JSON_LEAK=https://files.test/admin%2Fapi/config" "$just_bin" filestash probe-admin --host files.test
 echo '  test_probe_admin_detects_leak: PASS'
 
 echo "All filestash recipe contract tests passed."

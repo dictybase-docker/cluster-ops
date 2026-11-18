@@ -53,6 +53,18 @@ func TestCopyScriptFailsWhenAStepFails(t *testing.T) {
 	entries, err := filepath.Glob(filepath.Join(state, "backups", "2*"))
 	require.NoError(t, err)
 	require.Empty(t, entries, "a failed copy must not become a completed copy")
+	partials, err := filepath.Glob(filepath.Join(state, "backups", ".partial-*"))
+	require.NoError(t, err)
+	require.Empty(t, partials, "a failed copy must not leave a partial folder")
+}
+
+func TestCopyScriptRemovesOldPartialsFirst(t *testing.T) {
+	t.Parallel()
+	script := renderedBackupScripts()["copy"]
+	clean := strings.Index(script, "-name '.partial-*' -exec rm -rf {} +")
+	backup := strings.Index(script, ".backup")
+	require.GreaterOrEqual(t, clean, 0)
+	require.Less(t, clean, backup, "remove old partial folders before the copy (full PVC)")
 }
 
 func TestScaleDownDoesNotUseWaitForDelete(t *testing.T) {

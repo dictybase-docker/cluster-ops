@@ -42,7 +42,7 @@ The stack makes Ingress `filestash-admin-block` on `Prefix /admin` with `nginx.i
 
 ## just filestash probe-admin
 
-Sends `GET`, `POST`, `PUT`, `DELETE`, and `OPTIONS` with `curl --path-as-is` to these paths: `/admin`, `/admin/`, `/Admin`, `//admin`, `/./admin`, `/x/../admin`, `/%61dmin`, `/admin%2Fapi/config`, `/admin/api/session`, `/admin/api/config`, `/admin/api/logs`, `/admin/tty/`. A response that holds the admin page marker `backoffice`, or a 2xx JSON body with `"status"`, is a failure.
+Sends `GET`, `POST`, `PUT`, `DELETE`, and `OPTIONS` with `curl --path-as-is` to these paths: `/admin`, `/admin/`, `/Admin`, `//admin`, `/./admin`, `/x/../admin`, `/%61dmin`, `/%61dmin/api/session`, `/admin%2Fapi/config`, `/admin%2Fapi/session`, `/admin/api/session`, `/admin/api/config`, `/admin/api/logs`, `/admin/tty/`. A response that holds the admin page marker `backoffice`, or any JSON body with `"status"` (any status code), is a failure.
 
 | Flag | Required |
 |---|---|

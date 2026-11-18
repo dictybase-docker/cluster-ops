@@ -24,7 +24,7 @@ Runs `backup-now`, writes the current image to `previousImage`, pins `--tag` and
 
 ## just filestash rollback
 
-Pins `previousImage` and runs `deploy`. Fails when no upgrade wrote `previousImage`. If the new release changed the state format, run `just filestash restore-state --in-place yes`.
+Pins `previousImage` and runs `deploy`. Fails when no upgrade wrote `previousImage`. If the new release changed the state format, restore the copy that `upgrade` made: `just filestash restore-state --in-place yes --copy <timestamp>`. `upgrade` prints the timestamp.
 
 ## just filestash purge-uploads
 

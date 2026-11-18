@@ -160,10 +160,17 @@ fs_sqlite_image() {
     printf '%s' "$img"
 }
 
-# fs_run_restore_job <namespace> runs the restore Job and waits for it.
+# fs_backup_idle succeeds when no state backup pod is pending or running.
+fs_backup_idle() {
+    [[ -z "$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=state-backup \
+        --field-selector=status.phase!=Succeeded,status.phase!=Failed -o name)" ]]
+}
+
+# fs_run_restore_job <namespace> [<copy>] runs the restore Job and waits for
+# it. An empty <copy> selects the newest completed copy.
 fs_run_restore_job() {
     kubectl -n "$1" delete job filestash-state-restore --ignore-not-found >/dev/null
-    fs_render filestash/manifests/restore-job.yaml "$1" | kubectl create -f -
+    fs_render filestash/manifests/restore-job.yaml "$1" | sed -e "s|__COPY__|${2:-}|g" | kubectl create -f -
     if ! kubectl -n "$1" wait --for=condition=complete job/filestash-state-restore --timeout=600s; then
         kubectl -n "$1" logs job/filestash-state-restore || true
         fs_die "restore job failed in '$1'."

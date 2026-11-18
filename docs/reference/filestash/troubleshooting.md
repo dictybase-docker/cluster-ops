@@ -16,4 +16,8 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 | `newest state copy age` in `verify` | The CronJob failed or Filestash was down. | Read the Job logs, then run `just filestash backup-now`. |
 | Backup Job stays `Pending` | No Filestash pod runs, so the pod affinity has no node. | Start Filestash, then run `backup-now`. |
 | `probe-admin: ... reached admin content` | A path variant passes the block. | Turn the route off and report the variant. |
+| `Secret filestash is missing but pvc/filestash-state exists` | The Secret was deleted. | Restore Secret `filestash` from Velero. A new `CONFIG_SECRET` breaks `config.json`. |
+| `Secret filestash-users is missing but MinIO user filestash-intake exists` | The Secret was deleted. | Restore Secret `filestash-users` from Velero. New keys stop every link. |
+| `a backup job is running` | A state copy runs. | Wait for it, then run the recipe again. |
+| `the restore job failed. Filestash stays at 0 replicas` | The copy is damaged or a check failed. | Read the Job logs, then run `restore-state --in-place yes --copy <older timestamp>`. |
 | `state PVC use` above 80% | Logs, plugins, or copies fill the disk. | Run `just filestash resize-state --size <quantity>`. |

@@ -89,7 +89,7 @@ Creates or updates Secret `filestash` with the label `app.kubernetes.io/name=fil
 
 1. Reads the admin password from a hidden prompt. It needs at least 12 characters.
 2. Makes a bcrypt hash with `htpasswd -niBC 10`. Filestash rejects a plaintext `ADMIN_PASSWORD`.
-3. Keeps an existing `CONFIG_SECRET`. Otherwise it makes a random 32-character value.
+3. Keeps an existing `CONFIG_SECRET`. Refuses when the Secret is missing but `pvc/filestash-state` exists: restore the Secret from Velero first. Otherwise it makes a random 32-character value.
 4. Applies the Secret from a mode-600 temporary file. No value is in the process arguments.
 
 **Do not change `CONFIG_SECRET`.** It encrypts the secret fields in `config.json`. A new value breaks them.

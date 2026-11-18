@@ -39,12 +39,15 @@ exit 0`
 
 // copyScript writes a complete copy into backups/.partial-<ts>, checks it,
 // and renames it to backups/<ts> only after every check passes. Prune keeps
-// the newest completed copies (with manifest.json) and partial directories
-// younger than one hour. It never exits non-zero (see scaleDownScript).
+// the newest completed copies (with manifest.json). Partial folders go away
+// before each run and after a failed run, so a full PVC cannot fill up
+// with them. Filestash is stopped, so no other writer uses backups/. It never exits non-zero (see scaleDownScript).
 const copyScript = `W=%[1]s; S=%[2]s; B=$S/backups; KEEP=%[3]d
 [ "$(cat $W/scale.status 2>/dev/null)" = ok ] || { echo skipped > $W/copy.status; exit 0; }
 run() {
   set -e
+  mkdir -p "$B"
+  find "$B" -maxdepth 1 -name '.partial-*' -exec rm -rf {} +
   TS=$(date -u +%%Y%%m%%dT%%H%%M%%SZ); P="$B/.partial-$TS"
   mkdir -p "$P/db" "$P/config"
   for f in "$S"/db/*.sql; do
@@ -61,7 +64,6 @@ run() {
   (cd "$P" && find db config -type f | sort | xargs sha256sum > SHA256SUMS)
   printf '{"timestamp":"%%s","files":%%s}\n' "$TS" "$(wc -l < "$P/SHA256SUMS")" > "$P/manifest.json"
   mv "$P" "$B/$TS"
-  find "$B" -maxdepth 1 -name '.partial-*' -mmin +60 -exec rm -rf {} +
   for d in $(ls -1d "$B"/2* 2>/dev/null | sort -r | tail -n +$((KEEP + 1))); do
     [ -f "$d/manifest.json" ] && rm -rf "$d"
   done
@@ -69,7 +71,12 @@ run() {
 }
 (run)
 rc=$?
-if [ "$rc" -eq 0 ]; then echo ok > $W/copy.status; else echo fail > $W/copy.status; fi
+if [ "$rc" -eq 0 ]; then
+  echo ok > $W/copy.status
+else
+  rm -rf "$B"/.partial-*
+  echo fail > $W/copy.status
+fi
 exit 0`
 
 // scaleUpScript always brings Filestash back, then fails the Job when an

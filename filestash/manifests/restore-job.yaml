@@ -1,5 +1,5 @@
 # Replaces the live SQLite files and config.json on pvc/filestash-state with
-# the newest completed copy in backups/. Checks SHA256SUMS before the
+# a completed copy in backups/: COPY, or the newest when COPY is empty. Checks SHA256SUMS before the
 # replacement and the table row counts after it. The recipe fills
 # __NAMESPACE__ and __SQLITE_IMAGE__ and runs it only while Filestash is down.
 apiVersion: batch/v1
@@ -31,8 +31,12 @@ spec:
             - |
               set -eu
               S=/app/data/state; B=$S/backups
-              latest=$(ls -1d "$B"/2*/ 2>/dev/null | sort | tail -n 1)
-              latest=${latest%/}
+              if [ -n "$COPY" ]; then
+                latest="$B/$COPY"
+              else
+                latest=$(ls -1d "$B"/2*/ 2>/dev/null | sort | tail -n 1)
+                latest=${latest%/}
+              fi
               [ -n "$latest" ] && [ -f "$latest/manifest.json" ] || { echo "no completed copy in $B"; exit 1; }
               (cd "$latest" && sha256sum -c SHA256SUMS)
               mkdir -p "$S/db" "$S/config"
@@ -46,6 +50,9 @@ spec:
                 done < "$latest/counts.txt"
               fi
               echo "restored state from $latest"
+          env:
+            - name: COPY
+              value: "__COPY__"
           volumeMounts:
             - name: state
               mountPath: /app/data/state

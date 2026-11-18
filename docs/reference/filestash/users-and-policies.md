@@ -57,7 +57,7 @@ Runs `mc mb --ignore-existing` for both buckets and `mc anonymous set none` on `
 
 ### Behavior
 
-1. Reuses the keys in Secret `filestash-users` when it exists. Otherwise it makes four random 40-character secret keys and creates the Secret from a mode-600 file.
+1. Reuses the keys in Secret `filestash-users` when it exists. When the Secret is missing but MinIO user `filestash-intake` exists, it refuses: new keys stop every link, so restore the Secret from Velero first. Otherwise it makes four random 40-character secret keys and creates the Secret from a mode-600 file.
 2. Opens a port-forward to Service `minio`. The keys go to the child process in the environment only.
 3. For each role: `mc admin policy create`, `mc admin user add` with the keys on standard input, and `mc admin policy attach` when the policy is not attached.
 
