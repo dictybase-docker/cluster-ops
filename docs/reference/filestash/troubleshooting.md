@@ -13,6 +13,9 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 | A link stopped after a key change | The link holds the old MinIO key. | Make the link again. Refer to [Key Rotation](users-and-policies.md#key-rotation). |
 | `another run holds lease/<lease>` | A run is active, or a run crashed. | Wait, or run `just filestash release-lock --lease <lease> --holder <id>`. |
 | `these objects exist already` | A published key exists. | Use a new dataset name, or remove the file with `unpublish-file`. |
+| `CONFIG_SECRET in Secret filestash does not match the snapshot` | The stack has a different `CONFIG_SECRET` from the one in the snapshot. | Restore `filestash/Pulumi.<stack>.yaml` from Git, run `deploy`, then restore again. |
+| `restic repository check failed (exit 12)` | Wrong `restic` password. | Restore `filestash-backup/Pulumi.<stack>.yaml` from Git. |
+| `no share.sql` or `config.json has no general.secret_key` in a backup Job | Filestash never started, or its state is damaged. | Check the Filestash pod. Do not restore from a snapshot older than the damage. |
 | `newest successful state backup age` in `verify` | The CronJob failed, or Filestash was down. | Read the Job logs, then run `just filestash backup-now`. |
 | Backup Job fails after 30 minutes with no pod start | No Filestash pod runs, so the pod affinity has no node. | Start Filestash, then run `backup-now`. |
 | `has no secrets.configSecret but pvc/filestash-state exists` | The stack file lost its encrypted values. | Restore `filestash/Pulumi.<stack>.yaml` from Git. A new `CONFIG_SECRET` breaks `config.json`. |

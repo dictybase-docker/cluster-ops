@@ -29,7 +29,9 @@ MinIO backups. Velero does not back up the state.
 
 `config.json` holds `general.secret_key`, and every share link depends on it.
 A restore needs the snapshot and the same `CONFIG_SECRET`. Both come back
-from the snapshot and the stack file.
+from the snapshot and the stack file. Each snapshot records the SHA-256 of
+`CONFIG_SECRET`. The restore Job compares it with Secret `filestash` and
+stops before any change when they differ.
 
 **The `restic` password in the stack file is the only key to the snapshots.**
 `configure-backup` never replaces it.
@@ -63,23 +65,26 @@ as the other datastores.
 
 `filestash-state-backup` runs on `schedule`. Filestash keeps running.
 
+**Consistency limit.** `sqlite3 .backup` makes each SQLite file consistent by itself. The files and `config.json` are not copied at one point in time. A share that staff make during the copy can be in `share.sql` but not match a settings change made at the same time. Make settings changes outside the backup window (minute 30 of every fourth hour), or run `backup-now` after the change.
+
 1. The pod runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
-2. Init container `copy` writes `/backup/state` in an `emptyDir`: `sqlite3 .backup` of each `db/*.sql` (consistent while Filestash runs), `PRAGMA integrity_check`, the row count of each table (`counts.txt`), `config.json`, `SHA256SUMS`, and `manifest.json`. A failed step fails the Job before any upload.
-3. Container `restic` initializes the repository on the first run, runs `restic backup /backup/state --tag filestash-backup --host filestash`, and applies the retention policy with `forget --prune`.
+2. Init container `copy` writes `/backup/state` in an `emptyDir`: `sqlite3 .backup` of each `db/*.sql`, `PRAGMA integrity_check`, the row count of each table (`counts.txt`), `config.json`, `SHA256SUMS` (it covers `counts.txt`), and `manifest.json` with the SHA-256 of `CONFIG_SECRET`. The copy fails closed: `share.sql` must exist, and `config.json` must be valid JSON with a nonempty `general.secret_key`. A failed step fails the Job before any upload.
+3. Container `restic` initializes the repository only when `restic` reports that it does not exist (exit code 10). A wrong password, a lock, or a network error stops the Job. Then it runs `restic backup /backup/state --tag filestash-backup --host filestash`, and applies the retention policy with `forget --prune`.
 4. `concurrencyPolicy: Forbid`, and the Job fails after 30 minutes (`activeDeadlineSeconds`). When no Filestash pod runs, the backup pod has no node and the Job fails. `verify` then reports the snapshot age.
 
 ## just filestash configure-backup
 
 ### What It Does
 
-Prepares the encrypted values of the `filestash-backup` stack. Run it as `sa-manager`: `kops-cluster-creator` cannot create service account keys, and the recipe stops before any change.
+Prepares the encrypted values of the `filestash-backup` stack.
 
 ### Behavior
 
-1. Checks that `filestash-backup/Pulumi.<stack>.yaml` exists, that its namespace equals the `filestash` namespace, and that its bucket equals `restic-filestash-backup-<project>`.
-2. Creates or reuses service account `filestash-backup-sa`, grants `roles/storage.objectAdmin` limited to the bucket by an IAM condition, and creates the key file unless it exists.
-3. Keeps an existing `secret.resticPass`. Otherwise it stores a random 40-character password.
-4. Stores `secret.gcsProject` and `secret.serviceAccountFile` (the absolute key path).
+1. Binds every `gcloud` call and the key mint to the `sa-manager` key file (`--manager-key`, default `credentials/<project>/sa-manager.json`). It refuses a key that is not `sa-manager@<project>`. The ambient `gcloud` account is never used.
+2. Checks that `filestash-backup/Pulumi.<stack>.yaml` exists, that its namespace equals the `filestash` namespace, and that its bucket equals `restic-filestash-backup-<project>`.
+3. Creates service account `filestash-backup-sa` only when `gcloud` reports `NOT_FOUND`; any other error stops the recipe. Then it grants `roles/storage.objectAdmin` limited to the bucket by an IAM condition, and creates the key file unless it exists.
+4. Keeps an existing `secret.resticPass`. Otherwise it stores a random 40-character password.
+5. Stores `secret.gcsProject` and `secret.serviceAccountFile` (the absolute key path).
 
 ### Flags
 
@@ -87,7 +92,16 @@ Prepares the encrypted values of the `filestash-backup` stack. Run it as `sa-man
 |---|---|---|
 | `--project` | No | `$PROJECT_ID` |
 | `--key-file` | No | `credentials/<project>/filestash-backup-sa.json` |
+| `--manager-key` | No | `credentials/<project>/sa-manager.json` |
 | `--stack`, `--namespace` | No | `$PULUMI_STACK`, `properties.namespace` |
+
+### Recover the Service Account Key
+
+The stack stores only the path of the key file. The key file itself is in
+`credentials/<project>/filestash-backup-sa.json` on the operator host, and Git
+does not hold it. When the file is lost, run `configure-backup` again: it makes
+a new key, and the snapshots stay readable, because the `restic` password does
+not change. Then run `deploy-backup` and delete the old key.
 
 **Service account keys accumulate.** Audit them with `gcloud iam service-accounts keys list --iam-account filestash-backup-sa@<project>.iam.gserviceaccount.com`.
 
@@ -114,7 +128,7 @@ Then:
 1. Creates the namespace with the label `filestash-restore-test=true`.
 2. Applies NetworkPolicy `filestash-deny-egress`: the restored Filestash pod gets no egress, so the restored keys cannot reach MinIO or SMTP. The restore Job keeps egress to GCS.
 3. Copies Secret `filestash`, Secret `filestash-backup-auth`, and ConfigMap `filestash-seed`, and creates a new `filestash-state` PVC with the live size and class.
-4. Runs Job `filestash-state-restore`: `restic restore` into an `emptyDir`, then `SHA256SUMS`, `PRAGMA integrity_check`, the `secret_key` check, the replacement of the state, and the row count check.
+4. Runs Job `filestash-state-restore`: `restic restore` into an `emptyDir`, then `SHA256SUMS`, `share.sql`, `PRAGMA integrity_check`, the `secret_key` check, and the `CONFIG_SECRET` fingerprint check, all before any change. Then the replacement of the state and the row count check.
 5. Starts a copy of the live Deployment, with no Service and no route, and checks `/healthz`.
 
 ### Disaster Recovery

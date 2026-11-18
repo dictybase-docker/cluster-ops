@@ -29,7 +29,7 @@ Each runtime ZIP runs JavaScript in the browser of every public visitor. A `patc
 | `filestash/plugins/plugins.lock.yaml` | For each vendor ZIP: `url`, `sha256`, `size`, `modules`, `license`, `reviewer`, `notes`. For `office`: the source `ref` (40-character commit). |
 | `filestash/plugins/office-deps.lock.yaml` | The LibreOffice WASM files for `office`, with `url` and `sha256`. |
 
-**The vendor ZIPs state no license.** Before the first build, a person records the license of each ZIP and reviews each `manifest.json` and `patch` file, then fills `license` and `reviewer`. If a license does not permit a public image, push the bundle to a private registry with `--image`.
+**The vendor ZIPs state no license.** Before the first build, a person gets the license of each ZIP, reviews each `manifest.json` and `patch` file, and fills `license` and `reviewer`. Refer to [License and Review Procedure](#license-and-review-procedure).
 
 ## License and Review Procedure
 
@@ -39,9 +39,12 @@ Do these steps before the first build and after each `sha256` change.
 2. Read `manifest.json`. Compare the module types with `modules` in the lock file.
 3. For a `patch` module, read the diff. It must change only styles, icons, or labels. It must not add a network request or send data to another host.
 4. For an `xdg-open` module, search the JavaScript for remote URLs (`http://`, `https://`, `fetch(`, `XMLHttpRequest`). A viewer must load its code from the ZIP only.
-5. Record the license. The vendor ZIP files state none, so ask the vendor (`support@filestash.app`) or record `unknown — private registry only`. Read the third-party license files inside the ZIP (for example `jsmol` in `application_biomed`).
+5. Record the license. The vendor ZIP files state none. Ask the vendor (`support@filestash.app`) for the license in writing. Read the third-party license files inside the ZIP (for example `jsmol` in `application_biomed`).
 6. Set `license`, `reviewer` (your name and the date), and `notes` in the lock file, and commit it.
-7. If a license does not permit a public image, build with `--image <private-registry>/filestash-plugins`.
+
+**An unknown license is not a permission.** A private registry still copies
+and runs the files. If the license is unknown or does not permit the use,
+remove the plugin from the lock file and stop. Do not build the bundle with it.
 
 For `office`, also review `office-deps.lock.yaml` after `lock-office-deps`. LibreOffice is MPL-2.0.
 

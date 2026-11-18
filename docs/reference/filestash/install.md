@@ -46,7 +46,7 @@ Key prefix: `filestash:properties`.
 | `storage.storageClass` | No | `dictycr-balanced` | |
 | `cacheSizeLimit` | No | `2Gi` | |
 | `s3.endpoint` / `s3.region` / `s3.label` | endpoint | `us-east-1`, `dictycr-minio` | `http://minio.<namespace>.svc.cluster.local:9000`. |
-| `ingress.enabled` | No | `false` | `true` only on a cluster with no Gateway stack. |
+| `ingress.enabled` | No | `false` | Set `true` at the route step, only on a cluster with no Gateway stack. |
 | `ingress.hosts` / `ingress.tlsSecret` / `ingress.label` | When enabled | class `nginx` | The kcert label `kcert.dev/ingress: managed` issues the certificate. |
 | `plugins.image.name` / `.tag` / `.digest` | Yes | none | From `just filestash build-plugins`. |
 | `backup.maxAgeHours` | Yes | none | Recovery point target in hours. `verify` fails when the newest successful snapshot is older. |
@@ -64,7 +64,7 @@ These values have no default. Set them with
 | Key | Value | Notes |
 |---|---|---|
 | `applicationURL` | `https://<filestash-host>` | Filestash builds share URLs from it. |
-| `ingress.hosts.0` | `<filestash-host>` | `experiments` only. Keep the placeholder until the route step. |
+| `ingress.hosts.0` | `<filestash-host>` | `experiments` only, at the route step, with `ingress.enabled=true`. |
 | `backup.maxAgeHours` | Hours, for example `6` | Recovery point target. Larger than the 4-hour schedule. |
 | `plugins.image.tag` / `plugins.image.digest` | From `build-plugins` | |
 
@@ -78,15 +78,16 @@ The stack file sets `storage.size`. The code has no default. The values are `5Gi
 
 ### What It Does
 
-Writes `filestash/Pulumi.<stack>.yaml` from `config/templates/filestash-stack.yaml.tmpl` and the cluster registry, and initializes the stack with the registry KMS secrets provider.
+Writes `filestash/Pulumi.<stack>.yaml` and `filestash-backup/Pulumi.<stack>.yaml` from `config/templates/filestash-stack.yaml.tmpl`, `config/templates/filestash-backup-stack.yaml.tmpl`, and the cluster registry, and initializes both stacks with the registry KMS secrets provider.
 
 ### Behavior
 
 1. Resolves the stack, and fails without `--state-size`.
-2. Reads `namespace` and `kms_secrets_provider` from the registry entry with the same `stack`.
-3. Keeps an existing file that has a `config:` block, and exits.
-4. Sets `ingress.enabled: true` only when `gateway/Pulumi.<stack>.yaml` does not exist.
-5. Runs `pulumi stack init` with the KMS provider.
+2. Reads `namespace`, `kms_secrets_provider`, and `gcp_project` from the registry entry with the same `stack`.
+3. Keeps each existing file that has a `config:` block.
+4. Writes `ingress.enabled: false` on every cluster. It prints the public route mode: a Gateway route when `gateway/Pulumi.<stack>.yaml` exists, else the nginx Ingress, which the route step turns on.
+5. Writes the backup bucket `restic-filestash-backup-<gcp_project>`.
+6. Runs `pulumi stack init` with the KMS provider for each new file.
 
 ### Flags
 

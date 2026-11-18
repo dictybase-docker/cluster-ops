@@ -66,7 +66,7 @@ just filestash create-buckets
 just filestash create-users
 # 6. Deploy (route off)
 just filestash deploy
-# 7. State backup (run configure-backup as sa-manager)
+# 7. State backup (configure-backup uses credentials/<project>/sa-manager.json)
 just filestash configure-backup
 just filestash deploy-backup
 just filestash backup-now
@@ -114,7 +114,7 @@ just filestash teardown --delete-pvc yes
 
 ## 1. Scaffold the Stacks
 
-Write `filestash/Pulumi.<stack>.yaml` from the cluster registry. Both current clusters have committed stack files for both projects, so skip this step for them.
+Write `filestash/Pulumi.<stack>.yaml` and `filestash-backup/Pulumi.<stack>.yaml` from the cluster registry. Both current clusters have committed stack files for both projects, so skip this step for them.
 → [Install details](reference/filestash/install.md#just-gcp-pulumi-scaffold-filestash-stack)
 
 ```bash
@@ -173,7 +173,7 @@ just filestash create-users
 
 ## 6. Deploy with the Route Off
 
-Deploy Filestash, its state PVC, and Secrets `filestash` and `filestash-users` from the stack values. Keep the Gateway route off, or the Ingress host on the placeholder, until Section 12.
+Deploy Filestash, its state PVC, and Secrets `filestash` and `filestash-users` from the stack values. The Gateway route and the Ingress stay off until Section 12.
 → [Install details](reference/filestash/install.md#just-filestash-deploy)
 
 ```bash
@@ -184,7 +184,7 @@ just filestash deploy
 
 ## 7. Configure and Deploy the State Backup
 
-Run `configure-backup` as `sa-manager`: it makes the backup service account and its key. Then deploy the bucket and CronJob, and make the first snapshot. Filestash keeps running during each backup.
+`configure-backup` makes the backup service account and its key with the `sa-manager` key file. Then deploy the bucket and CronJob, and make the first snapshot. Filestash keeps running during each backup.
 → [Backup and restore](reference/filestash/backup-restore.md)
 
 ```bash
@@ -254,10 +254,11 @@ just gateway deploy
 
 ---
 
-**On `experiments` (nginx Ingress in the `filestash` stack):**
+**On `experiments` (nginx Ingress in the `filestash` stack, off until now):**
 
 ```bash
 just gcp-pulumi set-config --folder filestash --key properties.ingress.hosts.0 --value <filestash-host>
+just gcp-pulumi set-config --folder filestash --key properties.ingress.enabled --value true
 just filestash deploy
 ```
 

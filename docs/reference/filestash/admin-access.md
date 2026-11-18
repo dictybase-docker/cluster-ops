@@ -36,7 +36,7 @@ The stack makes Ingress `filestash-admin-block` on `Prefix /admin` with `nginx.i
 ## DNS Sequence
 
 1. Deploy with the route off. Do all link tests through `just filestash admin`.
-2. Turn the route on. The certificate issuer makes the TLS Secret.
+2. Turn the route on: `routes.filestash.enabled` in the `gateway` stack, or `ingress.hosts.0` and `ingress.enabled` in the `filestash` stack. The certificate issuer makes the TLS Secret.
 3. Add the DNS `A` record.
 4. Run `probe-admin` from outside the cluster.
 
