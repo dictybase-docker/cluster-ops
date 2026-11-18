@@ -39,7 +39,8 @@ Key prefix: `filestash:properties`.
 | `namespace` | Yes | none | From `config/clusters/<cluster>.yaml`. |
 | `applicationURL` | Yes | none | `https://<filestash-host>`. Filestash builds share URLs from it. |
 | `image.name` / `image.tag` / `image.digest` | tag, digest | `machines/filestash` | The vendor publishes only `latest`. The digest is the pin. |
-| `secretName` | No | `filestash` | Keys `ADMIN_PASSWORD`, `CONFIG_SECRET`. Plain text pointer. |
+| `name` | No | `filestash` | Validation rejects any other value: the recipes and manifests use the fixed names. |
+| `secretName` | No | `filestash` | Keys `ADMIN_PASSWORD`, `CONFIG_SECRET`. Validation rejects any other value. |
 | `storage.size` | Yes | none | At least `1Gi`. Refer to [State Disk Size](#state-disk-size). |
 | `storage.storageClass` | No | `dictycr-balanced` | |
 | `cacheSizeLimit` | No | `2Gi` | |

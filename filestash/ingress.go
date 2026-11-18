@@ -5,6 +5,7 @@ import (
 
 	A "github.com/IBM/fp-go/v2/array"
 	F "github.com/IBM/fp-go/v2/function"
+	O "github.com/IBM/fp-go/v2/option"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	networkingv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -20,9 +21,18 @@ const (
 // stack). A second Ingress redirects /admin to /, so the internet cannot
 // reach the admin console. Gateway clusters keep ingress.enabled=false.
 func (f *Filestash) CreateIngress(ctx *pulumi.Context) error {
-	if !f.Config.Ingress.Enabled {
-		return nil
-	}
+	return F.Pipe2(
+		f.Config.Ingress,
+		O.FromPredicate(isIngressEnabled),
+		O.Fold(F.Constant[error](nil), F.Bind1st(f.createIngresses, ctx)),
+	)
+}
+
+func isIngressEnabled(ing IngressConfig) bool {
+	return ing.Enabled
+}
+
+func (f *Filestash) createIngresses(ctx *pulumi.Context, _ IngressConfig) error {
 	if err := f.newIngress(ctx, "ingress", f.Config.Name, "/", transferAnnotations()); err != nil {
 		return err
 	}

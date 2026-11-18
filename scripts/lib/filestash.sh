@@ -123,29 +123,60 @@ fs_downloads_host() {
     printf '%s' "$host"
 }
 
-# fs_lock_take takes the publication Lease or fails with its holder.
-# Sets FS_HOLDER. Release it with fs_lock_release in an EXIT trap.
+# fs_lock_take [<lease>] takes a Lease (default filestash-publish) or fails
+# with its holder. Sets FS_HOLDER and FS_LEASE. Release it with
+# fs_lock_release in an EXIT trap.
 fs_lock_take() {
+    FS_LEASE="${1:-filestash-publish}"
     FS_HOLDER="$(id -un)@$(hostname -s 2>/dev/null || echo host):$$"
     FS_HOLDER="${FS_HOLDER//[^A-Za-z0-9@:._-]/_}"
-    if ! sed -e "s|__NAMESPACE__|${NS}|" -e "s|__HOLDER__|${FS_HOLDER}|" \
-        filestash/manifests/publish-lease.yaml | kubectl create -f - >/dev/null 2>&1; then
+    local err
+    if ! err=$(sed -e "s|__LEASE__|${FS_LEASE}|" -e "s|__NAMESPACE__|${NS}|" -e "s|__HOLDER__|${FS_HOLDER}|" \
+        filestash/manifests/publish-lease.yaml | kubectl create -f - 2>&1 >/dev/null); then
+        if [[ "$err" != *AlreadyExists* ]]; then
+            FS_HOLDER=""
+            fs_die "could not create lease/${FS_LEASE}: ${err}"
+        fi
         local holder
-        holder=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
-        fs_die "another publication holds lease/filestash-publish (holder '${holder}'). After a crash: just filestash release-lock --holder '${holder}'"
+        holder=$(kubectl -n "$NS" get lease "$FS_LEASE" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+        FS_HOLDER=""
+        fs_die "another run holds lease/${FS_LEASE} (holder '${holder}'). After a crash: just filestash release-lock --lease ${FS_LEASE} --holder '${holder}'"
     fi
 }
 
 # fs_lock_release deletes the Lease only if this process holds it.
 fs_lock_release() {
     local holder
-    holder=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
-    if [[ -n "${FS_HOLDER:-}" && "$holder" == "$FS_HOLDER" ]]; then
-        kubectl -n "$NS" delete lease filestash-publish >/dev/null
+    [[ -n "${FS_HOLDER:-}" ]] || return 0
+    holder=$(kubectl -n "$NS" get lease "$FS_LEASE" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+    if [[ "$holder" == "$FS_HOLDER" ]]; then
+        kubectl -n "$NS" delete lease "$FS_LEASE" >/dev/null
     fi
 }
 
-FS_VELERO_NS="${FS_VELERO_NS:-operators}"
+# fs_velero_ns <flag> sets FS_VELERO_NS from the flag, else from
+# properties.namespace in install-velero/Pulumi.<stack>.yaml, else fails.
+fs_velero_ns() {
+    FS_VELERO_NS="${1:-}"
+    local f="install-velero/Pulumi.${STACK}.yaml"
+    if [[ -z "$FS_VELERO_NS" && -f "$f" ]]; then
+        FS_VELERO_NS=$(yq -r '.config."install-velero:properties".namespace // ""' "$f")
+    fi
+    [[ -n "$FS_VELERO_NS" ]] || fs_die "no Velero namespace — pass --velero-namespace (no $f)."
+}
+
+# fs_suspend_backups suspends the state backup CronJob and records the old
+# value in FS_SUSPEND_WAS. fs_resume_backups writes the old value back.
+fs_suspend_backups() {
+    FS_SUSPEND_WAS=$(kubectl -n "$NS" get cronjob filestash-state-backup -o jsonpath='{.spec.suspend}')
+    [[ "$FS_SUSPEND_WAS" == "true" ]] || FS_SUSPEND_WAS=false
+    kubectl -n "$NS" patch cronjob filestash-state-backup -p '{"spec":{"suspend":true}}' >/dev/null
+}
+
+fs_resume_backups() {
+    [[ -n "${FS_SUSPEND_WAS:-}" ]] || return 0
+    kubectl -n "$NS" patch cronjob filestash-state-backup -p "{\"spec\":{\"suspend\":${FS_SUSPEND_WAS}}}" >/dev/null
+}
 
 # fs_render <manifest> <namespace> prints the manifest with its placeholders filled.
 fs_render() {
@@ -160,22 +191,31 @@ fs_sqlite_image() {
     printf '%s' "$img"
 }
 
-# fs_backup_idle succeeds when no state backup pod is pending or running.
+# fs_backup_idle succeeds when no state backup Job is unfinished (a Job can
+# exist before its pod) and no state backup pod is pending or running.
 fs_backup_idle() {
-    [[ -z "$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=state-backup \
-        --field-selector=status.phase!=Succeeded,status.phase!=Failed -o name)" ]]
+    local jobs pods
+    jobs=$(kubectl -n "$NS" get jobs -l app.kubernetes.io/component=state-backup -o json \
+        | jq '[.items[] | select(((.status.succeeded // 0) == 0) and ((.status.failed // 0) == 0))] | length')
+    pods=$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=state-backup \
+        --field-selector=status.phase!=Succeeded,status.phase!=Failed -o name)
+    [[ "$jobs" == "0" && -z "$pods" ]]
 }
 
-# fs_run_restore_job <namespace> [<copy>] runs the restore Job and waits for
-# it. An empty <copy> selects the newest completed copy.
-fs_run_restore_job() {
-    kubectl -n "$1" delete job filestash-state-restore --ignore-not-found >/dev/null
-    fs_render filestash/manifests/restore-job.yaml "$1" | sed -e "s|__COPY__|${2:-}|g" | kubectl create -f -
-    if ! kubectl -n "$1" wait --for=condition=complete job/filestash-state-restore --timeout=600s; then
-        kubectl -n "$1" logs job/filestash-state-restore || true
-        fs_die "restore job failed in '$1'."
+# fs_state_job <namespace> <mode> [<copy>] runs filestash-state-<mode>
+# (mode check: verify a completed copy, changes nothing; mode restore:
+# verify, then replace the state) and waits for it. An empty <copy> selects
+# the newest completed copy.
+fs_state_job() {
+    local ns="$1" mode="$2" copy="${3:-}"
+    kubectl -n "$ns" delete job "filestash-state-$mode" --ignore-not-found >/dev/null
+    fs_render filestash/manifests/restore-job.yaml "$ns" \
+        | sed -e "s|__COPY__|${copy}|g" -e "s|__MODE__|${mode}|g" | kubectl create -f -
+    if ! kubectl -n "$ns" wait --for=condition=complete "job/filestash-state-$mode" --timeout=600s; then
+        kubectl -n "$ns" logs "job/filestash-state-$mode" || true
+        return 1
     fi
-    kubectl -n "$1" logs job/filestash-state-restore
+    kubectl -n "$ns" logs "job/filestash-state-$mode"
 }
 
 # fs_wait_no_pods <namespace> waits until no Filestash pod runs.

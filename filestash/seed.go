@@ -49,16 +49,25 @@ var encodeSeed = F.Flow3(
 
 // CreateSeedConfigMap creates the ConfigMap that holds the seed config.json.
 func (f *Filestash) CreateSeedConfigMap(ctx *pulumi.Context) (*corev1.ConfigMap, error) {
-	cfg := f.Config
-	doc, err := E.UnwrapError(encodeSeed(cfg))
-	if err != nil {
-		return nil, fmt.Errorf("error encoding filestash seed config: %w", err)
-	}
+	created := F.Pipe3(
+		f.Config,
+		encodeSeed,
+		E.MapLeft[string](wrapSeedError),
+		E.Chain(F.Bind1st(E.Eitherize2(f.newSeedConfigMap), ctx)),
+	)
+	return E.UnwrapError(created)
+}
+
+func wrapSeedError(err error) error {
+	return fmt.Errorf("error encoding filestash seed config: %w", err)
+}
+
+func (f *Filestash) newSeedConfigMap(ctx *pulumi.Context, doc string) (*corev1.ConfigMap, error) {
 	name := f.resourceName("seed")
 	cm, err := corev1.NewConfigMap(ctx, name, &corev1.ConfigMapArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:      pulumi.String(name),
-			Namespace: pulumi.String(cfg.Namespace),
+			Namespace: pulumi.String(f.Config.Namespace),
 			Labels:    f.labels(),
 		},
 		Data: pulumi.StringMap{seedFile: pulumi.String(doc)},

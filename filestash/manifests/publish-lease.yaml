@@ -1,10 +1,12 @@
-# Single-writer lock for `just filestash publish` and `unpublish-file`.
-# The recipe fills __NAMESPACE__ and __HOLDER__ and runs `kubectl create`
+# Single-writer lock. `filestash-publish` serializes publish and
+# unpublish-file. `filestash-maintenance` serializes backup-now and the
+# in-place restore. The recipe fills __LEASE__, __NAMESPACE__, and __HOLDER__
+# and runs `kubectl create`
 # (never apply): create fails with AlreadyExists while another run holds it.
 apiVersion: coordination.k8s.io/v1
 kind: Lease
 metadata:
-  name: filestash-publish
+  name: __LEASE__
   namespace: __NAMESPACE__
   labels:
     app.kubernetes.io/name: filestash

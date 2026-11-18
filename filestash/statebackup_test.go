@@ -73,3 +73,10 @@ func TestScaleDownDoesNotUseWaitForDelete(t *testing.T) {
 	require.NotContains(t, script, "wait --for=delete", "kubectl wait fails when no pod matches")
 	require.Contains(t, script, "get pods -l app.kubernetes.io/name=filestash -o name")
 }
+
+func TestScaleUpRetries(t *testing.T) {
+	t.Parallel()
+	script := renderedBackupScripts()["scale-up"]
+	require.Contains(t, script, "for i in 1 2 3 4 5")
+	require.Contains(t, script, "scale deployment/filestash --replicas=1 && break")
+}

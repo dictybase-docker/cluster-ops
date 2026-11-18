@@ -79,10 +79,13 @@ else
 fi
 exit 0`
 
-// scaleUpScript always brings Filestash back, then fails the Job when an
-// earlier step failed.
+// scaleUpScript always brings Filestash back (five tries, rising delay, for a
+// passing API error), then fails the Job when an earlier step failed.
 const scaleUpScript = `ns=%[1]s
-kubectl -n "$ns" scale deployment/filestash --replicas=1
+for i in 1 2 3 4 5; do
+  kubectl -n "$ns" scale deployment/filestash --replicas=1 && break
+  echo "scale up attempt $i failed"; sleep $((i * 5))
+done
 s=$(cat %[2]s/scale.status 2>/dev/null); c=$(cat %[2]s/copy.status 2>/dev/null)
 echo "scale-down=$s copy=$c"
 [ "$s" = ok ] && [ "$c" = ok ]`
@@ -144,6 +147,9 @@ func (f *Filestash) CreateStateBackup(ctx *pulumi.Context, deps ...pulumi.Resour
 			SuccessfulJobsHistoryLimit: pulumi.Int(3),
 			FailedJobsHistoryLimit:     pulumi.Int(3),
 			JobTemplate: &batchv1.JobTemplateSpecArgs{
+				Metadata: &metav1.ObjectMetaArgs{
+					Labels: pulumi.StringMap{jobLabelKey: pulumi.String(jobLabel)},
+				},
 				Spec: &batchv1.JobSpecArgs{
 					BackoffLimit: pulumi.Int(0),
 					Template: &corev1.PodTemplateSpecArgs{

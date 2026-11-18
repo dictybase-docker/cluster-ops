@@ -60,10 +60,10 @@ just filestash publish --source <collaborator>/<path> --dataset <name>
 # 10. Route on, then the admin probe from outside the cluster
 just gateway deploy
 just filestash probe-admin --host <filestash-host>
-# 11. State copy and Velero backup
-just filestash backup-now
+# 11. State copy and Velero backup (--velero-namespace when there is no install-velero stack file)
+just filestash backup-now --velero-namespace <velero-ns>
 # 15. Verify
-just filestash verify
+just filestash verify --velero-namespace <velero-ns>
 ```
 
 Optional steps:
@@ -72,9 +72,9 @@ Optional steps:
 # 9. Remove one published file
 just filestash unpublish-file --key <dataset>/<file> --confirm yes
 # 11. Restore test into a new isolated namespace
-just filestash restore-state --backup <velero-backup> --target-namespace filestash-restore-test
+just filestash restore-state --velero-namespace <velero-ns> --backup <velero-backup> --target-namespace filestash-restore-test
 # 12. Upgrade, and roll back
-just filestash upgrade --tag <tag> --digest sha256:<digest>
+just filestash upgrade --velero-namespace <velero-ns> --tag <tag> --digest sha256:<digest>
 just filestash rollback
 # 13. Retention and link audit
 just filestash purge-uploads --older-than <days>
@@ -218,8 +218,8 @@ The CronJob copies the state every 4 hours. Make a copy and a Velero backup now,
 → [Backup and restore](reference/filestash/backup-restore.md)
 
 ```bash
-just filestash backup-now
-just filestash restore-state --backup <velero-backup> --target-namespace filestash-restore-test
+just filestash backup-now --velero-namespace <velero-ns>
+just filestash restore-state --velero-namespace <velero-ns> --backup <velero-backup> --target-namespace filestash-restore-test
 just filestash restore-cleanup --target-namespace filestash-restore-test
 ```
 
@@ -231,7 +231,7 @@ just filestash restore-cleanup --target-namespace filestash-restore-test
 → [Operations](reference/filestash/operations.md#just-filestash-upgrade)
 
 ```bash
-just filestash upgrade --tag <tag> --digest sha256:<digest>
+just filestash upgrade --velero-namespace <velero-ns> --tag <tag> --digest sha256:<digest>
 ```
 
 ---
@@ -265,7 +265,7 @@ Read-only checks: rollout, PVC use, plugins, browser shell off, bucket policies,
 → [Verify details](reference/filestash/verify.md)
 
 ```bash
-just filestash verify
+just filestash verify --velero-namespace <velero-ns>
 ```
 
 ---

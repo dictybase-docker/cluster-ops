@@ -63,9 +63,11 @@ case "$url" in
         printf '%s' "$code"; exit 0 ;;
     https://files.test/*)
         : > "${out:-/dev/null}"
-        if [[ "${STUB_ADMIN_LEAK:-}" == "$url" ]]; then printf '<script src="router_backoffice.js">' > "$out"; printf 200
-        elif [[ "${STUB_ADMIN_JSON_LEAK:-}" == "$url" ]]; then printf '{"status":"error","message":"Not Authorized"}' > "$out"; printf 401
-        else printf 302; fi
+        if [[ "${STUB_ADMIN_LEAK:-}" == "$url" ]]; then printf '<script src="router_backoffice.js">' > "$out"; printf '200 '
+        elif [[ "${STUB_ADMIN_JSON_LEAK:-}" == "$url" ]]; then printf '{"status":"error","message":"Not Authorized"}' > "$out"; printf '401 '
+        elif [[ "${STUB_ADMIN_NOREDIRECT:-}" == "$url" ]]; then printf '200 '
+        elif [[ "${STUB_ADMIN_DOWN:-0}" == 1 ]]; then exit 7
+        else printf '302 https://files.test/'; fi
         exit 0 ;;
 esac
 printf 'content-of-%s' "${url##*/}" > "$out"
@@ -130,6 +132,8 @@ case "$args" in
         printf '%s' "${STUB_SCHED_JSON:-$sched_default}" ;;
     *"create job --from=cronjob/filestash-state-backup"*) exit 0 ;;
     *"wait --for=condition=complete job/filestash-state-restore"*) [[ "${STUB_RESTORE_FAIL:-0}" == 1 ]] && exit 1; exit 0 ;;
+    *"wait --for=condition=complete job/filestash-state-check"*) [[ "${STUB_CHECK_FAIL:-0}" == 1 ]] && exit 1; exit 0 ;;
+    *"delete job filestash-state-check"*) exit 0 ;;
     *"wait --for=condition=complete"*) exit 0 ;;
     *" logs "*) echo "restored state from /app/data/state/backups/x"; echo "completed copy /app/data/state/backups/20261117T040000Z" ;;
     *"delete job filestash-state-restore"*) exit 0 ;;
@@ -154,18 +158,25 @@ case "$args" in
     *"exec deployment/filestash -c filestash -- ls"*) echo "share.sql" ;;
     *"create -f -"*)
         body=$(cat)
+        name=$(awk '/^  name:/ {print $2; exit}' <<<"$body")
         if [[ "$body" == *"kind: Lease"* ]]; then
             [[ "${STUB_LEASE_HELD:-0}" == 1 ]] && { echo 'Error from server (AlreadyExists)' >&2; exit 1; }
-            printf '%s\n' "$body" > "${STUB_DIR}/lease.yaml"
+            [[ "${STUB_LEASE_FORBIDDEN:-0}" == 1 ]] && { echo 'Error from server (Forbidden): leases is forbidden' >&2; exit 1; }
+            printf '%s\n' "$body" > "${STUB_DIR}/lease-${name}.yaml"
         else
             printf '%s\n' "$body" > "${STUB_DIR}/created.yaml"
-            printf 'kubectl-created %s\n' "$(awk '/^kind:/ {print $2; exit}' <<<"$body")" >> "${STUB_LOG}"
+            printf 'kubectl-created %s %s\n' "$(awk '/^kind:/ {print $2; exit}' <<<"$body")" "$name" >> "${STUB_LOG}"
         fi ;;
-    *"get lease filestash-publish -o jsonpath={.spec.holderIdentity}"*)
+    *"get lease "*" -o jsonpath={.spec.holderIdentity}"*)
+        lname="${args#*get lease }"; lname="${lname%% *}"
         if [[ -n "${STUB_LEASE_HOLDER:-}" ]]; then printf '%s' "$STUB_LEASE_HOLDER"
-        elif [[ -f "${STUB_DIR}/lease.yaml" ]]; then awk '/holderIdentity:/ {printf "%s", $2}' "${STUB_DIR}/lease.yaml"
+        elif [[ -f "${STUB_DIR}/lease-${lname}.yaml" ]]; then awk '/holderIdentity:/ {printf "%s", $2}' "${STUB_DIR}/lease-${lname}.yaml"
         else exit 1; fi ;;
-    *"delete lease filestash-publish"*) rm -f "${STUB_DIR}/lease.yaml" ;;
+    *"delete lease "*) lname="${args##*delete lease }"; rm -f "${STUB_DIR}/lease-${lname%% *}.yaml" ;;
+    *"get cronjob filestash-state-backup -o jsonpath={.spec.suspend}"*) printf '%s' "${STUB_SUSPEND:-false}" ;;
+    *"get jobs -l app.kubernetes.io/component=state-backup -o json"*)
+        jobs_default='{"items":[]}'
+        printf '%s' "${STUB_JOBS_JSON:-$jobs_default}" ;;
     *) echo "unexpected kubectl call: $*" >&2; exit 1 ;;
 esac
 MOCK
@@ -435,15 +446,15 @@ echo '  test_unpublish_bucket_sets_none: PASS'
 
 echo "=== 9. verify ==="
 about="theme_apple application_adobe application_biomed application_photography application_office plg_search_stateless plg_image_c"
-run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify | rg -q 'all checks passed'
+run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify --velero-namespace operators | rg -q 'all checks passed'
 echo '  test_verify_happy_path: PASS'
-expect_failure 'state PVC use' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_DF_USE=81" "$just_bin" filestash verify
+expect_failure 'state PVC use' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_DF_USE=81" "$just_bin" filestash verify --velero-namespace operators
 echo '  test_verify_fails_on_full_pvc: PASS'
-expect_failure 'plugin application_adobe missing' env "PULUMI_STACK=$stack" "STUB_ABOUT=theme_apple" "$just_bin" filestash verify
-expect_failure '/admin/tty/ returned 200' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_TTY_CODE=200" "$just_bin" filestash verify
+expect_failure 'plugin application_adobe missing' env "PULUMI_STACK=$stack" "STUB_ABOUT=theme_apple" "$just_bin" filestash verify --velero-namespace operators
+expect_failure '/admin/tty/ returned 200' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_TTY_CODE=200" "$just_bin" filestash verify --velero-namespace operators
 echo '  test_verify_checks_plugins: PASS'
 printf '{"Statement":[]}' > "$tmp_dir/anon.json"
-expect_failure 'downloads anonymous policy differs' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_ANON_FILE=$tmp_dir/anon.json" "$just_bin" filestash verify
+expect_failure 'downloads anonymous policy differs' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_ANON_FILE=$tmp_dir/anon.json" "$just_bin" filestash verify --velero-namespace operators
 echo '  test_verify_checks_bucket_policy: PASS'
 
 echo "=== 10. resize-state and teardown ==="
@@ -488,7 +499,7 @@ echo '  test_scaffold_selects_ingress_mode: PASS'
 
 echo "=== 12. publish, unpublish-file, release-lock ==="
 keys=$'table.csv\nraw/x.unknown\nmy file #1 %ü.csv\na*b.csv'
-rm -f "$stub_dir/lease.yaml"
+rm -f "$stub_dir/lease-filestash-publish.yaml"
 : > "$log_file"
 out=$(run_recipe env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org)
 rg -qF 'mc-args [cp] [--attr] [Content-Type=text/csv] [minio/uploads/alice/batch/table.csv] [minio/downloads/ds1/table.csv]' "$log_file"
@@ -502,7 +513,7 @@ printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/raw/x.unk
 printf '%s' "$out" | rg -qF 'https://storage.example.org/downloads/ds1/a%2Ab.csv'
 echo '  test_publish_encodes_urls: PASS'
 rg -q '^kubectl -n prod delete lease filestash-publish$' "$log_file"
-[[ ! -e "$stub_dir/lease.yaml" ]]
+[[ ! -e "$stub_dir/lease-filestash-publish.yaml" ]]
 assert_no_call '^kubectl apply'
 echo '  test_publish_never_applies_lease: PASS'
 rg -q 'secret filestash-users -o jsonpath=\{.data.publisherAccessKey\}' "$log_file"
@@ -526,6 +537,7 @@ expect_failure "invalid --dataset 'Bad Name'" env "PULUMI_STACK=$stack" "$just_b
 expect_failure "holder 'bob@ci:1'" env "PULUMI_STACK=$stack" "STUB_LEASE_HELD=1" "STUB_LEASE_HOLDER=bob@ci:1" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org
 assert_no_call '^mc '
 assert_no_call 'delete lease'
+expect_failure 'could not create lease/filestash-publish' env "PULUMI_STACK=$stack" "STUB_LEASE_FORBIDDEN=1" "$just_bin" filestash publish --source alice/batch --dataset ds1 --url-host storage.example.org
 echo '  test_publish_fails_when_lease_held: PASS'
 
 expect_failure 'pass --url-host' env "PULUMI_STACK=$stack" "STUB_MC_KEYS=$keys" "$just_bin" filestash publish --source alice/batch --dataset ds1
@@ -539,49 +551,52 @@ run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash unpublish-file --key 
 rg -qF 'mc-args [rm] [minio/downloads/ds1/table.csv]' "$log_file"
 echo '  test_unpublish_file_requires_confirm: PASS'
 
-printf 'spec:\n  holderIdentity: alice@host:9\n' > "$stub_dir/lease.yaml"
+printf 'spec:\n  holderIdentity: alice@host:9\n' > "$stub_dir/lease-filestash-publish.yaml"
 : > "$log_file"
 expect_failure "lease holder is 'alice@host:9', not 'other'" env "PULUMI_STACK=$stack" "$just_bin" filestash release-lock --holder other
 assert_no_call 'delete lease'
 run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash release-lock --holder alice@host:9 >/dev/null
-[[ ! -e "$stub_dir/lease.yaml" ]]
+[[ ! -e "$stub_dir/lease-filestash-publish.yaml" ]]
 echo '  test_release_lock_checks_holder: PASS'
 
 echo "=== 13. backup and restore ==="
-expect_failure 'newest state copy age' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_BACKUP_AGE=7" "$just_bin" filestash verify
+expect_failure 'newest state copy age' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_BACKUP_AGE=7" "$just_bin" filestash verify --velero-namespace operators
 echo '  test_verify_fails_on_stale_backup: PASS'
-expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_PVC_EXCLUDE=true" "$just_bin" filestash verify
-expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_POD_EXCL=state" "$just_bin" filestash verify
-expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" 'STUB_SCHED_JSON={"items":[{"spec":{"template":{"excludedNamespaces":["prod"]}}}]}' "$just_bin" filestash verify
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_PVC_EXCLUDE=true" "$just_bin" filestash verify --velero-namespace operators
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_POD_EXCL=state" "$just_bin" filestash verify --velero-namespace operators
+expect_failure 'velero excludes the state' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" 'STUB_SCHED_JSON={"items":[{"spec":{"template":{"excludedNamespaces":["prod"]}}}]}' "$just_bin" filestash verify --velero-namespace operators
 echo '  test_verify_fails_on_velero_exclusion: PASS'
 sed -i.bak 's/maxAgeHours: 6/maxAgeHours: 0/' "$cfg_file" && rm -f "$cfg_file.bak"
-expect_failure 'backup.maxAgeHours is unset' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify
+expect_failure 'backup.maxAgeHours is unset' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify --velero-namespace operators
 sed -i.bak 's/maxAgeHours: 0/maxAgeHours: 6/' "$cfg_file" && rm -f "$cfg_file.bak"
 echo '  test_verify_requires_max_age: PASS'
+expect_failure 'no Velero namespace' env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash verify
 
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now --velero-namespace operators >/dev/null
 rg -q '^kubectl -n prod create job --from=cronjob/filestash-state-backup filestash-state-backup-now-' "$log_file"
 rg -q '^velero -n operators backup create filestash-[0-9]+ --include-namespaces prod --selector app.kubernetes.io/name=filestash --wait$' "$log_file"
-expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash backup-now
-out=$(run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now)
+expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash backup-now --velero-namespace operators
+expect_failure 'pass --velero-namespace' env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now
+expect_failure 'another run holds lease/filestash-maintenance' env "PULUMI_STACK=$stack" "STUB_LEASE_HELD=1" "STUB_LEASE_HOLDER=x@y:1" "$just_bin" filestash backup-now --velero-namespace operators
+out=$(run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash backup-now --velero-namespace operators)
 printf '%s' "$out" | rg -q 'State copy 20261117T040000Z'
 echo '  test_backup_now: PASS'
 
 : > "$log_file"
-expect_failure "is the live namespace 'prod'" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace prod
+expect_failure "is the live namespace 'prod'" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --velero-namespace operators --backup b1 --target-namespace prod
 assert_no_call 'create namespace'
 echo '  test_restore_state_refuses_live_namespace: PASS'
 : > "$log_file"
-expect_failure 'has no Secret prod/filestash' env "PULUMI_STACK=$stack" "STUB_VELERO_DETAILS=  - prod/filestash-state" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new
+expect_failure 'has no Secret prod/filestash' env "PULUMI_STACK=$stack" "STUB_VELERO_DETAILS=  - prod/filestash-state" "$just_bin" filestash restore-state --velero-namespace operators --backup b1 --target-namespace filestash-restore-new
 assert_no_call 'create namespace'
 assert_no_call 'restore create'
 echo '  test_restore_state_requires_secret: PASS'
-expect_failure "phase 'PartiallyFailed'" env "PULUMI_STACK=$stack" "STUB_VELERO_PHASE=PartiallyFailed" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new
-expect_failure "namespace 'filestash-restore-old' exists" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-old
+expect_failure "phase 'PartiallyFailed'" env "PULUMI_STACK=$stack" "STUB_VELERO_PHASE=PartiallyFailed" "$just_bin" filestash restore-state --velero-namespace operators --backup b1 --target-namespace filestash-restore-new
+expect_failure "namespace 'filestash-restore-old' exists" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --velero-namespace operators --backup b1 --target-namespace filestash-restore-old
 
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --backup b1 --target-namespace filestash-restore-new >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --velero-namespace operators --backup b1 --target-namespace filestash-restore-new >/dev/null
 line_of() { rg -n -m1 -- "$1" "$log_file" | cut -d: -f1; }
 describe=$(line_of 'backup describe b1')
 created=$(line_of 'kubectl create namespace filestash-restore-new')
@@ -598,29 +613,37 @@ echo '  test_restore_state_applies_deny_egress_first: PASS'
 : > "$log_file"
 run_recipe env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --in-place yes >/dev/null
 down=$(line_of 'scale deployment/filestash --replicas=0')
-job=$(line_of 'kubectl-created Job')
+job=$(line_of 'kubectl-created Job filestash-state-restore')
 up=$(line_of 'scale deployment/filestash --replicas=1')
 (( down < job && job < up )) || { echo "in-place order wrong" >&2; exit 1; }
 assert_no_call '^velero '
 echo '  test_restore_state_in_place: PASS'
 suspend=$(line_of 'patch cronjob filestash-state-backup .*"suspend":true')
-pre=$(line_of 'SHA256SUMS')
-(( suspend < down && pre < down )) || { echo "in-place: suspend/preflight must precede scale-down" >&2; exit 1; }
+pre=$(line_of 'kubectl-created Job filestash-state-check')
+(( suspend < down && pre < down )) || { echo "in-place: suspend/check must precede scale-down" >&2; exit 1; }
 rg -q 'patch cronjob filestash-state-backup .*"suspend":false' "$log_file"
+rg -q 'delete lease filestash-maintenance' "$log_file"
+: > "$log_file"
+run_recipe env "PULUMI_STACK=$stack" "STUB_SUSPEND=true" "$just_bin" filestash restore-state --in-place yes >/dev/null
+assert_no_call '"suspend":false'
+echo '  test_restore_state_in_place_restores_suspend_value: PASS'
 echo '  test_restore_state_in_place_suspends_backups: PASS'
 : > "$log_file"
 expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" "STUB_BACKUP_ACTIVE=pod/b1" "$just_bin" filestash restore-state --in-place yes
 assert_no_call 'replicas=0'
+expect_failure 'a backup job is running' env "PULUMI_STACK=$stack" 'STUB_JOBS_JSON={"items":[{"status":{}}]}' "$just_bin" filestash restore-state --in-place yes
+assert_no_call 'replicas=0'
 : > "$log_file"
-expect_failure 'fails its checksum check' env "PULUMI_STACK=$stack" "STUB_COPY_BAD=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
+expect_failure 'fails its checks. Nothing changed' env "PULUMI_STACK=$stack" "STUB_CHECK_FAIL=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
 assert_no_call 'replicas=0'
 expect_failure "invalid --copy" env "PULUMI_STACK=$stack" "$just_bin" filestash restore-state --in-place yes --copy latest
 echo '  test_restore_state_in_place_preflight: PASS'
 : > "$log_file"
-expect_failure 'restore job failed' env "PULUMI_STACK=$stack" "STUB_RESTORE_FAIL=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
+expect_failure 'the restore job failed' env "PULUMI_STACK=$stack" "STUB_RESTORE_FAIL=1" "$just_bin" filestash restore-state --in-place yes --copy 20261117T000000Z
 assert_no_call 'replicas=1'
 rg -q '"suspend":false' "$log_file"
 rg -q 'value: "20261117T000000Z"' "$stub_dir/created.yaml"
+rg -q 'value: "restore"' "$stub_dir/created.yaml"
 echo '  test_restore_state_in_place_keeps_down_on_failure: PASS'
 
 expect_failure "is not a restore test namespace" env "PULUMI_STACK=$stack" "STUB_NS_EXISTS=other" "$just_bin" filestash restore-cleanup --target-namespace other
@@ -632,7 +655,7 @@ echo '  test_restore_cleanup_checks_label: PASS'
 echo "=== 14. operations ==="
 newd=sha256:2222222222222222222222222222222222222222222222222222222222222222
 : > "$log_file"
-run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash upgrade --tag latest --digest "$newd" >/dev/null
+run_recipe env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "$just_bin" filestash upgrade --velero-namespace operators --tag latest --digest "$newd" >/dev/null
 backup=$(line_of 'create job --from=cronjob/filestash-state-backup')
 prev=$(line_of 'key properties.previousImage.digest --value sha256:1111')
 pin=$(line_of "key properties.image.digest --value $newd")
@@ -670,6 +693,10 @@ echo '  test_audit_shares_flags_no_expiry: PASS'
 
 run_recipe "$just_bin" filestash probe-public --host storage.test --key ds1/table.csv | rg -q 'all checks passed'
 expect_failure 'anonymous Range GET: got 200' env "STUB_RANGE_CODE=200" "$just_bin" filestash probe-public --host storage.test --key ds1/table.csv
+: > "$log_file"
+run_recipe "$just_bin" filestash probe-public --host storage.test --key ds1/table.csv >/dev/null
+assert_no_call 'DELETE https://storage.test/downloads/ds1/table.csv'
+rg -q 'X DELETE https://storage.test/downloads/probe-[0-9]+-absent' "$log_file"
 echo '  test_probe_public: PASS'
 : > "$log_file"
 run_recipe "$just_bin" filestash probe-admin --host files.test | rg -q 'no admin path variant'
@@ -680,6 +707,9 @@ expect_failure 'reached admin content' env "STUB_ADMIN_LEAK=https://files.test/%
 rg -qF 'https://files.test/%61dmin/api/session' "$log_file"
 rg -qF 'https://files.test/admin%2Fapi/session' "$log_file"
 expect_failure 'reached admin content' env "STUB_ADMIN_JSON_LEAK=https://files.test/admin%2Fapi/config" "$just_bin" filestash probe-admin --host files.test
+expect_failure 'no response' env "STUB_ADMIN_DOWN=1" "$just_bin" filestash probe-admin --host files.test
+expect_failure 'did not get the block redirect' env "STUB_ADMIN_NOREDIRECT=https://files.test/admin/api/config" "$just_bin" filestash probe-admin --host files.test
+expect_failure 'encoded admin path not blocked' env "STUB_ADMIN_NOREDIRECT=https://files.test/%61dmin" "$just_bin" filestash probe-admin --host files.test
 echo '  test_probe_admin_detects_leak: PASS'
 
 echo "All filestash recipe contract tests passed."

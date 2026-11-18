@@ -76,6 +76,8 @@ func TestValidateRejects(t *testing.T) {
 		{"two replicas", func(c *FilestashConfig) { c.Replicas = 2 }, "replicas"},
 		{"placeholder url", func(c *FilestashConfig) { c.ApplicationURL = "https://<filestash-host>" }, "applicationURL"},
 		{"http url", func(c *FilestashConfig) { c.ApplicationURL = "http://" + testHost }, "applicationURL"},
+		{"other name", func(c *FilestashConfig) { c.Name = "files" }, "name"},
+		{"other secret name", func(c *FilestashConfig) { c.SecretName = "other" }, "secretName"},
 		{"no backup max age", func(c *FilestashConfig) { c.Backup.MaxAgeHours = 0 }, "backup.maxAgeHours"},
 		{"bad backup keep", func(c *FilestashConfig) { c.Backup.Keep = -1 }, "backup.keep"},
 		{"empty plugins digest", func(c *FilestashConfig) { c.Plugins.Image.Digest = "" }, "plugins.image.digest"},

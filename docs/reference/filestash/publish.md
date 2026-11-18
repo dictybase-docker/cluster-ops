@@ -43,4 +43,4 @@ Deletes one object from `downloads` as `filestash-publisher`, under the same Lea
 
 ## just filestash release-lock
 
-After a crashed run, the Lease stays. `release-lock --holder <id>` deletes it only if its holder equals `<id>`. The failed `publish` prints the holder.
+After a crashed run, the Lease stays. `release-lock --holder <id>` deletes it only if its holder equals `<id>`. The failed run prints the holder. `--lease` selects `filestash-publish` (default) or `filestash-maintenance` (`backup-now` and the in-place restore). A Lease error other than `AlreadyExists` (for example missing RBAC) is printed as it is.

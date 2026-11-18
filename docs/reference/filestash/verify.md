@@ -23,5 +23,6 @@ Read-only checks. Each failed group prints `FAIL`, and the recipe exits non-zero
 
 | Flag | Required | Default |
 |---|---|---|
+| `--velero-namespace` | When there is no `install-velero/Pulumi.<stack>.yaml` | `properties.namespace` of that file |
 | `--stack` | No | `$PULUMI_STACK` |
 | `--namespace` | No | `properties.namespace` |

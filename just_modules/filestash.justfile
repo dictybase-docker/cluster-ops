@@ -361,13 +361,14 @@ admin stack="" namespace="" port="8334":
     echo "Press Ctrl-C to close the port-forward."
     wait "$pf"
 
-# Read-only health checks. Exits non-zero on the first failed check group.
-# Usage: just filestash verify [--stack <name>] [--namespace <ns>]
+# Read-only health checks. Exits non-zero when any check group fails.
+# Usage: just filestash verify [--velero-namespace <ns>] [--stack <name>] [--namespace <ns>]
+[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-verify stack="" namespace="":
+verify velero_namespace="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -417,6 +418,11 @@ verify stack="" namespace="":
     fi
 
     max=$(fs_prop backup.maxAgeHours)
+    if ! ( fs_velero_ns {{ quote(velero_namespace) }} ) 2>/dev/null; then
+        bad "no Velero namespace — pass --velero-namespace (no install-velero/Pulumi.$STACK.yaml)"
+    else
+        fs_velero_ns {{ quote(velero_namespace) }}
+    fi
     if [[ ! "$max" =~ ^[1-9][0-9]*$ ]]; then
         bad "backup.maxAgeHours is unset in $CFG (recovery point target)"
     else
@@ -633,41 +639,51 @@ unpublish-file key="" confirm="" stack="" namespace="":
     fs_minio_as publisher 'mc rm "minio/downloads/$FS_KEY"'
     echo "Deleted downloads/$KEY. Its direct URL now returns 404."
 
-# Remove lease/filestash-publish after a crashed publish. Deletes it only if
-# its holder equals --holder (the value that publish printed).
-# Usage: just filestash release-lock --holder <id>
-[arg("holder", long="holder", help="Holder identity printed by the failed publish (required)")]
+# Remove a lease after a crashed run. Deletes it only if its holder equals
+# --holder (the value that the failed run printed).
+# Usage: just filestash release-lock --holder <id> [--lease filestash-maintenance]
+[arg("holder", long="holder", help="Holder identity printed by the failed run (required)")]
+[arg("lease", long="lease", help="filestash-publish (default) or filestash-maintenance")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-release-lock holder="" stack="" namespace="":
+release-lock holder="" lease="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
     WANT={{ quote(holder) }}
+    LEASE={{ quote(lease) }}
+    [[ -n "$LEASE" ]] || LEASE=filestash-publish
+    [[ "$LEASE" == filestash-publish || "$LEASE" == filestash-maintenance ]] || fs_die "invalid --lease '$LEASE'."
     [[ -n "$WANT" ]] || fs_die "pass --holder <id>."
-    got=$(kubectl -n "$NS" get lease filestash-publish -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
-    [[ -n "$got" ]] || fs_die "lease/filestash-publish does not exist in '$NS'."
+    got=$(kubectl -n "$NS" get lease "$LEASE" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || true)
+    [[ -n "$got" ]] || fs_die "lease/$LEASE does not exist in '$NS'."
     [[ "$got" == "$WANT" ]] || fs_die "lease holder is '$got', not '$WANT'. Nothing deleted."
-    kubectl -n "$NS" delete lease filestash-publish
-    echo "Released lease/filestash-publish (holder '$got')."
+    kubectl -n "$NS" delete lease "$LEASE"
+    echo "Released lease/$LEASE (holder '$got')."
 
 # Make a state copy now, then a Velero backup of the Filestash resources
 # (PVC, Secrets, ConfigMap, Deployment). Filestash stops for the copy.
-# Usage: just filestash backup-now [--stack <name>] [--namespace <ns>]
+# Holds lease/filestash-maintenance and suspends the CronJob for the run.
+# Usage: just filestash backup-now [--velero-namespace <ns>] [--stack <name>]
+[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-backup-now stack="" namespace="":
+backup-now velero_namespace="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
     source scripts/lib/filestash.sh
     fs_resolve {{ quote(stack) }} {{ quote(namespace) }}
+    fs_velero_ns {{ quote(velero_namespace) }}
+    fs_lock_take filestash-maintenance
+    trap 'fs_resume_backups; fs_lock_release' EXIT
+    fs_suspend_backups
     fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
     ts=$(date -u +%Y%m%d%H%M%S)
     job="filestash-state-backup-now-$ts"
@@ -696,11 +712,12 @@ backup-now stack="" namespace="":
 [arg("target_namespace", long="target-namespace", help="New namespace for the test restore; must not exist")]
 [arg("in_place", long="in-place", help="yes: replace the live state from a completed copy")]
 [arg("copy", long="copy", help="Completed copy timestamp for --in-place, for example 20261117T040000Z (default: newest)")]
+[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-restore-state backup="" target_namespace="" in_place="" copy="" stack="" namespace="":
+restore-state backup="" target_namespace="" in_place="" copy="" velero_namespace="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -710,29 +727,22 @@ restore-state backup="" target_namespace="" in_place="" copy="" stack="" namespa
     TARGET={{ quote(target_namespace) }}
     COPY={{ quote(copy) }}
     if [[ {{ quote(in_place) }} == "yes" ]]; then
-        # Preflight: nothing below changes the cluster until the copy checks pass.
+        # Preflight: nothing below changes the state until the check Job passes.
         [[ -z "$BACKUP" && -z "$TARGET" ]] || fs_die "--in-place yes takes no --backup or --target-namespace."
         [[ -z "$COPY" || "$COPY" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || fs_die "invalid --copy '$COPY' (for example 20261117T040000Z)."
         kubectl -n "$NS" get deployment filestash >/dev/null || fs_die "deployment/filestash not found in '$NS'."
+        [[ -n "$(fs_secret_value filestash CONFIG_SECRET)" ]] \
+            || fs_die "Secret filestash has no CONFIG_SECRET in '$NS'. Restore it from Velero first: the copies need the same value."
+        fs_lock_take filestash-maintenance
+        trap 'fs_resume_backups; fs_lock_release' EXIT
+        fs_suspend_backups
         fs_backup_idle || fs_die "a backup job is running in '$NS'. Wait for it, then run again."
-        ready=$(kubectl -n "$NS" get deployment filestash -o jsonpath='{.status.readyReplicas}')
-        if [[ "${ready:-0}" -ge 1 ]]; then
-            export FS_COPY="$COPY"
-            # shellcheck disable=SC2016
-            picked=$(kubectl -n "$NS" exec deployment/filestash -c filestash -- sh -c "
-                B=/app/data/state/backups; c='$COPY'
-                [ -n \"\$c\" ] || c=\$(ls -1 \$B | grep -E '^[0-9]{8}T[0-9]{6}Z\$' | sort | tail -n 1)
-                [ -n \"\$c\" ] && [ -f \"\$B/\$c/manifest.json\" ] && cd \"\$B/\$c\" && sha256sum -c SHA256SUMS >/dev/null && echo \"\$c\"") \
-                || fs_die "the completed copy '${COPY:-newest}' is missing or fails its checksum check. Nothing changed."
-            COPY="$picked"
-        fi
+        fs_state_job "$NS" check "$COPY" \
+            || fs_die "the completed copy '${COPY:-newest}' fails its checks. Nothing changed."
         echo "Replacing the live state in '$NS' from completed copy '${COPY:-newest}'."
-        kubectl -n "$NS" patch cronjob filestash-state-backup -p '{"spec":{"suspend":true}}'
-        trap 'kubectl -n "$NS" patch cronjob filestash-state-backup -p '"'"'{"spec":{"suspend":false}}'"'"' >/dev/null' EXIT
-        fs_backup_idle || fs_die "a backup job started; nothing changed. Run again."
         kubectl -n "$NS" scale deployment/filestash --replicas=0
         fs_wait_no_pods "$NS"
-        if ! (fs_run_restore_job "$NS" "$COPY"); then
+        if ! fs_state_job "$NS" restore "$COPY"; then
             echo "Error: the restore job failed. Filestash stays at 0 replicas." >&2
             echo "Read the job logs, fix the cause, and run restore-state again with another --copy." >&2
             exit 1
@@ -750,6 +760,7 @@ restore-state backup="" target_namespace="" in_place="" copy="" stack="" namespa
     if kubectl get namespace "$TARGET" >/dev/null 2>&1; then
         fs_die "namespace '$TARGET' exists. The test restore needs a new namespace."
     fi
+    fs_velero_ns {{ quote(velero_namespace) }}
     phase=$(velero -n "$FS_VELERO_NS" backup get "$BACKUP" -o json | jq -r '.status.phase')
     [[ "$phase" == "Completed" ]] || fs_die "velero backup $BACKUP phase '$phase' (want Completed)."
     details=$(velero -n "$FS_VELERO_NS" backup describe "$BACKUP" --details)
@@ -764,7 +775,7 @@ restore-state backup="" target_namespace="" in_place="" copy="" stack="" namespa
         --from-backup "$BACKUP" --namespace-mappings "$NS:$TARGET" \
         --include-resources persistentvolumeclaims,persistentvolumes,secrets,configmaps \
         --selector app.kubernetes.io/name=filestash --wait
-    fs_run_restore_job "$TARGET"
+    fs_state_job "$TARGET" restore || fs_die "restore job failed in '$TARGET'."
     jq --arg t "$TARGET" 'del(.status, .metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
         .metadata.managedFields, .metadata.annotations, .metadata.generation) | .metadata.namespace = $t' \
         <<<"$live" | kubectl apply -f -
@@ -801,11 +812,12 @@ restore-cleanup target_namespace="" stack="" namespace="":
 # Usage: just filestash upgrade --tag <t> --digest sha256:<d> [--stack <name>]
 [arg("tag", long="tag", short="t", help="New image tag (required)")]
 [arg("digest", long="digest", short="d", help="New image digest sha256:<64 hex> (required)")]
+[arg("velero_namespace", long="velero-namespace", help="Velero namespace (default: properties.namespace of install-velero/Pulumi.<stack>.yaml)")]
 [arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
 [arg("namespace", long="namespace", short="n", help="Namespace (defaults to properties.namespace of the stack file)")]
 [group('filestash')]
 [no-cd]
-upgrade tag="" digest="" stack="" namespace="":
+upgrade tag="" digest="" velero_namespace="" stack="" namespace="":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}"
@@ -817,7 +829,8 @@ upgrade tag="" digest="" stack="" namespace="":
     [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fs_die "pass --digest sha256:<64 hex>."
     cur_name=$(fs_prop image.name); cur_tag=$(fs_prop image.tag); cur_digest=$(fs_prop image.digest)
     [[ "$cur_digest" != "$DIGEST" ]] || fs_die "the stack already pins $DIGEST."
-    just filestash backup-now --stack "$STACK"
+    fs_velero_ns {{ quote(velero_namespace) }}
+    just filestash backup-now --stack "$STACK" --velero-namespace "$FS_VELERO_NS"
     export GOOGLE_APPLICATION_CREDENTIALS="${PULUMI_GCP_CREDENTIALS:-}"
     set_cfg() { go run ./cmd/cluster-ops stack config set --folder filestash --stack "$STACK" --key "$1" --value "$2"; }
     set_cfg properties.previousImage.name "${cur_name:-machines/filestash}"
@@ -826,7 +839,7 @@ upgrade tag="" digest="" stack="" namespace="":
     set_cfg properties.image.tag "$TAG"
     set_cfg properties.image.digest "$DIGEST"
     just filestash deploy --stack "$STACK"
-    just filestash verify --stack "$STACK"
+    just filestash verify --stack "$STACK" --velero-namespace "$FS_VELERO_NS"
     echo "Upgraded to $TAG@$DIGEST. Commit $CFG."
     echo "Next: just filestash probe-admin --host <filestash-host>"
 
@@ -917,7 +930,8 @@ audit-shares stack="" namespace="":
     echo "All share links follow the rules."
 
 # Check direct file URLs from outside the cluster: anonymous read works, with
-# Range; anonymous list, write, and delete fail; uploads is closed.
+# Range; anonymous list, write, and delete fail; uploads is closed. The write
+# and delete probes use a throwaway key, never the published --key.
 # Usage: just filestash probe-public --host <minio-host> --key <dataset>/<file>
 [arg("host", long="host", help="Public MinIO host, for example storage.dictycr.org (required)")]
 [arg("key", long="key", help="A published key in downloads, for example strains-2026/table.csv (required)")]
@@ -944,7 +958,7 @@ probe-public host="" key="":
     expect 403 "anonymous list of uploads" "$base/uploads/"
     expect 403 "anonymous GET in uploads" "$base/uploads/probe-$$"
     expect 403 "anonymous PUT in downloads" -X PUT --data probe "$base/downloads/probe-$$"
-    expect 403 "anonymous DELETE in downloads" -X DELETE "$base/downloads/$KEY"
+    expect 403 "anonymous DELETE in downloads" -X DELETE "$base/downloads/probe-$$-absent"
     [[ "$failures" -eq 0 ]] || { echo "probe-public: $failures check(s) failed." >&2; exit 1; }
     echo "probe-public: all checks passed for $HOST."
 
@@ -963,17 +977,30 @@ probe-admin host="":
     body="$(mktemp "${TMPDIR:-/tmp}/probe-admin.XXXXXX")"
     trap 'rm -f "$body"' EXIT
     failures=0
-    for path in /admin /admin/ /Admin //admin /./admin /x/../admin /%61dmin /%61dmin/api/session \
-                /admin%2Fapi/config /admin%2Fapi/session /admin/api/session /admin/api/config \
-                /admin/api/logs /admin/tty/; do
-        for method in GET POST PUT DELETE OPTIONS; do
-            code=$(curl -s --path-as-is -X "$method" -o "$body" -w '%{http_code}' "https://$HOST$path" || echo 000)
-            # Any admin page or admin API JSON body is a leak, whatever the status code.
-            if grep -q 'backoffice' "$body" || grep -q '"status"' "$body"; then
-                echo "  FAIL  $method $path ($code) reached admin content"
-                failures=$((failures + 1))
-            fi
-        done
+    # Paths that must get the block response: a 3xx redirect to https://<host>/.
+    blocked=(/admin /admin/ /admin/api/session /admin/api/config /admin/api/logs /admin/tty/)
+    # Encoded or normalized variants: a 3xx or a 4xx is a pass.
+    variants=(/Admin //admin /./admin /x/../admin /%61dmin /%61dmin/api/session /admin%2Fapi/config /admin%2Fapi/session)
+    probe() {
+        local kind="$1" path="$2" method="$3" res code location
+        res=$(curl -s --path-as-is -X "$method" -o "$body" -w '%{http_code} %{redirect_url}' "https://$HOST$path" || echo "000 ")
+        code="${res%% *}"; location="${res#* }"
+        if [[ "$code" == 000 ]]; then
+            echo "  FAIL  $method $path: no response"; failures=$((failures + 1)); return
+        fi
+        if grep -q 'backoffice' "$body" || grep -q '"status"' "$body"; then
+            echo "  FAIL  $method $path ($code) reached admin content"; failures=$((failures + 1)); return
+        fi
+        if [[ "$kind" == blocked && ! ( "$code" == 3* && "$location" == "https://$HOST/" ) ]]; then
+            echo "  FAIL  $method $path ($code) did not get the block redirect"; failures=$((failures + 1)); return
+        fi
+        if [[ "$kind" == variant && "$code" != 3* && "$code" != 4* && "$path" == *%* ]]; then
+            echo "  FAIL  $method $path ($code) encoded admin path not blocked"; failures=$((failures + 1))
+        fi
+    }
+    for method in GET POST PUT DELETE OPTIONS; do
+        for path in "${blocked[@]}"; do probe blocked "$path" "$method"; done
+        for path in "${variants[@]}"; do probe variant "$path" "$method"; done
     done
     [[ "$failures" -eq 0 ]] || { echo "probe-admin: $failures request(s) reached admin content. Disable the route." >&2; exit 1; }
     echo "probe-admin: no admin path variant reached admin content on $HOST."

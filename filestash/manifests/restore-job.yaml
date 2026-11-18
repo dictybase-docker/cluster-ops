@@ -5,7 +5,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: filestash-state-restore
+  name: filestash-state-__MODE__
   namespace: __NAMESPACE__
   labels:
     app.kubernetes.io/component: state-restore
@@ -17,6 +17,15 @@ spec:
         app.kubernetes.io/component: state-restore
     spec:
       restartPolicy: Never
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: filestash
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -39,6 +48,13 @@ spec:
               fi
               [ -n "$latest" ] && [ -f "$latest/manifest.json" ] || { echo "no completed copy in $B"; exit 1; }
               (cd "$latest" && sha256sum -c SHA256SUMS)
+              for f in "$latest"/db/*.sql; do
+                [ -e "$f" ] || continue
+                r=$(sqlite3 "$f" "PRAGMA integrity_check")
+                [ "$r" = ok ] || { echo "integrity_check $f: $r"; exit 1; }
+              done
+              grep -q '"secret_key"' "$latest/config/config.json" || { echo "config.json has no general.secret_key"; exit 1; }
+              if [ "$MODE" = check ]; then echo "copy $latest passed every check"; exit 0; fi
               mkdir -p "$S/db" "$S/config"
               rm -f "$S"/db/*.sql "$S"/db/*.sql-wal "$S"/db/*.sql-shm
               for f in "$latest"/db/*.sql; do [ -e "$f" ] && cp "$f" "$S/db/"; done
@@ -53,6 +69,8 @@ spec:
           env:
             - name: COPY
               value: "__COPY__"
+            - name: MODE
+              value: "__MODE__"
           volumeMounts:
             - name: state
               mountPath: /app/data/state

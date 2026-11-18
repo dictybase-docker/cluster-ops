@@ -27,13 +27,13 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 1. `scale-down` scales `deployment/filestash` to 0 and waits until no pod runs.
 2. `copy` deletes old partial folders, then writes `backups/.partial-<ts>/`: `sqlite3 .backup` of each `db/*.sql`, `PRAGMA integrity_check`, the row count of each table, `config.json`, `SHA256SUMS`, and `manifest.json`. Then it renames the folder to `backups/<ts>`.
 3. `copy` deletes completed copies after the newest `backup.keep`. A failed copy deletes its partial folder, so a full PVC does not fill up with them.
-4. `scale-up` always scales to 1, then fails the Job if a step failed.
+4. `scale-up` always scales to 1 (five tries with a rising delay), then fails the Job if a step failed.
 
 The Job runs on the node of the Filestash pod, because the PVC is `ReadWriteOnce`.
 
 ## just filestash backup-now
 
-Refuses while a backup pod runs. Runs a Job from the CronJob, waits, and prints the timestamp of the new copy. Then it runs `velero backup create filestash-<ts> --include-namespaces <ns> --selector app.kubernetes.io/name=filestash --wait`. Fails unless the backup phase is `Completed`.
+Holds `lease/filestash-maintenance` and suspends the CronJob for the run (the old suspend value comes back at the end). Refuses while a backup Job or pod is unfinished. Runs a Job from the CronJob, waits, and prints the timestamp of the new copy. Then it runs `velero backup create filestash-<ts> --include-namespaces <ns> --selector app.kubernetes.io/name=filestash --wait`. Fails unless the backup phase is `Completed`.
 
 ## just filestash restore-state
 
@@ -56,10 +56,12 @@ Then:
 
 `--in-place yes [--copy <timestamp>]` (destructive). Use it when the SQLite files are damaged, or to go back to the copy that `upgrade` made.
 
-1. Preflight, before any change: `--copy` is a valid timestamp, no backup pod runs, and, when Filestash is ready, the copy exists and passes `sha256sum -c`.
-2. Suspends the CronJob. The EXIT trap clears the suspend.
-3. Scales the live Deployment to 0 and runs the restore Job from the copy (default: newest).
-4. Scales to 1 only after the Job succeeds. After a failed Job, Filestash stays at 0 replicas.
+1. Preflight: `--copy` is a valid timestamp, and Secret `filestash` has `CONFIG_SECRET`.
+2. Takes `lease/filestash-maintenance` and suspends the CronJob. At the end, the old suspend value comes back.
+3. Refuses while a backup Job or pod is unfinished.
+4. Runs Job `filestash-state-check` (`MODE=check`): `manifest.json`, `SHA256SUMS`, `PRAGMA integrity_check` of each SQLite copy, and `secret_key` in `config.json`. It changes nothing. A failed check stops the recipe before any change.
+5. Scales the live Deployment to 0 and runs Job `filestash-state-restore` (`MODE=restore`) from the copy (default: newest).
+6. Scales to 1 only after the Job succeeds. After a failed Job, Filestash stays at 0 replicas.
 
 For a lost PVC, restore the Velero backup into the live namespace first.
 
@@ -69,6 +71,7 @@ For a lost PVC, restore the Velero backup into the live namespace first.
 | `--target-namespace` | Test restore | Must not exist. |
 | `--in-place` | Disaster recovery | `yes` |
 | `--copy` | No | Completed copy timestamp, for example `20261117T040000Z`. Default: newest. |
+| `--velero-namespace` | Test restore | Default: `properties.namespace` of `install-velero/Pulumi.<stack>.yaml`. Required when that file does not exist (for example `dcr-kube1`). |
 
 ## just filestash restore-cleanup
 

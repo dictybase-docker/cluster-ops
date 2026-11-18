@@ -15,7 +15,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 
 ## just filestash upgrade
 
-Runs `backup-now`, writes the current image to `previousImage`, pins `--tag` and `--digest`, runs `deploy` and `verify`. Run the isolation tests and `probe-admin` after each upgrade.
+Runs `backup-now` (pass `--velero-namespace` when there is no `install-velero/Pulumi.<stack>.yaml`), writes the current image to `previousImage`, pins `--tag` and `--digest`, runs `deploy` and `verify`. Run the isolation tests and `probe-admin` after each upgrade.
 
 | Flag | Required |
 |---|---|
@@ -44,7 +44,9 @@ Checks direct URLs from outside the cluster. `--host` is the MinIO host, and `--
 | `GET` with `Range: bytes=0-9` | 206 |
 | `GET downloads/`, `GET uploads/` | 403 |
 | `GET uploads/<key>` | 403 |
-| `PUT` and `DELETE` in `downloads` | 403 |
+| `PUT` and `DELETE` of a throwaway key in `downloads` | 403 |
+
+The probe never sends a write or a delete to the published `--key`.
 
 ## just filestash resize-state
 

@@ -302,6 +302,9 @@ func TestStateBackupCronJob(t *testing.T) {
 	require.NotContains(t, labels, "app.kubernetes.io/name:filestash",
 		"the backup pod must not match the Filestash selector")
 
+	require.Equal(t, "state-backup",
+		dig(t, cj, "spec", "jobTemplate", "metadata", "labels", "app.kubernetes.io/component"),
+		"Jobs carry the component label, so recipes can find active Jobs")
 	role := fmt.Sprint(mapped(t, m, "filestash-state-backup-role"))
 	require.Contains(t, role, "deployments/scale")
 	require.Contains(t, fmt.Sprint(mapped(t, m, "filestash-state-backup-binding")), "filestash-state-backup")

@@ -38,7 +38,9 @@ const (
 		"9ccd823647622b620dce092d0f1406b8b41d152ce08ac963e3d4683770b14dfd"
 )
 
-// FilestashConfig is the `filestash:properties` stack value.
+// FilestashConfig is the `filestash:properties` stack value. The recipes and
+// manifests use the fixed names filestash, filestash-state, and Secret
+// filestash, so validation rejects any other name or secretName.
 type FilestashConfig struct {
 	Name           string      `json:"name"`
 	Namespace      string      `json:"namespace"`
@@ -203,6 +205,8 @@ func invalidChecks(c *FilestashConfig) []fieldCheck {
 	return A.ArrayConcatAll(
 		[]fieldCheck{
 			PR.MakePair("namespace", S.IsEmpty(c.Namespace)),
+			PR.MakePair("name", c.Name != defaultAppName),
+			PR.MakePair("secretName", c.SecretName != defaultSecretName),
 			PR.MakePair("image.tag", S.IsEmpty(c.Image.Tag)),
 			PR.MakePair("image.digest", isInvalidDigest(c.Image.Digest)),
 			PR.MakePair("replicas", c.Replicas != defaultReplicas),
