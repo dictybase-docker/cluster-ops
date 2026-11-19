@@ -16,12 +16,13 @@ The `graphql_server/` Pulumi project deploys **graphql-server** (`dictybase/grap
 - [3. Configure the Storage Endpoint](#3-configure-the-storage-endpoint)
 - [4. Configure Authentication Mode](#4-configure-authentication-mode)
 - [5. Configure Ingress Mode (Optional)](#5-configure-ingress-mode-optional)
-- [6. Preview and Deploy](#6-preview-and-deploy)
-- [7. Push the Stack File](#7-push-the-stack-file)
-- [8. Verify the Rollout](#8-verify-the-rollout)
-- [9. Enable Production Tag Deploys](#9-enable-production-tag-deploys)
-- [10. Troubleshooting](#10-troubleshooting)
-- [11. Related Documents](#11-related-documents)
+- [6. Configure NCBI Credentials (Optional)](#6-configure-ncbi-credentials-optional)
+- [7. Preview and Deploy](#7-preview-and-deploy)
+- [8. Push the Stack File](#8-push-the-stack-file)
+- [9. Verify the Rollout](#9-verify-the-rollout)
+- [10. Enable Production Tag Deploys](#10-enable-production-tag-deploys)
+- [11. Troubleshooting](#11-troubleshooting)
+- [12. Related Documents](#12-related-documents)
 
 ---
 
@@ -50,17 +51,22 @@ just gcp-pulumi set-config --folder graphql_server --key properties.authEnabled 
 # 5. Optional. Set the Ingress mode. The default is false (no Ingress).
 just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enabled --value false
 
-# 6. Read the plan, then apply it
+# 6. Optional. Give the publication fetch an NCBI API key. The default is no key.
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.apiKey
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.email
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.tool
+
+# 7. Read the plan, then apply it
 just gcp-pulumi preview --folder graphql_server
 just gcp-pulumi create-resource --folder graphql_server
 
-# 7. Push the stack file before each graphql-server merge or tag
+# 8. Push the stack file before each graphql-server merge or tag
 git add "graphql_server/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "graphql_server: stack config" && git push
 
-# 8. Verify the rollout. The sub-shell sets no default namespace.
+# 9. Verify the rollout. The sub-shell sets no default namespace.
 kubectl -n <namespace> rollout status deployment/graphql-api-server
 
-# 9. Optional, one time per cluster. Let release tags deploy.
+# 10. Optional, one time per cluster. Let release tags deploy.
 just ci set-deploy-secret --repos dictyBase/graphql-server
 just ci sync-deploy-vars --repos dictyBase/graphql-server
 just ci render-tag-deploy --app graphql-server --project graphql_server --out bin/ci-render/graphql-server-tag-build.yaml
@@ -156,7 +162,25 @@ just gcp-pulumi set-config --folder graphql_server --key properties.ingress.enab
 
 ---
 
-## 6. Preview and Deploy
+## 6. Configure NCBI Credentials (Optional)
+
+**Optional. The default is off. Skip this section to keep the server without an NCBI API key.**
+
+The three `properties.secrets.ncbi.values.*` keys are empty by default. With the default, the stack creates no NCBI Secret, and the publication fetch calls NCBI without an API key. NCBI then limits each client address to a low request rate and can answer a burst with HTTP 429. To use a key, set all three values: the API key, the contact email, and the tool name. NCBI asks each client to send the email and the tool name, so the stack and the server reject a partial set. The tool name must not contain spaces. The image must be a build that reads `NCBI_API_KEY`, `NCBI_EMAIL`, and `NCBI_TOOL`.
+→ [NCBI credentials](reference/graphql/deployment.md#ncbi-credentials)
+
+```bash
+# Keep the key off (default). Do nothing.
+
+# Turn the key on. Enter each value at the hidden prompt.
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.apiKey
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.email
+just gcp-pulumi set-secret --folder graphql_server --key properties.secrets.ncbi.values.tool
+```
+
+---
+
+## 7. Preview and Deploy
 
 Read the plan, then apply it. The apply is not interactive, and it stops by itself when the plan changes a protected resource. For an upgrade, change `properties.image.tag` and run both commands again.
 → [Deploy behavior](reference/graphql/deployment.md#deploy-behavior)
@@ -168,7 +192,7 @@ just gcp-pulumi create-resource --folder graphql_server
 
 ---
 
-## 7. Push the Stack File
+## 8. Push the Stack File
 
 **CAUTION: Push cluster-ops `develop` before you merge or tag `dictyBase/graphql-server`.** CI clones cluster-ops at `develop`, so a stack file that you did not push deploys nothing.
 → [CI deployment](reference/graphql/deployment.md#ci-deployment)
@@ -179,7 +203,7 @@ git add "graphql_server/Pulumi.${PULUMI_STACK}.yaml" && git commit -m "graphql_s
 
 ---
 
-## 8. Verify the Rollout
+## 9. Verify the Rollout
 
 No recipe covers this project, so use `kubectl`. The sub-shell sets no default namespace, so give `-n <namespace>` with the value of `properties.namespace`.
 → [Verification](reference/graphql/deployment.md#verification)
@@ -190,7 +214,7 @@ kubectl -n <namespace> rollout status deployment/graphql-api-server
 
 ---
 
-## 9. Enable Production Tag Deploys
+## 10. Enable Production Tag Deploys
 
 **Optional. Do this one time for each cluster. Skip it while production deploys stay manual.**
 
@@ -205,13 +229,13 @@ just ci render-tag-deploy --app graphql-server --project graphql_server --out bi
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 → [Troubleshooting table](reference/graphql/deployment.md#troubleshooting)
 
 ---
 
-## 11. Related Documents
+## 12. Related Documents
 
 **Reference details for this guide:**
 - [GraphQL server deployment details](reference/graphql/deployment.md)

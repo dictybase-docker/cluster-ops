@@ -2,7 +2,7 @@
 
 Back to: [GraphQL Server Deploy Guide](../../graphql-deploy.md)
 
-This document gives the details for the `graphql_server/` Pulumi project: the resources, the prerequisites, the configuration keys, the optional Ingress, the optional Logto authentication, the CI path, and the error messages.
+This document gives the details for the `graphql_server/` Pulumi project: the resources, the prerequisites, the configuration keys, the optional Ingress, the optional Logto authentication, the optional NCBI credentials, the CI path, and the error messages.
 
 ## Table of Contents
 
@@ -13,6 +13,7 @@ This document gives the details for the `graphql_server/` Pulumi project: the re
 - [Storage Endpoint](#storage-endpoint)
 - [Authentication Mode](#authentication-mode)
 - [Ingress Mode](#ingress-mode)
+- [NCBI Credentials](#ncbi-credentials)
 - [MinIO Secret Keys](#minio-secret-keys)
 - [Deploy Behavior](#deploy-behavior)
 - [CI Deployment](#ci-deployment)
@@ -24,15 +25,16 @@ This document gives the details for the `graphql_server/` Pulumi project: the re
 
 ## What the Project Creates
 
-The program creates two resources in the namespace, and one more resource when you turn the Ingress on. Each name comes from `properties.name`, which is `graphql` on every shipped stack.
+The program creates two resources in the namespace. It creates more resources when you turn on the Ingress or the NCBI credentials. Each name comes from `properties.name`, which is `graphql` on every shipped stack.
 
 | Order | Resource | Name | Details |
 |-------|----------|------|---------|
 | 1 | Deployment | `graphql-api-server` | Pod label `app: graphql-api-server`. One container `graphql-container`. TCP port `8080`. |
 | 2 | Service | `graphql-api` | Type `NodePort`. Port `8080` to target port `8080`. Depends on the Deployment. |
 | 3 | Ingress | `graphql-ingress` | **Optional.** The program creates it only when `properties.ingress.enabled` is `true`. See [ingress mode](#ingress-mode). |
+| 4 | Secret | `graphql-ncbi` | **Optional.** The program creates it only when the stack sets the `properties.secrets.ncbi.values.*` keys. See [NCBI credentials](#ncbi-credentials). |
 
-The program creates no Namespace and no Kubernetes Secret. The `namespace-bootstrap` project creates the namespace ([shared namespaces](../pulumi/namespaces.md)). The `minio` project creates the MinIO credentials Secret ([MinIO install](../minio/install.md)).
+The program creates no Namespace. With the default configuration, it creates no Kubernetes Secret. The `namespace-bootstrap` project creates the namespace ([shared namespaces](../pulumi/namespaces.md)). The `minio` project creates the MinIO credentials Secret ([MinIO install](../minio/install.md)).
 
 ---
 
@@ -260,6 +262,39 @@ just gcp-pulumi preview --folder graphql_server
 
 ---
 
+## NCBI Credentials
+
+The three keys `properties.secrets.ncbi.values.*` are empty by default. An absent key is a supported configuration. **With the default, the stack creates no NCBI Secret and adds no NCBI environment variable.** The publication fetch then calls NCBI eUtils without an API key. NCBI allows about three requests each second for each client address without a key. A page that fetches many publications at once can pass that limit, and NCBI then answers with HTTP 429.
+
+The fetch tries NCBI first. When NCBI fails, it tries Europe PMC. The log shows only the error of the Europe PMC attempt.
+
+To use a key, set all three values with `set-secret`. NCBI asks each client to send a tool name and a contact email, so the three values are a set. The program creates the Secret `graphql-ncbi` in `properties.namespace`. The server reads three container variables from that Secret through `secretKeyRef`.
+
+| Container variable | Secret key | Config key for the value | Purpose |
+|--------------------|------------|--------------------------|---------|
+| `NCBI_API_KEY` | `graphql.ncbi.apiKey` | `secrets.ncbi.values.apiKey` | Raises the NCBI request limit |
+| `NCBI_EMAIL` | `graphql.ncbi.email` | `secrets.ncbi.values.email` | Contact address sent with each request |
+| `NCBI_TOOL` | `graphql.ncbi.tool` | `secrets.ncbi.values.tool` | Tool name sent with each request. It must not contain spaces. |
+
+The Secret name and the three Secret key names are fixed defaults. The stack file does not need them. The three values are written encrypted. The Secret and the pod reference give the values to the server at runtime only. The container receives no NCBI command-line argument.
+
+Two checks fail closed:
+
+| Check | When it runs | Condition | Result |
+|-------|--------------|-----------|--------|
+| Pulumi config check | each `preview` and `create-resource`, before any resource | One or two of the three values are set | `secrets.ncbi is partly set; properties is missing <names>`. The program makes no plan. |
+| Container startup check | when the pod starts | One or two of the three variables have a value | `--<flag>, ... required when an NCBI flag is set` and exit code 2. The pod goes to `CrashLoopBackOff`. |
+
+The three variables are required in the pod. When the Secret lacks a key, the pod stays in `CreateContainerConfigError`. **The image must be a graphql-server build that reads `NCBI_API_KEY`, `NCBI_EMAIL`, and `NCBI_TOOL`.** An older image starts without error and ignores the variables.
+
+To check the result, read the pod specification. The command prints the variable names and no values.
+
+```bash
+kubectl -n <namespace> get deployment graphql-api-server -o jsonpath='{.spec.template.spec.containers[0].env[*].name}'
+```
+
+---
+
 ## MinIO Secret Keys
 
 The program injects two environment variables into the container from one Kubernetes Secret via `secretKeyRef`. At pod runtime, Kubernetes reads the Secret named in `properties.secrets.minio.name` (`minio-root` on production, `minio` on the lab cluster) and injects the credential values into the container.
@@ -363,6 +398,8 @@ The log line reads `going to start graphql server with authentication enabled <t
 |---------|-------|--------|
 | `ERROR: stack '<stack>' does not exist in graphql_server, and there is no Pulumi.<stack>.yaml to initialize it from` | First deploy on this cluster. `ensure-stack` creates a stack only from a stack file that exists. | Run `just gcp-pulumi scaffold-graphql-stack` ([create the stack](#create-the-stack)). |
 | `graphql_server:properties is missing namespace, image.tag, endpoints.store, secrets.minio.name, secrets.minio.userKey, secrets.minio.passKey` | The stack file was created with `new-stack` + `set-config` only, leaving required fields empty. | Run `just gcp-pulumi scaffold-graphql-stack` (or populate the [baseline stack file](#baseline-stack-file)), then run `preview` again. |
+| `secrets.ncbi is partly set; properties is missing secrets.ncbi.values.email`, or any subset of the three value names | The stack sets one or two NCBI values. | Set the named values with `just gcp-pulumi set-secret`, or remove `secrets.ncbi` ([NCBI credentials](#ncbi-credentials)). |
+| Pod `CrashLoopBackOff` with `--ncbi-email, --ncbi-tool required when an NCBI flag is set` | The pod received only part of the NCBI values. | Set all three values in the stack and apply again ([NCBI credentials](#ncbi-credentials)). |
 | `ingress.enabled=true but ingress is missing hosts, path, tlsSecret`, or any subset of those names | `ingress.enabled` is `true`, and one of the three keys is empty. | Set the named keys, or set `properties.ingress.enabled` to `false` ([ingress mode](#ingress-mode)). |
 | `preview` plans to delete `graphql-ingress` | An operator set `ingress.enabled` to `false`, or removed the `ingress:` block. | This is correct only when a Gateway route replaces the Ingress. Otherwise set `ingress.enabled` back to `true` before you apply ([turn the ingress off](#turn-the-ingress-off)). |
 | The Ingress apply fails on an invalid `metadata.labels` key | `ingress.enabled` is `true`, and `ingress.label.name` is empty. | Set `properties.ingress.label.name` to `kcert.dev/ingress` and `properties.ingress.label.value` to `managed`. |
