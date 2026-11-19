@@ -56,8 +56,7 @@ just cluster-env --env <env> --cluster <cluster>
 
 # 1. Stack files (a new cluster only)
 just gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host <filestash-host>
-# 2. Office checksums (only when empty), then the bundle (after the license review)
-just filestash lock-office-deps
+# 2. Plugin bundle
 just filestash build-plugins --tag <yyyy.mm.dd>
 # 3. Host, recovery point target, plugin pins
 just gcp-pulumi set-config --folder filestash --key properties.applicationURL --value https://<filestash-host>
@@ -145,11 +144,10 @@ just gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host <filestash-host
 
 ## 2. Build the Plugin Bundle
 
-Do the license and review procedure first. Run `lock-office-deps` only when `office-deps.lock.yaml` has an empty `sha256`, and review its diff. The build prints the tag and digest for [3. Set the Stack Values](#3-set-the-stack-values).
-→ [License and review procedure](reference/filestash/plugins.md#license-and-review-procedure)
+Build the plugin bundle. The recipe downloads and checks the DOCX editor ZIP.
+→ [Plugin bundle details](reference/filestash/plugins.md#just-filestash-build-plugins)
 
 ```bash
-just filestash lock-office-deps
 just filestash build-plugins --tag <yyyy.mm.dd>
 ```
 

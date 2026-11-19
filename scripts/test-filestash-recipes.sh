@@ -55,6 +55,8 @@ while [[ $# -gt 0 ]]; do
 done
 [[ "${STUB_CURL_FAIL:-}" == *"$url"* ]] && exit 22
 case "$url" in
+    https://example.test/application_docx.zip)
+        cp "$STUB_DOCX_ZIP" "$out"; exit 0 ;;
     http://localhost:19000/healthz) exit 0 ;;
     http://localhost:19000/about) printf '%s' "${STUB_ABOUT:-}"; exit 0 ;;
     http://localhost:19000/admin/tty/) printf '%s' "${STUB_TTY_CODE:-404}"; exit 0 ;;
@@ -80,6 +82,11 @@ cat > "${tmp_dir}/bin/docker" <<'MOCK'
 set -euo pipefail
 printf 'docker %s\n' "$*" >> "${STUB_LOG}"
 case "$*" in
+    "buildx build"*)
+        ctx="${!#}"
+        cmp "$ctx/vendor/application_docx.zip" "$STUB_DOCX_ZIP"
+        [[ ! -e "$ctx/lowa" ]]
+        ;;
     "buildx imagetools inspect"*) printf 'raw-manifest' ;;
 esac
 MOCK
@@ -299,41 +306,35 @@ assert_no_call() {
     fi
 }
 
-# Fixture lock files that pass the gate. `bad` makes one checksum wrong.
+export STUB_DOCX_ZIP="${tmp_dir}/fixtures/application_docx.zip"
 write_locks() {
-    local mode="${1:-good}" theme_sum
-    theme_sum=$(sha256_of 'content-of-theme_apple.zip')
-    [[ "$mode" == "bad" ]] && theme_sum=$(sha256_of 'something else')
+    local mode="${1:-good}" sum mime="application/word"
+    [[ "$mode" == bad-manifest ]] && mime="text/plain"
+    rm -f "$STUB_DOCX_ZIP"
+    printf '{"modules":[{"type":"xdg-open","mime":"%s","entrypoint":"loader.js","application":"skeleton"}]}' "$mime" > "${tmp_dir}/fixtures/manifest.json"
+    printf 'fixture' > "${tmp_dir}/fixtures/loader.js"
+    (cd "${tmp_dir}/fixtures" && zip -q "$STUB_DOCX_ZIP" manifest.json loader.js)
+    sum=$(shasum -a 256 "$STUB_DOCX_ZIP" | awk '{print $1}')
+    [[ "$mode" == bad-checksum ]] && sum=$(sha256_of 'wrong bytes')
     cat > "${tmp_dir}/fixtures/plugins.lock.yaml" <<YAML
 plugins:
-  - name: theme_apple
-    url: https://example.test/theme_apple.zip
-    sha256: ${theme_sum}
-    license: test-license
-    reviewer: tester
-office:
-  name: application_office
-  ref: 7509e60ed29d8f19add5220e589fc6f1a388a3c0
-  reviewer: tester
-YAML
-    cat > "${tmp_dir}/fixtures/office.lock.yaml" <<YAML
-files:
-  - file: soffice.js
-    url: https://example.test/soffice.js
-    sha256: $(sha256_of 'content-of-soffice.js')
+  - name: application_docx
+    url: https://example.test/application_docx.zip
+    sha256: ${sum}
 YAML
 }
 
-lock_flags=(--lock "${tmp_dir}/fixtures/plugins.lock.yaml" --office-lock "${tmp_dir}/fixtures/office.lock.yaml")
+lock_flags=(--lock "${tmp_dir}/fixtures/plugins.lock.yaml")
 
 echo "=== 1. plugin lock files ==="
 lock=filestash/plugins/plugins.lock.yaml
 bad=$(yq -r '.plugins[] | select((.sha256 | test("^[0-9a-f]{64}$") | not) or (.url | test("^https://") | not) or (.size | type) != "number") | .name' "$lock")
 [[ -z "$bad" ]] || { echo "lock entries without sha256/url/size: $bad" >&2; exit 1; }
-for want in theme_apple application_adobe application_biomed application_photography; do
+for want in theme_apple application_adobe application_biomed application_photography application_docx; do
     yq -e ".plugins[] | select(.name == \"$want\")" "$lock" >/dev/null
 done
-[[ "$(yq -r '.office.ref' "$lock")" =~ ^[0-9a-f]{40}$ ]]
+yq -e '.office == null and ([.plugins[].name] | index("application_office") == null)' "$lock" >/dev/null
+yq -e '.plugins[] | select(.name == "application_docx") | .url == "https://downloads.filestash.app/upload/application_docx.zip"' "$lock" >/dev/null
 echo '  test_plugins_lock_complete: PASS'
 
 echo "=== 2. just filestash build-plugins ==="
@@ -341,42 +342,32 @@ expect_failure 'no bundle tag' "$just_bin" filestash build-plugins
 expect_failure "invalid --tag 'latest'" "$just_bin" filestash build-plugins --tag latest
 echo '  test_build_plugins_requires_tag: PASS'
 
-: > "$log_file"
-expect_failure 'reviewer' "$just_bin" filestash build-plugins --tag t1
-assert_no_call '^curl '
-assert_no_call '^docker '
-echo '  test_build_plugins_refuses_unreviewed (real lock): PASS'
-
-write_locks bad
+write_locks bad-checksum
 : > "$log_file"
 expect_failure 'checksum mismatch' "$just_bin" filestash build-plugins --tag t1 "${lock_flags[@]}"
 assert_no_call '^docker '
 echo '  test_build_plugins_fails_on_checksum: PASS'
 
+write_locks bad-manifest
+: > "$log_file"
+expect_failure 'unexpected DOCX plugin manifest' "$just_bin" filestash build-plugins --tag t1 "${lock_flags[@]}"
+assert_no_call '^docker '
+echo '  test_build_plugins_fails_on_docx_manifest: PASS'
+
 write_locks good
 : > "$log_file"
 out=$(run_recipe "$just_bin" filestash build-plugins --tag t1 "${lock_flags[@]}")
-rg -q 'docker buildx build --platform linux/amd64 --build-arg FILESTASH_REF=7509e60ed29d8f19add5220e589fc6f1a388a3c0 -t dictybase/filestash-plugins:t1 --push' "$log_file"
+rg -q '^curl .*application_docx\.zip$' "$log_file"
+[[ "$(rg -c '^curl ' "$log_file")" == 1 ]]
+rg -q 'docker buildx build --platform linux/amd64 -t dictybase/filestash-plugins:t1 --push' "$log_file"
 printf '%s' "$out" | rg -qF "Built and pushed dictybase/filestash-plugins:t1@sha256:$(sha256_of raw-manifest)"
 printf '%s' "$out" | rg -q 'properties.plugins.image.digest'
-echo '  test_build_plugins_happy_path: PASS'
+echo '  test_build_plugins_without_approval_fields: PASS'
 
-echo "=== 3. just filestash lock-office-deps ==="
-cat > "${tmp_dir}/fixtures/office-fill.lock.yaml" <<'YAML'
-# header comment stays
-files:
-  - file: soffice.js
-    url: https://example.test/soffice.js
-    sha256: ""
-  - file: zeta.js
-    url: https://example.test/zeta.js
-    sha256: ""
-YAML
-run_recipe "$just_bin" filestash lock-office-deps --office-lock "${tmp_dir}/fixtures/office-fill.lock.yaml" >/dev/null
-rg -q '^# header comment stays' "${tmp_dir}/fixtures/office-fill.lock.yaml"
-[[ "$(yq -r '.files[1].sha256' "${tmp_dir}/fixtures/office-fill.lock.yaml")" == "$(sha256_of 'content-of-zeta.js')" ]]
-[[ "$(yq -r '.files[0].sha256' "${tmp_dir}/fixtures/office-fill.lock.yaml")" == "$(sha256_of 'content-of-soffice.js')" ]]
-echo '  test_lock_office_deps_writes_sums: PASS'
+echo "=== 3. obsolete Office commands ==="
+expect_failure 'does not contain recipe' "$just_bin" filestash lock-office-deps
+expect_failure 'office-lock' "$just_bin" filestash build-plugins --tag t1 --office-lock obsolete.yaml
+echo '  test_build_plugins_has_no_office_dependency_lock: PASS'
 
 echo "=== 4. MinIO policy files ==="
 pol=filestash/policies
@@ -519,13 +510,14 @@ rg -q '^mc anonymous set none minio/downloads$' "$log_file"
 echo '  test_unpublish_bucket_sets_none: PASS'
 
 echo "=== 9. verify ==="
-about="theme_apple application_adobe application_biomed application_photography application_office plg_search_stateless plg_image_c"
+about="theme_apple application_adobe application_biomed application_photography application_docx plg_search_stateless plg_image_c"
 vok=(env "PULUMI_STACK=$stack" "STUB_ABOUT=$about" "STUB_BACKUP_AGE_H=1")
 run_recipe "${vok[@]}" "$just_bin" filestash verify | rg -q 'all checks passed'
 echo '  test_verify_happy_path: PASS'
 expect_failure 'state PVC use' "${vok[@]}" "STUB_DF_USE=81" "$just_bin" filestash verify
 echo '  test_verify_fails_on_full_pvc: PASS'
 expect_failure 'plugin application_adobe missing' "${vok[@]}" "STUB_ABOUT=theme_apple" "$just_bin" filestash verify
+expect_failure 'plugin application_docx missing' "${vok[@]}" "STUB_ABOUT=${about/application_docx/application_office}" "$just_bin" filestash verify
 expect_failure '/admin/tty/ returned 200' "${vok[@]}" "STUB_TTY_CODE=200" "$just_bin" filestash verify
 echo '  test_verify_checks_plugins: PASS'
 printf '{"Statement":[]}' > "$tmp_dir/anon.json"

@@ -6,7 +6,7 @@ Back to: [Filestash Deploy Guide](../../filestash-deploy.md)
 |---|---|---|
 | `filestash:properties contains placeholder in ...` | The stack file has `<...>` values. | Set the named keys with `just gcp-pulumi set-config --folder filestash`. Refer to [Stack Values to Set](install.md#stack-values-to-set). |
 | `filestash:properties is invalid in backup.maxAgeHours` | The recovery point target is 0. | Set `properties.backup.maxAgeHours`. |
-| `lock entries are not ready` | A lock entry has no checksum, license, or reviewer. | For office files, run `just filestash lock-office-deps`. For the other entries, do the [license and review procedure](plugins.md#license-and-review-procedure). |
+| `missing or invalid SHA-256` | A lock entry does not contain a valid SHA-256 value. | Check the entry in the [plugin lock file](plugins.md#lock-file). |
 | `checksum mismatch for <url>` | The vendor changed the file. | Review the new file, then update `sha256`. |
 | `Couldn't send email` on an upload link | Staff did not set SMTP, or set a wrong value. | Set the `email` fields in the admin console. |
 | Upload through a link fails with access denied | `filestash-intake` cannot finish the upload without `s3:GetObject`. | Do not widen the policy. Record the error and ask for a security review. |

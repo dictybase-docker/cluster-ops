@@ -33,7 +33,7 @@ The public route goes on last, after the isolation tests and the restore test.
 
 Each step names the recipe. The guide section with the same recipe has the command.
 
-1. `lock-office-deps` (only when `office-deps.lock.yaml` has an empty `sha256`), the [license and review procedure](plugins.md#license-and-review-procedure), then `build-plugins`. Do this once for both clusters.
+1. Run [`build-plugins`](plugins.md#just-filestash-build-plugins) once for both clusters.
 2. Set `applicationURL`, `backup.maxAgeHours`, and the plugin pins. Refer to [Stack Values to Set](install.md#stack-values-to-set). The Ingress stays off (`ingress.enabled: false`).
 3. `create-secret`, `create-buckets`, `create-users`. Then commit `filestash/Pulumi.experiments.yaml`.
 4. `deploy`.
@@ -83,5 +83,5 @@ security review.
 | Two test email addresses (Alice and Bob) | [Isolation Tests](#isolation-tests) |
 | `backup.maxAgeHours` (recovery point target) | `filestash/Pulumi.<stack>.yaml` |
 | Retention period for `uploads` | `purge-uploads --older-than` |
-| Plugin licenses and reviewer | `filestash/plugins/plugins.lock.yaml` |
+| Plugin ZIP URLs and checksums | `filestash/plugins/plugins.lock.yaml` |
 | Owner and frequency of `just filestash verify` | Team runbook |
