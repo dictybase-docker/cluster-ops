@@ -1,0 +1,27 @@
+# Production configuration for the CrowdStrike Falcon node sensor
+# (falcon-helm chart falcon-sensor) on dcr-kube1. Guide: docs/falcon-deploy.md.
+#
+# Operator-supplied values (no defaults):
+#   cloud             Falcon cloud region of the CrowdStrike tenant
+#                     (us-1, us-2, us-3, eu-1, us-gov-1, us-gov-2). It is not
+#                     the GCP region. Set with `just gcp-pulumi set-config`.
+#   cid               Customer ID with checksum, KMS secret, `set-secret`.
+#   provisioningToken optional, KMS secret, `set-secret`.
+# Written by `just falcon mirror-image`: image.repository, image.tag,
+# image.digest. The DaemonSet pulls only the digest-pinned mirror.
+#
+# Chart 1.37.0 supports Falcon sensor 7.40 and later only.
+# The stack is initialized on first use by `just falcon mirror-image`
+# (gcp-pulumi ensure-stack), which adds the cluster-env KMS secretsprovider
+# + encryptedkey to this file.
+config:
+  falcon-sensor:properties:
+    namespace: falcon-system
+    clusterName: dcr-kube1
+    chart:
+      name: falcon-sensor
+      repository: https://crowdstrike.github.io/falcon-helm
+      version: 1.37.0
+    registry:
+      location: us-central1
+      repository: falcon

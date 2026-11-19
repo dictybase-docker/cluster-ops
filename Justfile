@@ -22,6 +22,7 @@ mod filestash 'just_modules/filestash.justfile'
 mod minio 'just_modules/minio.justfile'
 mod redis 'just_modules/redis.justfile'
 mod nats 'just_modules/nats.justfile'
+mod falcon 'just_modules/falcon.justfile'
 mod docker 'just_modules/docker.justfile'
 mod ci 'just_modules/ci.justfile'
 
@@ -318,6 +319,14 @@ test-filestash:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-filestash-recipes.sh"
 
+# Run falcon recipe contract tests
+[group('dev-tools')]
+[no-cd]
+test-falcon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-falcon-recipes.sh"
+
 # Run per-cluster tool-versions contract tests
 [group('dev-tools')]
 [no-cd]
@@ -349,7 +358,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-dcr-mcp test-filestash test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-dcr-mcp test-filestash test-falcon test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint

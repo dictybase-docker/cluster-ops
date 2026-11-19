@@ -1,0 +1,7 @@
+name: falcon-sensor
+runtime: go
+description: CrowdStrike Falcon node sensor DaemonSet from the falcon-sensor Helm chart
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: go
