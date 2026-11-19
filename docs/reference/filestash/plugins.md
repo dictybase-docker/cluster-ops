@@ -32,19 +32,22 @@ Each runtime ZIP runs JavaScript in the browser of every public visitor. A `patc
 
 Builds and pushes `dictybase/filestash-plugins:<tag>`, a `busybox` image with all ZIP files under `/plugins/`.
 
+Choose the tag for the new plugin bundle image. The tag is not a Filestash version.
+For a second build on the same date, add `-2` to the tag, for example `2026.11.18-2`.
+
 ### Behavior
 
 1. Stops if a lock entry has a missing or invalid `sha256`.
 2. Downloads each vendor ZIP and checks its `sha256`. A mismatch stops the build.
 3. Checks the DOCX manifest and loader. An invalid manifest or a missing loader stops the build.
 4. Builds the image for `linux/amd64`.
-5. Pushes the image and prints the digest and the two `set-config` commands for `plugins.image`.
+5. Pushes the image and prints its tag and `sha256:` digest. It also prints the two `set-config` commands for the selected stack.
 
 ### Flags
 
 | Flag | Required | Default | Notes |
 |---|---|---|---|
-| `--tag` | Yes | none | Not `latest`. |
+| `--tag` | Yes | none | A tag that you choose for the new bundle image. Do not use `latest`. |
 | `--image` | No | `dictybase/filestash-plugins` | |
 | `--push` | No | `yes` | `no` builds only, and prints no digest. |
 | `--lock` | No | `filestash/plugins/plugins.lock.yaml` | For tests. |

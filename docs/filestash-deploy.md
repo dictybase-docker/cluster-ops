@@ -56,9 +56,9 @@ just cluster-env --env <env> --cluster <cluster>
 
 # 1. Stack files (a new cluster only)
 just gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host <filestash-host>
-# 2. Plugin bundle
-just filestash build-plugins --tag <yyyy.mm.dd>
-# 3. Host, recovery point target, plugin pins
+# 2. Build and push the plugin bundle with today's date as its tag
+just filestash build-plugins --tag "$(date +%Y.%m.%d)"
+# 3. Set the host and recovery point target. Use the plugin tag and digest from step 2.
 just gcp-pulumi set-config --folder filestash --key properties.applicationURL --value https://<filestash-host>
 just gcp-pulumi set-config --folder filestash --key properties.backup.maxAgeHours --value <hours>
 just gcp-pulumi set-config --folder filestash --key properties.plugins.image.tag --value <tag>
@@ -144,18 +144,18 @@ just gcp-pulumi scaffold-filestash-stack --state-size 5Gi --host <filestash-host
 
 ## 2. Build the Plugin Bundle
 
-Build the plugin bundle. The recipe downloads and checks the DOCX editor ZIP.
+Build and push the plugin bundle. Use today's date as the tag for the new image.
 → [Plugin bundle details](reference/filestash/plugins.md#just-filestash-build-plugins)
 
 ```bash
-just filestash build-plugins --tag <yyyy.mm.dd>
+just filestash build-plugins --tag "$(date +%Y.%m.%d)"
 ```
 
 ---
 
 ## 3. Set the Stack Values
 
-Replace each `<...>` placeholder and set the recovery point target. Validation names every value that is still missing. The route host comes later, in [14. Turn On the Public Route](#14-turn-on-the-public-route).
+Replace each `<...>` placeholder and set the recovery point target. Use the tag and `sha256:` digest from step 2. The route host comes later, in [14. Turn On the Public Route](#14-turn-on-the-public-route).
 → [Placeholders for each cluster](reference/filestash/install.md#stack-values-to-set)
 
 ```bash
