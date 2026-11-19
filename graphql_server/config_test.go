@@ -83,3 +83,50 @@ func TestValidateIngressEnabledComplete(t *testing.T) {
 	}
 	require.NoError(t, cfg.validate())
 }
+
+func ncbiConfig() *GraphqlServerConfig {
+	cfg := validBaseConfig()
+	//nolint:gosec // G101 false positive on test fixture values.
+	cfg.Secrets.Ncbi.Values = NcbiFields{
+		APIKey: "test-ncbi-key",
+		Email:  "dev@example.org",
+		Tool:   "graphql-server",
+	}
+	return cfg
+}
+
+func TestValidateNcbiUnconfiguredStaysValid(t *testing.T) {
+	t.Parallel()
+	cfg := validBaseConfig()
+	require.False(t, cfg.Secrets.Ncbi.Enabled())
+	require.NoError(t, cfg.validate())
+}
+
+func TestNcbiDefaults(t *testing.T) {
+	t.Parallel()
+	ncbi := validBaseConfig().Secrets.Ncbi
+	require.Equal(t, ncbiSecretName, ncbi.Name)
+	require.Equal(t, NcbiFields{
+		APIKey: ncbiKeyAPIKey,
+		Email:  ncbiKeyEmail,
+		Tool:   ncbiKeyTool,
+	}, ncbi.Keys)
+}
+
+func TestValidateNcbiComplete(t *testing.T) {
+	t.Parallel()
+	require.NoError(t, ncbiConfig().validate())
+}
+
+func TestValidateNcbiRequiresAllValues(t *testing.T) {
+	t.Parallel()
+	cfg := ncbiConfig()
+	cfg.Secrets.Ncbi.Values.Email = ""
+	cfg.Secrets.Ncbi.Values.Tool = ""
+	require.EqualError(
+		t,
+		cfg.validate(),
+		"secrets.ncbi is partly set; properties is missing "+
+			"secrets.ncbi.values.email, secrets.ncbi.values.tool",
+	)
+}

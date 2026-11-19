@@ -32,3 +32,11 @@ config:
         name: minio-root
         passKey: rootPassword
         userKey: rootUser
+      ncbi:
+        values:
+          apiKey:
+            secure: v1:qoR3nzFi0pjmC5WJ:lKannpxwF/VoOvEey0SJjmxgrMFKWAH4Hey/XzT5l5uU0Qx4ze6Fb+sFVEF4NLowiv18MQ==
+          email:
+            secure: v1:8VY1+l7Cv1DW7h4/:y0ZIX2bqnOBbKaM5/tlsStWic8IEkj+FHyL3iNlGpQgUkMbbp3xd50bdUrAIbLPY
+          tool:
+            secure: v1:A2BxTwNesOC2iDJM:AjWQEypaSLwq5xUnTDS535Ocp/0Q7Vrd/71QQZOLlbQ=

@@ -29,7 +29,7 @@ func (gs *GraphqlServer) ContainerEnvArgsArray() corev1.EnvVarArray {
 			},
 		})
 	}
-	return envVarArray
+	return append(envVarArray, gs.ncbiEnvVars()...)
 }
 
 func (gs *GraphqlServer) ContainerPortArray() corev1.ContainerPortArray {

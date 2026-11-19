@@ -2,11 +2,11 @@ secretsprovider: gcpkms://projects/dcr-experiments/locations/us-central1/keyRing
 encryptedkey: CiQALAIOnJ561SXJBe6ErGk/P2nNnNY6CZgUdnbGiJCGF30CkWUSSAB2302FVMIf8aOlKfO0sZoJxdHbXCSUoTbOlM/5BES/sq9O3Qd8z2TjL/JtflHuaUw1ctyQNIW8pBIdhdaZW5qr63pQnUd7FA==
 config:
   graphql_server:properties:
-    authEnabled: true
     allowedOrigins:
       - http://localhost:*
       - http://*.dictybase.dev
       - http://dictybase.dev*
+    authEnabled: true
     endpoints:
       auth: https://logto.dictybase.dev
       organism: https://raw.githubusercontent.com/dictyBase/migration-data/master/downloads/organisms-with-citations.staging.json
@@ -49,3 +49,11 @@ config:
         passKey: pass
         userKey:
           secure: v1:eaOSgPjTZtDr9fPs:2s7WdKD6WkzPkzfWXj6onWH0hBE=
+      ncbi:
+        values:
+          apiKey:
+            secure: v1:62WmchKQUo0vN6wK:U/+GMA1rN64jlLm4i0QQUA/xwGKtg4Vveig5SggcAbc/ZQrmFMMeeHnR/vgzP1ZWjzvuCQ==
+          email:
+            secure: v1:RGTCfKMZfqE5nHXh:M+rOXNE7fH9vLOlobAlGxTmjuTCCM4eztjdAPkig8saPzELrEL3lBdwIOZPGTzxe
+          tool:
+            secure: v1:MWtF8ZQCtYf714Jy:QKjTw5VTFKaWVYZPYOpRhmxESqXiTC/aSMOvXj8DHfY=

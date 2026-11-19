@@ -53,6 +53,30 @@ type S3BucketConfig struct {
 type SecretsConfig struct {
 	Auth  AuthConfig
 	Minio MinioConfig
+	Ncbi  NcbiConfig
+}
+
+// NcbiConfig describes the optional Secret that carries the NCBI identity
+// values. Name and Keys are Kubernetes pointers with fixed defaults, so a
+// stack sets only the three Values, as Pulumi secrets. A stack without any
+// value deploys without the Secret and without the environment variables.
+type NcbiConfig struct {
+	Name   string
+	Keys   NcbiFields
+	Values NcbiFields
+}
+
+// NcbiFields holds the three NCBI identity items. Keys use it for the Secret
+// key names and Values use it for the item values.
+type NcbiFields struct {
+	APIKey string
+	Email  string
+	Tool   string
+}
+
+// Enabled reports whether the stack sets any NCBI value.
+func (n NcbiConfig) Enabled() bool {
+	return n.Values != (NcbiFields{})
 }
 
 type AuthConfig struct {
@@ -109,6 +133,7 @@ func (c *GraphqlServerConfig) applyDefaults() {
 		c.Endpoints.Organism = "https://raw.githubusercontent.com/dictyBase/" +
 			"migration-data/master/downloads/organisms-with-citations.staging.json"
 	}
+	c.Secrets.Ncbi.applyDefaults()
 	if c.Endpoints.Publication == "" {
 		c.Endpoints.Publication = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 	}
@@ -124,7 +149,67 @@ func (c *GraphqlServerConfig) validate() error {
 	if err := c.validateAuth(); err != nil {
 		return err
 	}
+	if err := c.validateNcbi(); err != nil {
+		return err
+	}
 	return c.validateIngress()
+}
+
+// Fixed names of the NCBI Secret and its keys. They are Kubernetes pointers,
+// not credentials.
+//
+//nolint:gosec // G101 false positive: these are Secret and key names.
+const (
+	ncbiSecretName = "graphql-ncbi"
+	ncbiKeyAPIKey  = "graphql.ncbi.apiKey"
+	ncbiKeyEmail   = "graphql.ncbi.email"
+	ncbiKeyTool    = "graphql.ncbi.tool"
+)
+
+// applyDefaults fills the fixed Secret name and key names.
+func (n *NcbiConfig) applyDefaults() {
+	if n.Name == "" {
+		n.Name = ncbiSecretName
+	}
+	if n.Keys.APIKey == "" {
+		n.Keys.APIKey = ncbiKeyAPIKey
+	}
+	if n.Keys.Email == "" {
+		n.Keys.Email = ncbiKeyEmail
+	}
+	if n.Keys.Tool == "" {
+		n.Keys.Tool = ncbiKeyTool
+	}
+}
+
+// validateNcbi fails closed on a partial NCBI configuration. A stack without
+// any NCBI value stays valid. NCBI asks every client to send its tool name and
+// contact email, so a stack that sets one value must set all three.
+func (c *GraphqlServerConfig) validateNcbi() error {
+	ncbi := c.Secrets.Ncbi
+	if !ncbi.Enabled() {
+		return nil
+	}
+	missing := []string{}
+	for _, field := range []struct {
+		name string
+		val  string
+	}{
+		{"secrets.ncbi.values.apiKey", ncbi.Values.APIKey},
+		{"secrets.ncbi.values.email", ncbi.Values.Email},
+		{"secrets.ncbi.values.tool", ncbi.Values.Tool},
+	} {
+		if field.val == "" {
+			missing = append(missing, field.name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf(
+			"secrets.ncbi is partly set; properties is missing %s",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
 }
 
 func (c *GraphqlServerConfig) validateBase() error {

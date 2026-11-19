@@ -1,11 +1,15 @@
 package main
 
 import (
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 type GraphqlServer struct {
 	Config *GraphqlServerConfig
+	// NcbiSecret is the optional NCBI Secret. It is nil when the stack does
+	// not configure one.
+	NcbiSecret *corev1.Secret
 }
 
 func main() {
@@ -34,6 +38,13 @@ func NewGraphqlServer(config *GraphqlServerConfig) *GraphqlServer {
 }
 
 func (gs *GraphqlServer) Install(ctx *pulumi.Context) error {
+	if gs.Config.Secrets.Ncbi.Enabled() {
+		secret, err := gs.CreateNcbiSecret(ctx)
+		if err != nil {
+			return err
+		}
+		gs.NcbiSecret = secret
+	}
 	deployment, err := gs.CreateDeployment(ctx)
 	if err != nil {
 		return err

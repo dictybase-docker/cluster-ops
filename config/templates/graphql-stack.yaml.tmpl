@@ -34,3 +34,7 @@ config:
         name: __MINIO_SECRET__
         passKey: __MINIO_PASS_KEY__
         userKey: __MINIO_USER_KEY__
+      # Optional. Give the publication fetch an NCBI API key. Set all three
+      # values with `just gcp-pulumi set-secret --folder graphql_server --key
+      # properties.secrets.ncbi.values.<apiKey|email|tool>`. The Secret name
+      # and key names have fixed defaults. See docs/graphql-deploy.md section 6.
