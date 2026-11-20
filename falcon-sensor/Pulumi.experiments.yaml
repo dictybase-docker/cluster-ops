@@ -1,0 +1,20 @@
+# Lab configuration for the CrowdStrike Falcon node sensor on the
+# dictycr-dev-staging-dcr-experiments cluster (project dcr-experiments).
+# Guide: docs/falcon-deploy.md.
+#
+# Operator-supplied values (no defaults): cloud (set-config), cid and the
+# optional provisioningToken (set-secret). `just falcon mirror-image` writes
+# image.repository, image.tag, and image.digest.
+# The stack is initialized by `just gcp-pulumi ensure-stack --folder
+# falcon-sensor`, which adds the cluster-env KMS secretsprovider + encryptedkey.
+config:
+  falcon-sensor:properties:
+    namespace: falcon-system
+    clusterName: dictycr-dev-staging-dcr-experiments
+    chart:
+      name: falcon-sensor
+      repository: https://crowdstrike.github.io/falcon-helm
+      version: 1.37.0
+    registry:
+      location: us-central1
+      repository: falcon

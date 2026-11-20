@@ -199,3 +199,36 @@ fc_node_service_accounts() {
     done <<<"$ids"
     sort -u "$WORK/sas"
 }
+
+# fc_registry_probe <location> <repository> prints the state of the Artifact
+# Registry repository for the sa-manager key: exists, missing, denied,
+# disabled, or error. It writes the gcloud error text to $WORK/err.
+fc_registry_probe() {
+    if gcloud artifacts repositories describe "$2" --location "$1" --project "$PROJECT" \
+        --format 'value(name)' >/dev/null 2>"$WORK/err"; then
+        echo exists
+    elif grep -q 'SERVICE_DISABLED' "$WORK/err"; then
+        echo disabled
+    elif grep -Eq 'PERMISSION_DENIED|denied on resource' "$WORK/err"; then
+        echo denied
+    elif grep -Eq 'NOT_FOUND|not found' "$WORK/err"; then
+        echo missing
+    else
+        echo error
+    fi
+}
+
+# fc_require_registry_access <location> <repository> sets REPO_STATE to
+# exists or missing, or stops with the recipe that fixes the cause.
+fc_require_registry_access() {
+    REPO_STATE=$(fc_registry_probe "$1" "$2")
+    case "$REPO_STATE" in
+        exists | missing) ;;
+        denied) fc_die "sa-manager@${PROJECT} has no Artifact Registry access. Run: just falcon grant-registry-access" ;;
+        disabled) fc_die "artifactregistry.googleapis.com is not enabled in ${PROJECT}. Run: just gcp-api enable-apis --api-file <file>" ;;
+        *)
+            cat "$WORK/err" >&2
+            fc_die "could not describe Artifact Registry repository $2."
+            ;;
+    esac
+}

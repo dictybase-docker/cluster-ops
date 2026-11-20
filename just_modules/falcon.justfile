@@ -24,6 +24,77 @@ list-tags stack="":
     fc_registry_login
     skopeo list-tags --authfile "$WORK/auth.json" "docker://${FC_SOURCE_REPO}" | jq -r '.Tags[]' | sort -V
 
+# Give the sa-manager service account roles/artifactregistry.admin on the
+# project, then wait until Artifact Registry accepts its key. mirror-image
+# needs the role to create the repository and grant node read access.
+# sa-manager adds the role itself: it holds resourcemanager.projectIamAdmin.
+# Usage: just falcon grant-registry-access [--stack <name>] [--retries <n>] [--interval <s>]
+[arg("stack", long="stack", short="s", help="Pulumi stack name (defaults to PULUMI_STACK)")]
+[arg("retries", long="retries", short="r", help="Access probe attempts after the grant (default 8)")]
+[arg("interval", long="interval", short="i", help="First wait in seconds between probes; doubles to at most 60 (default 5)")]
+[group('falcon')]
+[no-cd]
+grant-registry-access stack="" retries="8" interval="5":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}"
+    source scripts/lib/falcon.sh
+
+    # ── preflight: no change before this block ends ──────────────────────
+    RETRIES={{ quote(retries) }}
+    INTERVAL={{ quote(interval) }}
+    [[ "$RETRIES" =~ ^[0-9]+$ && "$INTERVAL" =~ ^[0-9]+$ ]] || fc_die "--retries and --interval must be whole numbers."
+    fc_require_tools jq yq gcloud
+    fc_resolve {{ quote(stack) }} ""
+    fc_require_project
+    fc_require_manager_key
+    LOCATION=$(fc_prop registry.location)
+    REPO=$(fc_prop registry.repository)
+    [[ "$LOCATION" =~ ^[a-z]+-[a-z]+[0-9]+$ ]] || fc_die "properties.registry.location '$LOCATION' in $CFG is not a GCP region."
+    [[ "$REPO" =~ ^[a-z][a-z0-9-]{0,62}$ ]] || fc_die "properties.registry.repository '$REPO' in $CFG is not a valid repository id."
+    fc_tmpdir
+    MEMBER="serviceAccount:sa-manager@${PROJECT}.iam.gserviceaccount.com"
+    ROLE="roles/artifactregistry.admin"
+    gcloud projects get-iam-policy "$PROJECT" --format json >"$WORK/policy.json" ||
+        fc_die "could not read the IAM policy of project $PROJECT."
+    state=$(fc_registry_probe "$LOCATION" "$REPO")
+    [[ "$state" != disabled ]] ||
+        fc_die "artifactregistry.googleapis.com is not enabled in ${PROJECT}. Run: just gcp-api enable-apis --api-file <file>"
+
+    # ── changes ──────────────────────────────────────────────────────────
+    if MEMBER="$MEMBER" ROLE="$ROLE" jq -e '[.bindings[]? | select(.role == env.ROLE and (.condition == null)) | .members[]] | index(env.MEMBER)' \
+        "$WORK/policy.json" >/dev/null; then
+        echo "sa-manager@${PROJECT} has $ROLE — continuing."
+    else
+        gcloud projects add-iam-policy-binding "$PROJECT" --member "$MEMBER" --role "$ROLE" \
+            --condition None >/dev/null
+        echo "Granted $ROLE to sa-manager@${PROJECT}."
+    fi
+
+    # IAM changes take time to propagate. Retry only the classified
+    # PERMISSION_DENIED state, with exponential backoff.
+    wait_s="$INTERVAL"
+    for ((i = 0; ; i++)); do
+        state=$(fc_registry_probe "$LOCATION" "$REPO")
+        case "$state" in
+            exists | missing)
+                echo "Artifact Registry accepts sa-manager@${PROJECT}."
+                echo "Next: just falcon mirror-image --tag <sensor-tag>"
+                exit 0
+                ;;
+            denied) ;;
+            *)
+                cat "$WORK/err" >&2
+                fc_die "unexpected Artifact Registry response for repository $REPO."
+                ;;
+        esac
+        [[ "$i" -lt "$RETRIES" ]] || break
+        echo "Waiting ${wait_s}s for IAM propagation (try $((i + 1))/$RETRIES)..."
+        sleep "$wait_s"
+        wait_s=$((wait_s * 2 > 60 ? 60 : wait_s * 2))
+    done
+    fc_die "Artifact Registry still denies sa-manager@${PROJECT} after $RETRIES retries. Run the recipe again in a few minutes."
+
 # Copy one node sensor image from registry.crowdstrike.com into the project
 # Artifact Registry, grant the node service accounts read access, and pin the
 # digest in the stack config. Every check runs before the first change.
@@ -55,6 +126,7 @@ mirror-image tag="" stack="":
     HOST="${LOCATION}-docker.pkg.dev"
     DEST_REPO="${HOST}/${PROJECT}/${REPO}/falcon-sensor"
     fc_tmpdir
+    fc_require_registry_access "$LOCATION" "$REPO"
 
     NODE_SAS=$(fc_node_service_accounts) || exit 1
     [[ -n "$NODE_SAS" ]] || fc_die "found no node service accounts."
@@ -75,19 +147,12 @@ mirror-image tag="" stack="":
     # ── changes ──────────────────────────────────────────────────────────
     just gcp-pulumi ensure-stack --folder "$FC_FOLDER" --stack "$STACK"
 
-    if gcloud artifacts repositories describe "$REPO" --location "$LOCATION" --project "$PROJECT" \
-        --format 'value(name)' >/dev/null 2>"$WORK/err"; then
+    if [[ "$REPO_STATE" == exists ]]; then
         echo "Artifact Registry repository $REPO exists — continuing."
-    elif grep -Eq 'NOT_FOUND|not found' "$WORK/err"; then
+    else
         gcloud artifacts repositories create "$REPO" --repository-format docker \
             --location "$LOCATION" --project "$PROJECT" \
             --description "Mirror of the CrowdStrike Falcon node sensor image"
-    else
-        echo "Error: could not describe Artifact Registry repository $REPO:" >&2
-        cat "$WORK/err" >&2
-        grep -q 'SERVICE_DISABLED' "$WORK/err" &&
-            echo "Enable artifactregistry.googleapis.com with: just gcp-api enable-apis --api-file <file>" >&2
-        exit 1
     fi
 
     gcloud artifacts repositories get-iam-policy "$REPO" --location "$LOCATION" --project "$PROJECT" \

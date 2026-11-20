@@ -98,9 +98,27 @@ case "$*" in
         [[ "$*" == *node-0* ]] && sa="control-plane@dcr-test1.iam.gserviceaccount.com"
         printf '{"serviceAccounts":[{"email":"%s","scopes":["%s"]}]}' "$sa" "$scope" ;;
     "artifacts repositories describe "*)
-        [[ "${STUB_REPO_EXISTS:-0}" == 1 ]] && exit 0
-        echo 'ERROR: (gcloud.artifacts.repositories.describe) NOT_FOUND: Requested entity was not found.' >&2
+        state="${STUB_AR_STATE:-missing}"
+        [[ "${STUB_REPO_EXISTS:-0}" == 1 ]] && state=exists
+        if [[ -n "${STUB_AR_DENY_COUNT:-}" ]]; then
+            n=$(cat "${STUB_DIR}/deny-count" 2>/dev/null || echo 0)
+            if [[ "$n" -lt "$STUB_AR_DENY_COUNT" ]]; then
+                echo $((n + 1)) >"${STUB_DIR}/deny-count"; state=denied
+            fi
+        fi
+        case "$state" in
+            exists) exit 0 ;;
+            denied) echo "ERROR: PERMISSION_DENIED: Permission 'artifactregistry.repositories.get' denied on resource" >&2 ;;
+            disabled) echo 'ERROR: SERVICE_DISABLED: Artifact Registry API has not been used' >&2 ;;
+            *) echo 'ERROR: (gcloud.artifacts.repositories.describe) NOT_FOUND: Requested entity was not found.' >&2 ;;
+        esac
         exit 1 ;;
+    "projects get-iam-policy "*)
+        if [[ "${STUB_HAS_ADMIN:-0}" == 1 ]]; then
+            printf '{"bindings":[{"role":"roles/artifactregistry.admin","members":["serviceAccount:sa-manager@dcr-test1.iam.gserviceaccount.com"]}]}'
+        else
+            printf '{"bindings":[{"role":"roles/storage.admin","members":["serviceAccount:sa-manager@dcr-test1.iam.gserviceaccount.com"]}]}'
+        fi ;;
     "artifacts repositories get-iam-policy "*)
         printf '{"bindings":[{"role":"roles/artifactregistry.reader","members":["serviceAccount:control-plane@dcr-test1.iam.gserviceaccount.com"]}]}' ;;
     "auth print-access-token"*) echo "ya29.GCP-ACCESS-TOKEN" ;;
@@ -174,7 +192,7 @@ base_env=(
     "STUB_DS=${tmp_dir}/fx/ds-ok.json" "STUB_CID=${cid}" "STUB_STACK_CID=${cid}"
     "STUB_SRC_DIGEST=${src_digest}" "STUB_DEST_DIGEST=${src_digest}"
 )
-run_recipe() { : >"$log_file"; env "${base_env[@]}" "$@"; }
+run_recipe() { : >"$log_file"; rm -f "${tmp_dir}/deny-count"; env "${base_env[@]}" "$@"; }
 expect_failure() {
     local expected="$1" output status
     shift
@@ -255,6 +273,29 @@ write_cfg us-1 no yes
 expect_failure 'is not the CID of the tenant' env "STUB_STACK_CID=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF-00" "$just_bin" falcon mirror-image --tag 7.40.0-1
 no_mutation
 echo '  test_mirror_checks_source_and_tenant_before_change: PASS'
+
+expect_failure 'Run: just falcon grant-registry-access' env STUB_AR_STATE=denied "$just_bin" falcon mirror-image --tag 7.40.0-1
+no_mutation
+assert_no_call 'oauth2/token'
+expect_failure 'artifactregistry.googleapis.com is not enabled' env STUB_AR_STATE=disabled "$just_bin" falcon mirror-image --tag 7.40.0-1
+no_mutation
+echo '  test_mirror_checks_registry_access_before_change: PASS'
+
+# ── grant-registry-access ────────────────────────────────────────────────────
+write_cfg us-1 no no
+expect_failure 'not sa-manager@' env "GOOGLE_APPLICATION_CREDENTIALS=${tmp_dir}/fx/other.json" "$just_bin" falcon grant-registry-access
+assert_no_call 'add-iam-policy-binding'
+expect_failure 'artifactregistry.googleapis.com is not enabled' env STUB_AR_STATE=disabled "$just_bin" falcon grant-registry-access
+assert_no_call 'add-iam-policy-binding'
+out=$(run_recipe env STUB_AR_DENY_COUNT=3 "$just_bin" falcon grant-registry-access --interval 0 2>&1) || { echo "$out"; exit 1; }
+assert_call 'gcloud projects add-iam-policy-binding dcr-test1 --member serviceAccount:sa-manager@dcr-test1.iam.gserviceaccount.com --role roles/artifactregistry.admin --condition None'
+assert_before 'projects get-iam-policy' 'projects add-iam-policy-binding'
+[[ "$out" == *"try 2/8"* && "$out" == *"Next: just falcon mirror-image"* ]] || { echo "grant output: $out" >&2; exit 1; }
+out=$(run_recipe env STUB_HAS_ADMIN=1 STUB_AR_STATE=exists "$just_bin" falcon grant-registry-access 2>&1)
+assert_no_call 'add-iam-policy-binding'
+[[ "$out" == *"has roles/artifactregistry.admin"* ]] || { echo "grant output: $out" >&2; exit 1; }
+expect_failure 'still denies sa-manager@dcr-test1 after 2 retries' env STUB_AR_STATE=denied "$just_bin" falcon grant-registry-access --retries 2 --interval 0
+echo '  test_grant_registry_access_is_idempotent_and_waits: PASS'
 
 # ── mirror-image changes ─────────────────────────────────────────────────────
 write_cfg us-1 no yes
