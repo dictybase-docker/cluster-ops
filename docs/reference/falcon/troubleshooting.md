@@ -16,7 +16,9 @@ Back to: [Falcon Deploy Guide](../../falcon-deploy.md)
 | `tag '...' is not in` | The tag does not exist | Run `just falcon list-tags` |
 | `not sa-manager@` | `GOOGLE_APPLICATION_CREDENTIALS` is a different key | Enter the cluster-env sub-shell again |
 | `no cloud-platform or devstorage access scope` | A node cannot pull from Artifact Registry | Change the instance group scopes, then roll the nodes |
-| `Enable artifactregistry.googleapis.com` | The Artifact Registry API is off | Turn on the API with `just gcp-api enable-apis` |
+| `has no Artifact Registry access` | sa-manager has no Artifact Registry role | Run `just falcon grant-registry-access` |
+| `still denies sa-manager@... after ... retries` | The IAM change did not propagate in time | Wait a few minutes, then run `just falcon grant-registry-access` again |
+| `artifactregistry.googleapis.com is not enabled` | The Artifact Registry API is off | Turn on the API with `just gcp-api enable-apis` |
 | `does not match source digest` | The copy did not complete | Run `mirror-image` again |
 | `falcon-sensor:properties is invalid in ...` | Preview found a missing or bad value | Set the named field |
 | `not ready on every node` | A pod is `Pending`, cannot pull, or fails | Run `just falcon verify`, then refer to the sections below |

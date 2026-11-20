@@ -21,10 +21,11 @@ just falcon mirror-image --tag <sensor-tag>
 
 1. Make sure that `--tag` is a versioned tag of sensor 7.40 or later. The recipe rejects `latest`.
 2. Make sure that `PROJECT_ID`, `KUBECONFIG`, the sa-manager key, `properties.cloud`, and the API client are set.
-3. Read the GCE service account of each node. Stop when a node is in a different project, when the cluster has no nodes, or when a node has no storage access scope.
-4. Get a Falcon OAuth token, the tenant CID, and a registry token.
-5. Compare the tenant CID with `properties.cid`, when the stack has a CID.
-6. Read the digest of the source tag. Stop when the tag does not exist.
+3. Make sure that Artifact Registry accepts the sa-manager key and that the API is on. Refer to [registry access details](registry-access.md).
+4. Read the GCE service account of each node. Stop when a node is in a different project, when the cluster has no nodes, or when a node has no storage access scope.
+5. Get a Falcon OAuth token, the tenant CID, and a registry token.
+6. Compare the tenant CID with `properties.cid`, when the stack has a CID.
+7. Read the digest of the source tag. Stop when the tag does not exist.
 
 **Changes:**
 

@@ -54,7 +54,7 @@ This design has these results:
 The mirror needs these items:
 
 - The `artifactregistry.googleapis.com` API is on in the project.
-- The sa-manager service account can create a repository and can change its IAM policy.
+- The sa-manager service account has the `roles/artifactregistry.admin` role. `just falcon grant-registry-access` adds it. Refer to [registry access details](registry-access.md).
 - Each node has a GCE service account with a `cloud-platform` or `devstorage` access scope. `mirror-image` stops when a node has no such scope.
 - The kubelet on each node must have the GCP image credential provider for `*.pkg.dev`. This procedure does not examine the kubelet. The first `deploy` shows the result. If the pull fails, refer to [image pull fails](troubleshooting.md#image-pull-fails).
 

@@ -13,12 +13,13 @@ This guide installs the **CrowdStrike Falcon node sensor** on a kOps cluster. It
 - [2. Set the Falcon Cloud Region](#2-set-the-falcon-cloud-region)
 - [3. Set the Customer ID](#3-set-the-customer-id)
 - [4. Set the Provisioning Token](#4-set-the-provisioning-token)
-- [5. Mirror the Sensor Image](#5-mirror-the-sensor-image)
-- [6. Install the Sensor](#6-install-the-sensor)
-- [7. Verify](#7-verify)
-- [8. Teardown](#8-teardown)
-- [9. Troubleshooting](#9-troubleshooting)
-- [10. Related Documents](#10-related-documents)
+- [5. Grant Registry Access](#5-grant-registry-access)
+- [6. Mirror the Sensor Image](#6-mirror-the-sensor-image)
+- [7. Install the Sensor](#7-install-the-sensor)
+- [8. Verify](#8-verify)
+- [9. Teardown](#9-teardown)
+- [10. Troubleshooting](#10-troubleshooting)
+- [11. Related Documents](#11-related-documents)
 
 ---
 
@@ -41,14 +42,17 @@ just gcp-pulumi set-config --folder falcon-sensor --key properties.cloud --value
 # 3. Set the Customer ID with checksum (hidden prompt)
 just gcp-pulumi set-secret --folder falcon-sensor --key properties.cid
 
-# 5. List the tags, then mirror one tag into Artifact Registry
+# 5. Give sa-manager access to Artifact Registry (one time per project)
+just falcon grant-registry-access
+
+# 6. List the tags, then mirror one tag into Artifact Registry
 just falcon list-tags
 just falcon mirror-image --tag <sensor-tag>
 
-# 6. Install the sensor on every node
+# 7. Install the sensor on every node
 just falcon deploy
 
-# 7. Verify
+# 8. Verify
 just falcon verify
 ```
 
@@ -57,7 +61,7 @@ Optional steps:
 # 4. Provisioning token (only when the tenant requires one)
 just gcp-pulumi set-secret --folder falcon-sensor --key properties.provisioningToken
 
-# 8. Teardown (removes the sensor from every node)
+# 9. Teardown (removes the sensor from every node)
 just falcon teardown
 ```
 
@@ -116,7 +120,18 @@ just gcp-pulumi set-secret --folder falcon-sensor --key properties.provisioningT
 
 ---
 
-## 5. Mirror the Sensor Image
+## 5. Grant Registry Access
+
+`grant-registry-access` gives the sa-manager service account the `roles/artifactregistry.admin` role on the project. Run it one time for each project. When the role is already active, the recipe makes no change.
+→ [Registry access details](reference/falcon/registry-access.md)
+
+```bash
+just falcon grant-registry-access
+```
+
+---
+
+## 6. Mirror the Sensor Image
 
 `mirror-image` copies one sensor tag from `registry.crowdstrike.com` into the project Artifact Registry. It gives the node service accounts read access and pins the digest in the stack config. The recipe accepts only versioned tags of 7.40 or later.
 → [Mirror details](reference/falcon/mirror-image.md)
@@ -128,7 +143,7 @@ just falcon mirror-image --tag <sensor-tag>
 
 ---
 
-## 6. Install the Sensor
+## 7. Install the Sensor
 
 `deploy` creates the `falcon-system` namespace, Secret `falcon-sensor-cid`, and the Helm release. It then waits until one sensor pod is ready on every node.
 → [Install details](reference/falcon/install.md)
@@ -139,7 +154,7 @@ just falcon deploy
 
 ---
 
-## 7. Verify
+## 8. Verify
 
 Read-only checks: one ready pod on each node, the mirrored digest, and a Falcon agent ID in each pod. The command exits non-zero when a check fails.
 → [Verify details](reference/falcon/verify.md)
@@ -150,7 +165,7 @@ just falcon verify
 
 ---
 
-## 8. Teardown
+## 9. Teardown
 
 **Destructive. All nodes lose Falcon protection.** Teardown removes the Helm release, the Secret, and the namespace. The Artifact Registry mirror stays.
 → [Teardown details](reference/falcon/teardown.md)
@@ -161,17 +176,18 @@ just falcon teardown
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 → [Full troubleshooting table](reference/falcon/troubleshooting.md)
 
 ---
 
-## 10. Related Documents
+## 11. Related Documents
 
 **Reference details for this guide:**
 - [Prerequisites](reference/falcon/prerequisites.md)
 - [Configuration](reference/falcon/configure.md)
+- [Registry access details](reference/falcon/registry-access.md)
 - [Mirror details](reference/falcon/mirror-image.md)
 - [Install details](reference/falcon/install.md)
 - [Teardown details](reference/falcon/teardown.md)
