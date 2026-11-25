@@ -28,7 +28,7 @@ mod ci 'just_modules/ci.justfile'
 
 # Variables
 
-dagger_version := "v0.11.9"
+dagger_version := "v0.21.12"
 container_module := "github.com/dictybase-docker/dagger-of-dcr/container-image@main"
 bin_path := `mktemp -d`
 action_bin := bin_path + "/actions"
