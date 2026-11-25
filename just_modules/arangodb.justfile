@@ -1453,7 +1453,8 @@ create-mcp-reader reader_password="" namespace="" stack="" retries="60" interval
 
 # Start the local ArangoDB MCP server for Pi: a background `forward hold` on
 # 127.0.0.1:<forward-port> (default 18529) and the arangodb/mcp-arangodb container (HTTP mode) on
-# 127.0.0.1:8530. Run outside nono. Stop with `just arangodb mcp-down`.
+# 127.0.0.1:8530. Run outside nono. State goes to ~/.local/state/arangodb-mcp.
+# Stop with `just arangodb mcp-down`.
 # Usage: just arangodb mcp-up [--namespace <ns>] [--stack <name>] [--database <db>] [--forward-port <port>]
 [arg("namespace", long="namespace", short="n", help="Namespace holding ArangoDB (defaults to the stack config namespace)")]
 [arg("stack", long="stack", short="s", help="Base Pulumi stack (defaults to PULUMI_STACK)")]
@@ -1465,8 +1466,9 @@ mcp-up namespace="" stack="" database="" forward_port="":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Repo-local (gitignored) so Pi inside nono can read reader.env.
-    STATE="$PWD/.state/arangodb-mcp"
+    # Outside the repo so a Pi profile can grant this directory alone,
+    # without access to kubeconfigs and keys in cluster-ops.
+    STATE="$HOME/.local/state/arangodb-mcp"
     CONTAINER="arangodb-mcp"
     IMAGE="arangodb/mcp-arangodb:latest"
     FWD_PORT={{ quote(forward_port) }}
@@ -1501,7 +1503,7 @@ mcp-up namespace="" stack="" database="" forward_port="":
         echo "Error: Docker is not reachable. Start Docker and run this recipe outside nono." >&2
         exit 1
     fi
-    if docker container inspect "$CONTAINER" >/dev/null 2>&1 || [[ -f "$STATE/forward.pid" ]]; then
+    if docker container inspect "$CONTAINER" >/dev/null 2>&1 || [[ -f "$STATE/forward.pid" || -f "$PWD/.state/arangodb-mcp/forward.pid" ]]; then
         echo "Error: the MCP server is already running or left state behind — run 'just arangodb mcp-down' first." >&2
         exit 1
     fi
@@ -1562,13 +1564,21 @@ mcp-up namespace="" stack="" database="" forward_port="":
 mcp-down:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Repo-local (gitignored) so Pi inside nono can read reader.env.
-    STATE="$PWD/.state/arangodb-mcp"
+    STATE="$HOME/.local/state/arangodb-mcp"
+    # Pre-move location inside the repo. Cleaned so an old run cannot leak.
+    LEGACY="$PWD/.state/arangodb-mcp"
     docker rm -f arangodb-mcp >/dev/null 2>&1 || true
-    if [[ -f "$STATE/forward.pid" ]]; then
-        kill "$(cat "$STATE/forward.pid")" 2>/dev/null || true
+    for dir in "$STATE" "$LEGACY"; do
+        if [[ -f "$dir/forward.pid" ]]; then
+            kill "$(cat "$dir/forward.pid")" 2>/dev/null || true
+        fi
+    done
+    # Keep the empty directory: the nono profile grants it, and a missing
+    # granted path can block the Pi sandbox start.
+    if [[ -d "$STATE" ]]; then
+        find "$STATE" -mindepth 1 -delete
     fi
-    rm -rf "$STATE"
+    rm -rf "$LEGACY"
     echo "MCP server stopped."
 
 # Show the state of the local ArangoDB MCP server.
@@ -1578,8 +1588,7 @@ mcp-down:
 mcp-status:
     #!/usr/bin/env bash
     set -uo pipefail
-    # Repo-local (gitignored) so Pi inside nono can read reader.env.
-    STATE="$PWD/.state/arangodb-mcp"
+    STATE="$HOME/.local/state/arangodb-mcp"
     if [[ -f "$STATE/forward.pid" ]] && kill -0 "$(cat "$STATE/forward.pid")" 2>/dev/null; then
         echo "forward  : running (pid $(cat "$STATE/forward.pid"))"
     else
@@ -1589,9 +1598,11 @@ mcp-status:
     echo "container: ${STATUS:-absent}"
     echo "health   : HTTP $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8530/health)"
 
-# Register the local ArangoDB MCP server in ~/.pi/agent/mcp.json. Each
-# connection fetches a fresh JWT through scripts/arangodb-mcp-token.sh.
-# Other servers in the file stay unchanged. Idempotent.
+# Register the local ArangoDB MCP server in ~/.pi/agent/mcp.json. Installs
+# scripts/arangodb-mcp-token.sh as ~/bin/arangodb-mcp-token, so Pi in any
+# folder fetches a fresh JWT without access to this repository. Creates the
+# empty state directory that the nono profile grants. Other servers in the
+# file stay unchanged. Idempotent; rerun after the token script changes.
 # Usage: just arangodb mcp-configure-pi
 [group('arangodb')]
 [no-cd]
@@ -1599,11 +1610,16 @@ mcp-configure-pi:
     #!/usr/bin/env bash
     set -euo pipefail
     CONFIG="$HOME/.pi/agent/mcp.json"
-    TOKEN_SCRIPT="$PWD/scripts/arangodb-mcp-token.sh"
-    if [[ ! -x "$TOKEN_SCRIPT" ]]; then
-        echo "Error: '$TOKEN_SCRIPT' is missing or not executable." >&2
+    SOURCE="$PWD/scripts/arangodb-mcp-token.sh"
+    TOKEN_SCRIPT="$HOME/bin/arangodb-mcp-token"
+    STATE="$HOME/.local/state/arangodb-mcp"
+    if [[ ! -r "$SOURCE" ]]; then
+        echo "Error: '$SOURCE' is missing — run this recipe from the cluster-ops root." >&2
         exit 1
     fi
+    install -d -m 0755 "$HOME/bin"
+    install -m 0755 "$SOURCE" "$TOKEN_SCRIPT"
+    install -d -m 0700 "$STATE"
     [[ -f "$CONFIG" ]] || echo '{"mcpServers":{}}' >"$CONFIG"
     TMP=$(mktemp "${CONFIG}.XXXXXX")
     trap 'rm -f "$TMP"' EXIT

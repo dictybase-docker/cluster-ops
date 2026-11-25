@@ -311,6 +311,14 @@ test-dcr-mcp:
     set -euo pipefail
     "{{ justfile_directory() }}/scripts/test-dcr-mcp-recipes.sh"
 
+# Run ArangoDB MCP wiring contract tests
+[group('dev-tools')]
+[no-cd]
+test-arangodb-mcp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "{{ justfile_directory() }}/scripts/test-arangodb-mcp.sh"
+
 # Run filestash recipe contract tests
 [group('dev-tools')]
 [no-cd]
@@ -358,7 +366,7 @@ test-arangodb-single-db-restore:
 # Usage: just check
 [group('dev-tools')]
 [no-cd]
-check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-dcr-mcp test-filestash test-falcon test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
+check: lint-recipes test-bootstrap test-postgres-logical test-logto test-gateway test-frontend test-dcr-mcp test-arangodb-mcp test-filestash test-falcon test-tool-versions test-arangodb-finalization test-arangodb-single-db-restore test-cluster-registry test-register-cluster test-backend-scaffold test-backend-prereqs test-backend-bootstrap test-backend-services test-ci-recipes test-pulumi-backend test-datastore-recipes test-cluster-validation test-gcp-converge test-pulumi-automation test-render-tag-deploy build
     #!/usr/bin/env bash
     set -euo pipefail
     just docs docs-lint
