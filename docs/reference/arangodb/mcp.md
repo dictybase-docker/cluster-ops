@@ -12,6 +12,7 @@ This document explains how Pi queries the cluster ArangoDB through the `arangodb
 - [Create the Reader (`create-mcp-reader`)](#create-the-reader-create-mcp-reader)
 - [Start and Stop (`mcp-up`, `mcp-down`, `mcp-status`)](#start-and-stop-mcp-up-mcp-down-mcp-status)
 - [Register in Pi (`mcp-configure-pi`)](#register-in-pi-mcp-configure-pi)
+  - [Access From Other Folders](#access-from-other-folders)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -55,7 +56,7 @@ Creates user `mcp-reader` with grant `ro` on every application database. Stack `
 
 ## Start and Stop (`mcp-up`, `mcp-down`, `mcp-status`)
 
-`mcp-up` starts the port-forward and the MCP container, then waits for `/health` to return 200. State goes to `.state/arangodb-mcp/` in the repository (gitignored). The `reader.env` file in that directory has mode 0600.
+`mcp-up` starts the port-forward and the MCP container, then waits for `/health` to return 200. State goes to `~/.local/state/arangodb-mcp/`, outside the repository. The directory has mode 0700, and the `reader.env` file has mode 0600.
 
 | Flag | Required | Default | Notes |
 |---|---|---|---|
@@ -63,13 +64,27 @@ Creates user `mcp-reader` with grant `ro` on every application database. Stack `
 | `--database` / `-d` | No | First configured database | Tools accept other databases by name |
 | `--forward-port` / `-p` | No | `$ARANGODB_MCP_FORWARD_PORT`, else `18529` | Port `8529` is free for a local ArangoDB container |
 
-`mcp-down` removes the container, stops the forward, and deletes the state directory. `mcp-status` shows the forward, the container, and the `/health` result.
+`mcp-down` removes the container, stops the forward, and empties the state directory. The empty directory stays because the nono profile grants it. `mcp-status` shows the forward, the container, and the `/health` result.
 
 ---
 
 ## Register in Pi (`mcp-configure-pi`)
 
-Adds server `arangodb` to `~/.pi/agent/mcp.json` and keeps the other servers. The `Authorization` header runs `scripts/arangodb-mcp-token.sh`. Run it one time, then start a new Pi session.
+Adds server `arangodb` to `~/.pi/agent/mcp.json` and keeps the other servers. The recipe installs `scripts/arangodb-mcp-token.sh` as `~/bin/arangodb-mcp-token`. The `Authorization` header runs that copy. The recipe also creates the empty state directory. Run the recipe again after a change to the token script. Then start a new Pi session.
+
+### Access From Other Folders
+
+The token script reads only `~/.local/state/arangodb-mcp/`. Pi in any folder can use the server without access to the `cluster-ops` repository. The repository holds kubeconfigs and deploy keys, so do not grant it to other sessions.
+
+The base nono profile `pi` gives these grants:
+
+| Grant | Value |
+|---|---|
+| Read | `~/.local/state/arangodb-mcp` |
+| Open port | `8530` (MCP server) |
+| Open port | `18529` (forward for the JWT login) |
+
+A forward port other than `18529` needs a matching `open_port` grant.
 
 ---
 
@@ -81,4 +96,5 @@ Adds server `arangodb` to `~/.pi/agent/mcp.json` and keeps the other servers. Th
 | `/mcp` shows no `arangodb` server | The session started before registration | Start a new Pi session |
 | Tool calls return `401` | JWT expired | Reconnect the server with `/mcp` |
 | `MCP server state is missing` | `mcp-up` is not running | Run `just arangodb mcp-up` |
+| Token script fails in another folder | The Pi profile has no grant for the state directory or the ports | Start Pi with the `pi` profile that has the [grants](#access-from-other-folders) |
 | Preview fails with `must be no more than 63 characters` | Long Secret name in the Job name | Keep Secret name `arangodb-mcp` |
