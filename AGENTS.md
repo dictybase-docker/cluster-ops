@@ -76,3 +76,15 @@ mechanical subset; the rest are review rules.
      from post-DNS verification (`verify` checking Let's Encrypt TLS Secrets
      after DNS `A` records resolve).
 - Run `just check` before reporting completion — zero failures.
+
+## Git commits
+
+When the user requests a commit:
+- Use the `git-commit` skill and follow its workflow.
+- Prefer `@jdiamond/pi-git` review-gated tools.
+- Preserve existing user staging and exclude unrelated or secret-like files.
+- Never push unless explicitly requested.
+- **Do not run code tests, linters, formatters, cleanup, or any check for a
+  commit request.** When the user asks to commit, create the commit and stop.
+  This rule overrides validation steps in the `git-commit` skill and the
+  4-point audit above.
