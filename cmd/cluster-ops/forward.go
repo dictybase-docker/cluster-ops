@@ -10,15 +10,75 @@ import (
 	"syscall"
 	"time"
 
+	A "github.com/IBM/fp-go/v2/array"
+	E "github.com/IBM/fp-go/v2/either"
 	F "github.com/IBM/fp-go/v2/function"
 	IO "github.com/IBM/fp-go/v2/io"
 	IOE "github.com/IBM/fp-go/v2/ioeither"
+	L "github.com/IBM/fp-go/v2/optics/lens"
 	"github.com/dictybase-docker/cluster-ops/internal/kube"
 	"github.com/urfave/cli/v2"
 )
 
 // childWaitDelay bounds how long a signalled child may linger before SIGKILL.
 const childWaitDelay = 5 * time.Second
+
+var (
+	forwardNSLens = L.MakeLens(
+		func(o kube.ForwardOpts) string { return o.Namespace },
+		func(o kube.ForwardOpts, v string) kube.ForwardOpts { o.Namespace = v; return o },
+	)
+	forwardSVCLens = L.MakeLens(
+		func(o kube.ForwardOpts) string { return o.Service },
+		func(o kube.ForwardOpts, v string) kube.ForwardOpts { o.Service = v; return o },
+	)
+	forwardRemotePortLens = L.MakeLens(
+		func(o kube.ForwardOpts) int { return o.RemotePort },
+		func(o kube.ForwardOpts, v int) kube.ForwardOpts { o.RemotePort = v; return o },
+	)
+	forwardLocalPortLens = L.MakeLens(
+		func(o kube.ForwardOpts) int { return o.LocalPort },
+		func(o kube.ForwardOpts, v int) kube.ForwardOpts { o.LocalPort = v; return o },
+	)
+	forwardPersistentLens = L.MakeLens(
+		func(o kube.ForwardOpts) bool { return o.PersistentReconnect },
+		func(o kube.ForwardOpts, v bool) kube.ForwardOpts {
+			o.PersistentReconnect = v
+			return o
+		},
+	)
+	forwardOnReadyLens = L.MakeLens(
+		func(o kube.ForwardOpts) func(int, string) { return o.OnReady },
+		func(o kube.ForwardOpts, v func(int, string)) kube.ForwardOpts {
+			o.OnReady = v
+			return o
+		},
+	)
+	childSpecCtxLens = L.MakeLens(
+		func(s childRunSpec) context.Context { return s.ctx },
+		func(s childRunSpec, v context.Context) childRunSpec { s.ctx = v; return s },
+	)
+	childSpecArgsLens = L.MakeLens(
+		func(s childRunSpec) []string { return s.args },
+		func(s childRunSpec, v []string) childRunSpec { s.args = v; return s },
+	)
+	startReqCtxLens = L.MakeLens(
+		func(r startForwardReq) context.Context { return r.ctx },
+		func(r startForwardReq, v context.Context) startForwardReq { r.ctx = v; return r },
+	)
+	startReqOptsLens = L.MakeLens(
+		func(r startForwardReq) kube.ForwardOpts { return r.opts },
+		func(r startForwardReq, v kube.ForwardOpts) startForwardReq { r.opts = v; return r },
+	)
+	forwardEndpointSVCLens = L.MakeLens(
+		func(e forwardEndpoint) string { return e.svc },
+		func(e forwardEndpoint, v string) forwardEndpoint { e.svc = v; return e },
+	)
+	forwardEndpointPortLens = L.MakeLens(
+		func(e forwardEndpoint) int { return e.remotePort },
+		func(e forwardEndpoint, v int) forwardEndpoint { e.remotePort = v; return e },
+	)
+)
 
 func kubeFlags() []cli.Flag {
 	return []cli.Flag{
@@ -70,12 +130,13 @@ func forwardCommand() *cli.Command {
 }
 
 func forwardOpts(c *cli.Context) kube.ForwardOpts {
-	return kube.ForwardOpts{
-		Namespace:  c.String("ns"),
-		Service:    c.String("svc"),
-		RemotePort: c.Int("remote-port"),
-		LocalPort:  c.Int("local-port"),
-	}
+	return F.Pipe4(
+		kube.ForwardOpts{},
+		forwardNSLens.Set(c.String("ns")),
+		forwardSVCLens.Set(c.String("svc")),
+		forwardRemotePortLens.Set(c.Int("remote-port")),
+		forwardLocalPortLens.Set(c.Int("local-port")),
+	)
 }
 
 func signalContext() (context.Context, context.CancelFunc) {
@@ -84,10 +145,12 @@ func signalContext() (context.Context, context.CancelFunc) {
 
 // childEnv exports the forward address to the child process.
 func childEnv(parent []string, localPort int) []string {
-	return append(
+	return A.ArrayConcatAll(
 		parent,
-		fmt.Sprintf("FORWARD_PORT=%d", localPort),
-		fmt.Sprintf("FORWARD_ADDR=127.0.0.1:%d", localPort),
+		[]string{
+			fmt.Sprintf("FORWARD_PORT=%d", localPort),
+			fmt.Sprintf("FORWARD_ADDR=127.0.0.1:%d", localPort),
+		},
 	)
 }
 
@@ -112,10 +175,6 @@ func runChild(ctx context.Context, args []string, localPort int) error {
 	return child.Run()
 }
 
-func newClientsIOE(c *cli.Context) IOE.IOEither[error, kube.Clients] {
-	return IOE.FromEither(kube.NewClients(c.String(flagKubeconfig), c.String("context")))
-}
-
 func exitOrWrap(prefix string, err error) error {
 	if err == nil {
 		return nil
@@ -126,6 +185,23 @@ func exitOrWrap(prefix string, err error) error {
 	return fmt.Errorf("%s: %w", prefix, err)
 }
 
+type childRunSpec struct {
+	ctx  context.Context
+	args []string
+}
+
+func runChildSession(spec childRunSpec, sess *kube.Session) IOE.IOEither[error, struct{}] {
+	return IOE.TryCatchError(func() (struct{}, error) {
+		defer sess.Close()
+		childCtx, cancelChild := childContext(spec.ctx, sess.Done())
+		defer cancelChild()
+		if err := runChild(childCtx, spec.args, sess.LocalPort); err != nil {
+			return struct{}{}, supervisorErrOr(cli.Exit("", exitCodeFrom(err)), sess.Err())
+		}
+		return struct{}{}, nil
+	})
+}
+
 func forwardRunAction(c *cli.Context) error {
 	args := c.Args().Slice()
 	if len(args) == 0 {
@@ -134,18 +210,12 @@ func forwardRunAction(c *cli.Context) error {
 	ctx, stop := signalContext()
 	defer stop()
 
-	runChildOnSession := func(sess *kube.Session) IOE.IOEither[error, struct{}] {
-		return IOE.TryCatchError(func() (struct{}, error) {
-			defer sess.Close()
-			childCtx, cancelChild := childContext(ctx, sess.Done())
-			defer cancelChild()
-			if err := runChild(childCtx, args, sess.LocalPort); err != nil {
-				return struct{}{}, supervisorErrOr(cli.Exit("", exitCodeFrom(err)), sess.Err())
-			}
-			return struct{}{}, nil
-		})
-	}
-	return openForward(c, ctx, forwardOpts(c), runChildOnSession, "forward run")
+	spec := F.Pipe2(
+		childRunSpec{},
+		childSpecCtxLens.Set(ctx),
+		childSpecArgsLens.Set(args),
+	)
+	return openForward(c, ctx, forwardOpts(c), F.Bind1st(runChildSession, spec), "forward run")
 }
 
 // childContext scopes the forwarded child to its forward: it is canceled by
@@ -173,34 +243,78 @@ func supervisorErrOr(childErr, sessErr error) error {
 	return childErr
 }
 
+type forwardEndpoint struct {
+	svc        string
+	remotePort int
+}
+
+func (ep forwardEndpoint) logReady(localPort int, pod string) {
+	fmt.Fprintf(
+		os.Stderr,
+		"Forwarding from 127.0.0.1:%d -> %s:%d (pod %s)\n",
+		localPort,
+		forwardEndpointSVCLens.Get(ep),
+		forwardEndpointPortLens.Get(ep),
+		pod,
+	)
+}
+
+func forwardHoldOpts(c *cli.Context) kube.ForwardOpts {
+	base := forwardOpts(c)
+	ep := F.Pipe2(
+		forwardEndpoint{},
+		forwardEndpointSVCLens.Set(forwardSVCLens.Get(base)),
+		forwardEndpointPortLens.Set(forwardRemotePortLens.Get(base)),
+	)
+	return F.Pipe2(
+		base,
+		forwardPersistentLens.Set(true),
+		forwardOnReadyLens.Set(ep.logReady),
+	)
+}
+
+func holdForwardSession(ctx context.Context, sess *kube.Session) IOE.IOEither[error, struct{}] {
+	return IOE.TryCatchError(func() (struct{}, error) {
+		defer sess.Close()
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(os.Stderr, "Shutting down…")
+			return struct{}{}, nil
+		case <-sess.Done():
+			if err := sess.Err(); err != nil {
+				fmt.Fprintf(os.Stderr, "Reconnecting… exhausted: %v\n", err)
+				return struct{}{}, cli.Exit("", 1)
+			}
+			return struct{}{}, nil
+		}
+	})
+}
+
 func forwardHoldAction(c *cli.Context) error {
 	ctx, stop := signalContext()
 	defer stop()
 
-	opts := forwardOpts(c)
-	// Set before Forward starts: the supervisor calls it from its own
-	// goroutine on the first dial and on every reconnect.
-	opts.OnReady = func(localPort int, pod string) {
-		fmt.Fprintf(os.Stderr, "Forwarding from 127.0.0.1:%d -> %s:%d (pod %s)\n",
-			localPort, opts.Service, opts.RemotePort, pod)
-	}
-	holdSession := func(sess *kube.Session) IOE.IOEither[error, struct{}] {
-		return IOE.TryCatchError(func() (struct{}, error) {
-			defer sess.Close()
-			select {
-			case <-ctx.Done():
-				fmt.Fprintln(os.Stderr, "Shutting down…")
-				return struct{}{}, nil
-			case <-sess.Done():
-				if err := sess.Err(); err != nil {
-					fmt.Fprintf(os.Stderr, "Reconnecting… exhausted: %v\n", err)
-					return struct{}{}, cli.Exit("", 1)
-				}
-				return struct{}{}, nil
-			}
-		})
-	}
-	return openForward(c, ctx, opts, holdSession, "forward hold")
+	return openForward(c, ctx, forwardHoldOpts(c), F.Bind1st(holdForwardSession, ctx), "forward hold")
+}
+
+type startForwardReq struct {
+	ctx  context.Context
+	opts kube.ForwardOpts
+}
+
+func startForward(req startForwardReq, clients kube.Clients) IOE.IOEither[error, *kube.Session] {
+	return kube.Forward(startReqCtxLens.Get(req), clients, startReqOptsLens.Get(req))
+}
+
+func newClientsFromCLI(c *cli.Context) E.Either[error, kube.Clients] {
+	return kube.NewClients(c.String(flagKubeconfig), c.String("context"))
+}
+
+func newClientsIOE(c *cli.Context) IOE.IOEither[error, kube.Clients] {
+	return F.Pipe1(
+		IOE.Of[error](c),
+		IOE.ChainEitherK(newClientsFromCLI),
+	)
 }
 
 // openForward opens the forward, runs use on the live session and maps the
@@ -212,15 +326,20 @@ func openForward(
 	use func(*kube.Session) IOE.IOEither[error, struct{}],
 	prefix string,
 ) error {
-	return exitOrWrap(prefix, F.Pipe3(
-		newClientsIOE(c),
-		IOE.Chain(func(clients kube.Clients) IOE.IOEither[error, *kube.Session] {
-			return kube.Forward(ctx, clients, opts)
-		}),
+	req := F.Pipe2(
+		startForwardReq{},
+		startReqCtxLens.Set(ctx),
+		startReqOptsLens.Set(opts),
+	)
+	eval := F.Pipe4(
+		IOE.Of[error](c),
+		IOE.ChainEitherK(newClientsFromCLI),
+		IOE.Chain(F.Bind1st(startForward, req)),
 		IOE.Chain(use),
 		IOE.Fold(
 			IO.Of[error],
-			func(struct{}) IO.IO[error] { return IO.Of[error](nil) },
+			F.Constant1[struct{}](IO.Of[error](nil)),
 		),
-	)())
+	)
+	return exitOrWrap(prefix, eval())
 }

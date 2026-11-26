@@ -97,3 +97,24 @@ func TestSupervisorErrOrPrioritizesSupervisorError(t *testing.T) {
 	require.Equal(t, childErr, supervisorErrOr(childErr, nil))
 	require.NoError(t, supervisorErrOr(nil, nil))
 }
+
+func TestForwardHoldEnablesPersistentReconnect(t *testing.T) {
+	app := &cli.App{
+		Name: "forward-opts-test",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "ns", Value: "dev"},
+			&cli.StringFlag{Name: "svc", Value: "arangodb"},
+			&cli.IntFlag{Name: "remote-port", Value: 8529},
+			&cli.IntFlag{Name: "local-port", Value: 18529},
+		},
+		Action: func(c *cli.Context) error {
+			base := forwardOpts(c)
+			require.False(t, base.PersistentReconnect, "forward run defaults to bounded reconnect")
+			hold := forwardHoldOpts(c)
+			require.True(t, hold.PersistentReconnect, "forward hold enables persistent reconnect")
+			require.NotNil(t, hold.OnReady)
+			return nil
+		},
+	}
+	require.NoError(t, app.Run([]string{"forward-opts-test"}))
+}

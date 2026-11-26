@@ -32,6 +32,11 @@ type ForwardOpts struct {
 	Service    string
 	RemotePort int
 	LocalPort  int // 0 = free port
+	// PersistentReconnect keeps retrying transient failures indefinitely
+	// (capped at the last backoff duration) once the first dial has reached
+	// ready. Initial dials still fail after the bounded retry budget, and
+	// NotFound/Forbidden/Unauthorized always fail fast.
+	PersistentReconnect bool
 	// OnReady, when set, is called after every successful dial (including
 	// reconnects) with the local port and the pod behind the forward.
 	OnReady func(localPort int, pod string)
@@ -44,7 +49,7 @@ type Session struct {
 	cancel    context.CancelFunc
 	done      chan struct{} // closed when the supervisor gives up
 	ready     chan struct{} // closed on the first successful dial
-	readyOnce sync.Once
+	readyOnce *sync.Once
 	failed    chan error // final, non-retryable supervisor error
 }
 
@@ -72,9 +77,13 @@ func (s *Session) Err() error {
 	}
 }
 
-// reconnectAttempts and reconnectBackoff are the phase-1 defaults: 3 attempts
-// with 2s/4s/8s exponential backoff.
-const reconnectAttempts = 3
+// reconnectAttempts and persistentBackoffSchedule define retry schedules:
+// 3 bounded attempts (2s/4s/8s) for initial dials and forward run; capped up
+// to 32s for persistent post-ready reconnects (forward hold).
+const (
+	reconnectAttempts         = 3
+	persistentBackoffAttempts = 5
+)
 
 func backoffSchedule(attempts int) []time.Duration {
 	out := make([]time.Duration, attempts)
@@ -110,7 +119,18 @@ func Forward(ctx context.Context, clients Clients, opts ForwardOpts) IOE.IOEithe
 		dial := func(ctx context.Context, port int, onReady func(string)) error {
 			return dialOnce(ctx, clients, opts, port, onReady)
 		}
-		sess, err := supervise(ctx, dial, localPort, opts.OnReady, backoffSchedule(reconnectAttempts))
+		scheduleAttempts := reconnectAttempts
+		if opts.PersistentReconnect {
+			scheduleAttempts = persistentBackoffAttempts
+		}
+		sess, err := superviseWithPolicy(
+			ctx,
+			dial,
+			localPort,
+			opts.OnReady,
+			backoffSchedule(scheduleAttempts),
+			opts.PersistentReconnect,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("%s/%s:%d: %w", opts.Namespace, opts.Service, opts.RemotePort, err)
 		}
@@ -127,15 +147,28 @@ func supervise(
 	onReady func(localPort int, pod string),
 	backoff []time.Duration,
 ) (*Session, error) {
+	return superviseWithPolicy(ctx, dial, localPort, onReady, backoff, false)
+}
+
+func superviseWithPolicy(
+	ctx context.Context,
+	dial dialFunc,
+	localPort int,
+	onReady func(localPort int, pod string),
+	backoff []time.Duration,
+	persistent bool,
+) (*Session, error) {
 	sctx, cancel := context.WithCancel(ctx)
-	s := &Session{
-		LocalPort: localPort,
-		cancel:    cancel,
-		done:      make(chan struct{}),
-		ready:     make(chan struct{}),
-		failed:    make(chan error, 1),
-	}
-	go s.loop(sctx, dial, onReady, backoff)
+	s := F.Pipe6(
+		&Session{},
+		SessionRefLocalPortLens.Set(localPort),
+		sessionRefCancelLens.Set(cancel),
+		sessionRefDoneLens.Set(make(chan struct{})),
+		sessionRefReadyLens.Set(make(chan struct{})),
+		sessionRefReadyOnceLens.Set(&sync.Once{}),
+		sessionRefFailedLens.Set(make(chan error, 1)),
+	)
+	go s.loop(sctx, dial, onReady, backoff, persistent)
 
 	// Block until the first dial is ready, the parent cancels, or the
 	// supervisor fails without retry.
@@ -152,20 +185,42 @@ func supervise(
 	}
 }
 
+// backoffAt clamps attempt to the last entry in backoff.
+func backoffAt(backoff []time.Duration, attempt int) time.Duration {
+	return backoff[min(attempt, len(backoff)-1)]
+}
+
+// shouldGiveUp reports whether a failed dial should stop the supervisor loop.
+func shouldGiveUp(err error, attempt, initialBudget, maxBudget int, everReady, persistent bool) bool {
+	if !retryable(err, Classify(err)) {
+		return true
+	}
+	if !everReady {
+		return attempt >= initialBudget-1
+	}
+	return !persistent && attempt >= maxBudget-1
+}
+
 // loop re-dials after every drop. The retry budget counts consecutive failed
 // dials; a dial that reached ready resets it, so a long-lived forward
-// survives any number of separate pod restarts.
+// survives any number of separate pod restarts. When persistent is true and
+// at least one dial has reached ready, transient failures retry indefinitely
+// using the last backoff interval.
 func (s *Session) loop(
 	ctx context.Context,
 	dial dialFunc,
 	onReady func(localPort int, pod string),
 	backoff []time.Duration,
+	persistent bool,
 ) {
 	defer close(s.done)
+	everReady := false
+	initialBudget := min(reconnectAttempts, len(backoff))
 	for attempt := 0; ; attempt++ {
 		connected := false
 		err := dial(ctx, s.LocalPort, func(pod string) {
 			connected = true
+			everReady = true
 			s.readyOnce.Do(func() { close(s.ready) })
 			if onReady != nil {
 				onReady(s.LocalPort, pod)
@@ -177,14 +232,14 @@ func (s *Session) loop(
 		if connected {
 			attempt = 0
 		}
-		if !retryable(err, Classify(err)) || attempt >= len(backoff)-1 {
+		if shouldGiveUp(err, attempt, initialBudget, len(backoff), everReady, persistent) {
 			s.failed <- fmt.Errorf(
 				"port-forward after %d attempt(s): %w", attempt+1, err,
 			)
 			return
 		}
 		select {
-		case <-time.After(backoff[attempt]):
+		case <-time.After(backoffAt(backoff, attempt)):
 		case <-ctx.Done():
 			return
 		}
@@ -279,6 +334,30 @@ func pickLocalPort(localPort int) (int, error) {
 const podTargetKind = "Pod"
 
 var (
+	SessionRefLocalPortLens = L.MakeLensRef(
+		func(s *Session) int { return s.LocalPort },
+		func(s *Session, v int) *Session { s.LocalPort = v; return s },
+	)
+	sessionRefCancelLens = L.MakeLensRef(
+		func(s *Session) context.CancelFunc { return s.cancel },
+		func(s *Session, v context.CancelFunc) *Session { s.cancel = v; return s },
+	)
+	sessionRefDoneLens = L.MakeLensRef(
+		func(s *Session) chan struct{} { return s.done },
+		func(s *Session, v chan struct{}) *Session { s.done = v; return s },
+	)
+	sessionRefReadyLens = L.MakeLensRef(
+		func(s *Session) chan struct{} { return s.ready },
+		func(s *Session, v chan struct{}) *Session { s.ready = v; return s },
+	)
+	sessionRefReadyOnceLens = L.MakeLensRef(
+		func(s *Session) *sync.Once { return s.readyOnce },
+		func(s *Session, v *sync.Once) *Session { s.readyOnce = v; return s },
+	)
+	sessionRefFailedLens = L.MakeLensRef(
+		func(s *Session) chan error { return s.failed },
+		func(s *Session, v chan error) *Session { s.failed = v; return s },
+	)
 	listOptsLabelSelLens = L.MakeLens(
 		func(o metav1.ListOptions) string { return o.LabelSelector },
 		func(o metav1.ListOptions, v string) metav1.ListOptions {
