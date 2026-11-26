@@ -56,7 +56,7 @@ Creates user `mcp-reader` with grant `ro` on every application database. Stack `
 
 ## Start and Stop (`mcp-up`, `mcp-down`, `mcp-status`)
 
-`mcp-up` starts the port-forward and the MCP container, then waits for `/health` to return 200. State goes to `~/.local/state/arangodb-mcp/`, outside the repository. The directory has mode 0700, and the `reader.env` file has mode 0600.
+`mcp-up` checks that the kubeconfig client certificate is valid for at least one hour. Then it starts the port-forward and the MCP container, and waits for `/health` to return 200. After the first connection, the port-forward retries network drops until the kubeconfig certificate expires. State goes to `~/.local/state/arangodb-mcp/`, outside the repository. The directory has mode 0700, and the `reader.env` file has mode 0600.
 
 | Flag | Required | Default | Notes |
 |---|---|---|---|
@@ -92,6 +92,7 @@ A forward port other than `18529` needs a matching `open_port` grant.
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `kubeconfig client certificate ... is expired` | The kOps admin certificate expired | Run `just gcp-cluster export-kubeconfig`, then run `just arangodb mcp-up` |
 | `local port <n> is in use` | Another listener on the port | Use `--forward-port`, or stop the other listener |
 | `/mcp` shows no `arangodb` server | The session started before registration | Start a new Pi session |
 | Tool calls return `401` | JWT expired | Reconnect the server with `/mcp` |

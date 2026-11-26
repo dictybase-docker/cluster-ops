@@ -30,6 +30,9 @@ printf '{"jwt":"test-jwt"}'
 MOCK
 cat > "${tmp_dir}/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
+    exit 1
+fi
 exit 0
 MOCK
 chmod +x "${tmp_dir}/bin/curl" "${tmp_dir}/bin/docker"
@@ -91,3 +94,54 @@ sleeper_pid=""
 [[ -z "$(ls -A "$state")" ]] || fail "state directory is not empty"
 [[ ! -e "$legacy" ]] || fail "legacy repository state was not removed"
 pass test_mcp_down
+
+# 6. mcp-up fails closed in preflight when the kubeconfig client certificate is expired.
+expired_gen="${tmp_dir}/gen_expired_kc.go"
+expired_kc="${tmp_dir}/expired-kubeconfig.yaml"
+cat > "$expired_gen" <<'GOCERT'
+package main
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"os"
+	"time"
+)
+
+func main() {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "expired-test"},
+		NotBefore:    time.Now().Add(-48 * time.Hour),
+		NotAfter:     time.Now().Add(-1 * time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		panic(err)
+	}
+	certB64 := base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	kc := fmt.Sprintf("apiVersion: v1\nkind: Config\ncurrent-context: test\ncontexts:\n- name: test\n  context:\n    user: test\nusers:\n- name: test\n  user:\n    client-certificate-data: %s\n", certB64)
+	if err := os.WriteFile(os.Args[1], []byte(kc), 0o600); err != nil {
+		panic(err)
+	}
+}
+GOCERT
+go run "$expired_gen" "$expired_kc"
+if out=$(KUBECONFIG="$expired_kc" PULUMI_STACK="experiments" run_env "$just_bin" arangodb mcp-up --forward-port 48529 2>&1); then
+    fail "mcp-up succeeded with an expired kubeconfig certificate"
+fi
+[[ "$out" == *"export-kubeconfig"* ]] || fail "expired kubeconfig error did not suggest export-kubeconfig: $out"
+[[ -z "$(ls -A "$state")" ]] || fail "mcp-up mutated state before rejecting expired kubeconfig"
+pass test_mcp_up_rejects_expired_kubeconfig
+

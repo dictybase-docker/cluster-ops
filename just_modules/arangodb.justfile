@@ -1483,6 +1483,22 @@ mcp-up namespace="" stack="" database="" forward_port="":
         echo "Error: KUBECONFIG is not set or unreadable — enter 'just cluster-env' first." >&2
         exit 1
     fi
+    KUBE_CTX=$(yq -r '.["current-context"] // ""' "$KUBECONFIG")
+    KUBE_USER=""
+    if [[ -n "$KUBE_CTX" ]]; then
+        KUBE_USER=$(yq -r --arg ctx "$KUBE_CTX" '.contexts[]? | select(.name == $ctx) | .context.user // ""' "$KUBECONFIG")
+    fi
+    CERT_B64=""
+    if [[ -n "$KUBE_USER" ]]; then
+        CERT_B64=$(yq -r --arg usr "$KUBE_USER" '.users[]? | select(.name == $usr) | .user."client-certificate-data" // ""' "$KUBECONFIG")
+    else
+        CERT_B64=$(yq -r '.users[0].user."client-certificate-data" // ""' "$KUBECONFIG")
+    fi
+    if [[ -n "$CERT_B64" ]] && ! printf '%s' "$CERT_B64" | base64 -d | openssl x509 -noout -checkend 3600 >/dev/null 2>&1; then
+        EXPIRY=$(printf '%s' "$CERT_B64" | base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || echo "unknown")
+        echo "Error: kubeconfig client certificate in '$KUBECONFIG' is expired or expires within 1 hour (notAfter: $EXPIRY) — run 'just gcp-cluster export-kubeconfig' first." >&2
+        exit 1
+    fi
     BASE_STACK=$(just arangodb _require-stack --stack {{ quote(stack) }})
     STACK_CONFIG="create-arangodb-databases/Pulumi.${BASE_STACK}-mcp-reader.yaml"
     if [[ ! -f "$STACK_CONFIG" ]]; then
